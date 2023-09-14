@@ -1,7 +1,7 @@
 # MonoForce
 Self-supervised learning of physics-aware grey-box model for predicting robot-terrain interaction.
 
-<img src="https://github.com/ctu-vras/monoforce/tree/master/docs/imgs/overview_from_img.png" width="400"/> <img src="https://github.com/ctu-vras/monoforce/tree/master/docs/imgs/overview.png" width="400"/>
+<img src="docs/imgs/overview_from_img.png" height="280"/> <img src="docs/imgs/overview.png" height="300"/>
 
 ## Installation
 Prerequisites:
