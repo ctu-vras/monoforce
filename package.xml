@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>monoforce</name>
+  <version>0.0.1</version>
+  <description>Self-supervised learning of physics-aware grey-box model for predicting robot-terrain interaction</description>
+  <url type="website">https://github.com/ctu-vras/monoforce.git</url>
+  <maintainer email="zimmerk@fel.cvut.cz">Karel Zimmermann</maintainer>
+  <maintainer email="agishrus@fel.cvut.cz">Ruslan Agishev</maintainer>
+
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2_ros</depend>
+
+  <build_depend>message_generation</build_depend>
+  <build_export_depend>message_generation</build_export_depend>
+  <exec_depend>message_runtime</exec_depend>
+</package>

@@ -1,0 +1,545 @@
+import torch
+from torch import nn
+import numpy as np
+from torchdiffeq import odeint, odeint_adjoint
+from ..transformations import rot2rpy, rpy2rot
+from ..utils import skew_symmetric
+from ..config import Config
+from ..control import pose_control
+
+torch.set_default_dtype(torch.float64)
+
+
+class State:
+    def __init__(self,
+                 xyz=torch.zeros((3, 1)),
+                 rot=torch.eye(3),
+                 vel=torch.zeros((3, 1)),
+                 omega=torch.zeros((3, 1)),
+                 forces=torch.zeros((3, 10))):
+        """
+        pos: 3x1, x,y,z position
+        rot: 3x3, rotation matrix
+        vel: 3x1, linear velocity
+        omega: 3x1, angular velocity
+        forces: 3xN, N is the number of contact points
+        """
+        self.xyz = torch.as_tensor(xyz).view(3, 1)
+        self.rot = torch.as_tensor(rot).view(3, 3)
+        self.vel = torch.as_tensor(vel).view(3, 1)
+        self.omega = torch.as_tensor(omega).view(3, 1)
+        self.forces = torch.as_tensor(forces).view(3, -1)
+
+    def as_tuple(self):
+        state = (self.xyz, self.rot, self.vel, self.omega, self.forces)
+        return state
+
+    def from_tuple(self, state):
+        self.xyz = state[0]
+        self.rot = state[1]
+        self.vel = state[2]
+        self.omega = state[3]
+        self.forces = state[4]
+
+    def clone(self):
+        return State(self.xyz.clone(), self.vel.clone(), self.rot.clone(), self.omega.clone(), self.forces.clone())
+
+    def to(self, device):
+        self.xyz = self.xyz.to(device)
+        self.rot = self.rot.to(device)
+        self.vel = self.vel.to(device)
+        self.omega = self.omega.to(device)
+        self.forces = self.forces.to(device)
+
+    def __getitem__(self, i):
+        return self.as_tuple()[i]
+
+    def __str__(self):
+        return str(self.__dict__)
+
+    def update(self, dstate, dt, inplace=False):
+        assert isinstance(dstate, tuple)
+        assert len(dstate) == 5
+
+        dpos_x, dpos_R, dvel_x, dvel_omega, dforces = dstate
+
+        st3 = self.omega + dvel_omega.view(3, 1) * dt
+        vel_omega_skew = skew_symmetric(st3)
+
+        c1 = torch.sin(torch.as_tensor(dt))
+        c2 = (1 - torch.cos(torch.as_tensor(dt)))
+
+        state = (self.xyz + dpos_x * dt,
+                 (torch.eye(3) + c1 * vel_omega_skew + c2 * (vel_omega_skew ** 2)) @ self.rot,
+                 self.vel + dvel_x.view(3, 1) * dt,
+                 self.omega + dvel_omega.view(3, 1) * dt,
+                 dforces)
+
+        if inplace:
+            self.from_tuple(state)
+        else:
+            return State(*state)
+
+
+class RigidBodySoftTerrain(nn.Module):
+
+    def __init__(self,
+                 height=np.zeros([8, 3]),
+                 grid_res=0.1,
+                 damping=10.0, elasticity=10.0, friction=0.9,
+                 mass=10.0, gravity=9.8,
+                 inertia=5. * np.eye(3),
+                 state=State(),
+                 vel_tracks=np.zeros(2),
+                 adjoint=False,
+                 device=torch.device('cpu'),
+                 use_ode=False,
+                 soft_layer_height=0.2,
+                 interaction_model='diffdrive',
+                 Kp_rho=2.0,  # position proportional gain
+                 Kp_theta=50.0,  # heading proportional gain
+                 Kp_yaw=1.0,  # yaw (at a pose) proportional gain
+                 ):
+        super().__init__()
+        self.device = device
+        self.gravity = nn.Parameter(torch.as_tensor([gravity]))
+        self.use_ode = use_ode
+        self.grid_res = grid_res
+        self.t0 = nn.Parameter(torch.tensor([0.0]))
+        self.height = torch.as_tensor(height, device=self.device)
+        self.height0 = self.height.clone()
+        self.height_soft = torch.ones_like(self.height, device=self.device) * soft_layer_height
+        self.height = nn.Parameter(self.height)
+        self.height_soft = nn.Parameter(self.height_soft)
+        self.damping = nn.Parameter(torch.ones_like(self.height) * damping)
+        self.elasticity = nn.Parameter(torch.ones_like(self.height) * elasticity)
+        self.friction = nn.Parameter(torch.ones_like(self.height) * friction)
+        self.elasticity_rigid = 2000.
+        self.damping_rigid = 200.
+
+        self.state = state
+
+        num_points = 5
+        px = torch.hstack([torch.linspace(-0.5, 0.5, num_points), torch.linspace(-0.5, 0.5, num_points)])  # location of points wrt cog
+        py = torch.hstack([0.3 * torch.ones(num_points), -0.3 * torch.ones(num_points)])  # location of points wrt cog (left/right)
+        pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])  # location of points wrt cog
+
+        self.robot_points = nn.Parameter(torch.stack((px, py, pz)))
+        self.init_forces = nn.Parameter(torch.zeros_like(self.robot_points))
+
+        self.mass = nn.Parameter(torch.tensor([mass]))
+        self.inertia = torch.tensor(inertia, device=self.device)
+        self.inertia_inv = torch.inverse(self.inertia)
+        # self.vel_tracks = nn.Parameter(torch.tensor(vel_tracks, device=self.device))
+        self.vel_tracks = torch.tensor(vel_tracks, device=self.device)
+
+        self.odeint = odeint_adjoint if adjoint else odeint
+
+        self.pos_x = None
+        self.pos_R = None
+        self.vel_x = None
+        self.vel_omega = None
+        self.forces = None
+
+        self.interaction_model = interaction_model
+
+        # controller parameters (path follower)
+        self.Kp_rho = nn.Parameter(torch.tensor([Kp_rho], device=self.device))
+        self.Kp_theta = nn.Parameter(torch.tensor([Kp_theta], device=self.device))
+        self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
+
+    def forward(self, t, state):
+        """
+        Forward pass of the robot-terrain interaction model.
+        @param t: time moments
+        @param state: state vector
+        @return: state derivative
+        """
+        if self.interaction_model == 'omni':
+            return self.forward_omni(t, state)
+        elif self.interaction_model == 'diffdrive':
+            return self.forward_diffdrive(t, state)
+        elif self.interaction_model == 'rigid_layer':
+            return self.forward_rigid_layer(t, state)
+        elif self.interaction_model == 'rigid_soft_layers':
+            return self.forward_rigid_soft_layers(t, state)
+        else:
+            raise NotImplementedError
+
+    def forward_omni(self, t, state):
+        pos_x, pos_R, vel_x, vel_omega, f_old = state
+
+        dpos_x = vel_x
+        vel_omega_skew = skew_symmetric(vel_omega).to(self.device)
+        dpos_R = vel_omega_skew @ pos_R
+        points = pos_R @ self.robot_points + pos_x
+        dpoints = vel_omega_skew @ (points - pos_x) + vel_x
+
+        # interpolate
+        H, W = self.height.shape
+        xy_grid = points[0:2, :] / self.grid_res + torch.tensor([H / 2., W / 2.], device=self.device).view((2, 1))
+        h = self.sample_by_interp(self.height, xy_grid)
+        e = self.elasticity_rigid  # self.elasticity[idx_points_x, idx_points_y]  # self.sample_by_interp(self.elasticity, points[0:2, :])
+        d = self.damping_rigid  # self.damping[idx_points_x, idx_points_y]  # self.sample_by_interp(self.damping, points[0:2, :])
+
+        # contacts
+        # contact = (points[2, :] <= h)
+        contact = self.soft_contact(h, points)
+
+        # Compute terrain + gravity forces
+        z = torch.tile(torch.tensor([[0], [0], [1]]), (1, points.shape[1])).to(self.device)
+        forces = (z * (e * (h - points[2, :]) - d * dpoints[2, :])) * contact
+        fg = self.mass * self.gravity  # * (points[2, :] >= h)
+        forces[2, :] = forces[2, :] - fg  # * (1 - contact.float())
+
+        # Accelerations: linear and angular accelerations computed from forces
+        dvel_x = (forces / self.mass).sum(dim=1)
+        dvel_omega = self.inertia_inv @ torch.cross(points - pos_x, forces).sum(dim=1)
+
+        return dpos_x, dpos_R, dvel_x, dvel_omega, forces  # _track #torch.zeros_like(self.f)
+
+    def forward_diffdrive(self, t, state):
+        pos_x, pos_R, vel_x, vel_omega, f_old = state
+
+        yaw = rot2rpy(pos_R)[2]
+        dpos_x = torch.zeros_like(pos_x)
+        dpos_x[0] = vel_x[0] * torch.cos(yaw)
+        dpos_x[1] = vel_x[0] * torch.sin(yaw)
+        dpos_x[2] = vel_x[2]
+
+        vel_omega_skew = skew_symmetric(vel_omega).to(self.device)
+        dpos_R = vel_omega_skew @ pos_R
+        points = pos_R @ self.robot_points + pos_x
+        dpoints = vel_omega_skew @ (points - pos_x) + vel_x
+
+        # interpolate
+        H, W = self.height.shape
+        xy_grid = points[0:2, :] / self.grid_res + torch.tensor([H / 2., W / 2.], device=self.device).view((2, 1))
+        h = self.sample_by_interp(self.height, xy_grid)
+        e = self.elasticity_rigid  # self.elasticity[idx_points_x, idx_points_y]  # self.sample_by_interp(self.elasticity, points[0:2, :])
+        d = self.damping_rigid  # self.damping[idx_points_x, idx_points_y]  # self.sample_by_interp(self.damping, points[0:2, :])
+
+        # contacts
+        # contact = (points[2, :] <= h)
+        contact = self.soft_contact(h, points)
+
+        # Compute terrain + gravity forces
+        z = torch.tile(torch.tensor([[0], [0], [1]]), (1, points.shape[1])).to(self.device)
+        forces = (z * (e * (h - points[2, :]) - d * dpoints[2, :])) * contact
+        fg = self.mass * self.gravity  # * (points[2, :] >= h)
+        forces[2, :] = forces[2, :] - fg  # * (1 - contact.float())
+
+        # Accelerations: linear and angular accelerations computed from forces
+        dvel_x = (forces / self.mass).sum(dim=1)
+        dvel_omega = self.inertia_inv @ torch.cross(points - pos_x, forces).sum(dim=1)
+
+        return dpos_x, dpos_R, dvel_x, dvel_omega, forces  # _track #torch.zeros_like(self.f)
+
+    def forward_rigid_layer(self, t, state):
+        pos_x, pos_R, vel_x, vel_omega, f_old = state
+
+        dpos_x = vel_x
+        vel_omega_skew = skew_symmetric(vel_omega).to(self.device)
+        dpos_R = vel_omega_skew @ pos_R
+        robot_points = pos_R @ self.robot_points + pos_x
+        dpoints = vel_omega_skew @ (robot_points - pos_x) + vel_x
+
+        # interpolate terrain properties at points of contact (POC)
+        H, W = self.height.shape
+        xy_grid = robot_points[0:2, :] / self.grid_res + torch.tensor([H / 2., W / 2.], device=self.device).view((2, 1))
+        h_r = self.sample_by_interp(self.height, xy_grid)
+        e_r = self.elasticity_rigid
+        d_r = self.damping_rigid
+
+        # contacts
+        # contact_r = (robot_points[2, :] <= h_r)
+        contact_r = self.soft_contact(h_r, robot_points)
+
+        # compute normals to heightmap at POC
+        idx_points_x = torch.clamp(torch.torch.floor(robot_points[0, :]).long(), min=0, max=self.height.shape[0] - 2)
+        idx_points_y = torch.clamp(torch.torch.floor(robot_points[1, :]).long(), min=0, max=self.height.shape[1] - 2)
+        dzx = self.height[idx_points_x + 1, idx_points_y] - self.height[idx_points_x, idx_points_y]
+        dzy = self.height[idx_points_x, idx_points_y + 1] - self.height[idx_points_x, idx_points_y]
+        nh = torch.cross(torch.vstack([torch.ones_like(dzx), torch.zeros_like(dzx), dzx]),
+                         torch.vstack([torch.zeros_like(dzy), torch.ones_like(dzy), dzy]))
+        nh = nh / nh.norm(dim=0)
+
+        # compute terrain + gravity forces
+        z = torch.tile(torch.tensor([[0], [0], [1]]), (1, robot_points.shape[1])).to(self.device)
+        dist = (nh * z * (h_r - robot_points[2, :])).sum(dim=0)
+        vel = (nh * dpoints).sum(dim=0)
+        forces_hard = nh * (e_r * dist - d_r * vel) * contact_r
+
+        forces = forces_hard
+        fg = self.mass * self.gravity
+        forces[2, :] = forces[2, :] - fg
+
+        # Force generated by tracks at contacts
+        p = robot_points.shape[1]
+        vel_tracks = torch.hstack((self.vel_tracks[0] * torch.ones(1, int(robot_points.shape[1] / 2), device=self.device),
+                                   self.vel_tracks[1] * torch.ones(1, int(robot_points.shape[1] / 2), device=self.device)))
+        # ---- track forces in rcf
+        slope_rate = 1.
+        f_tx = 2 * fg * nh[2, :] * contact_r * 2 * (torch.sigmoid(slope_rate * (vel_tracks - (pos_R.t() @ dpoints)[0, :])) - 0.5)
+        f_ty = 2 * fg * nh[2, :] * contact_r * 2 * (torch.sigmoid(slope_rate * (-pos_R.t() @ dpoints)[1, :]) - 0.5)
+        # ---- robot pose in wcf
+        rx = pos_R @ torch.vstack([torch.ones(p), torch.zeros(p), torch.zeros(p)]).to(self.device)  # unit vector in the robot x-direction in wcf
+        ry = pos_R @ torch.vstack([torch.zeros(p), torch.ones(p), torch.zeros(p)]).to(self.device)  # unit vector in the robot y-direction in wcf
+        # ---- robot's x,y-direction projected on terrain plane in wcf
+        hx, hy = rx - (rx * nh).sum(dim=0) * nh, ry - (ry * nh).sum(dim=0) * nh
+        hx, hy = hx / torch.norm(hx, dim=0), hy / torch.norm(hy, dim=0)
+        # ---- track forces projected on terrain surface in wcf
+        f_track = f_tx * hx + f_ty * hy
+        forces = forces + f_track
+
+        # Accelerations: linear and angular accelerations computed from forces
+        dvel_x = (forces / self.mass).sum(dim=1)
+        dvel_omega = self.inertia_inv @ torch.cross(robot_points - pos_x, forces).sum(dim=1)
+
+        return dpos_x, dpos_R, dvel_x, dvel_omega, f_tx * hx  # 0.2 * (forces_soft + forces_hard)  # f_tx * hx
+
+    def forward_rigid_soft_layers(self, t, state):
+        pos_x, pos_R, vel_x, vel_omega, f_old = state
+
+        dpos_x = vel_x
+        vel_omega_skew = skew_symmetric(vel_omega).to(self.device)
+        dpos_R = vel_omega_skew @ pos_R
+        robot_points = pos_R @ self.robot_points + pos_x
+        dpoints = vel_omega_skew @ (robot_points - pos_x) + vel_x
+
+        # sample terrain properties at points of contact (POC)
+        h, w = self.height.shape
+        xy_grid = robot_points[0:2, :] / self.grid_res + torch.tensor([h / 2., w / 2.], device=self.device).view((2, 1))
+        h_r = self.sample_by_interp(self.height, xy_grid)
+        h = h_r + self.sample_by_interp(self.height_soft, xy_grid)
+        e = self.sample_by_interp(self.elasticity, xy_grid)
+        d = self.sample_by_interp(self.damping, xy_grid)
+        f = self.sample_by_interp(self.friction, xy_grid)
+
+        # contacts
+        # contact = (robot_points[2, :] <= h)
+        contact = self.soft_contact(h, robot_points)
+        # contact_r = (robot_points[2, :] <= h_r)
+        contact_r = self.soft_contact(h_r, robot_points)
+
+        # compute normals to heightmap at POC
+        idx_points_x = torch.clamp(torch.torch.floor(xy_grid[0, :]).long(), min=0, max=self.height.shape[0] - 2)
+        idx_points_y = torch.clamp(torch.torch.floor(xy_grid[1, :]).long(), min=0, max=self.height.shape[1] - 2)
+        dzx = self.height[idx_points_x + 1, idx_points_y] - self.height[idx_points_x, idx_points_y]
+        dzy = self.height[idx_points_x, idx_points_y + 1] - self.height[idx_points_x, idx_points_y]
+        nh = torch.cross(torch.vstack([torch.ones_like(dzx), torch.zeros_like(dzx), dzx]),
+                         torch.vstack([torch.zeros_like(dzy), torch.ones_like(dzy), dzy]))
+        nh = nh / nh.norm(dim=0)
+
+        # compute terrain + gravity forces
+        z = torch.tile(torch.tensor([[0], [0], [1]]), (1, robot_points.shape[1])).to(robot_points.device)
+        dist = (nh * z * (h - robot_points[2, :])).sum(dim=0)
+        vel = (nh * dpoints).sum(dim=0)
+        forces_soft = nh * (e * dist - d * vel) * contact  # * (~contact_r)
+        forces_hard = nh * (self.elasticity_rigid * dist - self.damping_rigid * vel) * contact_r
+        forces = forces_soft + forces_hard
+        fg = self.mass * self.gravity
+        forces[2, :] = forces[2, :] - fg
+
+        # Force generated by tracks at contacts
+        N = robot_points.shape[1]
+        vel_tracks = 1 * torch.hstack((self.vel_tracks[0] * torch.ones(1, int(robot_points.shape[1] / 2), device=self.device),
+                                       self.vel_tracks[1] * torch.ones(1, int(robot_points.shape[1] / 2), device=self.device)))
+        # ---- track forces in rcf
+        slope_rate = 1.
+        f_tx = 2 * f * fg * nh[2, :] * contact * 2 * (torch.sigmoid(slope_rate * (vel_tracks - (pos_R.t() @ dpoints)[0, :])) - 0.5)
+        f_ty = 2 * f * fg * nh[2, :] * contact * 2 * (torch.sigmoid(slope_rate * (-pos_R.t() @ dpoints)[1, :]) - 0.5)
+        # ---- robot pose in wcf
+        rx = pos_R @ torch.vstack([torch.ones(N), torch.zeros(N), torch.zeros(N)]).to(self.device)  # unit vector in the robot x-direction in wcf
+        ry = pos_R @ torch.vstack([torch.zeros(N), torch.ones(N), torch.zeros(N)]).to(self.device)  # unit vector in the robot y-direction in wcf
+        # ---- robot's x,y-direction projected on terrain plane in wcf
+        hx, hy = rx - (rx * nh).sum(dim=0) * nh, ry - (ry * nh).sum(dim=0) * nh
+        hx, hy = hx / torch.norm(hx, dim=0), hy / torch.norm(hy, dim=0)
+        # ---- track forces projected on terrain surface in wcf
+        f_track = f_tx * hx + f_ty * hy
+        forces = forces + f_track
+
+        # Accelerations: linear and angular accelerations computed from forces
+        dvel_x = (forces / self.mass).sum(dim=1)
+        # torch.stack(((forces[0, :].sum() / self.mass).squeeze(), (forces[1, :].sum() / self.mass).squeeze(), (forces[2, :].sum() / self.mass).squeeze()))
+        dvel_omega = self.inertia_inv @ torch.cross(robot_points - pos_x, forces).sum(dim=1)
+
+        return dpos_x, dpos_R, dvel_x, dvel_omega, f_tx * hx  # forces_soft + forces_hard  # f_tx * hx
+
+    def sample_by_interp(self, grid, coords, mode='bilinear'):
+        # example:
+        # im = torch.rand((4,8)).view(1,1,4,8)
+        # pt = torch.tensor([[2, 2.25, 2.5, 2.75, 3,4],[1.5,1.5,1.5,1.5,1.5,1.5]], dtype=torch.double)
+        H = grid.shape[0]
+        W = grid.shape[1]
+        WW = (W - 1) / 2
+        HH = (H - 1) / 2
+        coords_r = coords.clone()
+        coords_r[1, ] = (coords[0, :] - HH) / HH
+        coords_r[0, ] = (coords[1, :] - WW) / WW
+        return torch.nn.functional.grid_sample(grid.view(1, 1, H, W),
+                                               coords_r.permute(1, 0).view(1, 1, coords_r.shape[1], coords_r.shape[0]),
+                                               mode=mode, align_corners=True).squeeze()
+
+    @staticmethod
+    def soft_contact(h, pos, slope_rate: float = 10.):
+        z = pos[2]
+        # sigmoid function
+        return 1. / (1. + torch.exp(-slope_rate * (h - z)))
+
+    def sim(self, state, tt):
+        if isinstance(state, tuple):
+            state = State(*state)
+
+        pos_x, pos_R, vel_x, vel_omega, forces = state
+        pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
+        dt = (tt[1:] - tt[:-1]).mean().item()
+
+        for t in tt[1::]:
+            dstate = self.forward(t, state)
+            state = state.update(dstate, dt)
+
+            pos_x.append(state[0])
+            pos_R.append(state[1])
+            vel_x.append(state[2])
+            vel_omega.append(state[3])
+            forces.append(state[4])
+        states = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega), torch.stack(forces)]
+
+        return states
+
+    def sim_control(self, state, goal_state, tt):
+        if isinstance(state, tuple):
+            state = State(*state)
+
+        goal_xyz, rot_goal = goal_state[:2]
+        goal_pose = torch.eye(4, device=self.device)
+        goal_pose[:3, :3] = rot_goal
+        goal_pose[:3, 3] = goal_xyz.squeeze()
+
+        dt = (tt[1:] - tt[:-1]).mean().item()
+        tracks_distance = self.robot_points[1].max() - self.robot_points[1].min()
+
+        pos_x, pos_R, vel_x, vel_omega, forces = state
+        pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
+
+        for t in tt[1:]:
+            # control
+            v, w = pose_control(state, goal_pose, self.Kp_rho, self.Kp_theta, self.Kp_yaw)
+
+            # two tracks (flippers) robot model
+            u1 = v + w * tracks_distance / 4.
+            u2 = v - w * tracks_distance / 4.
+            self.vel_tracks = torch.tensor([u1, u2])
+
+            dstate = self.forward(t, state)
+            state = state.update(dstate, dt)
+
+            pos_x.append(state[0])
+            pos_R.append(state[1])
+            vel_x.append(state[2])
+            vel_omega.append(state[3])
+            forces.append(state[4])
+
+        states = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega),
+                  torch.stack(forces)]
+
+        return states
+
+    def update_trajectory(self, tt=None, states=None):
+        if states is None:
+            assert tt is not None
+            state = self.state.as_tuple()
+            if self.use_ode:
+                states = odeint(self.forward, state, tt, atol=1e-3, rtol=1e-3)
+            else:
+                states = self.sim(state, tt)
+
+        pos_x, pos_R, vel_x, vel_omega, forces = states
+        self.pos_x = pos_x.detach().cpu().numpy()
+        self.pos_R = pos_R.detach().cpu().numpy()
+        self.vel_x = vel_x.detach().cpu().numpy()
+        self.vel_omega = vel_omega.detach().cpu().numpy()
+        self.forces = forces.detach().cpu().numpy()
+
+        # # update state
+        # self.state = State(xyz=self.pos_x[-1], rot=self.pos_R[-1], vel=self.vel_x[-1], omega=self.vel_omega[-1], forces=self.forces[-1])
+
+    def set_state(self, state):
+        assert isinstance(state, State) or isinstance(state, tuple)
+        if isinstance(state, State):
+            self.state = state
+        else:
+            self.state = State(xyz=state[0], rot=state[1], vel=state[2], omega=state[3], forces=state[4])
+
+
+def make_dphysics_model(height, cfg: Config):
+    system = RigidBodySoftTerrain(height=height,
+                                  grid_res=cfg.grid_res,
+                                  damping=cfg.damping, elasticity=cfg.elasticity, friction=cfg.friction,
+                                  mass=cfg.robot_mass,
+                                  state=State(xyz=cfg.robot_init_xyz),
+                                  vel_tracks=cfg.vel_tracks,
+                                  device=cfg.device, use_ode=False)
+    return system
+
+
+def main():
+    from mayavi import mlab  # visualization tool
+
+    OUTPUT_PATH = '/home/ruslan/workspaces/traversability_ws/src/differentiable_physics/data/output'
+    CREATE_MOVIE = 1
+    torch.set_default_dtype(torch.float64)
+
+    height = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                       [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],
+                       [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],
+                       [0.5, 0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5],
+                       [1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                       [0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5],
+                       [0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5],
+                       [0.5, 0.5, 0.0, 0.5, 0.7, 0.5, 0.5, 0.0, 0.5, 0.7],
+                       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+    system_true = RigidBodySoftTerrain(height=height,
+                                       damping=10.0, elasticity=10.0, friction=0.9, mass=10.0, vel_tracks=[2., 2.])
+
+    total_time = 4.0
+    number_of_samples = 100
+    t0, state = 0., system_true.state
+    tt = torch.linspace(float(t0), total_time, number_of_samples)
+    states = odeint(system_true.forward, state.as_tuple(), tt, atol=1e-3, rtol=1e-3)
+    # states = system_true.sim(state, tt)
+
+    pos_x, pos_R, vel_x, vel_omega, aux = states
+    print(pos_x)
+    h = system_true.height.detach().cpu().numpy()
+    x_grid, y_grid = np.mgrid[0:system_true.height.shape[0], 0:system_true.height.shape[1]]
+    points = system_true.robot_points.detach().cpu().numpy()
+
+    fig = mlab.figure(size=(1024, 512))  # , bgcolor=(1, 1, 1), fgcolor=(0.2, 0.2, 0.2))
+    for t in range(pos_x.shape[0]):
+        _, _, _, _, f = system_true.forward(tt[t], (pos_x[t], pos_R[t], vel_x[t], vel_omega[t], aux[t]))
+
+        mlab.clf()
+        mlab.plot3d(pos_x[0:(t + 1), 0].detach().cpu().numpy(), pos_x[0:(t + 1), 1].detach().cpu().numpy(),
+                    pos_x[0:(t + 1), 2].detach().cpu().numpy(), color=(1, 1, 1), line_width=2.0)
+        mlab.surf(x_grid, y_grid, h, opacity=0.5, representation='wireframe', line_width=5.0)
+        mlab.surf(x_grid, y_grid, h, color=(0.5, 0.5, 1.0), opacity=0.5, representation='surface')
+        cog = pos_x[t].detach().cpu().numpy()
+        rot = pos_R[t].detach().cpu().numpy()
+        d = rot @ points
+        mlab.points3d(cog[0] + d[0, :], cog[1] + d[1, :], cog[2] + d[2, :], scale_factor=0.25)
+        mlab.quiver3d(cog[0] + d[0, :], cog[1] + d[1, :], cog[2] + d[2, :], f[0].detach().cpu().numpy(),
+                      f[1].detach().cpu().numpy(), f[2].detach().cpu().numpy(), scale_factor=0.005)
+        # robot.plot_robot_Rt([], pos_R[t].detach().cpu().numpy(), pos_x[t].detach().cpu().numpy())
+        mlab.view(azimuth=150 - t, elevation=80, distance=20.0)
+        if CREATE_MOVIE:
+            mlab.savefig(filename=OUTPUT_PATH + '{:04d}_frame'.format(t) + '.png', magnification=1.0)
+        # else:
+        #    mlab.show()
+
+
+if __name__ == '__main__':
+    main()

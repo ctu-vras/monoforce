@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="cloud" default="cloud"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="map_frame" default="map"/>
+
+    <node name="mapper_node" type="mapper_node" pkg="norlab_icp_mapper_ros" output="screen">
+        <rosparam subst_value="true">
+            odom_frame: $(arg odom_frame)
+            map_frame: $(arg map_frame)
+            robot_frame: base_link
+            initial_map_file_name: ''
+            initial_robot_pose: ''
+            final_map_file_name: $(dirname)/../map.vtk
+            final_trajectory_file_name: $(dirname)/../trajectory.vtk
+            icp_config: $(dirname)/../config/slam/icp.yaml
+            input_filters_config: $(dirname)/../config/slam/input_filters.yaml
+<!--            map_post_filters_config: $(dirname)/../config/slam/map_post_filters.yaml-->
+            map_update_condition: overlap
+            map_update_overlap: 0.9
+            map_update_delay: 0.0
+            map_update_distance: 0.0
+            map_publish_rate: 1.0
+            map_tf_publish_rate: 0.0
+            max_idle_time: 10
+            min_dist_new_point: 0.1
+            sensor_max_range: 25
+            prior_dynamic: 0.6
+            threshold_dynamic: 0.9
+            beam_half_angle: 0.01
+            epsilon_a: 0.01
+            epsilon_d: 0.01
+            alpha: 0.8
+            beta: 0.99
+            is_3D: true
+            is_online: true
+            compute_prob_dynamic: true
+            is_mapping: true
+<!--            is_mapping: false-->
+            save_map_cells_on_hard_drive: false
+        </rosparam>
+
+        <remap from="points_in" to="$(arg cloud)"/>
+        <remap from="filtered_points" to="filtered_points"/>
+        <remap from="map" to="point_map"/>
+        <remap from="icp_odom" to="icp_odom"/>
+    </node>
+</launch>

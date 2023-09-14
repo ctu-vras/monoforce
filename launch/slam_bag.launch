@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="config" default="''"/>
+    <arg name="rviz" default="true"/>
+    <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/>
+    <arg name="params" default="$(eval bag.split()[0] + '.params')"/>
+    <!-- Cloud filter -->
+    <arg name="min_depth" default="1.0"/>
+    <arg name="max_depth" default="25.0"/>
+    <arg name="grid_res" default="0.1"/>
+
+    <!-- Robot data: from bag file -->
+    <include file="$(dirname)/play_bag.launch">
+        <arg name="bag" value="$(arg bag)"/>
+        <arg name="rviz" value="false"/>
+    </include>
+
+    <!-- Cloud filterring -->
+    <include file="$(dirname)/cloud_filter.launch">
+        <arg name="input" value="cloud"/>
+        <arg name="output" value="filtered_cloud"/>
+        <arg name="min_depth" value="$(arg min_depth)"/>
+        <arg name="max_depth" value="$(arg max_depth)"/>
+        <arg name="grid_res" value="$(arg grid_res)"/>
+    </include>
+
+    <!-- SLAM -->
+    <include file="$(dirname)/slam.launch">
+        <arg name="cloud" value="filtered_cloud"/>
+        <arg name="odom_frame" value="odom"/>
+    </include>
+
+    <!-- RVIZ -->
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(dirname)/../config/rviz/bag_data.rviz"/>
+</launch>

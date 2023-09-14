@@ -1,0 +1,580 @@
+#!/usr/bin/env python
+"""
+"""
+from __future__ import absolute_import, division, print_function
+import numpy as np
+from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
+import os
+import cv2
+from scipy.spatial.transform import Rotation
+import rospy
+from ros_numpy import msgify, numpify
+from rosbag import Bag, ROSBagException, Compression
+from sensor_msgs.msg import PointCloud2, CompressedImage
+from cv_bridge import CvBridge
+from differentiable_physics.segmentation import position
+from differentiable_physics.utils import slots, normalize, timing
+from differentiable_physics.vis import show_cloud, show_cloud_plt, set_axes_equal
+from differentiable_physics.transformations import transform_cloud
+from differentiable_physics.ros import load_tf_buffer
+from differentiable_physics.imgproc import project_cloud_to_image, undistort_image
+from differentiable_physics.config import Config
+from differentiable_physics.datasets import RobinGasDataset
+from tf2_ros import BufferCore, TransformException
+from matplotlib import pyplot as plt
+from tqdm import tqdm
+from argparse import ArgumentParser
+from scipy import integrate
+import yaml
+
+
+def arg_parser():
+    parser = ArgumentParser(epilog="""Path format uses following placeholders:
+    {dir} - parent directory of the first bag file,
+    {name} - name without extension of the first bag file,
+    {topic} - name of the topic as read from bag file,
+    {secs}, {nsecs} - timestamp from the header (if available).
+    """)
+    parser.add_argument('--lidar-topic', type=str, default='/points')
+    parser.add_argument('--camera-topics', type=str, nargs='+')
+    parser.add_argument('--camera-info-topics', type=str, nargs='+')
+    parser.add_argument('--visualize', type=str2bool, default=False)
+    parser.add_argument('--save-data', type=str2bool, default=True)
+    parser.add_argument('--bag-path', type=str)
+    return parser
+
+def str2bool(v):
+    return v.lower() in ('1', 'yes', 'true', 't', 'y')
+
+def str2time(s):
+    sec, nsec = s.split('_')
+    assert len(sec) == 10, 'sec should be 10 digits long'
+    assert len(nsec) == 9, 'nano-sec should be 9 digits long'
+    t = float(sec) + float(nsec) * 1e-9
+    return t
+
+def get_topic_types(bag):
+    return {k: v.msg_type for k, v in bag.get_type_and_topic_info().topics.items()}
+
+
+def img_msg_to_cv2(msg, cv_bridge=CvBridge()):
+    img_msg = CompressedImage(*slots(msg))
+    # convert compressed image message to numpy array
+    img_raw = cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+    return img_raw
+
+def differentiate_velocity(bag, imu_topic, time, time_window=1.0, beta0=None):
+    assert beta0 is None or beta0.shape == (3,)
+    t_stamps_in_window = []
+    omegas_in_window = []
+    for topic, msg, stamp in bag.read_messages(topics=[imu_topic],
+                                               start_time=rospy.Time.from_seconds(time - time_window / 2.),
+                                               end_time=rospy.Time.from_seconds(time + time_window / 2.)):
+        # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), topic, stamp.to_sec()))
+        t_stamps_in_window.append(stamp.to_sec())
+        omega = np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z])
+        omegas_in_window.append(omega)
+
+    if len(t_stamps_in_window) == 0:
+        # raise Exception('No image messages in window')
+        print('No messages in window for time %.3f [sec] and topic "%s"' % (time, imu_topic))
+        return None
+
+    # integrate accelerations in window to obtain a linear velocity
+    omegas_in_window = np.array(omegas_in_window)
+    # differentiate omegas (omegas_in_window) w.r.t. time (t_stamps_in_window)
+    dts = np.diff(t_stamps_in_window)
+    betas_in_window = np.diff(omegas_in_window, axis=0) / dts[:, None]
+    # add beta0 to the beginning of the array
+    if beta0 is None:
+        beta0 = betas_in_window[0]
+    betas_in_window = np.vstack([beta0, betas_in_window])
+
+    time_diffs = np.abs(np.array(t_stamps_in_window) - time)
+    beta = betas_in_window[np.argmin(time_diffs)]
+
+    # print("Angular acceleration at time moment %.3f [sec] is %.3f [rad/s^2]" % (time, np.linalg.norm(beta)))
+    # plt.figure()
+    # ts = np.array(t_stamps_in_window) - t_stamps_in_window[0]
+    # plt.plot(ts, np.linalg.norm(betas_in_window, axis=1), 'r--')
+    # plt.plot(ts, np.linalg.norm(omegas_in_window, axis=1), 'r-')
+    # plt.legend(['beta(t)', 'omega(t)'])
+    # plt.show()
+    return beta
+
+@timing
+def integrate_acceleration(bag, imu_topic, time, time_window=1.0, vel0=np.zeros(3), gravity=9.81):
+    t_stamps_in_window = []
+    accs_in_window = []
+    for topic, msg, stamp in bag.read_messages(topics=[imu_topic],
+                                               start_time=rospy.Time.from_seconds(time - time_window / 2.),
+                                               end_time=rospy.Time.from_seconds(time + time_window / 2.)):
+        t_stamps_in_window.append(stamp.to_sec())
+        acc = np.array([msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z])
+        accs_in_window.append(acc)
+
+    if len(t_stamps_in_window) == 0:
+        # raise Exception('No messages in window')
+        print('No messages in window for time %.3f [sec] and topic "%s"' % (time, imu_topic))
+        return None
+
+    # integrate accelerations in window to obtain a linear velocity
+    accs_in_window = np.array(accs_in_window)
+    # compensate for incalibrated accelerometer
+    accs_in_window[:, 0] -= 0.12
+    accs_in_window[:, 1] += 0.78
+    # compensate for gravity
+    accs_in_window[:, 2] += gravity
+    vels_in_window = integrate.cumtrapz(accs_in_window, t_stamps_in_window, axis=0, initial=np.linalg.norm(vel0))
+
+    time_diffs = np.abs(np.array(t_stamps_in_window) - time)
+    vel = vels_in_window[np.argmin(time_diffs)]
+    vel_mean = np.mean(vels_in_window, axis=0)
+
+    # print('Estimated velocity at time moment %.3f [sec] is %.3f [m/s]' % (time, np.linalg.norm(vel)))
+    # print('Mean velocity in window is %.3f [m/s]' % np.linalg.norm(vel_mean))
+    # plt.figure()
+    # ts = np.array(t_stamps_in_window) - t_stamps_in_window[0]
+    # plt.plot(ts, np.linalg.norm(accs_in_window, axis=1), 'r--')
+    # plt.plot(ts, np.linalg.norm(vels_in_window, axis=1), 'r-')
+    # plt.legend(['acc(t)', 'vel(t)'])
+    # plt.show()
+    return vel, vel_mean
+
+@timing
+def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5):
+    stamps_in_window = []
+    msgs = []
+    for topic, msg, stamp in bag.read_messages(topics=[topic],
+                                               start_time=rospy.Time.from_seconds(time - time_window / 2.),
+                                               end_time=rospy.Time.from_seconds(time + time_window / 2.)):
+        # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), topic, stamp.to_sec()))
+        # break
+        stamps_in_window.append(stamp.to_sec())
+        msgs.append(msg)
+
+    if len(stamps_in_window) == 0:
+        # raise Exception('No image messages in window')
+        print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time, topic))
+        return None
+
+    time_diffs = np.abs(np.array(stamps_in_window) - time)
+    msg = msgs[np.argmin(time_diffs)]
+
+    time_diff = np.min(time_diffs)
+    # print('Got the closest message with time difference: %.3f [sec]' % time_diff)
+    assert time_diff < max_time_diff, 'Time difference is too large: %.3f [sec]' % time_diff
+
+    return msg
+
+
+def get_camera_infos(bag_path, camera_info_topics):
+    """
+    Read camera intrinsics and distortion coefficients from bag file
+    """
+    dir = os.path.dirname(bag_path)
+    output_path_pattern = '{dir}/{name}_trav/calibration/cameras/{camera}.yaml'
+
+    Ks = []
+    Ds = []
+    try:
+        with Bag(bag_path, 'r') as bag:
+            for caminfo_topic in camera_info_topics:
+                for topic, msg, stamp in bag.read_messages(topics=[caminfo_topic]):
+                    K = np.asarray(msg.K).reshape(3, 3)
+                    D = np.asarray(msg.D)
+                    print('Read the camera params from "%s" for intrinsics topic "%s"' % (bag_path, topic))
+                    print('K:\n', K)
+                    print('D:\n', D)
+                    Ks.append(K)
+                    Ds.append(D)
+
+                    # save intinsics and distortion coeffs to output_path yaml file
+                    camera = topic.split('/')[1]
+                    output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0], camera=camera)
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    print('Saving to %s' % output_path)
+                    with open(output_path, 'w') as f:
+                        f.write('image_width: %d\n' % msg.width)
+                        f.write('image_height: %d\n' % msg.height)
+                        f.write('camera_name: %s\n' % camera)
+                        f.write('camera_matrix:\n')
+                        f.write('  rows: 3\n')
+                        f.write('  cols: 3\n')
+                        f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in K.reshape(-1)]))
+                        f.write('distortion_model: %s\n' % msg.distortion_model)
+                        f.write('distortion_coefficients:\n')
+                        f.write('  rows: 1\n')
+                        f.write('  cols: %d\n' % len(D))
+                        f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in D]))
+                    f.close()
+                    break
+    except ROSBagException as ex:
+        print('Could not read %s: %s' % (bag_path, ex))
+    return Ks, Ds
+
+
+def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer):
+    dir = os.path.dirname(bag_path)
+    output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+    output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, 'w') as f:
+        try:
+            with Bag(bag_path, 'r') as bag:
+                for cam_topic in camera_topics:
+                    img_msg = None
+                    cloud_msg = None
+                    for topic, msg, stamp in bag.read_messages(topics=[cam_topic] + [lidar_topic]):
+                        if topic == lidar_topic:
+                            cloud_msg = msg
+                            # print('Got cloud msg at %.3f s' % cloud_msg.header.stamp.to_sec())
+                        if topic == cam_topic:
+                            img_msg = msg
+                            # print('Got image msg at %.3f s' % img_msg.header.stamp.to_sec())
+
+                        if img_msg is None:
+                            # print('No image msg read from %s' % bag_path)
+                            continue
+
+                        if cloud_msg is None:
+                            # print('No lidar msg read from %s' % bag_path)
+                            continue
+
+                        print('Got both image and lidar msgs at %.3f s and %.3f' %
+                              (img_msg.header.stamp.to_sec(), cloud_msg.header.stamp.to_sec()))
+
+                        # find transformation between camera and lidar
+                        try:
+                            lidar_to_camera = tf_buffer.lookup_transform_core(img_msg.header.frame_id,
+                                                                              cloud_msg.header.frame_id,
+                                                                              cloud_msg.header.stamp)
+                        except TransformException as ex:
+                            print('Could not transform from %s to %s at %.3f s.' %
+                                  (cloud_msg.header.frame_id, img_msg.header.frame_id, cloud_msg.header.stamp.to_sec()))
+                            continue
+                        print('Got transformation from %s to %s at %.3f s' % (cloud_msg.header.frame_id,
+                                                                              img_msg.header.frame_id,
+                                                                              cloud_msg.header.stamp.to_sec()))
+                        Tr = numpify(lidar_to_camera.transform)
+                        print('Tr:\n', Tr)
+
+                        # save transformation to output_path_patern yaml file
+                        camera = cam_topic.split('/')[1]
+                        print('Saving to %s' % output_path)
+
+                        f.write('T_{lidar}__{camera}:\n'.format(lidar=cloud_msg.header.frame_id, camera=camera))
+                        f.write('  rows: 4\n')
+                        f.write('  cols: 4\n')
+                        f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in Tr.reshape(-1)]))
+                        break
+        except ROSBagException as ex:
+            print('Could not read %s: %s' % (bag_path, ex))
+
+        f.close()
+
+
+def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=False):
+    cfg = Config()
+    ds = RobinGasDataset(data_path, cfg=cfg)
+    cv_bridge = CvBridge()
+    bag_path = data_path.replace('_trav/', '.bag')
+    cloud_times = np.sort([str2time(i) for i in ds.ids])
+
+    if save:
+        output_bag_path = bag_path.replace('.bag', '_colorized_cloud.bag')
+        output_bag = Bag(output_bag_path, 'w', compression=Compression.LZ4)
+    else:
+        output_bag = None
+
+    # for each time stamp in cloud_times find the closest image time stamp
+    with Bag(bag_path, 'r') as bag:
+        for i in tqdm(range(len(cloud_times))):
+
+            cloud_struct = ds.get_cloud(i)
+            points = position(cloud_struct)
+            # print('Processing points %i/%i' % (i+1, len(ds)))
+
+            colors = np.zeros_like(points)
+
+            for cam_topic in cam_topics:
+                # get the closest image at points time
+                msg = get_closest_msg(bag=bag, topic=cam_topic, time=cloud_times[i])
+                img_raw = img_msg_to_cv2(msg, cv_bridge)
+                # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), cam_topic, msg.header.stamp.to_sec()))
+
+                # undistort image
+                camera = cam_topic.split('/')[1]
+                K = np.asarray(ds.calib[camera]['camera_matrix']['data']).reshape((3, 3))
+                D = np.asarray(ds.calib[camera]['distortion_coefficients']['data'])
+                img, K = undistort_image(img_raw, K, D)
+
+                # find transformation between camera and lidar
+                lidar_to_camera = ds.calib['transformations']['T_%s__%s' % (lidar, camera)]['data']
+                lidar_to_camera = np.asarray(lidar_to_camera).reshape((4, 4))
+
+                # transform point points to camera frame
+                cloud_cam = transform_cloud(points, lidar_to_camera)
+
+                # project point points to image
+                cloud_fov, colors_view, fov_mask = project_cloud_to_image(cloud_cam, img, K, return_mask=True, debug=False)
+
+                # set colors from a particular camera viewpoint
+                colors[fov_mask] = colors_view[fov_mask]
+
+                if vis:
+                    plt.figure(figsize=(20, 10))
+                    ax = plt.subplot(121)
+                    ax.imshow(img[..., (2, 1, 0)])
+
+                    ax = plt.subplot(122, projection='3d')
+                    step = 10
+                    ax.plot(cloud_cam[::step, 0], cloud_cam[::step, 1], cloud_cam[::step, 2], '.')
+                    ax.plot(cloud_fov[::step, 0], cloud_fov[::step, 1], cloud_fov[::step, 2], '.')
+                    set_axes_equal(ax)
+                    plt.show()
+
+                if save:
+                    # save images
+                    os.makedirs(os.path.join(data_path, 'images'), exist_ok=True)
+                    cv2.imwrite(os.path.join(data_path, 'images', '%s_%s.png' % (ds.ids[i], camera)), img_raw)
+
+                    # write image to bag
+                    output_bag.write(topic=cam_topic, msg=msg, t=msg.header.stamp)
+
+            if vis:
+                # visualizations
+                show_cloud(points, normalize(colors))
+
+            if save:
+                # save cloud colors
+                p = os.path.join(data_path, 'cloud_colors')
+                os.makedirs(p, exist_ok=True)
+                np.savez_compressed(os.path.join(p, '%s.npz' % ds.ids[i]), rgb=colors)
+
+                # merge colors with cloud: append rgb fields to the structured cloud array
+                colors_struct = unstructured_to_structured(colors, names=['r', 'g', 'b'])
+                cloud_colors_struct = merge_arrays((cloud_struct, colors_struct), flatten=True)
+
+                # write point cloud to bag
+                cloud_msg = msgify(PointCloud2, cloud_colors_struct)
+                cloud_msg.header.stamp = rospy.Time.from_seconds(cloud_times[i])
+                cloud_msg.header.frame_id = 'os_sensor'
+                output_bag.write(topic='/points', msg=cloud_msg, t=rospy.Time.from_seconds(cloud_times[i]))
+    if save:
+        output_bag.close()
+
+def estimate_velocities(data_path, tf_buffer, imu_topic='/imu/data', robot_frame='base_link'):
+    import pandas as pd
+
+    cfg = Config()
+    ds = RobinGasDataset(data_path, cfg=cfg)
+    bag_path = data_path.replace('_trav/', '.bag')
+
+    # for each time stamp in cloud_times estimate velocity as integral of accelerations from IMU measurements
+    robot_to_imu = None
+    with Bag(bag_path, 'r') as bag:
+        for i in tqdm(range(len(ds)), desc='Integrating IMU measurements at the cloud time points'):
+            traj = ds.get_traj(i)
+            stamps, poses = traj['stamps'], traj['poses']
+            traj_csv = os.path.join(ds.traj_path, '%s.csv' % ds.ids[i])
+            traj_data = pd.read_csv(traj_csv)
+            vxs, vys, vzs, wxs, wys, wzs = [], [], [], [], [], []
+            # axs, ays, azs, bxs, bys, bzs = [], [], [], [], [], []
+            # process a trajectory
+            vel = np.zeros(3)
+            for t in stamps:
+                # get the closest imu at points time
+                imu_msg = get_closest_msg(bag=bag, topic=imu_topic, time=t, time_window=0.1)
+
+                # lookup tf transformation between imu and robot base
+                if robot_to_imu is None:
+                    try:
+                        robot_to_imu = tf_buffer.lookup_transform_core(imu_msg.header.frame_id, robot_frame,
+                                                                       imu_msg.header.stamp)
+                        robot_to_imu = numpify(robot_to_imu.transform)
+                    except TransformException as ex:
+                        print('Could not transform from %s to %s at %.3f s.' %
+                              (robot_frame, imu_msg.header.frame_id, imu_msg.header.stamp.to_sec()))
+                        continue
+
+                # integrate accelerations to get velocities
+                # vel0 = vel / 3.
+                vel0 = np.zeros(3)
+                vel, vel_mean = integrate_acceleration(bag, imu_topic, t, vel0=vel0, time_window=0.1)
+                omega = np.asarray([imu_msg.angular_velocity.x, imu_msg.angular_velocity.y, imu_msg.angular_velocity.z])
+
+                # transform velocity from imu to robot base
+                degs = Rotation.from_matrix(robot_to_imu[:3, :3]).as_euler('xyz', degrees=True)
+                print('Degs: ', degs)
+                vel = robot_to_imu[:3, :3] @ vel
+                print('Vel: ', vel)
+                print('-------------')
+
+                vxs.append(vel[0])
+                vys.append(vel[1])
+                vzs.append(vel[2])
+
+                wxs.append(omega[0])
+                wys.append(omega[1])
+                wzs.append(omega[2])
+
+                # axs.append(imu_msg.linear_acceleration.x)
+                # ays.append(imu_msg.linear_acceleration.y)
+                # azs.append(imu_msg.linear_acceleration.z)
+                #
+                # beta = differentiate_velocity(bag, imu_topic, t)
+                # bxs.append(beta[0])
+                # bys.append(beta[1])
+                # bzs.append(beta[2])
+
+            # trajectory csv file stored in traj_csv path has the following format:
+            # timestamp, x, y, z, T00, T01, T02, T03, T10, T11, T12, T13, T20, T21, T22, T23
+            # add new columns to it with the names
+            # vx, vy, vz, omega_x, omega_y, omega_z
+            # ax, ay, az, beta_x, beta_y, beta_z
+            traj_data['vx'] = vxs
+            traj_data['vy'] = vys
+            traj_data['vz'] = vzs
+
+            traj_data['omega_x'] = wxs
+            traj_data['omega_y'] = wys
+            traj_data['omega_z'] = wzs
+
+            # traj_data['ax'] = axs
+            # traj_data['ay'] = ays
+            # traj_data['az'] = azs
+            #
+            # traj_data['beta_x'] = bxs
+            # traj_data['beta_y'] = bys
+            # traj_data['beta_z'] = bzs
+
+            traj_data.to_csv(traj_csv, index=False)
+
+
+def get_base_link_to_base_footprint_transformations(bag_path, base_link_frame='base_link', base_footprint_frame='base_footprint'):
+    tf_buffer = load_tf_buffer([bag_path], tf_topics=['/tf_static'])
+    try:
+        transform = tf_buffer.lookup_transform_core(base_link_frame, base_footprint_frame, rospy.Time())
+        Tr = numpify(transform.transform)
+    except TransformException as ex:
+        print('Could find transformation from %s to %s.' % (base_link_frame, base_footprint_frame))
+        print('Using identity matrix.')
+        Tr = np.eye(4)
+    print('Transformation from %s to %s:' % (base_link_frame, base_footprint_frame))
+    print(Tr)
+
+    output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+    output_path = output_path_pattern.format(dir=os.path.dirname(bag_path), name=os.path.basename(bag_path).replace('.bag', ''))
+
+    new_yaml_data_dict = {'T_{base_link_frame}__{base_footprint_frame}'.format(base_link_frame=base_link_frame,
+                                                                                base_footprint_frame=base_footprint_frame):
+                              {'rows': 4,
+                               'cols': 4,
+                               'data': ['%.12f' % x for x in Tr.reshape(-1)]}}
+
+    with open(output_path, 'r') as yamlfile:
+        cur_yaml = yaml.load(yamlfile, Loader=yaml.FullLoader)
+        cur_yaml.update(new_yaml_data_dict)
+        print(cur_yaml)
+
+    with open(output_path, 'w') as yamlfile:
+        yaml.safe_dump(cur_yaml, yamlfile)  # Also note the safe_dump
+
+
+def process(bag_path, lidar_topic, camera_topics, camera_info_topics, visualize, save_data):
+    data_path = bag_path.replace('.bag', '_trav/')
+    assert os.path.exists(bag_path), 'Bag file does not exist: %s' % bag_path
+    assert os.path.exists(data_path), 'Data path does not exist: %s' % data_path
+
+    tf_buffer = load_tf_buffer([bag_path])
+    print('Obtaining camera infos from bag file...')
+    get_camera_infos(bag_path, camera_info_topics)
+    print('Obtaining lidar to camera transformations from bag file...')
+    get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer)
+    print('Obtaining base_link to base_footprint transformations from bag file...')
+    get_base_link_to_base_footprint_transformations(bag_path)
+    print('Colorizing clouds...')
+    colorize_clouds(data_path, camera_topics, vis=visualize, save=save_data)
+    # TODO: it does not work yet
+    # print('Estimating velocities...')
+    # estimate_velocities(data_path, tf_buffer)
+
+
+def debug_colorize_clouds():
+    data_path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    cam_topics = ['/camera_fisheye_front/image_color/compressed',
+                  '/camera_fisheye_rear/image_color/compressed',
+                  '/camera_left/image_color/compressed',
+                  '/camera_right/image_color/compressed']
+
+    cfg = Config()
+    ds = RobinGasDataset(data_path, cfg=cfg)
+    bag_path = data_path.replace('_trav/', '.bag')
+    cloud_times = np.sort([str2time(i) for i in ds.ids])
+    cv_bridge = CvBridge()
+
+    front_imgs_array = []
+    output_bag_path = bag_path.replace('.bag', '_colorized.bag')
+    output_bag = Bag(output_bag_path, 'w', compression=Compression.LZ4)
+
+    # for each time stamp in cloud_times find the closest image time stamp
+    img_times = {}
+    for topic in cam_topics:
+        img_times[topic] = []
+    with Bag(bag_path, 'r') as bag:
+        for i in tqdm(range(len(cloud_times))):
+            cloud = ds.get_cloud(i)
+            # write point cloud to bag
+            cloud_msg = msgify(PointCloud2, cloud)
+            cloud_msg.header.stamp = rospy.Time.from_seconds(cloud_times[i])
+            cloud_msg.header.frame_id = 'os_sensor'
+            output_bag.write(topic='/points', msg=cloud_msg, t=rospy.Time.from_seconds(cloud_times[i]))
+
+            for cam_topic in cam_topics:
+                # get the closest image at points time
+                msg = get_closest_msg(bag=bag, topic=cam_topic, time=cloud_times[i])
+                t = msg.header.stamp.to_sec()
+                # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), cam_topic, t))
+                img_times[cam_topic].append(t)
+
+                img = img_msg_to_cv2(msg, cv_bridge)
+                if cam_topic == '/camera_fisheye_front/image_color/compressed':
+                    front_imgs_array.append(img)
+
+                # write image to bag
+                output_bag.write(topic=cam_topic, msg=msg, t=msg.header.stamp)
+
+    output_bag.close()
+
+    size = (front_imgs_array[0].shape[1], front_imgs_array[0].shape[0])
+    out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
+
+    print('Writing video...')
+    for i in range(len(front_imgs_array)):
+        out.write(front_imgs_array[i])
+    out.release()
+
+    t0 = cloud_times[0]
+    cloud_times = cloud_times - t0
+    for cam_topic in cam_topics:
+        img_times[cam_topic] = np.array(img_times[cam_topic]) - t0
+    # plot cloud times and image times
+    plt.figure()
+    plt.plot(cloud_times, 'rx', label='cloud times')
+    for cam_topic in cam_topics:
+        plt.plot(img_times[cam_topic], '.', label=cam_topic)
+    plt.legend()
+    plt.show()
+
+
+def main():
+    args = arg_parser().parse_args()
+    print(args)
+
+    process(**vars(args))
+
+
+if __name__ == '__main__':
+    main()

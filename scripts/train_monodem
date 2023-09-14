@@ -1,0 +1,211 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+from monoforce.datasets import MonoDemDataset
+from monoforce.config import Config
+from monoforce.models import monolayout
+from monoforce.utils import normalize
+from argparse import ArgumentParser
+
+
+def str2bool(v):
+    return v.lower() in ('1', 'yes', 'true', 't', 'y')
+
+def parse_args():
+    parser = ArgumentParser(description='Train Monolayout')
+    # parser.add_argument('--path', type=str, required=True, help='Path to the dataset')
+    parser.add_argument('--visualize', type=str2bool, default=True)
+    parser.add_argument('--save', type=str2bool, default=False)
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--n_epochs', type=int, default=500)
+    parser.add_argument('--img_size', type=int, default=512)
+    return parser.parse_args()
+
+
+class Trainer(object):
+    def __init__(self, train_dataset, batch_size=1, lr=1e-3, vis=False, save=True):
+        self.train_ds = train_dataset
+        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
+
+        self.device = torch.device('cuda:0')
+
+        self.models = {}
+        H, W = train_dataset.img_size
+        self.models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=True)
+        self.models["decoder"] = monolayout.Decoder(self.models["encoder"].resnet_encoder.num_ch_enc)
+
+        for key in self.models.keys():
+            self.models[key].to(self.device)
+
+        # optimizer
+        self.parameters_to_train = []
+        for key in self.models.keys():
+            self.models[key].to(self.device)
+            self.parameters_to_train += list(self.models[key].parameters())
+        self.optimizer = torch.optim.Adam(params=self.parameters_to_train, lr=lr)
+
+        # no loss reduction to apply weights first: https://discuss.pytorch.org/t/how-to-weight-the-loss/66372/2
+        self.loss_fn = torch.nn.MSELoss(reduction='none')
+        self.min_loss = np.inf
+        self.losses = []
+        self.vis = vis
+        self.save = save
+        # tensorboard
+        self.writer = SummaryWriter()
+
+    def visualize(self, img, height_label, height_pred, height_reg, weights_trav, weights_reg):
+        plt.figure(figsize=(20, 5))
+        plt.subplot(1, 5, 1)
+        plt.title('Input Image')
+        img_vis = img[0].cpu().numpy() * self.train_ds.img_std + self.train_ds.img_mean
+        plt.imshow(img_vis)
+
+        plt.subplot(1, 5, 2)
+        plt.title('Height Label')
+        plt.imshow(height_label[0].squeeze().cpu().numpy(), origin='lower')
+        plt.colorbar()
+        plt.imshow(weights_trav[0].squeeze().cpu().numpy(), alpha=0.5, origin='lower')
+
+        plt.subplot(1, 5, 3)
+        plt.title('Height Prediction')
+        plt.imshow(height_pred[0].squeeze().cpu().numpy(), origin='lower')
+        plt.colorbar()
+
+        plt.subplot(1, 5, 4)
+        plt.title('Height Regularization')
+        plt.imshow(height_reg[0].squeeze().cpu().numpy(), origin='lower')
+        plt.colorbar()
+
+        plt.subplot(1, 5, 5)
+        plt.title('Weights Regularization')
+        plt.imshow(weights_reg[0].squeeze().cpu().numpy(), origin='lower')
+        plt.colorbar()
+
+        plt.show()
+
+    def train_epoch(self, epoch_n):
+        train_loss = 0.0
+        for i, batch in tqdm(enumerate(self.train_dataloader)):
+            # get sample from data loader (front image, height map label and height map regularization)
+            img, height_label, height_reg, weights_traversed, weights_reg = batch
+            img = img.to(self.device)
+            height_label = height_label.to(self.device)
+            height_reg = height_reg.to(self.device)
+            weights_traversed = weights_traversed.to(self.device)
+            weights_reg = weights_reg.to(self.device)
+
+            # model inference
+            features = self.models['encoder'](img)
+            height_pred = self.models['decoder'](features, is_training=True)
+
+            # loss is computed for the part of the predicted height map covered by robot's trajectory
+            loss = self.loss_fn(height_pred, height_label)
+            loss = loss * weights_traversed
+            loss = loss.sum() / weights_traversed.sum()
+            # print('Loss: %f' % loss.item())
+            # tensorboard logger
+            self.writer.add_scalar('Loss/train', loss.item(), i + epoch_n * len(self.train_dataloader))
+
+            # add regularization loss
+            loss_reg = self.loss_fn(height_pred, height_reg)
+            loss_reg = loss_reg * weights_reg
+            loss_reg = loss_reg.sum() / weights_reg.sum()
+            # print('Loss reg: %f' % loss_reg.item())
+            loss += 0.2 * loss_reg
+            self.writer.add_scalar('Loss_reg/train', loss_reg.item(), i + epoch_n * len(self.train_dataloader))
+
+            # backpropagate gradients and update model params
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+            self.losses.append(loss.item())
+            # print('Iter: %i, training loss: %f' % (i, loss.item()))
+            self.writer.add_scalar('Loss_sum/train', loss.item(), i + epoch_n * len(self.train_dataloader))
+
+            train_loss += loss.item()
+
+        train_loss /= len(self.train_ds)
+
+        with torch.no_grad():
+            # visualize
+            if self.vis:
+                    self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
+
+            # add input image to tensorboard logger
+            img_mean = torch.tensor(self.train_ds.img_mean, device=self.device).view(3, 1, 1)
+            img_std = torch.tensor(self.train_ds.img_std, device=self.device).view(3, 1, 1)
+            img_denorm = img * img_std + img_mean
+            self.writer.add_images('Input Image', img_denorm, 0)
+            # add predictions to tensorboard logger
+            self.writer.add_images('Height Label', normalize(height_label), 0)
+            self.writer.add_images('Height Prediction', normalize(height_pred), 0)
+            self.writer.add_images('Height Regularization', normalize(height_reg), 0)
+            self.writer.add_images('Mask Traversed', weights_traversed, 0)
+            self.writer.add_images('Mask Regularization', weights_reg, 0)
+
+        return train_loss
+
+    def train(self, n_epochs=1):
+        for e in range(n_epochs):
+            print('Training epoch %i...' % e)
+            train_loss = self.train_epoch(e)
+
+            # # decrease learning rate for the next epoch
+            # self.optimizer.param_groups[0]['lr'] = self.optimizer.param_groups[0]['lr'] / 2.
+            # print('Decreasing learning rate to: %f' % self.optimizer.param_groups[0]['lr'])
+
+            if self.save:
+                # save better model
+                if self.min_loss > train_loss:
+                    self.min_loss = train_loss
+                    print('Saving better model...')
+                    for key in self.models.keys():
+                        # os.makedirs('../config/weights/monolayout/', exist_ok=True)
+                        # torch.save(self.models[key].state_dict(), '../config/weights/monolayout/%s.pth' % key)
+                        torch.save(self.models[key].state_dict(), '%s.pth' % key)
+
+
+def main():
+    args = parse_args()
+
+    path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    # path = '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    # path = args.path
+    img_size = (args.img_size, args.img_size)
+    assert os.path.exists(path)
+    
+    cfg = Config()
+    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+
+    if 'marv' in path:
+        img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
+        img_std = np.array([0.2212268,  0.23130926, 0.29598755])
+    else:
+        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
+        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
+    
+    # create dataset for MonoDEM training
+    ds = MonoDemDataset(path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
+    print('Dataset size:', len(ds))
+
+    if args.visualize:
+        # visualize a data sample from the dataset
+        for _ in range(1):
+            i = np.random.choice(len(ds))
+            ds.__getitem__(i, visualize=True)
+
+    # MonoDEM Training
+    trainer = Trainer(ds, batch_size=args.batch_size, lr=args.lr, vis=args.visualize, save=args.save)
+    trainer.train(n_epochs=args.n_epochs)
+
+
+if __name__ == '__main__':
+    main()
