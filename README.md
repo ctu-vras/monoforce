@@ -90,18 +90,13 @@ Colored point cloud            |            Front-facing camera            |    
 :-----------------------------:|:-----------------------------------------:|:------------------------------:
 ![](./docs/imgs/rgb_cloud.png) | ![](./docs/imgs/camera_fisheye_front.png) | ![](./docs/imgs/camera_up.png)
 
-To train physics-aware traversability models and run the differentiable simulations,
-we generate height-maps from the point clouds. In the following example, the ground-truth robot trajectory is
-depicted in red.
-
-![](./docs/imgs/height_map.png)
-
 To explore the data, please run:
 ```commandline
 python -m monoforce.datasets.robingas_dataset
 ```
 
 ## Differentiable Physics
+
 Run the differentiable physics simulation with a tracked robot using the collected dataset:
 ```commandline
 cd ./scripts/
@@ -114,3 +109,14 @@ Height map (and/or its properties) learning from the ground-truth trajectories f
 cd ./scripts/
 ./terrain_learner
 ```
+
+## Terrain shape Prediction
+
+1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is being optimized in order to much the ground-truth trajectory as closely as possible.
+2. The optimized terrain shape is used as a label to train the terrain shape predictor. This model takes as input an RGB-image and predicts the shape of the supporting terrain in front of a robot.
+In our experiments, we utilize the [Monolayout](https://github.com/manila95/monolayout) model.
+3. Lidar scans are used in order to provide height map estimates serving as a regularization factor during trining.
+
+An example of a trained model output is given bellow.
+
+![](./docs/images/monodem_pred.png)
