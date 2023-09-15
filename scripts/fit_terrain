@@ -16,14 +16,15 @@ from scipy.spatial.transform import Rotation
 torch.set_default_dtype(torch.float64)
 
 cfg = Config()
-cfg.grid_res = 0.4
+cfg.grid_res = 0.2
+cfg.d_max = 12.8
 # cfg.device = 'cuda:0'
 cfg.device = 'cpu'
 cfg.lr = 0.01
 cfg.total_sim_time = 10.0
 cfg.n_samples = 100 * int(cfg.total_sim_time)
-cfg.n_train_iters = 101
-cfg.friction = 0.9
+cfg.n_train_iters = 21
+cfg.friction = 0.8
 cfg.robot_mass = 10.
 cfg.vel_tracks = 2. * np.array([1., 1.])
 cfg.trans_cost_weight = 1.
@@ -297,8 +298,8 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
                 goal_pose[:3, 3:4] = xyz_true[i + 1]
                 goal_pose[:3, :3] = rot_true[i + 1]
 
-                v, w = pose_control(state, goal_pose, allow_backwards=True,
-                                    Kp_rho=2., Kp_theta=4., Kp_yaw=4.)
+                v, w = pose_control(state, goal_pose, allow_backwards=False,
+                                    Kp_rho=1, Kp_theta=4., Kp_yaw=0.)
 
                 v = torch.clip(v, -max_vel, max_vel)
                 w = torch.clip(w, -max_omega, max_omega)
@@ -345,15 +346,17 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
         loss_trans_sum /= n_true_states
         loss_sum = cfg.trans_cost_weight * loss_trans_sum + cfg.rot_cost_weight * loss_rot_sum
         if regularization:
-            loss_sum += total_variation(system.height[None])
+            loss_sum += 0.2 * total_variation(system.height[None])
 
         # visualize
-        if vis and k % 20 == 0:
+        if vis and k % 10 == 0:
             with torch.no_grad():
                 system.update_trajectory(states=states)
                 metric = traj_dist(states, states_true)
 
-                mlab.title("loss={:.3f} (traj dist={:.3f})".format(loss_sum.item(), metric.item()), size=0.5)
+                # mlab.title("loss={:.3f} (traj dist={:.3f})".format(loss_sum.item(), metric.item()), size=0.5)
+                # mlab.title("loss (trajectory difference)={:.3f}".format(loss_sum.item()), size=0.5)
+                mlab.title("N iters: %d" % k, size=0.5)
                 # draw_coord_frames(np.asarray(poses_eval), scale=0.2)
                 frame_n = animate_trajectory(system, vis_cfg, frame_n=frame_n)
 
@@ -511,11 +514,11 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
                                   friction=cfg.friction, mass=cfg.robot_mass,
                                   state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
                                               rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],
+                                              # vel=vel_true[0],
+                                              # omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=cfg.device, use_ode=False,
-                                  interaction_model='rigid_layer')
+                                  interaction_model='rigid_soft_layers')
 
     # put models with their params to cfg.device
     system = system.to(device)
@@ -532,7 +535,8 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
     # mlab.show()
 
     """ Navigation loop """
-    optimizer = optim.Adam([{'params': system.height, 'lr': cfg.lr}])
+    optimizer = optim.Adam([{'params': system.height, 'lr': cfg.lr},
+                            {'params': system.friction, 'lr': cfg.lr},])
     states_true = tuple([x.detach() for x in states_true])
 
     frame_n = 0
@@ -588,12 +592,12 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
 
         loss_rot_sum /= n_true_states
         loss_trans_sum /= n_true_states
-        loss_sum = loss_trans_sum #+ loss_rot_sum
+        loss_sum = loss_trans_sum + loss_rot_sum
         if regularization:
-            loss_sum += total_variation(system.height[None])
+            loss_sum += 0.2 * total_variation(system.height[None])
 
         # visualize
-        if vis and k % 20 == 0:
+        if vis and k % 10 == 0:
             mlab.title("loss = {:.3f}".format(loss_sum.item()), size=0.5)
             pos_x = torch.cat([x[0] for x in states], dim=0)
             pos_R = torch.cat([x[1] for x in states], dim=0)
@@ -615,9 +619,9 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
 
 def main():
     # train_omni()
-    train_p_diffdrive()
+    # train_p_diffdrive()
     # train_cmd_vel()
-    # train_p_track_vels()
+    train_p_track_vels()
 
 
 if __name__ == '__main__':

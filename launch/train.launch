@@ -5,10 +5,10 @@
     <arg name="robot_init_xyz" default="[0., 0., 1.]"/>
     <arg name="robot_init_q" default="[0., 0., 0., 1.]"/>
 
-    <node pkg="monoforce" type="terrain_learner_node" name="terrain_learner" output="screen">
+    <node pkg="monoforce" type="fit_terrain_node" name="fit_terrain" output="screen">
         <rosparam subst_value="true">
-            data_path: '/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-<!--            data_path: '/home/ruslan/data/bags/traversability/marv/ugv_2022-08-12-16-37-03_trav/'-->
+            data_path: '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+<!--            data_path: '/home/ruslan/data/traversability/marv/ugv_2022-08-12-16-37-03_trav/'-->
             cloud_ind: 0
             grid_res: 0.4
             d_min: 0.1

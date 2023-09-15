@@ -16,7 +16,7 @@ class State:
                  rot=torch.eye(3),
                  vel=torch.zeros((3, 1)),
                  omega=torch.zeros((3, 1)),
-                 forces=torch.zeros((3, 10))):
+                 forces=torch.zeros((3, 10)), device='cpu'):
         """
         pos: 3x1, x,y,z position
         rot: 3x3, rotation matrix
@@ -24,11 +24,11 @@ class State:
         omega: 3x1, angular velocity
         forces: 3xN, N is the number of contact points
         """
-        self.xyz = torch.as_tensor(xyz).view(3, 1)
-        self.rot = torch.as_tensor(rot).view(3, 3)
-        self.vel = torch.as_tensor(vel).view(3, 1)
-        self.omega = torch.as_tensor(omega).view(3, 1)
-        self.forces = torch.as_tensor(forces).view(3, -1)
+        self.xyz = torch.as_tensor(xyz).view(3, 1).to(device)
+        self.rot = torch.as_tensor(rot).view(3, 3).to(device)
+        self.vel = torch.as_tensor(vel).view(3, 1).to(device)
+        self.omega = torch.as_tensor(omega).view(3, 1).to(device)
+        self.forces = torch.as_tensor(forces).view(3, -1).to(device)
 
     def as_tuple(self):
         state = (self.xyz, self.rot, self.vel, self.omega, self.forces)
@@ -70,7 +70,7 @@ class State:
         c2 = (1 - torch.cos(torch.as_tensor(dt)))
 
         state = (self.xyz + dpos_x * dt,
-                 (torch.eye(3) + c1 * vel_omega_skew + c2 * (vel_omega_skew ** 2)) @ self.rot,
+                 (torch.eye(3, device=vel_omega_skew.device) + c1 * vel_omega_skew + c2 * (vel_omega_skew ** 2)) @ self.rot,
                  self.vel + dvel_x.view(3, 1) * dt,
                  self.omega + dvel_omega.view(3, 1) * dt,
                  dforces)
@@ -78,7 +78,7 @@ class State:
         if inplace:
             self.from_tuple(state)
         else:
-            return State(*state)
+            return State(*state, device=vel_omega_skew.device)
 
 
 class RigidBodySoftTerrain(nn.Module):

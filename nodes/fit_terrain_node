@@ -210,9 +210,9 @@ class TerrainLearner:
                 self.publish_data()
 
 def main():
-    rospy.init_node('terrain_learner', log_level=rospy.DEBUG)
+    rospy.init_node('fit_terrain', log_level=rospy.DEBUG)
     cfg = Config()
-    cfg.from_rosparams('terrain_learner')
+    cfg.from_rosparams('fit_terrain')
 
     """ Create ground truth height map and initial one """
     # Load traversability data

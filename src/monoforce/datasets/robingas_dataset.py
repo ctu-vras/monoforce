@@ -575,16 +575,16 @@ class MonoDemDataset(RobinGasDataset):
             lut[:, :3] = colors
             lut[:, 3] = 255
 
-            mlab.figure(size=(1000, 1000))
+            mlab.figure(size=(1000, 1000), bgcolor=(1, 1, 1))
             # draw point cloud
-            p3d = mlab.points3d(points[:, 0], points[:, 1], points[:, 2], color_n, mode='point')
+            p3d = mlab.points3d(points[:, 0], points[:, 1], points[:, 2], color_n, mode='point', opacity=0.5, scale_factor=0.1)
             p3d.module_manager.scalar_lut_manager.lut.number_of_colors = len(lut)
             p3d.module_manager.scalar_lut_manager.lut.table = lut
             # draw poses
-            mlab.points3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(1, 0, 0), scale_factor=0.1)
-            draw_coord_frame(poses[0], scale=0.5)
-            draw_coord_frames(poses, scale=0.1)
-            mlab.plot3d(square[:, 0], square[:, 1], square[:, 2], color=(0, 0, 0), tube_radius=None, line_width=1)
+            mlab.points3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(1, 0, 0), scale_factor=0.4)
+            draw_coord_frame(poses[0], scale=2.)
+            draw_coord_frames(poses, scale=0.5)
+            mlab.plot3d(square[:, 0], square[:, 1], square[:, 2], color=(0, 1, 0), line_width=5, tube_radius=0.1)
             mlab.view(azimuth=0, elevation=0, distance=2 * self.cfg.d_max)
 
             plt.figure(figsize=(20, 20))
@@ -599,16 +599,17 @@ class MonoDemDataset(RobinGasDataset):
             # plot trajectory
             plt.plot(poses_grid[:, 0], poses_grid[:, 1], 'ro', markersize=2)
             # plot square
-            plt.plot(square_grid[:, 0], square_grid[:, 1], 'b--', linewidth=2)
+            plt.plot(square_grid[:, 0], square_grid[:, 1], 'y--', linewidth=2)
             # plt.grid()
             plt.axis('equal')
-            plt.colorbar()
+            # plt.colorbar()
 
             plt.subplot(233)
             plt.title('Heightmap in camera frame')
-            plt.imshow(height_est_cam, cmap='jet', alpha=0.5, origin='lower')
+            plt.imshow(height_est_cam, cmap='jet', alpha=0.8, origin='lower')
             plt.colorbar()
-            plt.imshow(weights_est_cam, cmap='gray', alpha=0.8, origin='lower')
+            # plt.imshow(weights_est_cam, cmap='gray', alpha=0.5, origin='lower')
+            plt.plot(poses_grid_cam[:, 0], poses_grid_cam[:, 1], 'ro', markersize=2)
 
             plt.subplot(234)
             # plot point cloud
@@ -622,15 +623,16 @@ class MonoDemDataset(RobinGasDataset):
             plt.title('Optimized heightmap')
             plt.imshow(height_opt, cmap='jet', alpha=0.8, origin='lower')
             plt.plot(poses_grid[:, 0], poses_grid[:, 1], 'ro', markersize=2)
-            plt.plot(square_grid[:, 0], square_grid[:, 1], 'b--', linewidth=2)
+            plt.plot(square_grid[:, 0], square_grid[:, 1], 'y--', linewidth=2)
             plt.axis('equal')
-            plt.colorbar()
+            # plt.colorbar()
 
             plt.subplot(236)
             plt.title('Optimized heightmap in camera frame')
             plt.imshow(height_opt_cam, cmap='jet', alpha=0.8, origin='lower')
             plt.colorbar()
-            plt.imshow(weights_opt_cam, cmap='gray', alpha=0.5, origin='lower')
+            # plt.imshow(weights_opt_cam, cmap='gray', alpha=0.5, origin='lower')
+            plt.plot(poses_grid_cam[:, 0], poses_grid_cam[:, 1], 'ro', markersize=2)
 
             # mlab.show()
             plt.show()
@@ -828,10 +830,10 @@ def terrain_demo():
     h, w = height_est.shape
     xy_grid = poses[:, :2, 3] / cfg.grid_res + np.array([w / 2, h / 2])
     plt.subplot(131)
-    plt.imshow(height_est, origin='lower')
+    plt.imshow(height_est)
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(132)
-    plt.imshow(height, origin='lower')
+    plt.imshow(height)
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(133)
     plt.imshow(img[..., (2, 1, 0)])
