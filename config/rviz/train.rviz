@@ -94,7 +94,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.019999999552965164
       Shaft Length: 0.10000000149011612
-      Topic: /terrain_learner/path
+      Topic: /fit_terrain/path
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -118,7 +118,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.019999999552965164
       Shaft Length: 0.10000000149011612
-      Topic: /terrain_learner/path_true
+      Topic: /fit_terrain/path_true
       Unreliable: false
       Value: true
     - Alpha: 0.6000000238418579
@@ -138,7 +138,7 @@ Visualization Manager:
       Min Intensity: 0
       Name: GridMap
       Show Grid Lines: true
-      Topic: /terrain_learner/grid_map
+      Topic: /fit_terrain/grid_map
       Unreliable: false
       Use Rainbow: true
       Value: true
@@ -159,7 +159,7 @@ Visualization Manager:
       Min Intensity: 0
       Name: GridMap GT
       Show Grid Lines: true
-      Topic: /terrain_learner/grid_map_true
+      Topic: /fit_terrain/grid_map_true
       Unreliable: false
       Use Rainbow: true
       Value: false
@@ -186,7 +186,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.30000001192092896
       Style: Spheres
-      Topic: /terrain_learner/height_map
+      Topic: /fit_terrain/height_map
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
@@ -214,7 +214,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.30000001192092896
       Style: Spheres
-      Topic: /terrain_learner/height_map_true
+      Topic: /fit_terrain/height_map_true
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
@@ -242,7 +242,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Spheres
-      Topic: /terrain_learner/cloud
+      Topic: /fit_terrain/cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true

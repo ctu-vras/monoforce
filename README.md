@@ -121,3 +121,4 @@ In our experiments, we utilize the [Monolayout](https://github.com/manila95/mono
 An example of a trained model output is given bellow.
 
 ![](./docs/imgs/monodem_pred.png)
+![](./docs/imgs/prediction.png)

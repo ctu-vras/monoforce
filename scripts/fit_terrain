@@ -16,14 +16,15 @@ from scipy.spatial.transform import Rotation
 torch.set_default_dtype(torch.float64)
 
 cfg = Config()
-cfg.grid_res = 0.4
+cfg.grid_res = 0.2
+cfg.d_max = 12.8
 # cfg.device = 'cuda:0'
 cfg.device = 'cpu'
 cfg.lr = 0.01
 cfg.total_sim_time = 10.0
 cfg.n_samples = 100 * int(cfg.total_sim_time)
-cfg.n_train_iters = 101
-cfg.friction = 0.9
+cfg.n_train_iters = 21
+cfg.friction = 0.8
 cfg.robot_mass = 10.
 cfg.vel_tracks = 2. * np.array([1., 1.])
 cfg.trans_cost_weight = 1.
@@ -85,29 +86,38 @@ def get_data(i: int = None, vis=True):
 
     return states_true, tt_true, height
 
-def get_test_data():
+def get_test_data(cfg: Config):
     """
     Generate simple ground truth data.
     returns: states_true, tt_true, height
     """
     xyz_true = torch.tensor([
-        [0., 0., 0.2],
-        [2., 0., 0.4],
-        [4., 1., 0.3],
-        [2., 2., 0.1],
-        [0., 0., 0.2]
+        [-4., 0., 0.2],
+        [-2., -0.5, 0.3],
+        [0., -1, 0.5],
+        [1., -0.2, 0.2],
+        [2., -0.5, -0.1],
+        [3., 0.5, -0.2],
+        [4., 2., -0.3],
+        [3.5, 3., -0.1],
+        [3., 4., 0.2]
     ])
     angles_true = torch.as_tensor([
         [0., 0., 0.],
+        [0., 0., -np.pi / 8.],
         [0., 0., np.pi / 4.],
+        [0., 0., np.pi / 8.],
         [0., 0., 0.],
+        [0., 0., np.pi / 4.],
         [0., 0., np.pi / 2.],
+        [0., 0., 0.],
         [0., 0., -np.pi / 6.]
     ])
     headings = torch.atan2(xyz_true[1:, 1] - xyz_true[:-1, 1], xyz_true[1:, 0] - xyz_true[:-1, 0])
     angles_true[:-1, 2] = headings
     rot_true = torch.tensor(np.asarray([Rotation.from_euler('xyz', a).as_matrix() for a in angles_true]))
-    height = np.zeros((30, 30))
+    h, w = int(2 * cfg.d_max // cfg.grid_res), int(2 * cfg.d_max // cfg.grid_res)
+    height = np.zeros((h, w))
 
     n_true_states = len(xyz_true)
     tt_true = torch.linspace(0., cfg.total_sim_time, n_true_states)[None].T
@@ -140,7 +150,7 @@ def train_omni():
 
     """ Get ground truth data """
     # states_true, tt_true, height = get_data()
-    states_true, tt_true, height = get_test_data()
+    states_true, tt_true, height = get_test_data(cfg)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
 
@@ -231,20 +241,20 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
     """
 
     """ Get ground truth data """
-    states_true, tt_true, height = get_data(i=0, vis=vis)
-    # states_true, tt_true, height = get_test_data()
+    # states_true, tt_true, height = get_data(i=0, vis=vis)
+    states_true, tt_true, height = get_test_data(cfg)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
-    height = np.zeros_like(height) + xyz_true[0, 2].min().item()
+    height = np.zeros_like(height)
 
     """ Create robot-terrain interaction models """
     system = RigidBodySoftTerrain(height=height,
                                   grid_res=cfg.grid_res,
                                   friction=cfg.friction, mass=cfg.robot_mass,
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
+                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 0.3]).view(xyz_true[0].shape),
                                               rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],
+                                              # vel=vel_true[0],
+                                              # omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=cfg.device, use_ode=False,
                                   interaction_model='diffdrive')
@@ -288,8 +298,8 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
                 goal_pose[:3, 3:4] = xyz_true[i + 1]
                 goal_pose[:3, :3] = rot_true[i + 1]
 
-                v, w = pose_control(state, goal_pose, allow_backwards=True,
-                                    Kp_rho=2., Kp_theta=4., Kp_yaw=4.)
+                v, w = pose_control(state, goal_pose, allow_backwards=False,
+                                    Kp_rho=1, Kp_theta=4., Kp_yaw=0.)
 
                 v = torch.clip(v, -max_vel, max_vel)
                 w = torch.clip(w, -max_omega, max_omega)
@@ -336,15 +346,17 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
         loss_trans_sum /= n_true_states
         loss_sum = cfg.trans_cost_weight * loss_trans_sum + cfg.rot_cost_weight * loss_rot_sum
         if regularization:
-            loss_sum += total_variation(system.height[None])
+            loss_sum += 0.2 * total_variation(system.height[None])
 
         # visualize
-        if vis and k % 20 == 0:
+        if vis and k % 10 == 0:
             with torch.no_grad():
                 system.update_trajectory(states=states)
                 metric = traj_dist(states, states_true)
 
-                mlab.title("loss={:.3f} (traj dist={:.3f})".format(loss_sum.item(), metric.item()), size=0.5)
+                # mlab.title("loss={:.3f} (traj dist={:.3f})".format(loss_sum.item(), metric.item()), size=0.5)
+                # mlab.title("loss (trajectory difference)={:.3f}".format(loss_sum.item()), size=0.5)
+                mlab.title("N iters: %d" % k, size=0.5)
                 # draw_coord_frames(np.asarray(poses_eval), scale=0.2)
                 frame_n = animate_trajectory(system, vis_cfg, frame_n=frame_n)
 
@@ -478,7 +490,7 @@ def train_cmd_vel(regularization=True):
     mlab.show()
 
 
-def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
+def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
     """
     Learn terrain with Proportional control of robot position.
     Robot visits a set of waypoints.
@@ -490,11 +502,11 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
     """
 
     """ Get ground truth data """
-    states_true, tt_true, height = get_data(i=0)
-    # states_true, tt_true, height = get_test_data()
+    # states_true, tt_true, height = get_data(i=0)
+    states_true, tt_true, height = get_test_data(cfg)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
-    height = np.zeros_like(height) + xyz_true[:, 2].cpu().numpy().min()
+    height = np.zeros_like(height)
 
     """ Create robot-terrain interaction models """
     system = RigidBodySoftTerrain(height=height,
@@ -502,11 +514,11 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
                                   friction=cfg.friction, mass=cfg.robot_mass,
                                   state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
                                               rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],
+                                              # vel=vel_true[0],
+                                              # omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=cfg.device, use_ode=False,
-                                  interaction_model='rigid_layer')
+                                  interaction_model='rigid_soft_layers')
 
     # put models with their params to cfg.device
     system = system.to(device)
@@ -523,7 +535,8 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
     # mlab.show()
 
     """ Navigation loop """
-    optimizer = optim.Adam([{'params': system.height, 'lr': cfg.lr}])
+    optimizer = optim.Adam([{'params': system.height, 'lr': cfg.lr},
+                            {'params': system.friction, 'lr': cfg.lr},])
     states_true = tuple([x.detach() for x in states_true])
 
     frame_n = 0
@@ -579,12 +592,12 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
 
         loss_rot_sum /= n_true_states
         loss_trans_sum /= n_true_states
-        loss_sum = loss_trans_sum #+ loss_rot_sum
+        loss_sum = loss_trans_sum + loss_rot_sum
         if regularization:
-            loss_sum += total_variation(system.height[None])
+            loss_sum += 0.2 * total_variation(system.height[None])
 
         # visualize
-        if vis and k % 20 == 0:
+        if vis and k % 10 == 0:
             mlab.title("loss = {:.3f}".format(loss_sum.item()), size=0.5)
             pos_x = torch.cat([x[0] for x in states], dim=0)
             pos_R = torch.cat([x[1] for x in states], dim=0)
@@ -606,9 +619,9 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
 
 def main():
     # train_omni()
-    train_p_diffdrive()
+    # train_p_diffdrive()
     # train_cmd_vel()
-    # train_p_track_vels()
+    train_p_track_vels()
 
 
 if __name__ == '__main__':

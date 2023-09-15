@@ -246,7 +246,7 @@ def create_model(architecture, n_inputs, n_outputs, pretrained_backbone=True):
 
 
 def skew_symmetric(x):
-    U = torch.tensor([[0., -x[2], x[1]],
-                      [x[2], 0., -x[0]],
-                      [-x[1], x[0], 0.]])
+    U = torch.as_tensor([[0., -x[2], x[1]],
+                         [x[2], 0., -x[0]],
+                         [-x[1], x[0], 0.]], device=x.device)
     return U

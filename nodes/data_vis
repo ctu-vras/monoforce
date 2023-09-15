@@ -30,7 +30,7 @@ def demo():
     rate = rospy.get_param('~rate', 1)
 
     # Load traversability data
-    path = '/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
     assert os.path.exists(path)
     ds = RobinGasDataset(path, cfg=cfg)
     print('Dataset contains %i samples' % len(ds))

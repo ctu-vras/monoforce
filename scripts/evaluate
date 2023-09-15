@@ -3,40 +3,32 @@
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
-from differentiable_physics.config import Config
-from differentiable_physics.models import RigidBodySoftTerrain, State
-from differentiable_physics.datasets import MonoDemDataset
-from differentiable_physics.vis import setup_visualization, animate_trajectory, draw_coord_frames
-from differentiable_physics.control import pose_control
-from differentiable_physics.losses import translation_difference, rotation_difference, traj_dist
-from differentiable_physics.models import monolayout
-from differentiable_physics.transformations import rot2rpy, transform_cloud
-from differentiable_physics.segmentation import position
+from monoforce.config import Config
+from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.datasets import MonoDemDataset
+from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
+from monoforce.control import pose_control
+from monoforce.losses import translation_difference, rotation_difference, traj_dist
+from monoforce.models import monolayout
+from monoforce.transformations import rot2rpy, transform_cloud
+from monoforce.segmentation import position
 from mayavi import mlab
 from tqdm import tqdm
-
-
-torch.set_default_dtype(torch.float64)
+    
 
 class Evaluator:
-    def __init__(self, data_path, cfg: Config, model_name=None, vis=False):
+    def __init__(self, datasets: list, cfg: Config, model_name=None, vis=False):
         self.cfg = cfg
         self.img_size = (512, 512)
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956]) if 'marv' in data_path else np.array([0.4750956, 0.47310572, 0.42155158])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268]) if 'marv' in data_path else np.array([0.2212268, 0.23130926, 0.29598755])
-        self.ds = MonoDemDataset(path=data_path,
-                                 img_size=self.img_size,
-                                 img_mean=img_mean,
-                                 img_std=img_std,
-                                 cameras=['camera_fisheye_front'],
-                                 cfg=cfg)
+        self.datasets = datasets
         self.model_name = model_name
         self.load_model()
         self.vis = vis
         self.metrics = {'trans_wp': [],
                         'rot_wp': [],
                         'trans_traj': [],
-                        'rot_traj': []}
+                        'rot_traj': [],
+                        'flip_over_rate': 0.}
 
     def load_model(self):
         if self.model_name == 'monolayout':
@@ -70,6 +62,8 @@ class Evaluator:
 
         model_s2d = network_s2d.Net()
         model_s2d.load_state_dict(torch.load("../config/weights/kkt/network_weights_s2d", map_location=self.cfg.device))
+        model_s2d.eval()
+        model_s2d.to(self.cfg.device)
         return model_s2d
 
     def monolayout_inference(self, img):
@@ -102,15 +96,14 @@ class Evaluator:
         # if some poses are behind the robot starting pose, mark the data as invalid
         if poses[:, 0, 3].mean() < 0.2:
             # print(poses[:, 0, 3].mean())
-            # self.ds.__getitem__(i, visualize=True)
             return False
         return True
 
-    def debug(self, i, height):
-        img_front = self.ds.get_image(i, camera='front')
-        img_rear = self.ds.get_image(i, camera='rear')
-        img_left = self.ds.get_image(i, camera='left')
-        img_right = self.ds.get_image(i, camera='right')
+    def debug(self, i, ds, height):
+        img_front = ds.get_image(i, camera='front')
+        img_rear = ds.get_image(i, camera='rear')
+        img_left = ds.get_image(i, camera='left')
+        img_right = ds.get_image(i, camera='right')
 
         plt.figure(figsize=(12, 12))
         plt.subplot(3, 3, 2)
@@ -130,7 +123,7 @@ class Evaluator:
         plt.imshow(height, origin='lower')
         plt.colorbar()
 
-    def get_data(self, i: int):
+    def get_data(self, i: int, ds: MonoDemDataset):
         """
         Get ground truth data sample from the RobinGas dataset
         :param i: index of the sample
@@ -139,8 +132,8 @@ class Evaluator:
         """
         assert None in [None, 'monolayout', 'kkt']
 
-        img, height_trav, height_reg, mask_traversed, mask_reg = self.ds.__getitem__(i, visualize=False)
-        traj = self.ds.get_traj(i)
+        img, height_trav, height_reg, mask_traversed, mask_reg = ds[i]
+        traj = ds.get_traj(i)
         poses = traj['poses']
         # move poses, points to robot frame
         Tr = np.linalg.inv(poses[0])
@@ -157,11 +150,11 @@ class Evaluator:
         if self.model_name == 'monolayout':
             height = self.monolayout_inference(img)
         elif self.model_name == 'kkt':
-            self.ds.cfg.hm_interp_method = None
-            cloud = self.ds.get_cloud(i)
+            ds.cfg.hm_interp_method = None
+            cloud = ds.get_cloud(i)
             points = position(cloud)
             points = transform_cloud(points, Tr)
-            heightmap = self.ds.estimate_heightmap(points)
+            heightmap = ds.estimate_heightmap(points)
             height_full = heightmap['z']
             h, w = height_full.shape
             height_front = height_full[w//4:3*w//4, h//2:]
@@ -170,7 +163,7 @@ class Evaluator:
             height = self.kkt_inference(height_front, mask)
         else:
             height = height_reg.squeeze()
-        # self.debug(i, height); plt.show()
+        # self.debug(i, ds, height); plt.show()
         height = height.T
 
         tstamps = traj['stamps']
@@ -216,10 +209,10 @@ class Evaluator:
         system = RigidBodySoftTerrain(height=height,
                                       grid_res=self.cfg.grid_res,
                                       friction=self.cfg.friction, mass=self.cfg.robot_mass,
-                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
+                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.], device=self.cfg.device).view(xyz_true[0].shape),
                                                   rot=rot_true[0],
                                                   vel=vel_true[0],
-                                                  omega=omega_true[0]),
+                                                  omega=omega_true[0], device=self.cfg.device),
                                       device=self.cfg.device, use_ode=False,
                                       interaction_model='diffdrive')
 
@@ -256,7 +249,7 @@ class Evaluator:
                 print('Robot is upside down, skipping evaluation')
                 return None, None, None, None
 
-            goal_pose = torch.eye(4)
+            goal_pose = torch.eye(4, device=self.cfg.device)
             goal_pose[:3, 3:4] = xyz_true[i + 1]
             goal_pose[:3, :3] = rot_true[i + 1]
 
@@ -318,13 +311,13 @@ class Evaluator:
 
         return loss_trans_sum.item(), loss_rot_sum.item(), loss_traj_trans.item(), loss_traj_rot.item()
 
-    def run(self):
+    def eval_ds(self, ds):
         n_going_back = 0
         n_flips_over = 0
-        for i in tqdm(range(len(self.ds)), desc='Evaluating dataset...'):
+        for i in tqdm(range(len(ds)), desc='Evaluating dataset: %s' % ds.path):
             # print('Evaluating sample %i' % i)
             with torch.no_grad():
-                states_true, height = self.get_data(i)
+                states_true, height = self.get_data(i, ds)
                 if states_true is None:
                     # print('Skipping sample %i' % i)
                     n_going_back += 1
@@ -341,27 +334,51 @@ class Evaluator:
                 self.metrics['trans_traj'].append(loss_traj_trans)
                 self.metrics['rot_traj'].append(loss_traj_rot)
 
-        n_eval_samples = len(self.ds) - n_going_back - n_flips_over
-        print('Evaluating dataset finished, %i/%i samples were valid for evaluation' % (n_eval_samples, len(self.ds)))
+        n_eval_samples = len(ds) - n_going_back - n_flips_over
 
-        self.metrics['flips_over_rate'] = n_flips_over / (len(self.ds) - n_going_back)
+        return n_eval_samples, n_flips_over
+
+    def run(self):
+        for ds in self.datasets:
+            n_eval_samples, n_flips_over = self.eval_ds(ds)
+            self.metrics['flip_over_rate'] += n_flips_over
+        self.metrics['flip_over_rate'] /= np.sum([len(ds) for ds in self.datasets])
+
+        # print results
         for key in self.metrics.keys():
             self.metrics[key] = np.array(self.metrics[key]).mean()
             value = self.metrics[key] * 180 / np.pi if 'rot' in key else self.metrics[key]
             print('Metric %s: %.2f' % (key, value))
 
-
 def main():
     cfg = Config()
     cfg.grid_res = 0.1
-    cfg.device = 'cpu'
+    cfg.device = 'cuda'
     cfg.d_max = 12.8
     cfg.d_min = 1.
     cfg.hm_interp_method = 'nearest'
-    
-    # data_path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    data_path = '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    eval = Evaluator(data_path=data_path,
+
+    data_paths = [
+        # '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
+        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
+        # '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
+    ]
+    datasets = []
+    for data_path in data_paths:
+        # img_mean = np.array([0.42155158, 0.47310572, 0.4750956]) if 'marv' in data_path else np.array([0.4750956, 0.47310572, 0.42155158])
+        # img_std = np.array([0.29598755, 0.23130926, 0.2212268]) if 'marv' in data_path else np.array([0.2212268, 0.23130926, 0.29598755])
+        img_size = (512, 512)
+        ds = MonoDemDataset(path=data_path,
+                            img_size=img_size,
+                            # img_mean=img_mean,
+                            # img_std=img_std,
+                            img_mean=np.asarray([0.48449893, 0.48515499, 0.47735296]),
+                            img_std=np.asarray([0.25196936, 0.26390535, 0.2590173]),
+                            cameras=['camera_fisheye_front'],
+                            cfg=cfg)
+        datasets.append(ds)
+
+    eval = Evaluator(datasets=datasets,
                      cfg=cfg,
                      model_name='monolayout',
                      # model_name='kkt',

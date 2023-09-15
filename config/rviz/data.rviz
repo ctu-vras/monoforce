@@ -88,7 +88,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.019999999552965164
       Shaft Length: 0.10000000149011612
-      Topic: /terrain_learner/path
+      Topic: /fit_terrain/path
       Unreliable: false
       Value: true
     - Alpha: 0.6000000238418579
@@ -135,7 +135,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.30000001192092896
       Style: Spheres
-      Topic: /terrain_learner/height_map
+      Topic: /fit_terrain/height_map
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
