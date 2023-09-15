@@ -1,0 +1,259 @@
+#!/usr/bin/env python
+
+import os
+import torch
+import numpy as np
+from monoforce.config import Config
+from monoforce.models import make_dphysics_model
+from monoforce.models import TerrainPredictor
+from monoforce.losses import rotation_difference
+from monoforce.ros import traj_to_path_msg, height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.datasets import RobinGasDataset
+from monoforce.transformations import transform_cloud
+import rospy
+from nav_msgs.msg import Path
+from geometry_msgs.msg import TransformStamped, Vector3, Quaternion
+from std_msgs.msg import Float32
+from sensor_msgs.msg import PointCloud2
+from grid_map_msgs.msg import GridMap
+from ros_numpy import msgify
+from numpy.lib.recfunctions import unstructured_to_structured
+import tf2_ros
+
+torch.set_default_dtype(torch.float64)
+
+
+class TerrainLearner:
+    def __init__(self, height_init, states_true, times, cfg: Config, height_true=None, points=None):
+        """
+        Trainer module to learn traversability prediction model or/and generate predicted trajectory.
+        @param height_init: initial height map estimate (2D array, N x N)
+        @param states_true: ground truth robot trajectory
+        @param times: time moments for the ground truth trajectory
+        @param cfg: parameters
+        """
+        self.cfg = cfg
+        self.height_map = height_init
+        self.height_map_true = height_true
+        self.points = points
+        self.states_true = states_true
+        self.tt_true = torch.tensor(times - times[0])
+        self.tt = torch.linspace(0, self.cfg.total_sim_time, self.cfg.n_samples)
+        self.path_pub = rospy.Publisher('~path', Path, queue_size=1)
+        self.path_true_pub = rospy.Publisher('~path_true', Path, queue_size=1)
+        self.loss_pub = rospy.Publisher('~loss', Float32, queue_size=1)
+        self.static_frame = 'map'
+        self.height_map_pub = rospy.Publisher('~height_map', PointCloud2, queue_size=1)
+        self.height_map_true_pub = rospy.Publisher('~height_map_true', PointCloud2, queue_size=1)
+        self.grid_map_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
+        self.grid_map_true_pub = rospy.Publisher('~grid_map_true', GridMap, queue_size=1)
+        self.cloud_pub = rospy.Publisher('~cloud', PointCloud2, queue_size=1)
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+
+        self.model = None
+        if self.cfg.use_terrain_cnn:
+            # initializing model as the CNN trained to provide identity transformation for an input height map
+            self.model = self.load_terrain_predictor(os.path.join(os.path.dirname(__file__), '../config/weights/identity.pth'))
+            
+        self.dphysics = make_dphysics_model(self.height_map, self.cfg)
+        self.dphysics.to(self.cfg.device)
+        if self.cfg.use_terrain_cnn:
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.cfg.lr)
+        else:
+            self.optimizer = torch.optim.Adam([self.dphysics.height], lr=self.cfg.lr)
+            # self.optimizer = torch.optim.Adam([self.dphysics.height, self.dphysics.vel_tracks], lr=self.cfg.lr)
+
+    def load_terrain_predictor(self, path=None):
+        # terrain predictor CNN used inside the robot-terrain interaction system
+        model = TerrainPredictor(encChannels=(1, 2, 4), decChannels=(4, 2), retainDim=True)
+        if path is not None:
+            model.load_state_dict(torch.load(path))       
+        return model
+
+    def publish_data(self, robot_init_frame='initial_pose', path_stride=10):
+        t_stamp = rospy.Time.now()
+
+        # initial robot pose
+        tf = TransformStamped()
+        tf.header.stamp = t_stamp
+        tf.header.frame_id = self.static_frame
+        tf.child_frame_id = robot_init_frame
+        tf.transform.translation = Vector3(*self.cfg.robot_init_xyz)
+        tf.transform.rotation = Quaternion(*self.cfg.robot_init_q)
+        self.tf_broadcaster.sendTransform(tf)
+
+        # paths
+        path_true_msg = traj_to_path_msg(pos_x=self.states_true[0][::path_stride], pos_R=self.states_true[1][::path_stride])
+        path_true_msg.header.stamp = t_stamp
+        path_true_msg.header.frame_id = self.static_frame
+        self.path_true_pub.publish(path_true_msg)
+
+        path_msg = traj_to_path_msg(pos_x=self.dphysics.pos_x[::path_stride], pos_R=self.dphysics.pos_R[::path_stride])
+        path_msg.header.stamp = t_stamp
+        path_msg.header.frame_id = self.static_frame
+        self.path_pub.publish(path_msg)
+
+        # height maps
+        self.height_map = np.asarray(self.dphysics.height.detach().cpu().numpy(), dtype="float32")
+        hm_msg = height_map_to_point_cloud_msg(height=self.height_map, grid_res=self.cfg.grid_res)
+        hm_msg.header.stamp = t_stamp
+        hm_msg.header.frame_id = self.static_frame
+        self.height_map_pub.publish(hm_msg)
+
+        if self.height_map_true is not None:
+            hm_msg = height_map_to_point_cloud_msg(height=self.height_map_true, grid_res=self.cfg.grid_res)
+            hm_msg.header.stamp = t_stamp
+            hm_msg.header.frame_id = self.static_frame
+            self.height_map_true_pub.publish(hm_msg)
+
+        # grid maps
+        gm_msg = height_map_to_gridmap_msg(heightmap=self.height_map, grid_res=self.cfg.grid_res)
+        gm_msg.info.header.stamp = t_stamp
+        gm_msg.info.header.frame_id = self.static_frame
+        self.grid_map_pub.publish(gm_msg)
+
+        if self.height_map_true is not None:
+            gm_msg = height_map_to_gridmap_msg(heightmap=self.height_map_true, grid_res=self.cfg.grid_res)
+            gm_msg.info.header.stamp = t_stamp
+            gm_msg.info.header.frame_id = self.static_frame
+            self.grid_map_true_pub.publish(gm_msg)
+
+        # point clouds
+        if self.points is not None:
+            if self.points.dtype.names is None:
+                self.points = unstructured_to_structured(self.points, names=['x', 'y', 'z'])
+            cloud_msg = msgify(PointCloud2, self.points)
+            cloud_msg.header.stamp = t_stamp
+            cloud_msg.header.frame_id = self.static_frame
+            self.cloud_pub.publish(cloud_msg)
+
+    def criterion_sampled_traj(self, x_true, R_true, tt, tt_true):
+        """
+        Loss function for the sampled trajectory.
+        A simulated trajectory is generated for the time interval [t*sample_len, (t+1)*sample_len] for each time instant t.
+        It is then compared to the true trajectory in the same time interval.
+        The loss is computed as the sum of the losses for each sampled time instant.
+        @param x_true: ground truth trajectory positions
+        @param R_true: ground truth trajectory rotations
+        @param tt: simulated trajectory time instants
+        @param tt_true: true trajectory time instants (not used at the moment)
+        @return: sum of L2 loss between the sampled simulated and true trajectories
+        """
+        # we assume that the generated and truth trajectories are sampled at the same time instants
+        assert len(x_true) == len(R_true) == len(tt)
+        loss = torch.tensor(0., device=self.cfg.device)
+
+        for tm in range(int(self.cfg.n_samples / self.cfg.sample_len)):
+            t_start = tm * self.cfg.sample_len
+            t_end = (tm + 1) * self.cfg.sample_len
+
+            st = (self.states_true[0][t_start].detach(), self.states_true[1][t_start].detach(),
+                  self.states_true[2][t_start].detach(), self.states_true[3][t_start].detach(),
+                  self.states_true[4][t_start].detach())
+
+            states = self.dphysics.sim(st, tt[t_start:t_end])
+            loss_tran = ((states[0] - x_true[t_start:t_end]) ** 2).sum()
+            loss_rot = rotation_difference(R1=states[1], R2=R_true[t_start:t_end])
+            loss += loss_tran + loss_rot
+        return loss
+
+    def criterion_full_traj(self, x_true, R_true, tt, tt_true):
+        """
+        The criterion function simulates a trajectory from an initial state using the learned dynamics model and
+        compares the simulated trajectory with the ground truth trajectory.
+        @param x_true: ground truth trajectory positions
+        @param R_true: ground truth trajectory rotations
+        @param tt: simulated trajectory time instants
+        @param tt_true: true trajectory time instants
+        @return: L2 loss between the simulated and true trajectories
+        """
+        st0 = (self.states_true[0][0].detach(), self.states_true[1][0].detach(),
+               self.states_true[2][0].detach(), self.states_true[3][0].detach(),
+               self.states_true[4][0].detach())
+        states = self.dphysics.sim(st0, tt)
+        # find indices of tt that are closest to tt_true
+        idx = torch.searchsorted(tt, tt_true)
+
+        loss_tran = ((states[0][idx] - x_true) ** 2).sum()
+        loss_rot = rotation_difference(R1=states[1][idx], R2=R_true)
+        loss = loss_tran + loss_rot
+        return loss
+
+    def criterion(self, x_true, R_true, tt, tt_true):
+        # loss = self.criterion_full_traj(x_true, R_true, tt, tt_true)
+        loss = self.criterion_sampled_traj(x_true, R_true, tt, tt_true)
+        return loss
+    
+    def train(self):
+        x_true, R_true, v_true, omega_true = self.states_true[0].detach(), self.states_true[1].detach(), \
+                                             self.states_true[2].detach(), self.states_true[3].detach()
+        for i in range(self.cfg.n_train_iters):
+            if rospy.is_shutdown():
+                break
+
+            self.optimizer.zero_grad()
+            loss = self.criterion(x_true, R_true, tt=self.tt, tt_true=self.tt_true)
+            rospy.loginfo('Iter. %i, loss=%.3f' % (i, loss.item()))
+            rospy.logdebug('mean height=%.3f' % self.height_map.mean().item())
+            rospy.logdebug(' tracks velocities=%s' % self.dphysics.vel_tracks)
+
+            loss.backward()
+            self.optimizer.step()
+            self.dphysics.update_trajectory(tt=self.tt)
+
+            # loss publishing
+            loss_msg = Float32()
+            loss_msg.data = loss.item()
+            self.loss_pub.publish(loss_msg)
+
+            if i % 1 == 0:
+                self.publish_data()
+
+def main():
+    rospy.init_node('terrain_learner', log_level=rospy.DEBUG)
+    cfg = Config()
+    cfg.from_rosparams('terrain_learner')
+
+    """ Create ground truth height map and initial one """
+    # Load traversability data
+    path = rospy.get_param('~data_path', '/home/ruslan/data/bags/traversability/marv/ugv_2022-08-12-15-18-34_trav/')
+    assert os.path.exists(path)
+    ds = RobinGasDataset(path, cfg=cfg)
+    i = int(rospy.get_param('~cloud_ind', np.random.choice(range(len(ds)))))
+    data = ds[i]
+    points, traj, heightmap = data
+    height_true = heightmap['z']
+
+    height_init = np.zeros_like(height_true)
+    # height_init = 0.2 * np.random.random(height_true.shape)
+    # height_init = height_true.copy() + 0.1 * np.random.random(height_true.shape)
+    # height_init = height_true.copy() + 0.05
+
+    """ Get ground truth trajectory """
+    dphysics_model = make_dphysics_model(height_true, cfg)
+    dphysics_model = dphysics_model.to(cfg.device)
+    t0, state0 = 0., dphysics_model.state
+    tt_sim = torch.linspace(float(t0), cfg.total_sim_time, cfg.n_samples)
+    states_sim = dphysics_model.sim(state0, tt_sim)
+    tt_true = tt_sim
+    states_true = states_sim
+
+    # # xyz, R, vels, omegas, forces
+    # tt_true, poses = traj['stamps'], traj['poses']
+    # # Transform point cloud to robot frame
+    # Tr = np.asarray(np.linalg.inv(poses[0]), dtype='float32')
+    # points = transform_cloud(points, Tr)
+    # # Transform poses to robot frame
+    # poses = np.asarray([np.matmul(Tr, pose) for pose in poses])
+    # N = len(tt_true)
+    # states_true = [poses[:, :3, 3:4], poses[:, :3, :3], np.zeros((N, 3, 1)), np.zeros((N, 3, 1)), np.zeros((N, 3, 10))]
+    # states_true = [torch.tensor(state, device=cfg.device) for state in states_true]
+
+    """ Define the trainer and learn """
+    trainer = TerrainLearner(height_init=height_init, height_true=height_true, points=points,
+                             states_true=states_true, times=tt_true, cfg=cfg)
+    trainer.train()
+
+
+if __name__ == '__main__':
+    main()

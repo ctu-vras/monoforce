@@ -3,7 +3,7 @@
 import os
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -32,7 +32,7 @@ def parse_args():
 class Trainer(object):
     def __init__(self, train_dataset, batch_size=1, lr=1e-3, vis=False, save=True):
         self.train_ds = train_dataset
-        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
+        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True, num_workers=12)
 
         self.device = torch.device('cuda:0')
 
@@ -176,31 +176,45 @@ class Trainer(object):
 def main():
     args = parse_args()
 
-    path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # path = '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    # path = args.path
+    data_paths = [
+        '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
+        '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
+    ]
+
+    datasets = []
     img_size = (args.img_size, args.img_size)
-    assert os.path.exists(path)
-    
-    cfg = Config()
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+    img_mean = None
+    img_std = None
+    for path in data_paths:
+        assert os.path.exists(path)
 
-    if 'marv' in path:
-        img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
-        img_std = np.array([0.2212268,  0.23130926, 0.29598755])
-    else:
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
-    
-    # create dataset for MonoDEM training
-    ds = MonoDemDataset(path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
-    print('Dataset size:', len(ds))
+        cfg = Config()
+        cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+        cfg.hm_interp_method = 'linear'
 
-    if args.visualize:
-        # visualize a data sample from the dataset
-        for _ in range(1):
-            i = np.random.choice(len(ds))
-            ds.__getitem__(i, visualize=True)
+        # if 'marv' in path:
+        #     img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
+        #     img_std = np.array([0.2212268,  0.23130926, 0.29598755])
+        # else:
+        #     img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
+        #     img_std = np.array([0.29598755, 0.23130926, 0.2212268])
+
+        # create dataset for MonoDEM training
+        ds = MonoDemDataset(path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
+        print('Dataset size:', len(ds))
+
+        if args.visualize:
+            # visualize a data sample from the dataset
+            for _ in range(1):
+                i = np.random.choice(len(ds))
+                ds.__getitem__(i, visualize=True)
+
+        datasets.append(ds)
+
+    ds = ConcatDataset(datasets)
+    ds.img_size = img_size
+    ds.img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
+    ds.img_std = np.array([0.2212268,  0.23130926, 0.29598755])
 
     # MonoDEM Training
     trainer = Trainer(ds, batch_size=args.batch_size, lr=args.lr, vis=args.visualize, save=args.save)

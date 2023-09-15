@@ -3,14 +3,14 @@
 import torch
 from torch import optim
 import numpy as np
-from differentiable_physics.models import RigidBodySoftTerrain, State
-from differentiable_physics.losses import rotation_difference, translation_difference, total_variation, traj_dist
-from differentiable_physics.vis import setup_visualization, animate_trajectory, set_axes_equal
-from differentiable_physics.datasets.utils import visualize_data
-from differentiable_physics.datasets import RobinGasDataset
-from differentiable_physics.config import Config
-from differentiable_physics.control import pose_control
-from differentiable_physics.transformations import transform_cloud
+from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
+from monoforce.vis import setup_visualization, animate_trajectory, set_axes_equal
+from monoforce.datasets.utils import visualize_data
+from monoforce.datasets import RobinGasDataset
+from monoforce.config import Config
+from monoforce.control import pose_control
+from monoforce.transformations import transform_cloud
 from mayavi import mlab
 from matplotlib import pyplot as plt
 import rospy
@@ -294,9 +294,11 @@ def train(ds, cfg=Config(), vis=False, save_data=False):
 
     # shuffle indices list
     ids = np.arange(len(ds))
-    np.random.shuffle(ids)
     for data_i in tqdm(ids, desc='Data samples'):
         print('Selected data sample %i/%i' % (data_i, len(ds)))
+        if ds.ids[data_i]+'.npy' in os.listdir(ds.path + 'terrain/'):
+            print('Already trained')
+            continue
         sample = ds[data_i]
         cloud, traj, heightmap = sample
         height = heightmap['z']

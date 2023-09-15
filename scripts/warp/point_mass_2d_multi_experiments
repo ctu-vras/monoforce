@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+
+import matplotlib.pyplot as plt
+import torch
+from torchdiffeq import odeint, odeint_adjoint
+import warp as wp
+import numpy as np
+
+
+@wp.struct
+# structured are not yet updated in kernels, that's why we are not using them yet:
+# https://github.com/NVIDIA/warp/issues/124
+class State:
+    pos_x: float
+    pos_y: float
+    vel_x: float
+    vel_y: float
+
+    def from_array(self, arr):
+        self.pos_x = arr[0]
+        self.pos_y = arr[1]
+        self.vel_x = arr[2]
+        self.vel_y = arr[3]
+        return self
+
+    def to_array(self):
+        return wp.array([self.pos_x, self.pos_y, self.vel_x, self.vel_y])
+
+    def __getitem__(self, i):
+        return self.to_array()[i]
+
+    def __str__(self):
+        return f"State(pos_x={self.pos_x}, pos_y={self.pos_y}, vel_x={self.vel_x}, vel_y={self.vel_y})"
+
+
+@wp.func
+def forward(pos: wp.vec2,
+            vel: wp.vec2):
+    r = 1000.  # damping factor
+    l = 10000.  # modulus of elasticity / length
+    e = 0.1  # equlibrium
+    mass = 30.
+    gravity = 9.8
+
+    dpos = wp.vec2(vel[0], vel[1])
+
+    dvel = wp.vec2(0., 0.)
+    dvel[0] = 0.
+
+    if pos[1] > e:
+        f_y = - mass * gravity
+    else:
+        f_y = l * (-pos[1] + e) - r * vel[1]
+
+    dvel[1] = f_y / mass
+
+    return dpos, dvel
+
+
+@wp.kernel
+def simulate(poses: wp.array(dtype=wp.vec2),
+             vels: wp.array(dtype=wp.vec2),
+             n_traj_steps: int,
+             dt: float,
+             traj_poses: wp.array(dtype=wp.vec2, ndim=2),
+             traj_vels: wp.array(dtype=wp.vec2, ndim=2)):
+    # thread index
+    tid = wp.tid()
+
+    for i in range(n_traj_steps):
+
+        dpos, dvel = forward(poses[tid], vels[tid])
+        # wp.printf('dpos_x: %f, dpos_y: %f, dvel_x: %f, dvel_y: %f\n', dpos[0], dpos[1], dvel[0], dvel[1])
+
+        poses[tid] = poses[tid] + dpos * dt
+        vels[tid] = vels[tid] + dvel * dt
+
+        traj_poses[tid, i] = poses[tid]
+        traj_vels[tid, i] = vels[tid]
+
+    # wp.printf('Thread %i is done!\n', tid)
+
+
+class Environment:
+    def __init__(self, n_states=1):
+        self.t0 = 0.
+        self.n_states = n_states
+
+        self.traj_time = 5.0
+        self.n_traj_steps = 100
+
+        self.tt = torch.linspace(float(self.t0), self.traj_time, self.n_traj_steps)
+        self.dt = float((self.tt[1:] - self.tt[:-1]).mean().item())
+
+        self.poses = wp.array(np.random.rand(n_states, 2), dtype=wp.vec2)
+        self.vels = wp.array(np.random.rand(n_states, 2), dtype=wp.vec2)
+
+        self.traj_poses = wp.zeros((n_states, self.n_traj_steps), dtype=wp.vec2)
+        self.traj_vels = wp.zeros((n_states, self.n_traj_steps), dtype=wp.vec2)
+
+    def run(self):
+        with wp.ScopedTimer('simulate', active=False):
+            # launch kernel
+            wp.launch(kernel=simulate,
+                      dim=len(self.poses),
+                      inputs=[
+                          self.poses,
+                          self.vels,
+                          self.n_traj_steps,
+                          self.dt,
+                      ],
+                      outputs=[
+                          self.traj_poses,
+                          self.traj_vels,
+                      ]
+                      )
+            wp.synchronize()
+
+    def plot(self):
+        # plot states
+        plt.figure()
+        legend = []
+        for s in range(len(self.traj_poses)):
+            plt.plot(self.traj_poses.numpy()[s, :, 0], self.traj_poses.numpy()[s, :, 1], 'o--', linewidth=2.0)
+        plt.legend(legend)
+        plt.axis('equal')
+        plt.show()
+
+
+def main():
+    wp.init()
+
+    env = Environment(n_states=5)
+    env.run()
+    env.plot()
+
+
+if __name__ == '__main__':
+    main()

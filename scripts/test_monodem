@@ -100,12 +100,13 @@ def main():
     x_grid, y_grid = np.meshgrid(x_grid, y_grid)
 
     ax = fig.add_subplot(235, projection='3d')
+    ax.set_title('Height from lidar')
     # plot estimated heightmap surface
     ax.plot_surface(x_grid, y_grid, height_est.squeeze(), cmap='viridis', alpha=0.7)
     # plot point cloud
     # ax.scatter(cloud['x'], cloud['y'], cloud['z'], s=0.2)
     # plot height map cloud
-    ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2)
+    ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2, alpha=0.5)
     # plot height map box
     ax.plot([0, 0, cfg.d_max, cfg.d_max, 0],
             [-cfg.d_max / 2., cfg.d_max / 2., cfg.d_max / 2., -cfg.d_max / 2., -cfg.d_max / 2.],
@@ -116,12 +117,13 @@ def main():
     set_axes_equal(ax)
 
     ax = fig.add_subplot(236, projection='3d')
+    ax.set_title('Height prediction')
     # plot predicted heightmap surface
     ax.plot_surface(x_grid, y_grid, height_pred.squeeze().cpu().numpy(), cmap='viridis', alpha=0.7)
     # # plot point cloud
     # ax.scatter(cloud['x'], cloud['y'], cloud['z'], s=0.2)
     # plot height map cloud
-    ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2)
+    ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2, alpha=0.5)
     # plot height map box
     ax.plot([0, 0, cfg.d_max, cfg.d_max, 0],
             [-cfg.d_max / 2., cfg.d_max / 2., cfg.d_max / 2., -cfg.d_max / 2., -cfg.d_max / 2.],
