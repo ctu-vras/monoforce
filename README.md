@@ -2,6 +2,7 @@
 Self-supervised learning of physics-aware grey-box model for predicting robot-terrain interaction.
 
 <img src="docs/imgs/overview_from_img.png" height="280"/> <img src="docs/imgs/overview.png" height="300"/>
+![](./docs/imgs/demo.gif)
 
 ## Installation
 Prerequisites:
