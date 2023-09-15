@@ -730,8 +730,8 @@ def colored_clouds_demo():
     cfg = Config()
     ds = RobinGasDataset(path, cfg=cfg)
 
-    # i = np.random.choice(range(len(ds)))
-    i = 10
+    i = np.random.choice(range(len(ds)))
+    # i = 10
     cloud = ds.get_cloud(i)
     colors = ds.get_cloud_color(i)
 
@@ -828,10 +828,10 @@ def terrain_demo():
     h, w = height_est.shape
     xy_grid = poses[:, :2, 3] / cfg.grid_res + np.array([w / 2, h / 2])
     plt.subplot(131)
-    plt.imshow(height_est)
+    plt.imshow(height_est, origin='lower')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(132)
-    plt.imshow(height)
+    plt.imshow(height, origin='lower')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(133)
     plt.imshow(img[..., (2, 1, 0)])
@@ -1004,9 +1004,9 @@ def main():
     # calibs_demo()
     # colored_clouds_demo()
     # terrain_demo()
-    # monodem_demo()
+    monodem_demo()
     # weights_demo()
-    estimate_heightmap_from_cloud()
+    # estimate_heightmap_from_cloud()
 
 
 if __name__ == '__main__':

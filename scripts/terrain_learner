@@ -85,29 +85,38 @@ def get_data(i: int = None, vis=True):
 
     return states_true, tt_true, height
 
-def get_test_data():
+def get_test_data(cfg: Config):
     """
     Generate simple ground truth data.
     returns: states_true, tt_true, height
     """
     xyz_true = torch.tensor([
-        [0., 0., 0.2],
-        [2., 0., 0.4],
-        [4., 1., 0.3],
-        [2., 2., 0.1],
-        [0., 0., 0.2]
+        [-4., 0., 0.2],
+        [-2., -0.5, 0.3],
+        [0., -1, 0.5],
+        [1., -0.2, 0.2],
+        [2., -0.5, -0.1],
+        [3., 0.5, -0.2],
+        [4., 2., -0.3],
+        [3.5, 3., -0.1],
+        [3., 4., 0.2]
     ])
     angles_true = torch.as_tensor([
         [0., 0., 0.],
+        [0., 0., -np.pi / 8.],
         [0., 0., np.pi / 4.],
+        [0., 0., np.pi / 8.],
         [0., 0., 0.],
+        [0., 0., np.pi / 4.],
         [0., 0., np.pi / 2.],
+        [0., 0., 0.],
         [0., 0., -np.pi / 6.]
     ])
     headings = torch.atan2(xyz_true[1:, 1] - xyz_true[:-1, 1], xyz_true[1:, 0] - xyz_true[:-1, 0])
     angles_true[:-1, 2] = headings
     rot_true = torch.tensor(np.asarray([Rotation.from_euler('xyz', a).as_matrix() for a in angles_true]))
-    height = np.zeros((30, 30))
+    h, w = int(2 * cfg.d_max // cfg.grid_res), int(2 * cfg.d_max // cfg.grid_res)
+    height = np.zeros((h, w))
 
     n_true_states = len(xyz_true)
     tt_true = torch.linspace(0., cfg.total_sim_time, n_true_states)[None].T
@@ -140,7 +149,7 @@ def train_omni():
 
     """ Get ground truth data """
     # states_true, tt_true, height = get_data()
-    states_true, tt_true, height = get_test_data()
+    states_true, tt_true, height = get_test_data(cfg)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
 
@@ -231,20 +240,20 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
     """
 
     """ Get ground truth data """
-    states_true, tt_true, height = get_data(i=0, vis=vis)
-    # states_true, tt_true, height = get_test_data()
+    # states_true, tt_true, height = get_data(i=0, vis=vis)
+    states_true, tt_true, height = get_test_data(cfg)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
-    height = np.zeros_like(height) + xyz_true[0, 2].min().item()
+    height = np.zeros_like(height)
 
     """ Create robot-terrain interaction models """
     system = RigidBodySoftTerrain(height=height,
                                   grid_res=cfg.grid_res,
                                   friction=cfg.friction, mass=cfg.robot_mass,
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
+                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 0.3]).view(xyz_true[0].shape),
                                               rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],
+                                              # vel=vel_true[0],
+                                              # omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=cfg.device, use_ode=False,
                                   interaction_model='diffdrive')
@@ -478,7 +487,7 @@ def train_cmd_vel(regularization=True):
     mlab.show()
 
 
-def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
+def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
     """
     Learn terrain with Proportional control of robot position.
     Robot visits a set of waypoints.
@@ -490,11 +499,11 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=False):
     """
 
     """ Get ground truth data """
-    states_true, tt_true, height = get_data(i=0)
-    # states_true, tt_true, height = get_test_data()
+    # states_true, tt_true, height = get_data(i=0)
+    states_true, tt_true, height = get_test_data(cfg)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
-    height = np.zeros_like(height) + xyz_true[:, 2].cpu().numpy().min()
+    height = np.zeros_like(height)
 
     """ Create robot-terrain interaction models """
     system = RigidBodySoftTerrain(height=height,

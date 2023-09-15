@@ -92,22 +92,22 @@ def setup_visualization(system, states=None, states_true=None,
         poses_gt = np.asarray([np.eye(4) for _ in range(pos_x_true.shape[0])])
         poses_gt[:, :3, 3] = pos_x_true.squeeze()
         poses_gt[:, :3, :3] = pos_R_true
-        draw_coord_frames(poses_gt, scale=0.2)
+        draw_coord_frames(poses_gt, scale=0.4)
         # draw velocities at ground truth poses locations
         mlab.quiver3d(pos_x_true[:, 0], pos_x_true[:, 1], pos_x_true[:, 2],
                       vel_x_true[:, 0], vel_x_true[:, 1], vel_x_true[:, 2],
                       line_width=2.0, scale_factor=1.)
 
     visu_rigid_mesh = mlab.mesh(x_grid, y_grid, height,
-                                scalars=system.friction.detach().cpu().numpy(), opacity=0.3, vmax=1.0, vmin=0.5,
+                                scalars=system.friction.detach().cpu().numpy(), opacity=0.6, vmax=1.0, vmin=0.5,
                                 colormap='jet',
                                 representation='surface')  # color=(0.15, 0.07, 0.0)
-    visu_rigid_wires = mlab.surf(x_grid, y_grid, height, opacity=0.3,
+    visu_rigid_wires = mlab.surf(x_grid, y_grid, height, opacity=0.6,
                                  color=(0.6, 0.5, 0.4), representation='wireframe', line_width=5.0)
     visu_robot = mlab.points3d(points[0, :], points[1, :], z_margin + points[2, :], scale_factor=0.25)
 
     mlab.colorbar(object=visu_rigid_mesh, title="Terrain friction coefficient")
-    mlab.view(azimuth=150, elevation=80, distance=16.0)
+    mlab.view(azimuth=150, elevation=60, distance=16.0)
 
     if show:
         mlab.show()
@@ -146,7 +146,7 @@ def animate_trajectory(system, vis_cfg, z_margin=0., frame_n=0, log_path='./gen'
         visu_trajectory.mlab_source.set(x=system.pos_x[:, 0].squeeze(),
                                         y=system.pos_x[:, 1].squeeze(),
                                         z=system.pos_x[:, 2].squeeze())
-        # mlab.view(azimuth=150 - frame_n, elevation=60, distance=16.0)
+        mlab.view(azimuth=150 - frame_n, elevation=60, distance=16.0)
 
         if t % save_figs_step == 0:
             os.makedirs(log_path, exist_ok=True)
