@@ -141,22 +141,30 @@ def main():
                         img_std=img_std,
                         cameras=['camera_fisheye_front'],
                         cfg=cfg)
-    i = 0
+    i = 20
+    # i = np.random.choice(range(len(ds)))
     img_norm_CHW = ds[i][0]
-    # show image
-    img_vis = ds.get_image(i, 'front')[..., (2, 1, 0)]
-    plt.figure(figsize=(20, 10))
-    plt.axis('off')
-    plt.imshow(img_vis)
-    plt.show()
 
     tt = torch.linspace(0., cfg.total_sim_time, cfg.n_samples)
     controls = {
         'stamps': tt,
         'vel_x': 1. * torch.ones(cfg.n_samples),
-        'vel_omega': -0.1 * torch.ones(cfg.n_samples),
-        # 'vel_omega': 4 * torch.sin(2. * np.pi * tt),
+        # 'vel_omega': -0.1 * torch.ones(cfg.n_samples),
+        'vel_omega': -2 * torch.sin(2. * np.pi * tt),
     }
+
+    # show image and controls
+    img_vis = ds.get_image(i, 'front')[..., (2, 1, 0)]
+    plt.figure(figsize=(20, 10))
+    plt.subplot(121)
+    plt.axis('off')
+    plt.imshow(img_vis)
+    plt.subplot(122)
+    plt.plot(controls['stamps'], controls['vel_x'], label='vel_x')
+    plt.plot(controls['stamps'], controls['vel_omega'], label='vel_omega')
+    plt.grid()
+    plt.legend()
+    plt.show()
 
     eval = MonoForce(img=img_norm_CHW,
                      controls=controls,
