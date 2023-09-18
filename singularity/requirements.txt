@@ -19,7 +19,7 @@ albumentations==1.2.1
 open3d==0.10.0.0
 matplotlib==3.4.3
 # mayavi==4.7.2
-opencv_python==4.6.0
+# opencv_python==4.6.0
 Pillow==10.0.0
 pyransac3d==0.6.0
 # pytorch3d==0.7.4

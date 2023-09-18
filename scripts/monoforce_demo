@@ -1,280 +1,169 @@
 #!/usr/bin/env python
 
-import os
-import numpy as np
-import torch
 import matplotlib.pyplot as plt
-from monoforce.datasets import MonoDemDataset
+import torch
+import numpy as np
 from monoforce.config import Config
+from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.datasets import MonoDemDataset
+from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
+from monoforce.control import pose_control
+from monoforce.losses import translation_difference, rotation_difference, traj_dist
 from monoforce.models import monolayout
-from monoforce.vis import set_axes_equal
-from monoforce.segmentation import filter_grid, position
-from monoforce.transformations import transform_cloud
+from monoforce.transformations import rot2rpy, transform_cloud
+from monoforce.segmentation import position
+from mayavi import mlab
 from tqdm import tqdm
 
 
-def inference():
-    # path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    path = '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    # path = args.path
-    img_size = (512, 512)
-    assert os.path.exists(path)
-    
-    cfg = Config()
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-    cfg.hm_interp_method = None
+class MonoForce:
+    def __init__(self, img: np.ndarray, controls: dict,
+                 cfg: Config, model_name=None, vis=False):
+        self.cfg = cfg
+        self.img_size = img.shape[:2]
+        self.img = img
+        self.controls = controls
+        self.model_name = model_name
+        self.load_model()
+        self.vis = vis
 
-    if 'marv' in path:
-        img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
-        img_std = np.array([0.2212268,  0.23130926, 0.29598755])
-    else:
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
-    
-    # create dataset for MonoDEM training
-    ds = MonoDemDataset(path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
+    def load_model(self):
+        if self.model_name == 'monolayout':
+            self.models = self.load_monolayout()
+        else:
+            pass
 
-    # i = 0
-    i = 48
-    # i = np.random.randint(len(ds))
-    print('Sample index: {}'.format(i))
-    img, height_opt, height_est, mask_traversed, mask_reg = ds.__getitem__(i, visualize=True)
-    cloud = ds.get_cloud(i)
-    poses = ds.get_traj(i)['poses']
+    def load_monolayout(self):
+        H, W = self.img_size
+        models = {}
+        # load encoder weights
+        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
+        encoder_path = '../config/weights/monolayout/encoder.pth'
+        encoder_dict = torch.load(encoder_path, map_location=self.cfg.device)
+        filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
+        models["encoder"].load_state_dict(filtered_dict_enc)
 
-    # transform point cloud to robot frame
-    Tr = np.linalg.inv(poses[0])
-    cloud = transform_cloud(cloud, Tr)
-    poses = np.matmul(poses, Tr)
+        # load decoder weights
+        decoder_path = '../config/weights/monolayout/decoder.pth'
+        models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
+        models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
+        return models
 
-    # grid filter
-    cloud = filter_grid(cloud, cfg.grid_res)
-    # filter point cloud in height map box range
-    mask_x = np.logical_and(cloud['x'] > 0., cloud['x'] < cfg.d_max)
-    mask_y = np.logical_and(cloud['y'] > -cfg.d_max / 2., cloud['y'] < cfg.d_max / 2.)
-    mask_z = np.logical_and(cloud['z'] > 0., cloud['z'] < cfg.h_max)
-    mask = np.logical_and(mask_x, mask_y)
-    mask = np.logical_and(mask, mask_z)
-    cloud_hm = cloud[mask]
-
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
-
-    H, W = img_size
-    models = {}
-    # load encoder weights
-    models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-    encoder_path = '../config/weights/monolayout/encoder.pth'
-    encoder_dict = torch.load(encoder_path, map_location=device)
-    filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
-    models["encoder"].load_state_dict(filtered_dict_enc)
-
-    # load decoder weights
-    decoder_path = '../config/weights/monolayout/decoder.pth'
-    models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
-    models["decoder"].load_state_dict(torch.load(decoder_path, map_location=device))
-
-    with torch.no_grad():
-        # model inference
-        img_tensor = torch.from_numpy(img).unsqueeze(0)
-        features = models['encoder'](img_tensor)
-        height_pred = models['decoder'](features, is_training=True)
-        print(height_pred.shape)
-
-    # visualize results
-    fig = plt.figure(figsize=(20, 10))
-    img_vis = img.transpose((1, 2, 0)) * img_std.reshape((1, 1, 3)) + img_mean.reshape((1, 1, 3))
-    plt.subplot(231)
-    plt.imshow(img_vis[..., (2, 1, 0)])  # RGB
-    plt.title('Input image')
-
-    plt.subplot(232)
-    plt.imshow(height_est.squeeze(), origin='lower', cmap='jet')
-    plt.title('Height from lidar')
-    plt.colorbar()
-
-    plt.subplot(233)
-    plt.imshow(height_pred.squeeze().cpu().numpy(), origin='lower', cmap='jet')
-    plt.title('Height prediction')
-    plt.colorbar()
-
-    # visualize results in 3D
-    x_grid = np.arange(0, cfg.d_max, cfg.grid_res)
-    y_grid = np.arange(-cfg.d_max / 2., cfg.d_max / 2., cfg.grid_res)
-    x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-
-    ax = fig.add_subplot(235, projection='3d')
-    ax.set_title('Height from lidar')
-    # plot estimated heightmap surface
-    ax.plot_surface(x_grid, y_grid, height_est.squeeze(), cmap='jet', alpha=0.7)
-    # plot point cloud
-    # ax.scatter(cloud['x'], cloud['y'], cloud['z'], s=0.2)
-    # plot height map cloud
-    ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2, alpha=0.5)
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
-    set_axes_equal(ax)
-
-    ax = fig.add_subplot(236, projection='3d')
-    ax.set_title('Height prediction')
-    # plot predicted heightmap surface
-    ax.plot_surface(x_grid, y_grid, height_pred.squeeze().cpu().numpy(), cmap='jet', alpha=0.7)
-    # # plot point cloud
-    # ax.scatter(cloud['x'], cloud['y'], cloud['z'], s=0.2)
-    # plot height map cloud
-    ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2, alpha=0.5)
-    # plot height map box
-    ax.plot([0, 0, cfg.d_max, cfg.d_max, 0],
-            [-cfg.d_max / 2., cfg.d_max / 2., cfg.d_max / 2., -cfg.d_max / 2., -cfg.d_max / 2.],
-            [0, 0, 0, 0, 0], 'r', alpha=0.5)
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
-    set_axes_equal(ax)
-
-    plt.show()
-
-
-def demo():
-    # path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # path = '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'
-    sequence = path.split('/')[-2]
-    img_size = (512, 512)
-    assert os.path.exists(path)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    H, W = img_size
-    models = {}
-    # load encoder weights
-    models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-    encoder_path = '../config/weights/monolayout/encoder.pth'
-    encoder_dict = torch.load(encoder_path, map_location=device)
-    filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
-    models["encoder"].load_state_dict(filtered_dict_enc)
-
-    # load decoder weights
-    decoder_path = '../config/weights/monolayout/decoder.pth'
-    models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
-    models["decoder"].load_state_dict(torch.load(decoder_path, map_location=device))
-
-    cfg = Config()
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-
-    if 'marv' in path:
-        img_mean = np.array([0.4750956, 0.47310572, 0.42155158])
-        img_std = np.array([0.2212268, 0.23130926, 0.29598755])
-        camera = 'camera_fisheye_front'
-    else:
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
-        camera = 'camera_front'
-
-    # create dataset for MonoDEM training
-    ds = MonoDemDataset(path, cameras=[camera],
-                        img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
-    fig = plt.figure(figsize=(20, 7))
-
-    for i in tqdm(range(len(ds))):
-        # print('Sample index: {}'.format(i))
-        img, height_opt, height_est, mask_traversed, mask_reg = ds[i]
-        cloud = ds.get_cloud(i)
-        poses = ds.get_traj(i)['poses']
-
-        # transform point cloud to robot frame
-        Tr = np.linalg.inv(poses[0])
-        cloud = transform_cloud(cloud, Tr)
-        poses = np.asarray([np.matmul(Tr, pose) for pose in poses])
-
-        # if robot went backwards, skip
-        if np.any(poses[:, 0, 3] < -0.1):
-            print('Robot went backwards, skipping sample')
-            continue
-
-        # grid filter
-        cloud = filter_grid(cloud, cfg.grid_res)
-        points = position(cloud)
-        # filter point cloud in height map box range
-        mask_x = np.logical_and(cloud['x'] > 0., cloud['x'] < cfg.d_max)
-        mask_y = np.logical_and(cloud['y'] > -cfg.d_max / 2., cloud['y'] < cfg.d_max / 2.)
-        mask_z = np.logical_and(cloud['z'] > 0., cloud['z'] < cfg.h_max)
-        mask = np.logical_and(mask_x, mask_y)
-        mask = np.logical_and(mask, mask_z)
-        cloud_hm = cloud[mask]
-        points_hm = points[mask]
-
+    def monolayout_inference(self, img):
         with torch.no_grad():
-            # model inference
             img_tensor = torch.from_numpy(img).unsqueeze(0)
-            features = models['encoder'](img_tensor)
-            height_pred = models['decoder'](features, is_training=True)
+            features = self.models['encoder'](img_tensor)
+            height_pred = self.models['decoder'](features, is_training=True)
+        height_pred = height_pred.squeeze().cpu().numpy()
+        return height_pred
 
-        h, w = height_pred.shape[2:]
-        poses_vis = poses[:, :2, 3] / cfg.grid_res + np.array([0., w / 2.])
-        # rotate poses 90 deg around (h/2, w/2)
-        poses_vis = np.asarray([np.matmul(np.array([[0, -1], [1, 0]]), pose) for pose in poses_vis]) + np.array([h, 0])
+    def run(self):
+        height = self.monolayout_inference(self.img)
+        height = height.T
 
-        points_hm_vis = points_hm[:, :2] / cfg.grid_res + np.array([0., w / 2.])
-        # rotate poses 90 deg around (h/2, w/2)
-        R = np.array([[0, -1], [1, 0]])
-        points_hm_vis = points_hm_vis @ R.T + np.array([h, 0])
+        s0 = State(xyz=torch.tensor([-self.cfg.d_max / 2, 0., 1.], device=self.cfg.device).view(3, 1),
+                   rot=torch.eye(3, device=self.cfg.device),
+                   vel=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                   omega=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                   device=self.cfg.device)
 
-        height_vis = height_pred.squeeze().cpu().numpy()
-        height_vis = np.rot90(height_vis, k=1, axes=(1, 0))
+        """ Create robot-terrain interaction models """
+        system = RigidBodySoftTerrain(height=height,
+                                      grid_res=self.cfg.grid_res,
+                                      friction=self.cfg.friction,
+                                      mass=self.cfg.robot_mass,
+                                      state=s0,
+                                      device=self.cfg.device, use_ode=False,
+                                      interaction_model='diffdrive')
 
-        # visualize results
-        img_vis = img.transpose((1, 2, 0)) * img_std.reshape((1, 1, 3)) + img_mean.reshape((1, 1, 3))
-        plt.subplot(131)
-        plt.imshow(img_vis[..., (2, 1, 0)])  # RGB
-        plt.title('Input image')
+        # put models with their params to self.cfg.device
+        system = system.to(self.cfg.device)
+        s0 = system.state
+        tt = self.controls['stamps'].to(self.cfg.device)
 
-        plt.subplot(132)
-        plt.title('Height prediction')
-        plt.imshow(height_vis, origin='lower', alpha=0.9, cmap='jet')
-        plt.colorbar()
-        # plot trajectory
-        plt.plot(poses_vis[:, 0], poses_vis[:, 1], 'r', alpha=1, linewidth=2)
-        # plot height map cloud
-        plt.scatter(points_hm_vis[:, 0], points_hm_vis[:, 1], s=0.3, alpha=0.7)
-        plt.xlim([0, h])
-        plt.ylim([0, w])
+        if self.vis:
+            states = system.sim(s0, tt)
+            """ Set-up visualization """
+            vis_cfg = setup_visualization(system=system,
+                                          states=states,
+                                          cfg=self.cfg)
+        """ Navigation loop """
+        state = system.state
+        dt = (tt[1:] - tt[:-1]).mean()
 
-        # visualize results in 3D
-        x_grid = np.arange(0, cfg.d_max, cfg.grid_res)
-        y_grid = np.arange(-cfg.d_max / 2., cfg.d_max / 2., cfg.grid_res)
-        x_grid, y_grid = np.meshgrid(x_grid, y_grid)
+        pos_x, pos_R, vel_x, vel_omega, forces = state
+        pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
 
-        ax = fig.add_subplot(133, projection='3d')
-        ax.set_title('Height prediction')
-        # plot predicted heightmap surface
-        ax.plot_surface(x_grid, y_grid, height_pred.squeeze().cpu().numpy(), alpha=0.7, cmap='jet')
-        # plot height map cloud
-        ax.scatter(cloud_hm['x'], cloud_hm['y'], cloud_hm['z'], s=0.2, alpha=0.5)
-        # plot trajectory
-        z_margin = 0.1
-        ax.plot(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3] + z_margin, 'ro', markersize=2, alpha=1)
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_zlabel('z')
-        set_axes_equal(ax)
-        # set up perspective
-        ax.view_init(elev=30., azim=170.)
+        for t in range(len(tt[1:])):
+            v, w = self.controls['vel_x'][t], self.controls['vel_omega'][t]
 
-        # save figure
-        os.makedirs('./gen/demo/%s' % sequence, exist_ok=True)
-        plt.savefig('./gen/demo/%s/%i.png' % (sequence, i), dpi=300)
+            state[2][0] = v
+            state[3][2] = w
 
-        plt.draw()
-        plt.clf()
+            dstate = system.forward(t, state)
+            state = state.update(dstate, dt)
 
-    # plt.show()
+            pos_x.append(state[0])
+            pos_R.append(state[1])
+            vel_x.append(state[2])
+            vel_omega.append(state[3])
+            forces.append(state[4])
+
+        states = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega), torch.stack(forces)]
+
+        # visualize trajectory
+        if self.vis:
+            system.update_trajectory(states=states)
+            animate_trajectory(system, vis_cfg)
+
+            mlab.show()
 
 
 def main():
-    inference()
-    # demo()
+    cfg = Config()
+    cfg.grid_res = 0.1
+    cfg.device = 'cuda'
+    cfg.d_max = 12.8
+    cfg.d_min = 1.
+
+    data_paths = [
+        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
+        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
+        '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
+    ]
+    data_path = data_paths[0]
+
+    img_mean = np.array([0.42155158, 0.47310572, 0.4750956]) if 'marv' in data_path else np.array([0.4750956, 0.47310572, 0.42155158])
+    img_std = np.array([0.29598755, 0.23130926, 0.2212268]) if 'marv' in data_path else np.array([0.2212268, 0.23130926, 0.29598755])
+    ds = MonoDemDataset(path=data_path,
+                        img_size=(512, 512),
+                        img_mean=img_mean,
+                        img_std=img_std,
+                        cameras=['camera_fisheye_front'],
+                        cfg=cfg)
+    i = 0
+    img_norm_CHW = ds[i][0]
+    # show image
+    img_vis = ds.get_image(i, 'front')[..., (2, 1, 0)]
+    plt.figure(figsize=(20, 10))
+    plt.axis('off')
+    plt.imshow(img_vis)
+    plt.show()
+
+    tt = torch.linspace(0., cfg.total_sim_time, cfg.n_samples)
+    controls = {
+        'stamps': tt,
+        'vel_x': 1. * torch.ones(cfg.n_samples),
+        'vel_omega': -0.1 * torch.ones(cfg.n_samples),
+        # 'vel_omega': 4 * torch.sin(2. * np.pi * tt),
+    }
+
+    eval = MonoForce(img=img_norm_CHW,
+                     controls=controls,
+                     cfg=cfg,
+                     model_name='monolayout',
+                     vis=True)
+    eval.run()
 
 
 if __name__ == '__main__':
