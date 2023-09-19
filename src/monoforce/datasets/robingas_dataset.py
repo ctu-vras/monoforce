@@ -388,20 +388,27 @@ class MonoDemDataset(RobinGasDataset):
     def __init__(self,
                  path,
                  img_size=(512, 512),
-                 img_mean=None,
-                 img_std=None,
                  cameras=None,
                  cfg=Config()):
         super(MonoDemDataset, self).__init__(path, cfg)
         self.img_raw_size = None
         self.img_size = img_size
-        self.img_mean = img_mean
-        self.img_std = img_std
-        if img_mean is None or img_std is None:
+
+        img_statistics_path = os.path.join(self.path, 'calibration', 'img_statistics.yaml')
+        if not os.path.exists(img_statistics_path):
             self.img_mean, self.img_std = self.calculate_img_statistics()
+            # save to yaml file
+            with open(img_statistics_path, 'w') as f:
+                yaml.dump({'mean': self.img_mean.tolist(), 'std': self.img_std.tolist()}, f)
         else:
+            # load from yaml file
+            with open(img_statistics_path, 'r') as f:
+                img_statistics = yaml.load(f, Loader=yaml.FullLoader)
+                img_mean = img_statistics['mean']
+                img_std = img_statistics['std']
             self.img_mean = np.asarray(img_mean)
             self.img_std = np.asarray(img_std)
+
         self.cameras = ['camera_fisheye_front' if 'marv' in self.path else 'camera_front',
                         'camera_fisheye_rear' if 'marv' in self.path else 'camera_rear',
                         'camera_right',
@@ -894,24 +901,16 @@ def monodem_demo():
     camera = 'camera_right'
     # camera = 'camera_front'
     # camera = 'camera_rear'
-    if 'marv' in cfg.dataset_path:
-        img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
-        img_std = np.array([0.2212268,  0.23130926, 0.29598755])
-    else:
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
 
     ds = MonoDemDataset(path=path,
                         img_size=(512, 512),
-                        img_mean=img_mean,
-                        img_std=img_std,
                         cfg=cfg)
     i = np.random.choice(range(len(ds)))
     # i = 0
     print(f'Visualizing sample {i}...')
     img, height_opt, height_est, weights_opt, weights_est = ds.__getitem__(i, visualize=True)
     # img, height_opt, height_est, weights_opt = ds[i]
-    img = img.transpose(1, 2, 0) * img_std + img_mean
+    img = img.transpose(1, 2, 0) * ds.img_std + ds.img_mean
 
     plt.figure(figsize=(20, 7))
     plt.subplot(1, 3, 1)
@@ -953,17 +952,8 @@ def weights_demo():
     # # path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
     # cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
     #
-    # if 'marv' in cfg.dataset_path:
-    #     img_mean = np.array([0.4750956, 0.47310572, 0.42155158])
-    #     img_std = np.array([0.2212268, 0.23130926, 0.29598755])
-    # else:
-    #     img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-    #     img_std = np.array([0.29598755, 0.23130926, 0.2212268])
-    #
     # ds = MonoDemDataset(path=path,
     #                     img_size=(512, 512),
-    #                     img_mean=img_mean,
-    #                     img_std=img_std,
     #                     cfg=cfg)
     # i = np.random.choice(range(len(ds)))
     # # i = 0

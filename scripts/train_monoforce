@@ -229,10 +229,6 @@ def main():
     # create dataset for MonoLayout training
     datasets = []
     img_size = (args.img_size, args.img_size)
-    img_mean = None
-    img_std = None
-    # img_mean = np.random.rand(3)
-    # img_std = np.random.rand(3)
     for path in data_paths[:-1]:
         assert os.path.exists(path)
 
@@ -241,7 +237,7 @@ def main():
         cfg.hm_interp_method = 'linear'
 
         # create dataset for MonoDEM training
-        train_ds = MonoDemDataset(path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
+        train_ds = MonoDemDataset(path, img_size=img_size, cfg=cfg)
         # print('Dataset size:', len(train_ds))
 
         if args.visualize:
@@ -259,7 +255,7 @@ def main():
     cfg_val = Config()
     cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
     cfg_val.hm_interp_method = 'linear'
-    val_ds = MonoDemDataset(val_path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg_val)
+    val_ds = MonoDemDataset(val_path, img_size=img_size, cfg=cfg_val)
     print('Validation dataset size:', len(val_ds))
 
     # MonoDEM Training

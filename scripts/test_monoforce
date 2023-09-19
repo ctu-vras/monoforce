@@ -24,15 +24,8 @@ def inference():
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
     cfg.hm_interp_method = None
 
-    if 'marv' in path:
-        img_mean = np.array([0.4750956,  0.47310572, 0.42155158] )
-        img_std = np.array([0.2212268,  0.23130926, 0.29598755])
-    else:
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
-    
     # create dataset for MonoDEM training
-    ds = MonoDemDataset(path, img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
+    ds = MonoDemDataset(path, img_size=img_size, cfg=cfg)
 
     # i = 0
     i = 48
@@ -164,17 +157,13 @@ def demo():
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
 
     if 'marv' in path:
-        img_mean = np.array([0.4750956, 0.47310572, 0.42155158])
-        img_std = np.array([0.2212268, 0.23130926, 0.29598755])
         camera = 'camera_fisheye_front'
     else:
-        img_mean = np.array([0.42155158, 0.47310572, 0.4750956])
-        img_std = np.array([0.29598755, 0.23130926, 0.2212268])
         camera = 'camera_front'
 
     # create dataset for MonoDEM training
     ds = MonoDemDataset(path, cameras=[camera],
-                        img_size=img_size, img_mean=img_mean, img_std=img_std, cfg=cfg)
+                        img_size=img_size, cfg=cfg)
     fig = plt.figure(figsize=(20, 7))
 
     for i in tqdm(range(len(ds))):

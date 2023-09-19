@@ -128,12 +128,8 @@ def main():
     ]
     data_path = data_paths[0]
 
-    img_mean = np.array([0.42155158, 0.47310572, 0.4750956]) if 'marv' in data_path else np.array([0.4750956, 0.47310572, 0.42155158])
-    img_std = np.array([0.29598755, 0.23130926, 0.2212268]) if 'marv' in data_path else np.array([0.2212268, 0.23130926, 0.29598755])
     ds = MonoDemDataset(path=data_path,
                         img_size=(512, 512),
-                        img_mean=img_mean,
-                        img_std=img_std,
                         cameras=['camera_fisheye_front'],
                         cfg=cfg)
     i = 20
