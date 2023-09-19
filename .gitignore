@@ -165,3 +165,8 @@ gen/
 *.bak
 config/weights/
 runs/
+
+# sbatch jobs logging
+*.err
+*.out
+
