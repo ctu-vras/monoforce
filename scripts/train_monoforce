@@ -36,8 +36,8 @@ class Trainer(object):
                  vis=False, save=True):
         self.train_ds = train_dataset
         self.val_ds = val_dataset
-        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True, num_workers=12)
-        self.val_dataloader = DataLoader(self.val_ds, batch_size=1, shuffle=False, num_workers=12)
+        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
+        self.val_dataloader = DataLoader(self.val_ds, batch_size=1, shuffle=False)
         self.regularization = regularization
         self.device = torch.device('cuda:0')
 
