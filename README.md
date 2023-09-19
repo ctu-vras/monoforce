@@ -1,6 +1,8 @@
 # MonoForce
 Self-supervised learning of physics-aware grey-box model for predicting robot-terrain interaction.
 
+[![Arxiv](http://img.shields.io/badge/paper-arxiv.2303.01123-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
+
 <img src="docs/imgs/overview_from_img.png" height="280"/> <img src="docs/imgs/overview.png" height="300"/>
 ![](./docs/imgs/demo.gif)
 
