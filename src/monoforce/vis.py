@@ -106,7 +106,7 @@ def setup_visualization(system, states=None, states_true=None,
                                  color=(0.6, 0.5, 0.4), representation='wireframe', line_width=5.0)
     visu_robot = mlab.points3d(points[0, :], points[1, :], z_margin + points[2, :], scale_factor=0.25)
 
-    mlab.colorbar(object=visu_rigid_mesh, title="Terrain friction coefficient")
+    # mlab.colorbar(object=visu_rigid_mesh, title="Terrain friction coefficient")
     mlab.view(azimuth=150, elevation=80, distance=16.0)
 
     if show:

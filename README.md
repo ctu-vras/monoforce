@@ -8,7 +8,7 @@ Self-supervised learning of physics-aware grey-box model for predicting robot-te
 Prerequisites:
 - [pytorch](https://pytorch.org/) for differentiable physics simulation and models training.
 - [mayavi](https://docs.enthought.com/mayavi/mayavi/) for data visualization.
-- [ROS](http://wiki.ros.org/ROS/Installation) for data processing, package integration.
+- [ROS](http://wiki.ros.org/ROS/Installation) for data processing, and package integration.
 
 Please clone and build the ROS package:
 ```commandline
@@ -49,7 +49,7 @@ scp -r <username>@subtdata.felk.cvut.cz:/data/robingas/data/<experiment-date-pla
 ![](./docs/imgs/lidar_imu_trav.png)
 
 The semi-supervised data is stored in the `clouds` folder.
-The point clouds traversed by a robot are labelled with the recorded onboard IMU measurements.
+The point clouds traversed by a robot are labeled with the recorded onboard IMU measurements.
 Please have a look at the
 [video](https://drive.google.com/file/d/1CmLwgTUFmKrMXm5hG5n1Bz0XBZqLNifc/view?usp=drive_link)
 for the data preview from a sequence recorded with a tracked robot in a forest environment.
@@ -108,15 +108,15 @@ cd ./scripts/
 Height map (and/or its properties) learning from the ground-truth trajectories followed by the robot:
 ```commandline
 cd ./scripts/
-./terrain_learner
+./fit_terrain
 ```
 
 ## Terrain shape Prediction
 
-1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is being optimized in order to much the ground-truth trajectory as closely as possible.
+1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is optimized in order to match the ground-truth trajectory as closely as possible.
 2. The optimized terrain shape is used as a label to train the terrain shape predictor. This model takes as input an RGB-image and predicts the shape of the supporting terrain in front of a robot.
 In our experiments, we utilize the [Monolayout](https://github.com/manila95/monolayout) model.
-3. Lidar scans are used in order to provide height map estimates serving as a regularization factor during trining.
+3. Lidar scans are used in order to provide height map estimates serving as a regularization factor during training.
 
 An example of a trained model output is given bellow.
 

@@ -16,9 +16,9 @@ from scipy.spatial.transform import Rotation
 torch.set_default_dtype(torch.float64)
 
 cfg = Config()
-cfg.grid_res = 0.2
+cfg.grid_res = 0.1
 cfg.device = 'cpu'
-cfg.d_max = 10.
+cfg.d_max = 12.8
 cfg.d_min = 1.
 cfg.max_vel = np.inf
 cfg.max_omega = np.inf
