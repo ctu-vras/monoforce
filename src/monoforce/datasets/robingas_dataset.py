@@ -512,7 +512,22 @@ class MonoDemDataset(RobinGasDataset):
         poses = np.asarray([Tr @ pose for pose in poses])
 
         # height map from point cloud (!!! assumes points are in robot frame)
-        heightmap = self.estimate_heightmap(points, fill_value=poses[0][2, 3])
+        dir_path = os.path.join(self.path, 'terrain', 'estimated', self.cfg.hm_interp_method)
+        # if height map was estimated before - load it
+        if os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
+            # print('Loading height map from file...')
+            heightmap = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
+        # otherwise - estimate it
+        else:
+            # print('Estimating height map...')
+            heightmap = self.estimate_heightmap(points, fill_value=poses[0][2, 3])
+            # save height map as numpy array
+            result = np.zeros((heightmap['z'].shape[0], heightmap['z'].shape[1]), dtype=[(key, np.float64) for key in heightmap.keys()])
+            for key in heightmap.keys():
+                result[key] = heightmap[key]
+            os.makedirs(dir_path, exist_ok=True)
+            np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
+
         height_est = heightmap['z']
 
         # optimized height map
