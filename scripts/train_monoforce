@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save', type=str2bool, default=True)
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=1e-5)
     parser.add_argument('--n_epochs', type=int, default=500)
     parser.add_argument('--img_size', type=int, default=512)
     parser.add_argument('--regularization', type=str, default=None)
@@ -37,7 +37,7 @@ class Trainer(object):
         self.train_ds = train_dataset
         self.val_ds = val_dataset
         self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
-        self.val_dataloader = DataLoader(self.val_ds, batch_size=1, shuffle=False)
+        self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
         self.regularization = regularization
         self.device = torch.device('cuda:0')
 
