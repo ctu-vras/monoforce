@@ -165,6 +165,7 @@ gen/
 *.bak
 config/weights/
 runs/
+tb_runs/
 
 # sbatch jobs logging
 *.err
