@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-5)
     parser.add_argument('--n_epochs', type=int, default=500)
     parser.add_argument('--img_size', type=int, default=512)
-    parser.add_argument('--regularization', type=str, default=None)
+    parser.add_argument('--regularization', type=float, default=None)
     return parser.parse_args()
 
 
@@ -61,8 +61,11 @@ class Trainer(object):
         self.min_loss = np.inf
         self.vis = vis
         self.save = save
-        # tensorboard
-        self.writer = SummaryWriter()
+        # logging: tensorboard and weights
+        path = os.path.dirname(os.path.realpath(__file__))
+        time_label = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
+        self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % time_label))
+        self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % time_label)
 
     def visualize(self, img, height_label, height_pred, height_reg, weights_trav, weights_reg):
         plt.figure(figsize=(20, 5))
@@ -212,9 +215,8 @@ class Trainer(object):
                     self.min_loss = val_loss
                     print('Saving better model...')
                     for key in self.models.keys():
-                        dir_path = '../config/weights/monolayout/%s/' % datetime.now()
-                        os.makedirs(dir_path, exist_ok=True)
-                        torch.save(self.models[key].state_dict(), os.path.join(dir_path, '%s.pth' % key))
+                        os.makedirs(self.weights_dir_path, exist_ok=True)
+                        torch.save(self.models[key].state_dict(), os.path.join(self.weights_dir_path, '%s.pth' % key))
 
 
 def main():
