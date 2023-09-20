@@ -1,0 +1,13 @@
+#!/bin/sh
+
+#SBATCH --nodes=1                         # number of node
+#SBATCH --ntasks-per-node=32              # CPUs per node
+#SBATCH --time=0-23:59:00                 # time limit
+#SBATCH --error=job.err                   # standard error file
+#SBATCH --output=job.out                  # standard output file
+#SBATCH --partition=amdlong               # partition name
+#SBATCH --mail-user=agishrus@fel.cvut.cz  # where send info about job
+#SBATCH --mail-type=ALL                   # what to send, valid type values are NONE, BEGIN, END, FAIL, REQUEUE, ALL
+
+singularity run --bind /mnt/personal/agishrus ../../singularity/monoforce.sif ./passthrough ./create_terrain_features.sh
+
