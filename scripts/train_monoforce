@@ -264,7 +264,7 @@ def main():
     val_path = data_paths[-1]
     cfg_val = Config()
     cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
-    cfg_val.hm_interp_method = 'linear'
+    cfg_val.hm_interp_method = 'nearest'
     val_ds = MonoDemDataset(val_path, img_size=img_size, cfg=cfg_val)
     print('Validation dataset size:', len(val_ds))
 

@@ -120,7 +120,7 @@ class Evaluator:
         plt.imshow(img_right[..., (2, 1, 0)])
         plt.subplot(3, 3, 5)
         plt.title('Height map')
-        plt.imshow(height, origin='lower')
+        plt.imshow(height, cmap='jet')
         plt.colorbar()
 
     def get_data(self, i: int, ds: MonoDemDataset):
@@ -149,6 +149,9 @@ class Evaluator:
         # select height map (can be given from a model output)
         if self.model_name == 'monolayout':
             height = self.monolayout_inference(img)
+            # orienting the height map so that the robot is at the bottom
+            height = np.rot90(height)
+            height = np.fliplr(height)
         elif self.model_name == 'kkt':
             ds.cfg.hm_interp_method = None
             cloud = ds.get_cloud(i)
@@ -156,15 +159,19 @@ class Evaluator:
             points = transform_cloud(points, Tr)
             heightmap = ds.estimate_heightmap(points)
             height_full = heightmap['z']
+            # self.debug(i, ds, height_full)
             h, w = height_full.shape
             height_front = height_full[w//4:3*w//4, h//2:]
             mask = heightmap['mask']
             mask = mask[w//4:3*w//4, h//2:]
             height = self.kkt_inference(height_front, mask)
+            # orienting the height map so that the robot is at the bottom
+            height = np.rot90(height)
+            height = np.fliplr(height)
         else:
             height = height_reg.squeeze()
         # self.debug(i, ds, height); plt.show()
-        height = height.T
+        height = np.rot90(height, k=2).copy()  # rotate 180 deg because in the image the lower pixels (with height row number) are closer
 
         tstamps = traj['stamps']
         tstamps = tstamps - tstamps[0]
