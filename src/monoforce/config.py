@@ -31,10 +31,10 @@ class Config:
         self.dataset_path = '/tmp'
         self.trans_cost_weight = 1.
         self.rot_cost_weight = 1.
-        self.robot_terrain_interaction_model = 'simple'
+        self.robot_terrain_interaction_model = 'diffdrive'
         self.max_vel = 2.  # m/s
         self.max_omega = 2.  # rad/s
-        self.hm_interp_method = 'nearest'
+        self.hm_interp_method = 'linear'
 
     def __str__(self):
         return str(self.__dict__)

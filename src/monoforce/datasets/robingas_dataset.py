@@ -393,6 +393,7 @@ class MonoDemDataset(RobinGasDataset):
         super(MonoDemDataset, self).__init__(path, cfg)
         self.img_raw_size = None
         self.img_size = img_size
+        self.random_camera_selection_prob = 0.2
 
         img_statistics_path = os.path.join(self.path, 'calibration', 'img_statistics.yaml')
         if not os.path.exists(img_statistics_path):
@@ -470,9 +471,11 @@ class MonoDemDataset(RobinGasDataset):
 
     def __getitem__(self, i, visualize=False):
         camera = 'camera_fisheye_front' if 'marv' in self.path else 'camera_front'
-        # randomly choose camera with probability 0.2
-        if np.random.random() < 0.2:
-            camera = np.random.choice(self.cameras)
+        # randomly choose a camera other than front camera
+        if np.random.random() < self.random_camera_selection_prob and len(self.cameras) > 1:
+            cameras = self.cameras.copy()
+            cameras.remove(camera)
+            camera = np.random.choice(cameras)
 
         lidar = 'os_sensor'
 
@@ -519,7 +522,8 @@ class MonoDemDataset(RobinGasDataset):
         poses = np.asarray([Tr @ pose for pose in poses])
 
         # height map from point cloud (!!! assumes points are in robot frame)
-        dir_path = os.path.join(self.path, 'terrain', 'estimated', self.cfg.hm_interp_method)
+        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
+        dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
         # if height map was estimated before - load it
         if os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
@@ -534,7 +538,7 @@ class MonoDemDataset(RobinGasDataset):
                 result[key] = heightmap[key]
             os.makedirs(dir_path, exist_ok=True)
             np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
-
+        # estimated height map
         height_est = heightmap['z']
 
         # optimized height map
@@ -564,22 +568,6 @@ class MonoDemDataset(RobinGasDataset):
         weights_opt_cam = cv2.dilate(weights_opt_cam, kernel, iterations=5)
         weights_opt_cam = weights_opt_cam.astype(bool)
 
-        # rotate height maps and poses depending on camera orientation
-        # we do copy, because of this issue:
-        # https://stackoverflow.com/questions/72550211/valueerror-at-least-one-stride-in-the-given-numpy-array-is-negative-and-tensor
-        if 'left' in camera:
-            height_est_cam = np.rot90(height_est_cam, 1).copy()
-            height_opt_cam = np.rot90(height_opt_cam, 1).copy()
-            weights_opt_cam = np.rot90(weights_opt_cam, 1).copy()
-        elif 'right' in camera:
-            height_est_cam = np.rot90(height_est_cam, -1).copy()
-            height_opt_cam = np.rot90(height_opt_cam, -1).copy()
-            weights_opt_cam = np.rot90(weights_opt_cam, -1).copy()
-        elif 'rear' in camera:
-            height_est_cam = np.rot90(height_est_cam, 2).copy()
-            height_opt_cam = np.rot90(height_opt_cam, 2).copy()
-            weights_opt_cam = np.rot90(weights_opt_cam, 2).copy()
-
         # circle mask: all points within a circle of radius 1 m are valid
         x_grid = np.arange(0, self.cfg.d_max, self.cfg.grid_res)
         y_grid = np.arange(-self.cfg.d_max / 2., self.cfg.d_max / 2., self.cfg.grid_res)
@@ -590,6 +578,33 @@ class MonoDemDataset(RobinGasDataset):
         # gaussian mask
         weights_est_cam = np.exp(-dist ** 2 / (2. * radius ** 2))
 
+        # rotate height maps and poses depending on camera orientation
+        # we do copy, because of this issue:
+        # https://stackoverflow.com/questions/72550211/valueerror-at-least-one-stride-in-the-given-numpy-array-is-negative-and-tensor
+        if 'left' in camera:
+            height_est_cam = np.rot90(height_est_cam, 1)
+            height_opt_cam = np.rot90(height_opt_cam, 1)
+            weights_opt_cam = np.rot90(weights_opt_cam, 1)
+        elif 'right' in camera:
+            height_est_cam = np.rot90(height_est_cam, -1)
+            height_opt_cam = np.rot90(height_opt_cam, -1)
+            weights_opt_cam = np.rot90(weights_opt_cam, -1)
+        elif 'rear' in camera:
+            height_est_cam = np.rot90(height_est_cam, 2)
+            height_opt_cam = np.rot90(height_opt_cam, 2)
+            weights_opt_cam = np.rot90(weights_opt_cam, 2)
+
+        # rotate heightmaps to have robot position at the bottom
+        height_opt_cam = np.rot90(height_opt_cam, axes=(0, 1))
+        height_est_cam = np.rot90(height_est_cam, axes=(0, 1))
+        weights_opt_cam = np.rot90(weights_opt_cam, axes=(0, 1))
+        weights_est_cam = np.rot90(weights_est_cam, axes=(0, 1))
+        # flip heightmaps to have robot position at the bottom
+        height_opt_cam = np.fliplr(height_opt_cam).copy()
+        height_est_cam = np.fliplr(height_est_cam).copy()
+        weights_opt_cam = np.fliplr(weights_opt_cam).copy()
+        weights_est_cam = np.fliplr(weights_est_cam).copy()
+        
         if visualize:
             # draw point cloud with mayavi
             color_n = np.arange(len(points))
@@ -610,30 +625,32 @@ class MonoDemDataset(RobinGasDataset):
             mlab.view(azimuth=0, elevation=0, distance=2 * self.cfg.d_max)
 
             plt.figure(figsize=(20, 20))
-            plt.subplot(231)
+            plt.subplot(241)
             plt.title('RGB image')
             plt.imshow(img_front[..., (2, 1, 0)])
             plt.axis('off')
 
-            plt.subplot(232)
-            # plt.title('Heightmap')
+            plt.subplot(242)
+            plt.title('Estimated heightmap')
             plt.imshow(height_est, cmap='jet', alpha=0.8, origin='lower')
             # plot trajectory
             plt.plot(poses_grid[:, 0], poses_grid[:, 1], 'ro', markersize=2)
             # plot square
             plt.plot(square_grid[:, 0], square_grid[:, 1], 'y--', linewidth=2)
             # plt.grid()
-            plt.axis('equal')
             # plt.colorbar()
 
-            plt.subplot(233)
-            plt.title('Heightmap in camera frame')
-            plt.imshow(height_est_cam, cmap='jet', alpha=0.8, origin='lower')
+            plt.subplot(243)
+            plt.title('Estimated heightmap in camera frame')
+            plt.imshow(height_est_cam, cmap='jet', alpha=1.)
+            # plt.imshow(weights_est_cam, cmap='gray', alpha=0.5)
             plt.colorbar()
-            # plt.imshow(weights_est_cam, cmap='gray', alpha=0.5, origin='lower')
-            plt.plot(poses_grid_cam[:, 0], poses_grid_cam[:, 1], 'ro', markersize=2)
 
-            plt.subplot(234)
+            plt.subplot(244)
+            plt.title('Estimated heightmap weights')
+            plt.imshow(weights_est_cam, cmap='gray', alpha=1.)
+
+            plt.subplot(245)
             # plot point cloud
             points_filtered = filter_range(points, self.cfg.d_min, self.cfg.d_max)
             points_filtered = filter_grid(points_filtered, 0.2)
@@ -641,20 +658,21 @@ class MonoDemDataset(RobinGasDataset):
             plt.plot(points_grid[:, 0], points_grid[:, 1], 'k.', markersize=1, alpha=0.5)
             plt.axis('equal')
 
-            plt.subplot(235)
+            plt.subplot(246)
             plt.title('Optimized heightmap')
             plt.imshow(height_opt, cmap='jet', alpha=0.8, origin='lower')
             plt.plot(poses_grid[:, 0], poses_grid[:, 1], 'ro', markersize=2)
             plt.plot(square_grid[:, 0], square_grid[:, 1], 'y--', linewidth=2)
-            plt.axis('equal')
             # plt.colorbar()
 
-            plt.subplot(236)
+            plt.subplot(247)
             plt.title('Optimized heightmap in camera frame')
-            plt.imshow(height_opt_cam, cmap='jet', alpha=0.8, origin='lower')
+            plt.imshow(height_opt_cam, cmap='jet', alpha=1.)
             plt.colorbar()
-            # plt.imshow(weights_opt_cam, cmap='gray', alpha=0.5, origin='lower')
-            plt.plot(poses_grid_cam[:, 0], poses_grid_cam[:, 1], 'ro', markersize=2)
+
+            plt.subplot(248)
+            plt.title('Optimized heightmap weights')
+            plt.imshow(weights_opt_cam, cmap='gray', alpha=1.)
 
             # mlab.show()
             plt.show()
@@ -918,11 +936,11 @@ def monodem_demo():
     plt.imshow(img[..., (2, 1, 0)])
     plt.subplot(1, 3, 2)
     plt.title('Height Label')
-    plt.imshow(height_opt.squeeze(), origin='lower', cmap='jet')
-    plt.imshow(weights_opt.squeeze(), alpha=0.5, origin='lower', cmap='gray')
+    plt.imshow(height_opt.squeeze(), cmap='jet')
+    plt.imshow(weights_opt.squeeze(), alpha=0.5, cmap='gray')
     plt.subplot(1, 3, 3)
     plt.title('Height Regularization')
-    plt.imshow(height_est.squeeze(), origin='lower', cmap='jet')
+    plt.imshow(height_est.squeeze(), cmap='jet')
     plt.show()
 
 

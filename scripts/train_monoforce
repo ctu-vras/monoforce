@@ -58,7 +58,8 @@ class Trainer(object):
 
         # no loss reduction to apply weights first: https://discuss.pytorch.org/t/how-to-weight-the-loss/66372/2
         self.loss_fn = torch.nn.MSELoss(reduction='none')
-        self.min_loss = np.inf
+        self.min_val_loss = np.inf
+        self.min_train_loss = np.inf
         self.vis = vis
         self.save = save
         # logging: tensorboard and weights
@@ -76,23 +77,23 @@ class Trainer(object):
 
         plt.subplot(1, 5, 2)
         plt.title('Height Label')
-        plt.imshow(height_label[0].squeeze().cpu().numpy(), origin='lower')
+        plt.imshow(height_label[0].squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
-        plt.imshow(weights_trav[0].squeeze().cpu().numpy(), alpha=0.5, origin='lower')
+        plt.imshow(weights_trav[0].squeeze().cpu().numpy(), alpha=0.5, cmap='jet')
 
         plt.subplot(1, 5, 3)
         plt.title('Height Prediction')
-        plt.imshow(height_pred[0].squeeze().cpu().numpy(), origin='lower')
+        plt.imshow(height_pred[0].squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.subplot(1, 5, 4)
         plt.title('Height Regularization')
-        plt.imshow(height_reg[0].squeeze().cpu().numpy(), origin='lower')
+        plt.imshow(height_reg[0].squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.subplot(1, 5, 5)
         plt.title('Weights Regularization')
-        plt.imshow(weights_reg[0].squeeze().cpu().numpy(), origin='lower')
+        plt.imshow(weights_reg[0].squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.show()
@@ -211,12 +212,19 @@ class Trainer(object):
 
             if self.save:
                 # save better model
-                if self.min_loss > val_loss:
-                    self.min_loss = val_loss
-                    print('Saving better model...')
+                if self.min_val_loss > val_loss:
+                    self.min_val_loss = val_loss
+                    print('Saving better val model...')
                     for key in self.models.keys():
                         os.makedirs(self.weights_dir_path, exist_ok=True)
-                        torch.save(self.models[key].state_dict(), os.path.join(self.weights_dir_path, '%s.pth' % key))
+                        torch.save(self.models[key].state_dict(), os.path.join(self.weights_dir_path, '%s_val.pth' % key))
+
+                if self.min_train_loss > train_loss:
+                    self.min_train_loss = train_loss
+                    print('Saving better train model...')
+                    for key in self.models.keys():
+                        os.makedirs(self.weights_dir_path, exist_ok=True)
+                        torch.save(self.models[key].state_dict(), os.path.join(self.weights_dir_path, '%s_train.pth' % key))
 
 
 def main():
