@@ -26,20 +26,22 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-5)
     parser.add_argument('--n_epochs', type=int, default=500)
     parser.add_argument('--img_size', type=int, default=512)
-    parser.add_argument('--regularization', type=float, default=None)
+    parser.add_argument('--regularization', type=float, default=0.2)
+    parser.add_argument('--weighted_loss', type=str2bool, default=False)
     return parser.parse_args()
 
 
 class Trainer(object):
     def __init__(self, train_dataset, val_dataset, img_size=(512, 512),
                  batch_size=1, lr=1e-3, regularization=None,
+                 weighted_loss=False,
                  vis=False, save=True):
         self.train_ds = train_dataset
         self.val_ds = val_dataset
         self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
         self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
         self.regularization = regularization
-        self.device = torch.device('cuda:0')
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         self.models = {}
         self.img_size = img_size
@@ -56,12 +58,18 @@ class Trainer(object):
             self.parameters_to_train += list(self.models[key].parameters())
         self.optimizer = torch.optim.Adam(params=self.parameters_to_train, lr=lr)
 
-        # no loss reduction to apply weights first: https://discuss.pytorch.org/t/how-to-weight-the-loss/66372/2
-        self.loss_fn = torch.nn.MSELoss(reduction='none')
+        self.weighted_loss = weighted_loss
+        if self.weighted_loss:
+            # no loss reduction to apply weights first: https://discuss.pytorch.org/t/how-to-weight-the-loss/66372/2
+            self.loss_fn = torch.nn.MSELoss(reduction='none')
+        else:
+            self.loss_fn = torch.nn.MSELoss(reduction='mean')
         self.min_val_loss = np.inf
         self.min_train_loss = np.inf
+
         self.vis = vis
         self.save = save
+
         # logging: tensorboard and weights
         path = os.path.dirname(os.path.realpath(__file__))
         time_label = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
@@ -72,8 +80,9 @@ class Trainer(object):
         plt.figure(figsize=(20, 5))
         plt.subplot(1, 5, 1)
         plt.title('Input Image')
-        img_vis = img[0].cpu().numpy().transpose((1, 2, 0)) * self.val_ds.img_std.reshape((1, 1, 3)) + self.val_ds.img_mean.reshape((1, 1, 3))
-        plt.imshow(img_vis[..., (2, 1, 0)])
+        img_vis = img[0].cpu().numpy().transpose((1, 2, 0))
+        # img_vis = self.val_ds.destandardize_img(img_vis)
+        plt.imshow(img_vis)
 
         plt.subplot(1, 5, 2)
         plt.title('Height Label')
@@ -114,18 +123,24 @@ class Trainer(object):
             height_pred = self.models['decoder'](features, is_training=True)
 
             # loss is computed for the part of the predicted height map covered by robot's trajectory
-            loss = self.loss_fn(height_pred, height_label)
-            loss = loss * weights_traversed
-            loss = loss.sum() / (weights_traversed.sum() + 1e-6)
+            if self.weighted_loss:
+                loss = self.loss_fn(height_pred, height_label)
+                loss = loss * weights_traversed
+                loss = loss.sum() / (weights_traversed.sum() + 1e-6)
+            else:
+                loss = self.loss_fn(height_pred * weights_traversed, height_label * weights_traversed)
             # print('Loss: %f' % loss.item())
-            # tensorboard logger
             self.writer.add_scalar('Loss(iter)/train', loss.item(), i + epoch_n * len(self.train_dataloader))
 
             # add regularization loss
             if self.regularization is not None:
-                loss_reg = self.loss_fn(height_pred, height_reg)
-                loss_reg = loss_reg * weights_reg
-                loss_reg = loss_reg.sum() / (weights_reg.sum() + 1e-6)
+                if self.weighted_loss:
+                    loss_reg = self.loss_fn(height_pred, height_reg)
+                    loss_reg = loss_reg * weights_reg
+                    loss_reg = loss_reg.sum() / (weights_reg.sum() + 1e-6)
+                else:
+                    loss_reg = self.loss_fn(height_pred, height_reg)
+
                 # print('Loss reg: %f' % loss_reg.item())
                 self.writer.add_scalar('Loss_reg(iter)/train', loss_reg.item(), i + epoch_n * len(self.train_dataloader))
                 loss += self.regularization * loss_reg
@@ -247,7 +262,7 @@ def main():
         cfg.hm_interp_method = 'linear'
 
         # create dataset for MonoDEM training
-        train_ds = MonoDemDataset(path, img_size=img_size, cfg=cfg)
+        train_ds = MonoDemDataset(path, img_size=img_size, is_train=True, cfg=cfg)
         # print('Dataset size:', len(train_ds))
 
         if args.visualize:
@@ -265,12 +280,13 @@ def main():
     cfg_val = Config()
     cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
     cfg_val.hm_interp_method = 'nearest'
-    val_ds = MonoDemDataset(val_path, img_size=img_size, cfg=cfg_val)
+    val_ds = MonoDemDataset(val_path, img_size=img_size, is_train=False, cfg=cfg_val)
     print('Validation dataset size:', len(val_ds))
 
     # MonoDEM Training
     trainer = Trainer(train_ds, val_ds, img_size=img_size,
-                      batch_size=args.batch_size, lr=args.lr, regularization=args.regularization,
+                      batch_size=args.batch_size, lr=args.lr,
+                      regularization=args.regularization, weighted_loss=args.weighted_loss,
                       vis=args.visualize, save=args.save)
     trainer.train(n_epochs=args.n_epochs)
 

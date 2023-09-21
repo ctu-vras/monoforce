@@ -15,8 +15,17 @@ from ..imgproc import undistort_image, project_cloud_to_image
 from tqdm import tqdm
 from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
+from ..utils import normalize
 import yaml
 import cv2
+import albumentations as A
+
+
+__all__ = [
+    'SegmentationDataset',
+    'RobinGasDataset',
+    'MonoDemDataset',
+]
 
 IGNORE_LABEL = 255
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
@@ -279,6 +288,7 @@ class RobinGasDataset(Dataset):
         camera_name = prefix + camera
         ind = self.ids[i]
         image = cv2.imread(os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera_name)))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
 
     def get_optimized_terrain(self, i):
@@ -389,9 +399,9 @@ class MonoDemDataset(RobinGasDataset):
                  path,
                  img_size=(512, 512),
                  cameras=None,
+                 is_train=False,
                  cfg=Config()):
         super(MonoDemDataset, self).__init__(path, cfg)
-        self.img_raw_size = None
         self.img_size = img_size
         self.random_camera_selection_prob = 0.2
 
@@ -414,6 +424,21 @@ class MonoDemDataset(RobinGasDataset):
                         'camera_fisheye_rear' if 'marv' in self.path else 'camera_rear',
                         'camera_right',
                         'camera_left'] if cameras is None else cameras
+
+        self.img_augs = A.Compose([
+            A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
+            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+            A.RandomGamma(gamma_limit=(80, 120), p=0.5),
+            A.Blur(blur_limit=7, p=0.5),
+            A.GaussNoise(var_limit=(10, 50), p=0.5),
+            A.MotionBlur(blur_limit=7, p=0.5),
+            A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200), p=0.5),
+            # A.RandomShadow(num_shadows_lower=1, num_shadows_upper=2, shadow_dimension=5, shadow_roi=(0, 0.5, 1, 1), p=0.5),
+            A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
+            # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
+            A.RandomToneCurve(scale=0.1, p=0.5),
+        ]) if is_train else None
+        self.is_train = is_train
 
     def get_undistorted_image(self, i, cam):
         img = self.get_image(i, cam)
@@ -439,14 +464,23 @@ class MonoDemDataset(RobinGasDataset):
         img = img[H - h:H, W // 2 - w // 2: W // 2 + w // 2]
         return img
 
-    def normalize_img(self, img):
+    def standardize_img(self, img):
         H, W, C = img.shape
-        img -= img.min()
-        img = img / img.max()
-        img_01 = img
-        img_01_CHW = img_01.transpose((2, 0, 1))
-        img_CHW_norm = (img_01_CHW - self.img_mean.reshape((C, 1, 1))) / self.img_std.reshape((C, 1, 1))
-        return img_CHW_norm
+        img_01 = normalize(img)
+        img_norm = (img_01 - self.img_mean.reshape((1, 1, C))) / self.img_std.reshape((1, 1, C))
+        return img_norm
+
+    def destandardize_img(self, img_norm):
+        H, W, C = img_norm.shape
+        img_01 = img_norm * self.img_std.reshape((1, 1, C)) + self.img_mean.reshape((1, 1, C))
+        return img_01
+
+    def preprocess_img(self, img_raw):
+        img = self.resize_crop_img(img_raw)
+        if self.is_train:
+            img = self.img_augs(image=img)['image']
+        # img = self.standardize_img(img)
+        return img
 
     def calculate_img_statistics(self):
         # calculate mean and std from the entire dataset
@@ -454,8 +488,7 @@ class MonoDemDataset(RobinGasDataset):
         print('Calculating mean and std from the entire dataset...')
         for i in tqdm(range(len(self))):
             img = self.get_image(i)
-            img_01 = img - img.min()
-            img_01 = img_01 / img_01.max()
+            img_01 = normalize(img)
 
             mean = img_01.reshape([-1, 3]).mean(axis=0)
             std = img_01.reshape([-1, 3]).std(axis=0)
@@ -472,7 +505,7 @@ class MonoDemDataset(RobinGasDataset):
     def __getitem__(self, i, visualize=False):
         camera = 'camera_fisheye_front' if 'marv' in self.path else 'camera_front'
         # randomly choose a camera other than front camera
-        if np.random.random() < self.random_camera_selection_prob and len(self.cameras) > 1:
+        if np.random.random() < self.random_camera_selection_prob and len(self.cameras) > 1 and self.is_train:
             cameras = self.cameras.copy()
             cameras.remove(camera)
             camera = np.random.choice(cameras)
@@ -627,7 +660,7 @@ class MonoDemDataset(RobinGasDataset):
             plt.figure(figsize=(20, 20))
             plt.subplot(241)
             plt.title('RGB image')
-            plt.imshow(img_front[..., (2, 1, 0)])
+            plt.imshow(img_front)
             plt.axis('off')
 
             plt.subplot(242)
@@ -678,10 +711,20 @@ class MonoDemDataset(RobinGasDataset):
             plt.show()
 
         # resize and normalize image
-        img_front = self.resize_crop_img(img_front)
-        img_front = self.normalize_img(img_front)
+        img_front = self.preprocess_img(img_front)
 
-        return img_front, height_opt_cam[None], height_est_cam[None], weights_opt_cam[None], weights_est_cam[None]
+        # flip image and heightmaps from left to right with 50% probability
+        if self.is_train and np.random.random() > 0.5:
+            img_front = np.fliplr(img_front).copy()
+            height_opt_cam = np.fliplr(height_opt_cam).copy()
+            height_est_cam = np.fliplr(height_est_cam).copy()
+            weights_opt_cam = np.fliplr(weights_opt_cam).copy()
+            weights_est_cam = np.fliplr(weights_est_cam).copy()
+
+        # convert to CHW format
+        img_front_CHW = img_front.transpose((2, 0, 1))
+
+        return img_front_CHW, height_opt_cam[None], height_est_cam[None], weights_opt_cam[None], weights_est_cam[None]
 
 
 def segm_demo():
@@ -797,22 +840,22 @@ def colored_clouds_demo():
 
     plt.subplot(332)
     plt.title('Front camera')
-    plt.imshow(img_front[..., (2, 1, 0)])
+    plt.imshow(img_front)
     plt.axis('off')
 
     plt.subplot(338)
     plt.title('Rear camera')
-    plt.imshow(img_rear[..., (2, 1, 0)])
+    plt.imshow(img_rear)
     plt.axis('off')
 
     plt.subplot(334)
     plt.title('Left camera')
-    plt.imshow(img_left[..., (2, 1, 0)])
+    plt.imshow(img_left)
     plt.axis('off')
 
     plt.subplot(336)
     plt.title('Right camera')
-    plt.imshow(img_right[..., (2, 1, 0)])
+    plt.imshow(img_right)
     plt.axis('off')
 
     # show point cloud
@@ -876,7 +919,7 @@ def terrain_demo():
     plt.imshow(height)
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(133)
-    plt.imshow(img[..., (2, 1, 0)])
+    plt.imshow(img)
     plt.show()
 
     # # draw height map as a surface
@@ -933,7 +976,7 @@ def monodem_demo():
     plt.figure(figsize=(20, 7))
     plt.subplot(1, 3, 1)
     plt.title('Input Image')
-    plt.imshow(img[..., (2, 1, 0)])
+    plt.imshow(img)
     plt.subplot(1, 3, 2)
     plt.title('Height Label')
     plt.imshow(height_opt.squeeze(), cmap='jet')
@@ -1023,15 +1066,52 @@ def estimate_heightmap_from_cloud():
     plt.show()
 
 
+def augs_demo():
+    data_path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    cfg = Config()
+    ds = MonoDemDataset(path=data_path,
+                        img_size=(512, 512),
+                        is_train=True,
+                        cfg=cfg)
+    i = 0
+    # img_raw = ds.get_image(i, 'front')
+    img_raw, _ = ds.get_undistorted_image(i, 'front')
+    # ds.img_augs = A.Compose([
+    #     # A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=True),
+    #     # A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, always_apply=True),
+    #     # A.RandomGamma(gamma_limit=(80, 120), always_apply=True),
+    #     # A.Blur(blur_limit=7, always_apply=True),
+    #     # A.GaussNoise(var_limit=(10, 50), always_apply=True),
+    #     # A.MotionBlur(blur_limit=7, always_apply=True),
+    #     # A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200)),
+    #     # A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2),
+    #     # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5),
+    #     A.RandomToneCurve(scale=0.1, always_apply=True),
+    # ])
+    # img = ds.img_augs(image=img_raw)["image"]
+    img, height_opt, height_est, weights_opt, weights_est = ds[i]
+    img = img.transpose(1, 2, 0)
+
+    plt.figure(figsize=(20, 7))
+    plt.subplot(1, 2, 1)
+    plt.title('Input Image')
+    plt.imshow(img_raw)
+    plt.subplot(1, 2, 2)
+    plt.title('Augmented Image')
+    plt.imshow(img)
+    plt.show()
+
+
 def main():
     # segm_demo()
     # heightmap_demo()
     # calibs_demo()
     # colored_clouds_demo()
     # terrain_demo()
-    monodem_demo()
+    # monodem_demo()
     # weights_demo()
     # estimate_heightmap_from_cloud()
+    augs_demo()
 
 
 if __name__ == '__main__':

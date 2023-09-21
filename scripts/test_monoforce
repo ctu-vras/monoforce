@@ -93,7 +93,8 @@ def demo():
 
         # visualize results
         plt.clf()
-        img_vis = img.transpose((1, 2, 0)) * ds.img_std.reshape((1, 1, 3)) + ds.img_mean.reshape((1, 1, 3))
+        img_vis = img.transpose((1, 2, 0))
+        # img_vis = ds.destandardize_img(img_vis)
         plt.subplot(231)
         plt.imshow(img_vis[..., (2, 1, 0)])  # RGB
         plt.title('Input image')
@@ -155,7 +156,8 @@ def demo():
 
 
 def main():
-    demo()
+    with torch.no_grad():
+        demo()
 
 
 if __name__ == '__main__':

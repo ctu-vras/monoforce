@@ -241,6 +241,7 @@ def main():
                                   state=State(xyz=xyz_rpy[0, :3] + np.array([0., 0., 1.]),
                                               rot=Rotation.from_euler('xyz', xyz_rpy[0, 3:]).as_matrix()),
                                   vel_tracks=np.array([2.5, 2.5]),
+                                  interaction_model='rigid_soft_layers',
                                   device=device, use_ode=False)
 
     # put models with their params to device
