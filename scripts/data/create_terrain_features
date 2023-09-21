@@ -296,7 +296,7 @@ def train(ds, cfg=Config(), vis=False, save_data=False):
     ids = np.arange(len(ds))
     for data_i in tqdm(ids, desc='Data samples'):
         print('Selected data sample %i/%i' % (data_i, len(ds)))
-        if ds.ids[data_i]+'.npy' in os.listdir(ds.path + 'terrain/'):
+        if os.path.exists(os.path.join(ds.path, 'terrain/', ds.ids[data_i]+'.npy')):
             print('Already trained')
             continue
         sample = ds[data_i]

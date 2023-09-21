@@ -33,8 +33,9 @@ def parse_args():
 
 class Trainer(object):
     def __init__(self, train_dataset, val_dataset, img_size=(512, 512),
-                 batch_size=1, lr=1e-3, regularization=None,
-                 weighted_loss=False,
+                 batch_size=1, lr=1e-3,
+                 regularization=None, weighted_loss=False,
+                 pretrained_paths=None,
                  vis=False, save=True):
         self.train_ds = train_dataset
         self.val_ds = val_dataset
@@ -42,14 +43,10 @@ class Trainer(object):
         self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
         self.regularization = regularization
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-        self.models = {}
         self.img_size = img_size
-        self.models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=self.img_size[0], img_wt=self.img_size[1], pretrained=True)
-        self.models["decoder"] = monolayout.Decoder(self.models["encoder"].resnet_encoder.num_ch_enc)
 
-        for key in self.models.keys():
-            self.models[key].to(self.device)
+        # models
+        self.models = self.init_models(pretrained_paths=pretrained_paths)
 
         # optimizer
         self.parameters_to_train = []
@@ -75,6 +72,27 @@ class Trainer(object):
         time_label = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
         self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % time_label))
         self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % time_label)
+
+    def init_models(self, pretrained_paths=None):
+        assert isinstance(pretrained_paths, dict) or pretrained_paths is None
+        models = {}
+        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=self.img_size[0], img_wt=self.img_size[1], pretrained=True)
+        models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
+
+        if pretrained_paths is not None:
+            assert "encoder" in pretrained_paths.keys() and "decoder" in pretrained_paths.keys()
+            print('Loading pretrained weights for encoder and decoder from:\n%s...' % pretrained_paths)
+
+            encoder_dict = torch.load(pretrained_paths["encoder"], map_location=self.device)
+            filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
+            models["encoder"].load_state_dict(filtered_dict_enc)
+            models["decoder"].load_state_dict(torch.load(pretrained_paths["decoder"], map_location=self.device))
+
+        for key in models.keys():
+            models[key].train()
+            models[key].to(self.device)
+
+        return models
 
     def visualize(self, img, height_label, height_pred, height_reg, weights_trav, weights_reg):
         plt.figure(figsize=(20, 5))
@@ -187,7 +205,7 @@ class Trainer(object):
                 loss_reg = loss_reg * weights_reg
                 loss_reg = loss_reg.sum() / (weights_reg.sum() + 1e-6)
                 # print('Loss reg: %f' % loss_reg.item())
-                self.writer.add_scalar('Loss_reg(iter)/val', loss_reg.item(), i + epoch_n * len(self.train_dataloader))
+                self.writer.add_scalar('Loss_reg(iter)/val', loss_reg.item(), i + epoch_n * len(self.val_dataloader))
                 loss += self.regularization * loss_reg
 
             loss_sum += loss
@@ -201,10 +219,7 @@ class Trainer(object):
             self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
 
         # add input image to tensorboard logger
-        img_mean = torch.tensor(self.val_ds.img_mean, device=self.device).view(1, 3, 1, 1)
-        img_std = torch.tensor(self.val_ds.img_std, device=self.device).view(1, 3, 1, 1)
-        img_denorm = img * img_std + img_mean
-        self.writer.add_images('Input Image', img_denorm[:, (2, 1, 0)], 0)
+        self.writer.add_images('Input Image', img, 0)
         # add predictions to tensorboard logger
         self.writer.add_images('Height Label', normalize(height_label), 0)
         self.writer.add_images('Height Prediction', normalize(height_pred), 0)
@@ -247,14 +262,18 @@ def main():
 
     data_paths = [
         '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
         '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
+        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
     ]
 
     # create dataset for MonoLayout training
     datasets = []
     img_size = (args.img_size, args.img_size)
-    for path in data_paths[:-1]:
+    train_paths = data_paths[:-1]
+    val_path = data_paths[-1]
+    print('Train paths:', train_paths)
+    print('Val path:', val_path)
+    for path in train_paths:
         assert os.path.exists(path)
 
         cfg = Config()
@@ -276,17 +295,24 @@ def main():
     print('Training dataset size:', len(train_ds))
 
     # create validation dataset
-    val_path = data_paths[-1]
     cfg_val = Config()
     cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
     cfg_val.hm_interp_method = 'nearest'
     val_ds = MonoDemDataset(val_path, img_size=img_size, is_train=False, cfg=cfg_val)
     print('Validation dataset size:', len(val_ds))
 
+    # pretrained weights paths for MonoDEM (encoder and decoder)
+    pretrained_paths = {
+        "encoder": "../config/weights/monolayout/encoder.pth",
+        "decoder": "../config/weights/monolayout/decoder.pth",
+    }
+
     # MonoDEM Training
-    trainer = Trainer(train_ds, val_ds, img_size=img_size,
+    trainer = Trainer(train_ds, val_ds,
+                      img_size=img_size,
                       batch_size=args.batch_size, lr=args.lr,
                       regularization=args.regularization, weighted_loss=args.weighted_loss,
+                      pretrained_paths=pretrained_paths,
                       vis=args.visualize, save=args.save)
     trainer.train(n_epochs=args.n_epochs)
 
