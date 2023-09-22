@@ -125,9 +125,11 @@ class Trainer(object):
 
         plt.show()
 
-    def train_epoch(self, epoch_n):
+    def epoch(self, dataloader, epoch_n, mode='train'):
+        assert mode in ['train', 'val']
+
         loss_sum = torch.as_tensor(0.0, device=self.device)
-        for i, batch in tqdm(enumerate(self.train_dataloader)):
+        for i, batch in tqdm(enumerate(dataloader)):
             # get sample from data loader (front image, height map label and height map regularization)
             img, height_label, height_reg, weights_traversed, weights_reg = batch
             img = img.to(self.device)
@@ -148,7 +150,7 @@ class Trainer(object):
             else:
                 loss = self.loss_fn(height_pred * weights_traversed, height_label * weights_traversed)
             # print('Loss: %f' % loss.item())
-            self.writer.add_scalar('Loss(iter)/train', loss.item(), i + epoch_n * len(self.train_dataloader))
+            self.writer.add_scalar('Loss(iter)/%s' % mode, loss.item(), i + epoch_n * len(dataloader))
 
             # add regularization loss
             if self.regularization is not None:
@@ -160,82 +162,42 @@ class Trainer(object):
                     loss_reg = self.loss_fn(height_pred, height_reg)
 
                 # print('Loss reg: %f' % loss_reg.item())
-                self.writer.add_scalar('Loss_reg(iter)/train', loss_reg.item(), i + epoch_n * len(self.train_dataloader))
+                self.writer.add_scalar('Loss_reg(iter)/%s' % mode, loss_reg.item(), i + epoch_n * len(dataloader))
                 loss += self.regularization * loss_reg
 
-            # backpropagate gradients and update model params
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            if mode == 'train':
+                # backpropagate gradients and update model params
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
 
             loss_sum += loss
-            # print('Iter: %i, training loss: %f' % (i, loss_sum.item()))
-            self.writer.add_scalar('Loss_sum(iter)/train', loss_sum.item(), i + epoch_n * len(self.train_dataloader))
 
         loss_sum /= len(self.train_ds)
+        
+        if mode == 'val':
+            # add input image to tensorboard logger
+            self.writer.add_images('Input Image', img, 0)
+            # add predictions to tensorboard logger
+            self.writer.add_images('Height Label', normalize(height_label), 0)
+            self.writer.add_images('Height Prediction', normalize(height_pred), 0)
+            self.writer.add_images('Height Regularization', normalize(height_reg), 0)
+            self.writer.add_images('Mask Traversed', weights_traversed, 0)
+            self.writer.add_images('Mask Regularization', weights_reg, 0)
 
-        return loss_sum
-
-    def val_epoch(self, epoch_n):
-        loss_sum = torch.as_tensor(0.0, device=self.device)
-        for i, batch in tqdm(enumerate(self.val_dataloader)):
-            # get sample from data loader (front image, height map label and height map regularization)
-            img, height_label, height_reg, weights_traversed, weights_reg = batch
-            img = img.to(self.device)
-            height_label = height_label.to(self.device)
-            height_reg = height_reg.to(self.device)
-            weights_traversed = weights_traversed.to(self.device)
-            weights_reg = weights_reg.to(self.device)
-
-            # model inference
-            features = self.models['encoder'](img)
-            height_pred = self.models['decoder'](features, is_training=True)
-
-            # loss is computed for the part of the predicted height map covered by robot's trajectory
-            loss = self.loss_fn(height_pred, height_label)
-            loss = loss * weights_traversed
-            loss = loss.sum() / (weights_traversed.sum() + 1e-6)
-            # print('Loss: %f' % loss.item())
-            # tensorboard logger
-            self.writer.add_scalar('Loss(iter)/val', loss.item(), i + epoch_n * len(self.val_dataloader))
-
-            # add regularization loss
-            if self.regularization is not None:
-                loss_reg = self.loss_fn(height_pred, height_reg)
-                loss_reg = loss_reg * weights_reg
-                loss_reg = loss_reg.sum() / (weights_reg.sum() + 1e-6)
-                # print('Loss reg: %f' % loss_reg.item())
-                self.writer.add_scalar('Loss_reg(iter)/val', loss_reg.item(), i + epoch_n * len(self.val_dataloader))
-                loss += self.regularization * loss_reg
-
-            loss_sum += loss
-            # print('Iter: %i, validation loss: %f' % (i, loss_sum.item()))
-            self.writer.add_scalar('Loss_sum(iter)/val', loss_sum.item(), i + epoch_n * len(self.val_dataloader))
-
-        loss_sum /= len(self.val_ds)
-
-        # visualize
-        if self.vis:
-            self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
-
-        # add input image to tensorboard logger
-        self.writer.add_images('Input Image', img, 0)
-        # add predictions to tensorboard logger
-        self.writer.add_images('Height Label', normalize(height_label), 0)
-        self.writer.add_images('Height Prediction', normalize(height_pred), 0)
-        self.writer.add_images('Height Regularization', normalize(height_reg), 0)
-        self.writer.add_images('Mask Traversed', weights_traversed, 0)
-        self.writer.add_images('Mask Regularization', weights_reg, 0)
+            # visualize
+            if self.vis:
+                self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
 
         return loss_sum
 
     def train(self, n_epochs=1):
         for e in range(n_epochs):
             print('Training epoch %i...' % e)
-            train_loss = self.train_epoch(e)
+            train_loss = self.epoch(dataloader=self.train_dataloader, epoch_n=e, mode='train')
             print('Validation epoch %i...' % e)
             with torch.no_grad():
-                val_loss = self.val_epoch(e)
+                val_loss = self.epoch(dataloader=self.val_dataloader, epoch_n=e, mode='val')
 
             # log losses on the same plot
             self.writer.add_scalars('Loss(epoch)', {'train': train_loss.item(), 'val': val_loss.item()}, e)
@@ -303,10 +265,11 @@ def main():
     print('Validation dataset size:', len(val_ds))
 
     # pretrained weights paths for MonoDEM (encoder and decoder)
-    pretrained_paths = {
-        "encoder": "../config/weights/monolayout/encoder.pth",
-        "decoder": "../config/weights/monolayout/decoder.pth",
-    }
+    # pretrained_paths = {
+    #     "encoder": "../config/weights/monolayout/encoder.pth",
+    #     "decoder": "../config/weights/monolayout/decoder.pth",
+    # }
+    pretrained_paths = None
 
     # MonoDEM Training
     trainer = Trainer(train_ds, val_ds,
