@@ -241,7 +241,7 @@ def main():
 
         cfg = Config()
         cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-        cfg.hm_interp_method = 'linear'
+        cfg.hm_interp_method = 'nearest'
 
         # create dataset for MonoDEM training
         train_ds = MonoDemDataset(path, img_size=img_size, is_train=True, cfg=cfg)
