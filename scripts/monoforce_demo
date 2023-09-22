@@ -28,33 +28,44 @@ class MonoForce:
         else:
             pass
 
-    def load_monolayout(self):
+    def load_monolayout(self,
+                        encoder_path='../config/weights/monolayout/encoder.pth',
+                        decoder_path='../config/weights/monolayout/decoder.pth'):
         H, W = self.img_size
         models = {}
         # load encoder weights
         models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-        encoder_path = '../config/weights/monolayout/encoder.pth'
         encoder_dict = torch.load(encoder_path, map_location=self.cfg.device)
         filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
         models["encoder"].load_state_dict(filtered_dict_enc)
 
         # load decoder weights
-        decoder_path = '../config/weights/monolayout/decoder.pth'
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
         models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
         return models
 
-    def monolayout_inference(self, img):
+    def monolayout_inference(self, img, debug=False):
         with torch.no_grad():
             img_tensor = torch.from_numpy(img).unsqueeze(0)
             features = self.models['encoder'](img_tensor)
             height_pred = self.models['decoder'](features, is_training=True)
         height_pred = height_pred.squeeze().cpu().numpy()
+        if debug:
+            plt.figure(figsize=(20, 10))
+            plt.subplot(1, 2, 1)
+            plt.title('Input image (normalized color)')
+            plt.imshow(img.transpose(1, 2, 0))
+            plt.subplot(1, 2, 2)
+            plt.title('Predicted height map')
+            plt.imshow(height_pred, cmap='jet')
+            plt.colorbar()
+            plt.show()
         return height_pred
 
     def run(self):
-        height = self.monolayout_inference(self.img)
-        height = height.T
+        height = self.monolayout_inference(self.img, debug=False)
+        # rotate 180 deg because in the image the lower pixels (with height row number) are closer
+        height = np.rot90(height, k=2).copy()
 
         s0 = State(xyz=torch.tensor([-self.cfg.d_max / 2, 0., 1.], device=self.cfg.device).view(3, 1),
                    rot=torch.eye(3, device=self.cfg.device),
@@ -148,11 +159,17 @@ def main():
     img_vis = ds.get_image(i, 'front')[..., (2, 1, 0)]
     plt.figure(figsize=(20, 10))
     plt.subplot(121)
+    plt.title('Input image')
     plt.axis('off')
     plt.imshow(img_vis)
     plt.subplot(122)
-    plt.plot(controls['stamps'], controls['vel_x'], label='vel_x')
-    plt.plot(controls['stamps'], controls['vel_omega'], label='vel_omega')
+    plt.title('Control commands')
+    plt.plot(controls['stamps'], controls['vel_x'], 'r-', label='v(t)', linewidth=2)
+    plt.plot(controls['stamps'], controls['vel_omega'], 'b-', label='w(t)', linewidth=2)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Velocity [m/s], [rad/s]')
+    plt.xlim(-0.1, cfg.total_sim_time + 0.1)
+    plt.axis('equal')
     plt.grid()
     plt.legend()
     plt.show()

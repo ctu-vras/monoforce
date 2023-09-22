@@ -34,7 +34,7 @@ class Config:
         self.robot_terrain_interaction_model = 'diffdrive'
         self.max_vel = 2.  # m/s
         self.max_omega = 2.  # rad/s
-        self.hm_interp_method = 'linear'
+        self.hm_interp_method = 'nearest'
 
     def __str__(self):
         return str(self.__dict__)
