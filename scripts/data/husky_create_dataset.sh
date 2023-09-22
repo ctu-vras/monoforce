@@ -5,8 +5,7 @@
 # It also adds calibrations, colors and velocities to the point clouds
 # It is used to create a dataset for the HUSKY robot
 
-#DATA_PATH=/home/$USER/data/robingas/data
-DATA_PATH=/mnt/personal/$USER/data/robingas/data
+DATA_PATH=/home/$USER/data/robingas/data
 ROBOT_NAME='husky'
 #EXPERIMENT_NAME='22-09-27-unhost'/${ROBOT_NAME}
 EXPERIMENT_NAME='22-10-27-unhost-final-demo'
