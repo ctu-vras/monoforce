@@ -195,6 +195,8 @@ class RobinGasDataset(Dataset):
         self.cloud_color_path = os.path.join(path, 'cloud_colors')
         # assert os.path.exists(self.cloud_color_path)
         self.traj_path = os.path.join(path, 'trajectories')
+        # global pose of the robot (initial trajectory pose on a map) path (from SLAM)
+        self.poses_path = os.path.join(path, 'traj_poses.csv')
         # assert os.path.exists(self.traj_path)
         self.calib_path = os.path.join(path, 'calibration')
         # assert os.path.exists(self.calib_path)
@@ -209,18 +211,14 @@ class RobinGasDataset(Dataset):
         T[:3, :4] = pose.reshape((3, 4))
         return T
 
-    def get_initial_pose(self, i=0):
-        # should not really matter which i we take
-        # initial position is the same for all trajectories
-        ind = self.ids[i]
-        csv_path = os.path.join(self.traj_path, '%s.csv' % ind)
-        if os.path.exists(csv_path):
-            data = np.loadtxt(csv_path, delimiter=',', skiprows=1)
-            stamps, poses = data[:, 0], data[:, 1:13]
-            poses = np.asarray([self.pose2mat(pose) for pose in poses])
-        else:
-            poses = np.load(os.path.join(self.traj_path, '%s.npz' % ind))['traj']
-        return poses[0]
+    def get_poses(self):
+        data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
+        stamps, Ts = data[:, 0], data[:, 1:13]
+        poses = np.asarray([self.pose2mat(pose) for pose in Ts])
+        # poses = {}
+        # for i, stamp in enumerate(stamps):
+        #     poses[stamp] = self.pose2mat(Ts[i])
+        return poses
 
     def get_traj(self, i):
         ind = self.ids[i]
@@ -363,6 +361,45 @@ class RobinGasDataset(Dataset):
 
         return heightmap
 
+    def global_cloud(self, colorize=False, vis=False, step_size=1):
+        poses = self.get_poses()
+
+        # create global cloud
+        for i in tqdm(range(len(self))):
+            cloud = self.get_cloud(i)
+            if colorize:
+                # cloud color
+                color_struct = self.get_cloud_color(i)
+                rgb = normalize(color(color_struct))
+            T = poses[i]
+            cloud = transform_cloud(cloud, T)
+            points = position(cloud)
+            if i == 0:
+                global_cloud = points[::step_size]
+                global_cloud_rgb = rgb[::step_size] if colorize else None
+            else:
+                global_cloud = np.vstack((global_cloud, points[::step_size]))
+                global_cloud_rgb = np.vstack((global_cloud_rgb, rgb[::step_size])) if colorize else None
+
+        if vis:
+            import open3d as o3d
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(global_cloud)
+            if colorize:
+                pcd.colors = o3d.utility.Vector3dVector(global_cloud_rgb)
+            o3d.visualization.draw_geometries([pcd])
+
+            # plt.figure(figsize=(10, 10))
+            # # plot global cloud
+            # plt.scatter(global_cloud[::100, 0], global_cloud[::100, 1], s=1, c='k')
+            # # plot poses
+            # plt.scatter(poses[:, 0, 3], poses[:, 1, 3], s=10, c='r')
+            # plt.grid()
+            # plt.axis('equal')
+            # plt.show()
+
+        return global_cloud
+
     def __getitem__(self, i, visualize=False):
         cloud = self.get_cloud(i)
         points = position(cloud)
@@ -485,7 +522,7 @@ class MonoDemDataset(RobinGasDataset):
     def calculate_img_statistics(self):
         # calculate mean and std from the entire dataset
         means, stds = [], []
-        print('Calculating mean and std from the entire dataset...')
+        print('Calculating images mean and std from the entire dataset...')
         for i in tqdm(range(len(self))):
             img = self.get_image(i)
             img_01 = normalize(img)
@@ -1102,6 +1139,18 @@ def augs_demo():
     plt.show()
 
 
+def global_cloud_demo():
+    seq_paths = [
+        '/home/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
+        '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
+        '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
+        '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
+    ]
+    for path in seq_paths:
+        ds = RobinGasDataset(path=path)
+        ds.global_cloud(vis=True, step_size=100)
+
+
 def main():
     # segm_demo()
     # heightmap_demo()
@@ -1111,7 +1160,8 @@ def main():
     # monodem_demo()
     # weights_demo()
     # estimate_heightmap_from_cloud()
-    augs_demo()
+    # augs_demo()
+    global_cloud_demo()
 
 
 if __name__ == '__main__':

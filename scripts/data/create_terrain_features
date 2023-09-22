@@ -41,7 +41,7 @@ def arg_parser():
     parser.add_argument('--robot-mass', type=float, default=10.)
     parser.add_argument('--robot-inertia', type=float, default=5.)
     parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--n-train-iters', type=int, default=100)
+    parser.add_argument('--n-train-iters', type=int, default=200)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--friction', type=float, default=0.9)
     parser.add_argument('--convergence-std', type=float, default=0.001)

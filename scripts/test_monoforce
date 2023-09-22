@@ -20,7 +20,9 @@ def parse_args():
     #                     help='Path to the data directory')
     # parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
     #                     help='Path to the data directory')
-    parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
+    # parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
+    #                     help='Path to the data directory')
+    parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
                         help='Path to the data directory')
     parser.add_argument('--encoder_path', type=str, default='../config/weights/monolayout/encoder.pth',
                         help='Path to the encoder weights')
@@ -96,7 +98,7 @@ def demo():
         img_vis = img.transpose((1, 2, 0))
         # img_vis = ds.destandardize_img(img_vis)
         plt.subplot(231)
-        plt.imshow(img_vis[..., (2, 1, 0)])  # RGB
+        plt.imshow(img_vis)  # RGB
         plt.title('Input image')
 
         plt.subplot(232)
