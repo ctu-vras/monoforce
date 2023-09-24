@@ -37,6 +37,6 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
                                                          /camera_up/camera_info \
                                      --visualize $VIS --save-data $SAVE
 
-#./create_terrain_features --dataset-path ${DATA_PATH}/${EXPERIMENT_NAME}/${ROBOT_NAME}/${SEQUENCE_NAME}_trav/ \
-#                          --control-model diffdrive \
-#                          --visualize $VIS --save-data $SAVE
+./create_terrain_features --dataset-path ${DATA_PATH}/${EXPERIMENT_NAME}/${ROBOT_NAME}/${SEQUENCE_NAME}_trav/ \
+                          --control-model diffdrive \
+                          --visualize $VIS --save-data $SAVE

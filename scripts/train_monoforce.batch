@@ -1,0 +1,15 @@
+#!/bin/bash
+
+#SBATCH --nodes=1                         # number of node
+#SBATCH --ntasks-per-node=1               # tasks per node
+#SBATCH --cpus-per-task=12                # number of CPUs
+#SBATCH --time=1-00:00:00                 # time limit
+#SBATCH --error=train.out                 # standard error file
+#SBATCH --output=train.out                # standard output file
+#SBATCH --partition=amdgpu                # partition name
+#SBATCH --gres=gpu:1                      # number of GPUs
+#SBATCH --mail-user=agishrus@fel.cvut.cz  # where send info about job
+#SBATCH --mail-type=ALL                   # what to send, valid type values are NONE, BEGIN, END, FAIL, REQUEUE, ALL
+
+singularity run --nv --bind /mnt/personal/agishrus ../singularity/monoforce.sif ./data/passthrough ./train_monoforce.sh
+

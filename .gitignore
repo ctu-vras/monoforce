@@ -165,3 +165,13 @@ gen/
 *.bak
 config/weights/
 runs/
+tb_runs/
+
+# sbatch jobs logging
+*.err
+*.out
+
+# slurm files for remote jobs launching
+*.batch
+*.sh
+

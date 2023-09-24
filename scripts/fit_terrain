@@ -619,9 +619,9 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
 
 def main():
     # train_omni()
-    # train_p_diffdrive()
+    train_p_diffdrive()
     # train_cmd_vel()
-    train_p_track_vels()
+    # train_p_track_vels()
 
 
 if __name__ == '__main__':

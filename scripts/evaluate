@@ -38,21 +38,39 @@ class Evaluator:
         else:
             pass
 
-    def load_monolayout(self):
+    def load_monolayout(self,
+                        encoder_path='../config/weights/monolayout/encoder.pth',
+                        decoder_path='../config/weights/monolayout/decoder.pth'):
         H, W = self.img_size
         models = {}
         # load encoder weights
         models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-        encoder_path = '../config/weights/monolayout/encoder.pth'
         encoder_dict = torch.load(encoder_path, map_location=self.cfg.device)
         filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
         models["encoder"].load_state_dict(filtered_dict_enc)
 
         # load decoder weights
-        decoder_path = '../config/weights/monolayout/decoder.pth'
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
         models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
         return models
+
+    def monolayout_inference(self, img, debug=False):
+        with torch.no_grad():
+            img_tensor = torch.from_numpy(img).unsqueeze(0)
+            features = self.models['encoder'](img_tensor)
+            height_pred = self.models['decoder'](features, is_training=True)
+        height_pred = height_pred.squeeze().cpu().numpy()
+        if debug:
+            plt.figure()
+            plt.subplot(1, 2, 1)
+            plt.title('Input image (normalized)')
+            plt.imshow(img.transpose(1, 2, 0))
+            plt.subplot(1, 2, 2)
+            plt.title('Predicted height map')
+            plt.imshow(height_pred, cmap='jet')
+            plt.colorbar()
+            plt.show()
+        return height_pred
     
     def load_kkt(self):
         # import kkt model
@@ -65,14 +83,6 @@ class Evaluator:
         model_s2d.eval()
         model_s2d.to(self.cfg.device)
         return model_s2d
-
-    def monolayout_inference(self, img):
-        with torch.no_grad():
-            img_tensor = torch.from_numpy(img).unsqueeze(0)
-            features = self.models['encoder'](img_tensor)
-            height_pred = self.models['decoder'](features, is_training=True)
-        height_pred = height_pred.squeeze().cpu().numpy()
-        return height_pred
 
     def kkt_inference(self, height, mask):
         h, w = height.shape
@@ -120,7 +130,7 @@ class Evaluator:
         plt.imshow(img_right[..., (2, 1, 0)])
         plt.subplot(3, 3, 5)
         plt.title('Height map')
-        plt.imshow(height, origin='lower')
+        plt.imshow(height, cmap='jet')
         plt.colorbar()
 
     def get_data(self, i: int, ds: MonoDemDataset):
@@ -148,7 +158,7 @@ class Evaluator:
 
         # select height map (can be given from a model output)
         if self.model_name == 'monolayout':
-            height = self.monolayout_inference(img)
+            height = self.monolayout_inference(img, debug=False)
         elif self.model_name == 'kkt':
             ds.cfg.hm_interp_method = None
             cloud = ds.get_cloud(i)
@@ -156,15 +166,19 @@ class Evaluator:
             points = transform_cloud(points, Tr)
             heightmap = ds.estimate_heightmap(points)
             height_full = heightmap['z']
+            # self.debug(i, ds, height_full)
             h, w = height_full.shape
             height_front = height_full[w//4:3*w//4, h//2:]
             mask = heightmap['mask']
             mask = mask[w//4:3*w//4, h//2:]
             height = self.kkt_inference(height_front, mask)
+            # orienting the height map so that the robot is at the bottom
+            height = np.rot90(height)
+            height = np.fliplr(height)
         else:
             height = height_reg.squeeze()
         # self.debug(i, ds, height); plt.show()
-        height = height.T
+        height = np.rot90(height, k=2).copy()  # rotate 180 deg because in the image the lower pixels (with height row number) are closer
 
         tstamps = traj['stamps']
         tstamps = tstamps - tstamps[0]
@@ -365,15 +379,9 @@ def main():
     ]
     datasets = []
     for data_path in data_paths:
-        # img_mean = np.array([0.42155158, 0.47310572, 0.4750956]) if 'marv' in data_path else np.array([0.4750956, 0.47310572, 0.42155158])
-        # img_std = np.array([0.29598755, 0.23130926, 0.2212268]) if 'marv' in data_path else np.array([0.2212268, 0.23130926, 0.29598755])
         img_size = (512, 512)
         ds = MonoDemDataset(path=data_path,
                             img_size=img_size,
-                            # img_mean=img_mean,
-                            # img_std=img_std,
-                            img_mean=np.asarray([0.48449893, 0.48515499, 0.47735296]),
-                            img_std=np.asarray([0.25196936, 0.26390535, 0.2590173]),
                             cameras=['camera_fisheye_front'],
                             cfg=cfg)
         datasets.append(ds)
