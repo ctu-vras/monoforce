@@ -138,22 +138,36 @@ class Trainer(object):
             weights_traversed = weights_traversed.to(self.device)
             weights_reg = weights_reg.to(self.device)
 
+            if torch.any(torch.isnan(height_label)):
+                print('Warning: NaN values in height label (corrupted label)!')
+                print('Skipping this batch...')
+                continue
+
+            if torch.any(torch.isnan(height_reg)) and self.regularization is not None:
+                print('Warning: NaN values in height regularization (corrupted label)!')
+                print('Skipping this batch...')
+                continue
+
             # model inference
             features = self.models['encoder'](img)
             height_pred = self.models['decoder'](features, is_training=True)
 
             # loss is computed for the part of the predicted height map covered by robot's trajectory
+            # assert torch.any(~torch.isnan(height_label))
+            # assert torch.any(~torch.isnan(height_pred))
             if self.weighted_loss:
                 loss = self.loss_fn(height_pred, height_label)
                 loss = loss * weights_traversed
                 loss = loss.sum() / (weights_traversed.sum() + 1e-6)
             else:
-                loss = self.loss_fn(height_pred * weights_traversed, height_label * weights_traversed)
+                loss = self.loss_fn(height_pred[weights_traversed], height_label[weights_traversed])
             # print('Loss: %f' % loss.item())
             self.writer.add_scalar('Loss(iter)/%s' % mode, loss.item(), i + epoch_n * len(dataloader))
 
             # add regularization loss
             if self.regularization is not None:
+                # assert torch.any(~torch.isnan(height_reg))
+                # assert torch.any(~torch.isnan(height_pred))
                 if self.weighted_loss:
                     loss_reg = self.loss_fn(height_pred, height_reg)
                     loss_reg = loss_reg * weights_reg
@@ -225,7 +239,7 @@ def main():
     data_paths = [
         '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
         '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
-        #'../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/',
+        '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/',
         '../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
         '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
     ]
@@ -256,14 +270,12 @@ def main():
 
         datasets.append(train_ds)
     train_ds = ConcatDataset(datasets)
-    print('Training dataset size:', len(train_ds))
 
     # create validation dataset
     cfg_val = Config()
     cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
     cfg_val.hm_interp_method = 'nearest'
     val_ds = MonoDemDataset(val_path, img_size=img_size, is_train=False, cfg=cfg_val)
-    print('Validation dataset size:', len(val_ds))
 
     # pretrained weights paths for MonoDEM (encoder and decoder)
     # pretrained_paths = {
@@ -271,6 +283,11 @@ def main():
     #     "decoder": "../config/weights/monolayout/decoder.pth",
     # }
     pretrained_paths = None
+
+    # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32))
+    # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16))
+    print('Training dataset size:', len(train_ds))
+    print('Validation dataset size:', len(val_ds))
 
     # MonoDEM Training
     trainer = Trainer(train_ds, val_ds,
