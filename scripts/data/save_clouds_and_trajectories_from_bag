@@ -449,6 +449,9 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                         if output_global_poses_path is not None:
                             p = output_global_poses_path.format(**fmt_kwargs)
                             os.makedirs(os.path.dirname(p), exist_ok=True)
+                            if not recorded_traj_poses_header and os.path.exists(p):
+                                # delete file if it exists (overwrite)
+                                os.remove(p)
                             with open(p, 'a') as f:
                                 writer = csv.writer(f)
                                 # if file is empty, write header

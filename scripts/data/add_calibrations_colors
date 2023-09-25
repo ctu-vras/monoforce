@@ -168,7 +168,7 @@ def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5):
     return msg
 
 
-def get_camera_infos(bag_path, camera_info_topics):
+def get_camera_infos(bag_path, camera_info_topics, save=True):
     """
     Read camera intrinsics and distortion coefficients from bag file
     """
@@ -190,31 +190,32 @@ def get_camera_infos(bag_path, camera_info_topics):
                     Ds.append(D)
 
                     # save intinsics and distortion coeffs to output_path yaml file
-                    camera = topic.split('/')[1]
-                    output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0], camera=camera)
-                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    print('Saving to %s' % output_path)
-                    with open(output_path, 'w') as f:
-                        f.write('image_width: %d\n' % msg.width)
-                        f.write('image_height: %d\n' % msg.height)
-                        f.write('camera_name: %s\n' % camera)
-                        f.write('camera_matrix:\n')
-                        f.write('  rows: 3\n')
-                        f.write('  cols: 3\n')
-                        f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in K.reshape(-1)]))
-                        f.write('distortion_model: %s\n' % msg.distortion_model)
-                        f.write('distortion_coefficients:\n')
-                        f.write('  rows: 1\n')
-                        f.write('  cols: %d\n' % len(D))
-                        f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in D]))
-                    f.close()
+                    if save:
+                        camera = topic.split('/')[1]
+                        output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0], camera=camera)
+                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                        print('Saving to %s' % output_path)
+                        with open(output_path, 'w') as f:
+                            f.write('image_width: %d\n' % msg.width)
+                            f.write('image_height: %d\n' % msg.height)
+                            f.write('camera_name: %s\n' % camera)
+                            f.write('camera_matrix:\n')
+                            f.write('  rows: 3\n')
+                            f.write('  cols: 3\n')
+                            f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in K.reshape(-1)]))
+                            f.write('distortion_model: %s\n' % msg.distortion_model)
+                            f.write('distortion_coefficients:\n')
+                            f.write('  rows: 1\n')
+                            f.write('  cols: %d\n' % len(D))
+                            f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in D]))
+                        f.close()
                     break
     except ROSBagException as ex:
         print('Could not read %s: %s' % (bag_path, ex))
     return Ks, Ds
 
 
-def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer):
+def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=True):
     dir = os.path.dirname(bag_path)
     output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
     output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
@@ -261,13 +262,14 @@ def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buff
                         print('Tr:\n', Tr)
 
                         # save transformation to output_path_patern yaml file
-                        camera = cam_topic.split('/')[1]
-                        print('Saving to %s' % output_path)
+                        if save:
+                            camera = cam_topic.split('/')[1]
+                            print('Saving to %s' % output_path)
 
-                        f.write('T_{lidar}__{camera}:\n'.format(lidar=cloud_msg.header.frame_id, camera=camera))
-                        f.write('  rows: 4\n')
-                        f.write('  cols: 4\n')
-                        f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in Tr.reshape(-1)]))
+                            f.write('T_{lidar}__{camera}:\n'.format(lidar=cloud_msg.header.frame_id, camera=camera))
+                            f.write('  rows: 4\n')
+                            f.write('  cols: 4\n')
+                            f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in Tr.reshape(-1)]))
                         break
         except ROSBagException as ex:
             print('Could not read %s: %s' % (bag_path, ex))
@@ -453,7 +455,7 @@ def estimate_velocities(data_path, tf_buffer, imu_topic='/imu/data', robot_frame
             traj_data.to_csv(traj_csv, index=False)
 
 
-def get_base_link_to_base_footprint_transformations(bag_path, base_link_frame='base_link', base_footprint_frame='base_footprint'):
+def get_base_link_to_base_footprint_transformations(bag_path, base_link_frame='base_link', base_footprint_frame='base_footprint', save=True):
     tf_buffer = load_tf_buffer([bag_path], tf_topics=['/tf_static'])
     try:
         transform = tf_buffer.lookup_transform_core(base_link_frame, base_footprint_frame, rospy.Time())
@@ -465,23 +467,23 @@ def get_base_link_to_base_footprint_transformations(bag_path, base_link_frame='b
     print('Transformation from %s to %s:' % (base_link_frame, base_footprint_frame))
     print(Tr)
 
-    output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
-    output_path = output_path_pattern.format(dir=os.path.dirname(bag_path), name=os.path.basename(bag_path).replace('.bag', ''))
+    if save:
+        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        output_path = output_path_pattern.format(dir=os.path.dirname(bag_path), name=os.path.basename(bag_path).replace('.bag', ''))
 
-    new_yaml_data_dict = {'T_{base_link_frame}__{base_footprint_frame}'.format(base_link_frame=base_link_frame,
-                                                                                base_footprint_frame=base_footprint_frame):
-                              {'rows': 4,
-                               'cols': 4,
-                               'data': ['%.12f' % x for x in Tr.reshape(-1)]}}
+        new_yaml_data_dict = {'T_{base_link_frame}__{base_footprint_frame}'.format(base_link_frame=base_link_frame,
+                                                                                    base_footprint_frame=base_footprint_frame):
+                                  {'rows': 4,
+                                   'cols': 4,
+                                   'data': ['%.12f' % x for x in Tr.reshape(-1)]}}
 
-    with open(output_path, 'r') as yamlfile:
-        print('Updating yaml file: %s' % output_path)
-        cur_yaml = yaml.load(yamlfile, Loader=yaml.FullLoader)
-        cur_yaml.update(new_yaml_data_dict)
-        print(cur_yaml)
+        with open(output_path, 'r') as yamlfile:
+            print('Updating yaml file: %s' % output_path)
+            cur_yaml = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            cur_yaml.update(new_yaml_data_dict)
 
-    with open(output_path, 'w') as yamlfile:
-        yaml.safe_dump(cur_yaml, yamlfile)  # Also note the safe_dump
+        with open(output_path, 'w') as yamlfile:
+            yaml.safe_dump(cur_yaml, yamlfile)  # Also note the safe_dump
 
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, visualize, save_data):
@@ -491,11 +493,11 @@ def process(bag_path, lidar_topic, camera_topics, camera_info_topics, visualize,
 
     tf_buffer = load_tf_buffer([bag_path])
     print('Obtaining camera infos from bag file...')
-    get_camera_infos(bag_path, camera_info_topics)
+    get_camera_infos(bag_path, camera_info_topics, save=save_data)
     print('Obtaining lidar to camera transformations from bag file...')
-    get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer)
+    get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=save_data)
     print('Obtaining base_link to base_footprint transformations from bag file...')
-    get_base_link_to_base_footprint_transformations(bag_path)
+    get_base_link_to_base_footprint_transformations(bag_path, save=save_data)
     print('Colorizing clouds...')
     colorize_clouds(data_path, camera_topics, vis=visualize, save=save_data)
     # TODO: it does not work yet

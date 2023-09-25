@@ -1143,6 +1143,7 @@ def global_cloud_demo():
     seq_paths = [
         '/home/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
         '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
+        '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/',
         '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
         '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
     ]
