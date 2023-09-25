@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save', type=str2bool, default=True)
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--lr', type=float, default=1e-5)
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--n_epochs', type=int, default=500)
     parser.add_argument('--img_size', type=int, default=512)
     parser.add_argument('--regularization', type=float, default=0.2)
@@ -189,19 +189,18 @@ class Trainer(object):
 
         loss_sum /= len(self.train_ds)
         
-        if mode == 'val':
-            # add input image to tensorboard logger
-            self.writer.add_images('Input Image', img, 0)
-            # add predictions to tensorboard logger
-            self.writer.add_images('Height Label', normalize(height_label), 0)
-            self.writer.add_images('Height Prediction', normalize(height_pred), 0)
-            self.writer.add_images('Height Regularization', normalize(height_reg), 0)
-            self.writer.add_images('Mask Traversed', weights_traversed, 0)
-            self.writer.add_images('Mask Regularization', weights_reg, 0)
+        # add input image to tensorboard logger
+        self.writer.add_images(f'Input Image ({mode})', img, 0)
+        # add predictions to tensorboard logger
+        self.writer.add_images(f'Height Label ({mode})', normalize(height_label), 0)
+        self.writer.add_images(f'Height Prediction ({mode})', normalize(height_pred), 0)
+        self.writer.add_images(f'Height Regularization ({mode})', normalize(height_reg), 0)
+        self.writer.add_images(f'Mask Traversed ({mode})', weights_traversed, 0)
+        self.writer.add_images(f'Mask Regularization ({mode})', weights_reg, 0)
 
-            # visualize
-            if self.vis:
-                self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
+        # visualize
+        if self.vis:
+            self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
 
         return loss_sum
 
@@ -212,6 +211,8 @@ class Trainer(object):
             print('Validation epoch %i...' % e)
             with torch.no_grad():
                 val_loss = self.epoch(dataloader=self.val_dataloader, epoch_n=e, mode='val')
+            print('Train loss: %f' % train_loss.item())
+            print('Val loss: %f' % val_loss.item())
 
             # log losses on the same plot
             self.writer.add_scalars('Loss(epoch)', {'train': train_loss.item(), 'val': val_loss.item()}, e)
@@ -231,7 +232,17 @@ class Trainer(object):
                     for key in self.models.keys():
                         os.makedirs(self.weights_dir_path, exist_ok=True)
                         torch.save(self.models[key].state_dict(), os.path.join(self.weights_dir_path, '%s_train.pth' % key))
+        else:
+            print('Training finished!')
+            # log training results: (write to file)
+            with open(os.path.join(self.weights_dir_path, 'train_log.txt'), 'w') as f:
+                # val loss
+                f.write('Val loss: %f\n' % self.min_val_loss.item())
+                # train loss
+                f.write('Train loss: %f\n' % self.min_train_loss.item())
 
+            # close tensorboard logger
+            self.writer.close()
 
 def main():
     args = parse_args()
