@@ -437,10 +437,11 @@ class MonoDemDataset(RobinGasDataset):
                  img_size=(512, 512),
                  cameras=None,
                  is_train=False,
+                 random_camera_selection_prob=0.2,
                  cfg=Config()):
         super(MonoDemDataset, self).__init__(path, cfg)
         self.img_size = img_size
-        self.random_camera_selection_prob = 0.2
+        self.random_camera_selection_prob = random_camera_selection_prob
 
         img_statistics_path = os.path.join(self.path, 'calibration', 'img_statistics.yaml')
         if not os.path.exists(img_statistics_path):

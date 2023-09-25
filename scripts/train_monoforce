@@ -26,8 +26,10 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--n_epochs', type=int, default=500)
     parser.add_argument('--img_size', type=int, default=512)
-    parser.add_argument('--regularization', type=float, default=0.2)
+    parser.add_argument('--regularization', type=float, default=None)
     parser.add_argument('--weighted_loss', type=str2bool, default=False)
+    parser.add_argument('--pretrained_paths', type=str, nargs='+', default=None)
+    parser.add_argument('--random_camera_selection_prob', type=float, default=0.2)
     return parser.parse_args()
 
 
@@ -69,9 +71,9 @@ class Trainer(object):
 
         # logging: tensorboard and weights
         path = os.path.dirname(os.path.realpath(__file__))
-        time_label = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-        self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % time_label))
-        self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % time_label)
+        train_label = '%s_reg_%s_lr_%f' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), regularization, lr)
+        self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
+        self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
 
     def init_models(self, pretrained_paths=None):
         assert isinstance(pretrained_paths, dict) or pretrained_paths is None
@@ -270,7 +272,8 @@ def main():
         cfg.hm_interp_method = 'nearest'
 
         # create dataset for MonoDEM training
-        train_ds = MonoDemDataset(path, img_size=img_size, is_train=True, cfg=cfg)
+        train_ds = MonoDemDataset(path, img_size=img_size, is_train=True,
+                                  random_camera_selection_prob=args.random_camera_selection_prob, cfg=cfg)
         # print('Dataset size:', len(train_ds))
 
         if args.visualize:
@@ -293,9 +296,9 @@ def main():
     #     "encoder": "../config/weights/monolayout/encoder.pth",
     #     "decoder": "../config/weights/monolayout/decoder.pth",
     # }
-    pretrained_paths = None
+    pretrained_paths = args.pretrained_paths
 
-    # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32))
+    # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 64))
     # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16))
     print('Training dataset size:', len(train_ds))
     print('Validation dataset size:', len(val_ds))
