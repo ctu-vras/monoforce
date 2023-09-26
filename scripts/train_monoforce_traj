@@ -16,50 +16,48 @@ from mayavi import mlab
 from tqdm import tqdm
     
 
-class Evaluator:
-    def __init__(self, datasets: list, cfg: Config, model_name=None, vis=False):
+class Trainer:
+    def __init__(self, datasets: list, cfg: Config, pretrained_paths=None, vis=False):
         self.cfg = cfg
+        self.device = cfg.device
         self.img_size = (512, 512)
         self.datasets = datasets
-        self.model_name = model_name
-        self.load_model()
+        self.models = self.init_models(pretrained_paths=pretrained_paths)
         self.vis = vis
-        self.metrics = {'trans_wp': [],
-                        'rot_wp': [],
-                        'trans_traj': [],
-                        'rot_traj': [],
-                        'flip_over_rate': 0.}
+        self.metrics = {'trans_wp': [], 'rot_wp': []}
 
-    def load_model(self):
-        if self.model_name == 'monolayout':
-            self.models = self.load_monolayout()
-        elif self.model_name == 'kkt':
-            self.model_s2d = self.load_kkt()
-        else:
-            pass
+        # optimizer
+        self.parameters_to_train = []
+        for key in self.models.keys():
+            self.models[key].to(self.device)
+            self.parameters_to_train += list(self.models[key].parameters())
+        self.optimizer = torch.optim.Adam(params=self.parameters_to_train, lr=cfg.lr)
 
-    def load_monolayout(self,
-                        encoder_path='../config/weights/monolayout/encoder.pth',
-                        decoder_path='../config/weights/monolayout/decoder.pth'):
-        H, W = self.img_size
+    def init_models(self, pretrained_paths=None):
+        assert isinstance(pretrained_paths, dict) or pretrained_paths is None
         models = {}
-        # load encoder weights
-        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-        encoder_dict = torch.load(encoder_path, map_location=self.cfg.device)
-        filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
-        models["encoder"].load_state_dict(filtered_dict_enc)
-
-        # load decoder weights
+        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=self.img_size[0], img_wt=self.img_size[1], pretrained=True)
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
-        models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
+
+        if pretrained_paths is not None:
+            assert "encoder" in pretrained_paths.keys() and "decoder" in pretrained_paths.keys()
+            print('Loading pretrained weights for encoder and decoder from:\n%s...' % pretrained_paths)
+
+            encoder_dict = torch.load(pretrained_paths["encoder"], map_location=self.device)
+            filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
+            models["encoder"].load_state_dict(filtered_dict_enc)
+            models["decoder"].load_state_dict(torch.load(pretrained_paths["decoder"], map_location=self.device))
+
+        for key in models.keys():
+            models[key].train()
+            models[key].to(self.device)
+
         return models
 
     def monolayout_inference(self, img, debug=False):
-        with torch.no_grad():
-            img_tensor = torch.from_numpy(img).unsqueeze(0)
-            features = self.models['encoder'](img_tensor)
-            height_pred = self.models['decoder'](features, is_training=True)
-        height_pred = height_pred.squeeze().cpu().numpy()
+        img_tensor = torch.from_numpy(img).unsqueeze(0).to(self.device)
+        features = self.models['encoder'](img_tensor)
+        height_pred = self.models['decoder'](features, is_training=True)
         if debug:
             plt.figure()
             plt.subplot(1, 2, 1)
@@ -67,38 +65,9 @@ class Evaluator:
             plt.imshow(img.transpose(1, 2, 0))
             plt.subplot(1, 2, 2)
             plt.title('Predicted height map')
-            plt.imshow(height_pred, cmap='jet')
+            plt.imshow(height_pred.squeeze().detach().cpu().numpy(), cmap='jet')
             plt.colorbar()
             plt.show()
-        return height_pred
-    
-    def load_kkt(self):
-        # import kkt model
-        import sys
-        sys.path.append('../../pose-consistency-KKT-loss/scripts/')
-        import network_s2d
-
-        model_s2d = network_s2d.Net()
-        model_s2d.load_state_dict(torch.load("../config/weights/kkt/network_weights_s2d", map_location=self.cfg.device))
-        model_s2d.eval()
-        model_s2d.to(self.cfg.device)
-        return model_s2d
-
-    def kkt_inference(self, height, mask):
-        h, w = height.shape
-        with torch.no_grad():
-            input = torch.as_tensor(height).view((1, 1, h, w))
-            # input_mask = torch.ones_like(input)
-            input_mask = torch.as_tensor(mask).view((1, 1, h, w))
-
-            input = input.to(self.cfg.device)
-            input_mask = input_mask.to(self.cfg.device)
-
-            input_w_mask = torch.cat([input, input_mask], 1)
-
-            output_DEM = self.model_s2d(input_w_mask)
-
-        height_pred = output_DEM.squeeze().cpu().numpy()[0]
         return height_pred
 
     @staticmethod
@@ -155,28 +124,13 @@ class Evaluator:
         poses[:, 0, 3] = poses[:, 0, 3] - self.cfg.d_max / 2.
 
         # select height map (can be given from a model output)
-        if self.model_name == 'monolayout':
-            height = self.monolayout_inference(img, debug=False)
-        elif self.model_name == 'kkt':
-            ds.cfg.hm_interp_method = None
-            cloud = ds.get_cloud(i)
-            points = position(cloud)
-            points = transform_cloud(points, Tr)
-            heightmap = ds.estimate_heightmap(points)
-            height_full = heightmap['z']
-            # self.debug(i, ds, height_full)
-            h, w = height_full.shape
-            height_front = height_full[w//4:3*w//4, h//2:]
-            mask = heightmap['mask']
-            mask = mask[w//4:3*w//4, h//2:]
-            height = self.kkt_inference(height_front, mask)
-            # orienting the height map so that the robot is at the bottom
-            height = np.rot90(height)
-            height = np.fliplr(height)
-        else:
-            height = height_reg.squeeze()
+        height = self.monolayout_inference(img, debug=False)
+        # height = height_reg
+
+        height = height.squeeze()
         # self.debug(i, ds, height); plt.show()
-        height = np.rot90(height, k=2).copy()  # rotate 180 deg because in the image the lower pixels (with height row number) are closer
+        # height.shape = (H, W)
+        height = torch.rot90(height, k=2)  # rotate 180 deg because in the image the lower pixels (with height row number) are closer
 
         tstamps = traj['stamps']
         tstamps = tstamps - tstamps[0]
@@ -226,7 +180,8 @@ class Evaluator:
                                                   vel=vel_true[0],
                                                   omega=omega_true[0], device=self.cfg.device),
                                       device=self.cfg.device, use_ode=False,
-                                      interaction_model='diffdrive')
+                                      interaction_model='diffdrive',
+                                      learn_height=False)
 
         # put models with their params to self.cfg.device
         system = system.to(self.cfg.device)
@@ -245,8 +200,8 @@ class Evaluator:
         state = system.state
         states = []
         dt = (tt[1:] - tt[:-1]).mean()
-        loss_trans_sum = torch.tensor(0., device=self.cfg.device)
-        loss_rot_sum = torch.tensor(0., device=self.cfg.device)
+        loss_trans_traj = torch.tensor(0., device=self.cfg.device)
+        loss_rot_traj = torch.tensor(0., device=self.cfg.device)
         poses_eval = []
         for i in range(n_true_states-1):
             # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
@@ -258,8 +213,8 @@ class Evaluator:
             roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
 
             if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
-                print('Robot is upside down, skipping evaluation')
-                return None, None, None, None
+                print('Robot is upside down, skipping this data sample.')
+                return None, None
 
             goal_pose = torch.eye(4, device=self.cfg.device)
             goal_pose[:3, 3:4] = xyz_true[i + 1]
@@ -288,8 +243,8 @@ class Evaluator:
             loss_trans = translation_difference(pos_x[-1].view(1, 3, 1), states_true[0][i + 1].view(1, 3, 1))
             loss_rot = rotation_difference(pos_R[-1].view(1, 3, 3), states_true[1][i + 1].view(1, 3, 3))
 
-            loss_trans_sum += loss_trans
-            loss_rot_sum += loss_rot
+            loss_trans_traj += loss_trans
+            loss_rot_traj += loss_rot
 
             # log poses at the end of each interval for which we compute loss
             pose_eval = torch.eye(4)
@@ -305,62 +260,58 @@ class Evaluator:
 
         states = (pos_x, pos_R, vel_x, vel_omega, forces)
 
-        loss_trans_sum /= (n_true_states - 1)
-        loss_rot_sum /= (n_true_states - 1)
-        loss_traj_trans, loss_traj_rot = traj_dist(states, states_true, cfg=self.cfg, return_trans_and_rot=True)
-        # print('Loss translation at closest points: %.2f [m]' % loss_traj_trans.item())
-        # print('Loss rotation at closest points: %.2f [deg]' % (loss_traj_rot.item() * 180 / np.pi))
-        print('Loss translation at waypoints: %.2f [m]' % loss_trans_sum.item())
-        print('Loss rotation at waypoints: %.2f [deg]' % (loss_rot_sum.item() * 180 / np.pi))
+        loss_trans_traj /= (n_true_states - 1)
+        loss_rot_traj /= (n_true_states - 1)
+
+        self.optimizer.zero_grad()
+        loss = loss_trans_traj + loss_rot_traj
+        loss.backward()
+        self.optimizer.step()
+        # print('Loss translation at waypoints: %.2f [m]' % loss_trans_traj.item())
+        # print('Loss rotation at waypoints: %.2f [deg]' % (loss_rot_traj.item() * 180 / np.pi))
 
         # visualize trajectory
         if self.vis:
             system.update_trajectory(states=states)
-            draw_coord_frames(torch.stack(poses_eval).cpu().numpy(), scale=0.1)
+            draw_coord_frames(torch.stack(poses_eval).detach().cpu().numpy(), scale=0.1)
             animate_trajectory(system, vis_cfg)
 
             mlab.show()
 
-        return loss_trans_sum.item(), loss_rot_sum.item(), loss_traj_trans.item(), loss_traj_rot.item()
+        return loss_trans_traj, loss_rot_traj
 
-    def eval_ds(self, ds):
-        n_going_back = 0
-        n_flips_over = 0
-        for i in tqdm(range(len(ds)), desc='Evaluating dataset: %s' % ds.path):
+    def train_ds(self, ds):
+        loss_trans_ds = torch.tensor(0., device=self.cfg.device)
+        loss_rot_ds = torch.tensor(0., device=self.cfg.device)
+        n_train_samples = 0
+        for i in tqdm(range(len(ds))):
             # print('Evaluating sample %i' % i)
-            with torch.no_grad():
-                states_true, height = self.get_data(i, ds)
-                if states_true is None:
-                    # print('Skipping sample %i' % i)
-                    n_going_back += 1
-                    continue
-                # print('Evaluating sample %i' % i)
-                loss_trans_sum, loss_rot_sum, loss_traj_trans, loss_traj_rot = self.eval_p_control_diffdrive(states_true, height)
-                if loss_trans_sum is None:
-                    n_flips_over += 1
-                    continue
+            states_true, height = self.get_data(i, ds)
+            if states_true is None:
+                # print('Skipping sample %i' % i)
+                continue
+            # print('Evaluating sample %i' % i)
+            loss_trans, loss_rot = self.eval_p_control_diffdrive(states_true, height)
+            if loss_trans is None:
+                continue
+            n_train_samples += 1
 
-                # update metrics
-                self.metrics['trans_wp'].append(loss_trans_sum)
-                self.metrics['rot_wp'].append(loss_rot_sum)
-                self.metrics['trans_traj'].append(loss_traj_trans)
-                self.metrics['rot_traj'].append(loss_traj_rot)
+            loss_trans_ds += loss_trans
+            loss_rot_ds += loss_rot
 
-        n_eval_samples = len(ds) - n_going_back - n_flips_over
+        loss_trans_ds /= n_train_samples
+        loss_rot_ds /= n_train_samples
 
-        return n_eval_samples, n_flips_over
+        return loss_trans_ds, loss_rot_ds
 
-    def run(self):
-        for ds in self.datasets:
-            n_eval_samples, n_flips_over = self.eval_ds(ds)
-            self.metrics['flip_over_rate'] += n_flips_over
-        self.metrics['flip_over_rate'] /= np.sum([len(ds) for ds in self.datasets])
+    def train(self):
+        for epoch in range(self.cfg.n_train_iters):
+            for ds in self.datasets:
+                print('\nTrain epoch %i on data sequence: %s\n' % (epoch, ds.path))
+                loss_trans_ds, loss_rot_ds = self.train_ds(ds)
 
-        # print results
-        for key in self.metrics.keys():
-            self.metrics[key] = np.array(self.metrics[key]).mean()
-            value = self.metrics[key] * 180 / np.pi if 'rot' in key else self.metrics[key]
-            print('Metric %s: %.2f' % (key, value))
+                print('Loss translation: %.3f [m]' % loss_trans_ds.item())
+                print('Loss rotation: %.3f [deg]' % (loss_rot_ds.item() * 180 / np.pi))
 
 def main():
     cfg = Config()
@@ -369,9 +320,11 @@ def main():
     cfg.d_max = 12.8
     cfg.d_min = 1.
     cfg.hm_interp_method = 'nearest'
+    cfg.lr = 0.0001
+    cfg.n_train_iters = 100
 
     datasets = []
-    for path in seq_paths:
+    for path in seq_paths[1:2]:
         img_size = (512, 512)
         ds = MonoDemDataset(path=path,
                             img_size=img_size,
@@ -379,12 +332,14 @@ def main():
                             cfg=cfg)
         datasets.append(ds)
 
-    eval = Evaluator(datasets=datasets,
-                     cfg=cfg,
-                     model_name='monolayout',
-                     # model_name='kkt',
-                     vis=False)
-    eval.run()
+    # pretrained weights paths for MonoDEM (encoder and decoder)
+    pretrained_paths = {
+        "encoder": "../config/weights/monolayout/encoder.pth",
+        "decoder": "../config/weights/monolayout/decoder.pth",
+    }
+
+    trainer = Trainer(datasets=datasets, cfg=cfg, pretrained_paths=pretrained_paths, vis=False)
+    trainer.train()
 
 
 if __name__ == '__main__':

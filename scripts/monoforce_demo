@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import MonoDemDataset
+from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.vis import setup_visualization, animate_trajectory
 from monoforce.models import monolayout
 from mayavi import mlab
@@ -132,19 +132,15 @@ def main():
     cfg.d_max = 12.8
     cfg.d_min = 1.
 
-    data_paths = [
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
-        '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
-    ]
-    data_path = data_paths[0]
+    # data_path = seq_paths[0]
+    data_path = np.random.choice(seq_paths)
 
     ds = MonoDemDataset(path=data_path,
                         img_size=(512, 512),
                         cameras=['camera_fisheye_front'],
                         cfg=cfg)
-    i = 20
-    # i = np.random.choice(range(len(ds)))
+    # i = 20
+    i = np.random.choice(range(len(ds)))
     img_norm_CHW = ds[i][0]
 
     tt = torch.linspace(0., cfg.total_sim_time, cfg.n_samples)
@@ -152,7 +148,8 @@ def main():
         'stamps': tt,
         'vel_x': 1. * torch.ones(cfg.n_samples),
         # 'vel_omega': -0.1 * torch.ones(cfg.n_samples),
-        'vel_omega': -2 * torch.sin(2. * np.pi * tt),
+        # 'vel_omega': -2 * torch.sin(2. * np.pi * tt),
+        'vel_omega': 0.02 * tt**2,
     }
 
     # show image and controls

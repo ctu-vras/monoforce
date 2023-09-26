@@ -4,7 +4,7 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from monoforce.datasets import MonoDemDataset
+from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout
 from monoforce.vis import set_axes_equal
@@ -16,13 +16,7 @@ from argparse import ArgumentParser
 
 def parse_args():
     parser = ArgumentParser(description='Monolayout demo')
-    # parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
-    #                     help='Path to the data directory')
-    # parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
-    #                     help='Path to the data directory')
-    # parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
-    #                     help='Path to the data directory')
-    parser.add_argument('--data_path', type=str, default='../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
+    parser.add_argument('--data_path', type=str, default=seq_paths[0],
                         help='Path to the data directory')
     parser.add_argument('--encoder_path', type=str, default='../config/weights/monolayout/encoder.pth',
                         help='Path to the encoder weights')

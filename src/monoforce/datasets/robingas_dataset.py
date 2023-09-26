@@ -25,10 +25,19 @@ __all__ = [
     'SegmentationDataset',
     'RobinGasDataset',
     'MonoDemDataset',
+    'seq_paths',
 ]
 
 IGNORE_LABEL = 255
-data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
+data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
+
+seq_paths = [
+        os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
+        os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
+        os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/'),
+        os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
+        os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
+]
 
 
 class SegmentationDataset(Dataset):
@@ -1141,13 +1150,6 @@ def augs_demo():
 
 
 def global_cloud_demo():
-    seq_paths = [
-        '/home/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
-        '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
-        '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/',
-        '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
-        '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
-    ]
     for path in seq_paths:
         ds = RobinGasDataset(path=path)
         ds.global_cloud(vis=True, step_size=100)

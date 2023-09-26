@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from monoforce.datasets import MonoDemDataset
+from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout
 from monoforce.utils import normalize
@@ -155,8 +155,6 @@ class Trainer(object):
             height_pred = self.models['decoder'](features, is_training=True)
 
             # loss is computed for the part of the predicted height map covered by robot's trajectory
-            # assert torch.any(~torch.isnan(height_label))
-            # assert torch.any(~torch.isnan(height_pred))
             if self.weighted_loss:
                 loss = self.loss_fn(height_pred, height_label)
                 loss = loss * weights_traversed
@@ -168,8 +166,6 @@ class Trainer(object):
 
             # add regularization loss
             if self.regularization is not None:
-                # assert torch.any(~torch.isnan(height_reg))
-                # assert torch.any(~torch.isnan(height_pred))
                 if self.weighted_loss:
                     loss_reg = self.loss_fn(height_pred, height_reg)
                     loss_reg = loss_reg * weights_reg
@@ -189,20 +185,20 @@ class Trainer(object):
 
             loss_sum += loss
 
-        loss_sum /= len(self.train_ds)
-        
-        # add input image to tensorboard logger
-        self.writer.add_images(f'Input Image ({mode})', img, 0)
-        # add predictions to tensorboard logger
-        self.writer.add_images(f'Height Label ({mode})', normalize(height_label), 0)
-        self.writer.add_images(f'Height Prediction ({mode})', normalize(height_pred), 0)
-        self.writer.add_images(f'Height Regularization ({mode})', normalize(height_reg), 0)
-        self.writer.add_images(f'Mask Traversed ({mode})', weights_traversed, 0)
-        self.writer.add_images(f'Mask Regularization ({mode})', weights_reg, 0)
+        loss_sum /= len(dataloader)
 
         # visualize
         if self.vis:
             self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
+
+            # add input image to tensorboard logger
+            self.writer.add_images(f'Input Image ({mode})', img, 0)
+            # add predictions to tensorboard logger
+            self.writer.add_images(f'Height Label ({mode})', normalize(height_label), 0)
+            self.writer.add_images(f'Height Prediction ({mode})', normalize(height_pred), 0)
+            self.writer.add_images(f'Height Regularization ({mode})', normalize(height_reg), 0)
+            self.writer.add_images(f'Mask Traversed ({mode})', weights_traversed, 0)
+            self.writer.add_images(f'Mask Regularization ({mode})', weights_reg, 0)
 
         return loss_sum
 
@@ -249,19 +245,11 @@ class Trainer(object):
 def main():
     args = parse_args()
 
-    data_paths = [
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
-        '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
-        '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/',
-        '../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/',
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
-    ]
-
     # create dataset for MonoLayout training
     datasets = []
     img_size = (args.img_size, args.img_size)
-    train_paths = data_paths[:-1]
-    val_path = data_paths[-1]
+    train_paths = seq_paths[:-1]
+    val_path = seq_paths[-1]
     print('Train paths:', train_paths)
     print('Val path:', val_path)
     for path in train_paths:
@@ -298,8 +286,8 @@ def main():
     # }
     pretrained_paths = args.pretrained_paths
 
-    # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 64))
-    # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16))
+    # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 64, replace=False))
+    # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
     print('Training dataset size:', len(train_ds))
     print('Validation dataset size:', len(val_ds))
 
