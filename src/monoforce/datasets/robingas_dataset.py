@@ -194,11 +194,13 @@ class RobinGasDataset(Dataset):
         - terrain
             - <id>.npy
             - ...
+        - traj_poses.csv
     """
 
     def __init__(self, path, cfg=Config()):
         super(Dataset, self).__init__()
         self.path = path
+        self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
         # assert os.path.exists(self.cloud_path)
         self.cloud_color_path = os.path.join(path, 'cloud_colors')
@@ -659,8 +661,6 @@ class MonoDemDataset(RobinGasDataset):
         weights_est_cam = np.exp(-dist ** 2 / (2. * radius ** 2))
 
         # rotate height maps and poses depending on camera orientation
-        # we do copy, because of this issue:
-        # https://stackoverflow.com/questions/72550211/valueerror-at-least-one-stride-in-the-given-numpy-array-is-negative-and-tensor
         if 'left' in camera:
             height_est_cam = np.rot90(height_est_cam, 1)
             height_opt_cam = np.rot90(height_opt_cam, 1)
@@ -680,6 +680,8 @@ class MonoDemDataset(RobinGasDataset):
         weights_opt_cam = np.rot90(weights_opt_cam, axes=(0, 1))
         weights_est_cam = np.rot90(weights_est_cam, axes=(0, 1))
         # flip heightmaps to have robot position at the bottom
+        # we do copy, because of this issue:
+        # https://stackoverflow.com/questions/72550211/valueerror-at-least-one-stride-in-the-given-numpy-array-is-negative-and-tensor
         height_opt_cam = np.fliplr(height_opt_cam).copy()
         height_est_cam = np.fliplr(height_est_cam).copy()
         weights_opt_cam = np.fliplr(weights_opt_cam).copy()

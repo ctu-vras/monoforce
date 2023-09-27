@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import os
+import numpy as np
 import matplotlib.pyplot as plt
 import torch
-import numpy as np
+from torch.utils.tensorboard import SummaryWriter
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.datasets import MonoDemDataset, seq_paths
@@ -10,18 +12,18 @@ from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_fr
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference, traj_dist
 from monoforce.models import monolayout
-from monoforce.transformations import rot2rpy, transform_cloud
-from monoforce.segmentation import position
+from monoforce.transformations import rot2rpy
 from mayavi import mlab
 from tqdm import tqdm
+from datetime import datetime
     
 
 class Trainer:
-    def __init__(self, datasets: list, cfg: Config, pretrained_paths=None, vis=False):
+    def __init__(self, train_datasets: list, cfg: Config, pretrained_paths=None, vis=False):
         self.cfg = cfg
         self.device = cfg.device
         self.img_size = (512, 512)
-        self.datasets = datasets
+        self.train_datasets = train_datasets
         self.models = self.init_models(pretrained_paths=pretrained_paths)
         self.vis = vis
         self.metrics = {'trans_wp': [], 'rot_wp': []}
@@ -32,6 +34,14 @@ class Trainer:
             self.models[key].to(self.device)
             self.parameters_to_train += list(self.models[key].parameters())
         self.optimizer = torch.optim.Adam(params=self.parameters_to_train, lr=cfg.lr)
+
+        # tensorboard
+        path = os.path.dirname(os.path.realpath(__file__))
+        train_label = '%s_lr_%f_traj_loss' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), cfg.lr)
+        self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
+        self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
+
+        self.min_train_loss = np.inf
 
     def init_models(self, pretrained_paths=None):
         assert isinstance(pretrained_paths, dict) or pretrained_paths is None
@@ -123,9 +133,8 @@ class Trainer:
         # start from the cropped height map origin
         poses[:, 0, 3] = poses[:, 0, 3] - self.cfg.d_max / 2.
 
-        # select height map (can be given from a model output)
+        # height map from a model output
         height = self.monolayout_inference(img, debug=False)
-        # height = height_reg
 
         height = height.squeeze()
         # self.debug(i, ds, height); plt.show()
@@ -212,9 +221,9 @@ class Trainer:
 
             roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
 
-            if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
-                print('Robot is upside down, skipping this data sample.')
-                return None, None
+            # if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
+            #     print('Robot is upside down, skipping this data sample.')
+            #     return None, None
 
             goal_pose = torch.eye(4, device=self.cfg.device)
             goal_pose[:3, 3:4] = xyz_true[i + 1]
@@ -280,7 +289,7 @@ class Trainer:
 
         return loss_trans_traj, loss_rot_traj
 
-    def train_ds(self, ds):
+    def train_ds(self, ds, epoch):
         loss_trans_ds = torch.tensor(0., device=self.cfg.device)
         loss_rot_ds = torch.tensor(0., device=self.cfg.device)
         n_train_samples = 0
@@ -299,6 +308,11 @@ class Trainer:
             loss_trans_ds += loss_trans
             loss_rot_ds += loss_rot
 
+            # tensorboard logging
+            global_step = epoch * len(ds) + i
+            self.writer.add_scalar('Loss trans (%s) [m]' % ds.name, loss_trans.item(), global_step)
+            self.writer.add_scalar('Loss rot (%s) [rad' % ds.name, loss_rot.item(), global_step)
+
         loss_trans_ds /= n_train_samples
         loss_rot_ds /= n_train_samples
 
@@ -306,12 +320,32 @@ class Trainer:
 
     def train(self):
         for epoch in range(self.cfg.n_train_iters):
-            for ds in self.datasets:
+            for ds in self.train_datasets:
                 print('\nTrain epoch %i on data sequence: %s\n' % (epoch, ds.path))
-                loss_trans_ds, loss_rot_ds = self.train_ds(ds)
+                loss_trans_ds, loss_rot_ds = self.train_ds(ds, epoch)
 
                 print('Loss translation: %.3f [m]' % loss_trans_ds.item())
                 print('Loss rotation: %.3f [deg]' % (loss_rot_ds.item() * 180 / np.pi))
+
+                # save best model for each dataset
+                loss = loss_trans_ds + loss_rot_ds
+                if loss < self.min_train_loss:
+                    self.min_train_loss = loss
+                    print('Saving better train model for dataset %s.' % ds.name)
+                    for key in self.models.keys():
+                        os.makedirs(os.path.join(self.weights_dir_path, ds.name), exist_ok=True)
+                        torch.save(self.models[key].state_dict(),
+                                   os.path.join(self.weights_dir_path, '%s_train.pth' % key))
+
+                    # log model inference example
+                    k = np.random.randint(0, len(ds))
+                    img = ds[k][0]
+                    # height map from a model output
+                    with torch.no_grad():
+                        height = self.monolayout_inference(img, debug=False)
+                    self.writer.add_image('RGB image', torch.from_numpy(img), epoch)
+                    self.writer.add_image('Height map', height[0], epoch)
+
 
 def main():
     cfg = Config()
@@ -324,7 +358,7 @@ def main():
     cfg.n_train_iters = 100
 
     datasets = []
-    for path in seq_paths[1:2]:
+    for path in seq_paths:
         img_size = (512, 512)
         ds = MonoDemDataset(path=path,
                             img_size=img_size,
@@ -333,12 +367,13 @@ def main():
         datasets.append(ds)
 
     # pretrained weights paths for MonoDEM (encoder and decoder)
-    pretrained_paths = {
-        "encoder": "../config/weights/monolayout/encoder.pth",
-        "decoder": "../config/weights/monolayout/decoder.pth",
-    }
+    # pretrained_paths = {
+    #     "encoder": "../config/weights/monolayout/encoder.pth",
+    #     "decoder": "../config/weights/monolayout/decoder.pth",
+    # }
+    pretrained_paths = None
 
-    trainer = Trainer(datasets=datasets, cfg=cfg, pretrained_paths=pretrained_paths, vis=False)
+    trainer = Trainer(train_datasets=datasets, cfg=cfg, pretrained_paths=pretrained_paths, vis=False)
     trainer.train()
 
 
