@@ -129,7 +129,7 @@ class Trainer:
 
         # if some poses are behind the robot starting pose, mark the data as invalid
         if not self.are_valid(poses):
-            return None, None
+            return None
 
         # start from the cropped height map origin
         poses[:, 0, 3] = poses[:, 0, 3] - self.cfg.d_max / 2.
