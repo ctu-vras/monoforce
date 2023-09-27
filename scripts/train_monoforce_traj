@@ -41,6 +41,8 @@ class Trainer:
         self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
         self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
 
+        self.loss_hm = torch.nn.MSELoss(reduction='mean')
+        self.lambda_reg = 0.1
         self.min_train_loss = np.inf
 
     def init_models(self, pretrained_paths=None):
@@ -97,29 +99,28 @@ class Trainer:
         plt.figure(figsize=(12, 12))
         plt.subplot(3, 3, 2)
         plt.title('Front')
-        plt.imshow(img_front[..., (2, 1, 0)])
+        plt.imshow(img_front)
         plt.subplot(3, 3, 8)
         plt.title('Rear')
-        plt.imshow(img_rear[..., (2, 1, 0)])
+        plt.imshow(img_rear)
         plt.subplot(3, 3, 4)
         plt.title('Left')
-        plt.imshow(img_left[..., (2, 1, 0)])
+        plt.imshow(img_left)
         plt.subplot(3, 3, 6)
         plt.title('Right')
-        plt.imshow(img_right[..., (2, 1, 0)])
+        plt.imshow(img_right)
         plt.subplot(3, 3, 5)
         plt.title('Height map')
         plt.imshow(height, cmap='jet')
         plt.colorbar()
 
-    def get_data(self, i: int, ds: MonoDemDataset):
+    def get_states(self, i: int, ds: MonoDemDataset):
         """
         Get ground truth data sample from the RobinGas dataset
         :param i: index of the sample
         :param ds: dataset
         :return: states_true, tt_true, height
         """
-        img, height_trav, height_reg, mask_traversed, mask_reg = ds[i]
         traj = ds.get_traj(i)
         poses = traj['poses']
         # move poses, points to robot frame
@@ -132,14 +133,6 @@ class Trainer:
 
         # start from the cropped height map origin
         poses[:, 0, 3] = poses[:, 0, 3] - self.cfg.d_max / 2.
-
-        # height map from a model output
-        height = self.monolayout_inference(img, debug=False)
-
-        height = height.squeeze()
-        # self.debug(i, ds, height); plt.show()
-        # height.shape = (H, W)
-        height = torch.rot90(height, k=2)  # rotate 180 deg because in the image the lower pixels (with height row number) are closer
 
         tstamps = traj['stamps']
         tstamps = tstamps - tstamps[0]
@@ -168,7 +161,7 @@ class Trainer:
                        forces_true.view(n_true_states, 3, 10))
         states_true = tuple([s.to(self.cfg.device) for s in states_true])
 
-        return states_true, height
+        return states_true
 
     def eval_p_control_diffdrive(self, states_true, height):
         """
@@ -219,8 +212,7 @@ class Trainer:
             pos_x, pos_R, vel_x, vel_omega, forces = state
             pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
 
-            roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
-
+            # roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
             # if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
             #     print('Robot is upside down, skipping this data sample.')
             #     return None, None
@@ -272,13 +264,6 @@ class Trainer:
         loss_trans_traj /= (n_true_states - 1)
         loss_rot_traj /= (n_true_states - 1)
 
-        self.optimizer.zero_grad()
-        loss = loss_trans_traj + loss_rot_traj
-        loss.backward()
-        self.optimizer.step()
-        # print('Loss translation at waypoints: %.2f [m]' % loss_trans_traj.item())
-        # print('Loss rotation at waypoints: %.2f [deg]' % (loss_rot_traj.item() * 180 / np.pi))
-
         # visualize trajectory
         if self.vis:
             system.update_trajectory(states=states)
@@ -292,43 +277,64 @@ class Trainer:
     def train_ds(self, ds, epoch):
         loss_trans_ds = torch.tensor(0., device=self.cfg.device)
         loss_rot_ds = torch.tensor(0., device=self.cfg.device)
+        loss_reg_ds = torch.tensor(0., device=self.cfg.device)
         n_train_samples = 0
         for i in tqdm(range(len(ds))):
             # print('Evaluating sample %i' % i)
-            states_true, height = self.get_data(i, ds)
+            states_true = self.get_states(i, ds)
             if states_true is None:
                 # print('Skipping sample %i' % i)
                 continue
-            # print('Evaluating sample %i' % i)
-            loss_trans, loss_rot = self.eval_p_control_diffdrive(states_true, height)
+            img, height_trav, height_reg, weights_trav, weights_reg = ds[i]
+            # height map from a model output
+            height_pred = self.monolayout_inference(img, debug=False)
+
+            # regularization loss
+            height_reg = torch.from_numpy(height_reg).to(self.cfg.device).reshape(height_pred.shape)
+            loss_reg = self.lambda_reg * self.loss_hm(height_pred, height_reg)
+
+            # self.debug(i, ds, height_pred.detach().cpu().numpy()); plt.show()
+            # rotate 180 deg because in the image the lower pixels (with height row number) are closer
+            height_pred = torch.rot90(height_pred.squeeze(), k=2)  # (H, W)
+            loss_trans, loss_rot = self.eval_p_control_diffdrive(states_true, height_pred)
+
             if loss_trans is None:
                 continue
             n_train_samples += 1
 
+            self.optimizer.zero_grad()
+            loss = loss_trans + loss_rot + loss_reg
+            loss.backward()
+            self.optimizer.step()
+
             loss_trans_ds += loss_trans
             loss_rot_ds += loss_rot
+            loss_reg_ds += loss_reg
 
             # tensorboard logging
             global_step = epoch * len(ds) + i
             self.writer.add_scalar('Loss trans (%s) [m]' % ds.name, loss_trans.item(), global_step)
             self.writer.add_scalar('Loss rot (%s) [rad' % ds.name, loss_rot.item(), global_step)
+            self.writer.add_scalar('Loss reg (%s) [m]' % ds.name, loss_reg.item(), global_step)
 
         loss_trans_ds /= n_train_samples
         loss_rot_ds /= n_train_samples
+        loss_reg_ds /= n_train_samples
 
-        return loss_trans_ds, loss_rot_ds
+        return loss_trans_ds, loss_rot_ds, loss_reg_ds
 
     def train(self):
         for epoch in range(self.cfg.n_train_iters):
             for ds in self.train_datasets:
                 print('\nTrain epoch %i on data sequence: %s\n' % (epoch, ds.path))
-                loss_trans_ds, loss_rot_ds = self.train_ds(ds, epoch)
+                loss_trans_ds, loss_rot_ds, loss_reg_ds = self.train_ds(ds, epoch)
 
                 print('Loss translation: %.3f [m]' % loss_trans_ds.item())
                 print('Loss rotation: %.3f [deg]' % (loss_rot_ds.item() * 180 / np.pi))
+                print('Loss regularization: %.3f [m]' % loss_reg_ds.item())
 
                 # save best model for each dataset
-                loss = loss_trans_ds + loss_rot_ds
+                loss = loss_trans_ds + loss_rot_ds + loss_reg_ds
                 if loss < self.min_train_loss:
                     self.min_train_loss = loss
                     print('Saving better train model for dataset %s.' % ds.name)
