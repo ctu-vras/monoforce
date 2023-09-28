@@ -173,5 +173,4 @@ tb_runs/
 
 # slurm files for remote jobs launching
 *.batch
-*.sh
 
