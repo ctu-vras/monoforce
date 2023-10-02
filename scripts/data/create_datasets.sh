@@ -13,19 +13,12 @@ VIS=False
 SAVE=True
 
 # list of sequences to process
-#SEQUENCES=(
-#            ${DATA_PATH}/'22-09-27-unhost/husky/husky_2022-09-27-15-01-44'
-#            ${DATA_PATH}/'22-09-27-unhost/husky/husky_2022-09-27-10-33-15'
-#            ${DATA_PATH}/'22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57'
-#            ${DATA_PATH}/'22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34'
-#            ${DATA_PATH}/'22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03'
-#)
 SEQUENCES=(
-            #${HOME}/'data/robingas_sequences/husky_2022-09-27-15-01-44'
-            #${HOME}/'data/robingas_sequences/husky_2022-09-27-10-33-15'
-            #${HOME}/'data/robingas_sequences/husky_2022-10-27-15-33-57'
-            ${HOME}/'data/robingas_sequences/ugv_2022-08-12-15-18-34'
-            ${HOME}/'data/robingas_sequences/ugv_2022-08-12-16-37-03'
+            ${DATA_PATH}/'22-09-27-unhost/husky/husky_2022-09-27-15-01-44'
+            ${DATA_PATH}/'22-09-27-unhost/husky/husky_2022-09-27-10-33-15'
+            ${DATA_PATH}/'22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57'
+            ${DATA_PATH}/'22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34'
+            ${DATA_PATH}/'22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03'
 )
 
 # source ROS workspace

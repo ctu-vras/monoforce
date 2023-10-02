@@ -267,7 +267,7 @@ def p_control_diffdrive():
         for t in time_interval[1:]:
             v, w, dist = pose_control(state, goal_pose,
                                       return_dist=True, allow_backwards=False,
-                                      Kp_rho=2., Kp_theta=4., Kp_yaw=4.)
+                                      Kp_rho=0.5, Kp_theta=4., Kp_yaw=1.)
             state[2][0] = v
             state[3][2] = w
 

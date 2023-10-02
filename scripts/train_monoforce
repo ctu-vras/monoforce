@@ -26,7 +26,8 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--n_epochs', type=int, default=500)
     parser.add_argument('--img_size', type=int, default=512)
-    parser.add_argument('--regularization', type=float, default=None)
+    parser.add_argument('--cost_trav', type=float, default=1.)
+    parser.add_argument('--cost_reg', type=float, default=0.2)
     parser.add_argument('--weighted_loss', type=str2bool, default=False)
     parser.add_argument('--pretrained_paths', type=str, nargs='+', default=None)
     parser.add_argument('--random_camera_selection_prob', type=float, default=0.2)
@@ -36,14 +37,15 @@ def parse_args():
 class Trainer(object):
     def __init__(self, train_dataset, val_dataset, img_size=(512, 512),
                  batch_size=1, lr=1e-3,
-                 regularization=None, weighted_loss=False,
+                 cost_trav=1., cost_reg=0., weighted_loss=False,
                  pretrained_paths=None,
                  vis=False, save=True):
         self.train_ds = train_dataset
         self.val_ds = val_dataset
         self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
         self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
-        self.regularization = regularization
+        self.cost_trav = cost_trav
+        self.cost_reg = cost_reg
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.img_size = img_size
 
@@ -71,7 +73,7 @@ class Trainer(object):
 
         # logging: tensorboard and weights
         path = os.path.dirname(os.path.realpath(__file__))
-        train_label = '%s_reg_%s_lr_%f' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), regularization, lr)
+        train_label = '%s_trav_cost_%.1f_reg_cost_%.1f_lr_%f' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), cost_trav, cost_reg, lr)
         self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
         self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
 
@@ -100,29 +102,29 @@ class Trainer(object):
         plt.figure(figsize=(20, 5))
         plt.subplot(1, 5, 1)
         plt.title('Input Image')
-        img_vis = img[0].cpu().numpy().transpose((1, 2, 0))
+        img_vis = img[0].detach().cpu().numpy().transpose((1, 2, 0))
         # img_vis = self.val_ds.destandardize_img(img_vis)
         plt.imshow(img_vis)
 
         plt.subplot(1, 5, 2)
         plt.title('Height Label')
-        plt.imshow(height_label[0].squeeze().cpu().numpy(), cmap='jet')
+        plt.imshow(height_label[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
-        plt.imshow(weights_trav[0].squeeze().cpu().numpy(), alpha=0.5, cmap='jet')
+        plt.imshow(weights_trav[0].detach().squeeze().cpu().numpy(), alpha=0.5, cmap='jet')
 
         plt.subplot(1, 5, 3)
         plt.title('Height Prediction')
-        plt.imshow(height_pred[0].squeeze().cpu().numpy(), cmap='jet')
+        plt.imshow(height_pred[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.subplot(1, 5, 4)
         plt.title('Height Regularization')
-        plt.imshow(height_reg[0].squeeze().cpu().numpy(), cmap='jet')
+        plt.imshow(height_reg[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.subplot(1, 5, 5)
         plt.title('Weights Regularization')
-        plt.imshow(weights_reg[0].squeeze().cpu().numpy(), cmap='jet')
+        plt.imshow(weights_reg[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.show()
@@ -130,7 +132,7 @@ class Trainer(object):
     def epoch(self, dataloader, epoch_n, mode='train'):
         assert mode in ['train', 'val']
 
-        loss_sum = torch.as_tensor(0.0, device=self.device)
+        loss_ds = torch.as_tensor(0.0, device=self.device)
         for i, batch in tqdm(enumerate(dataloader)):
             # get sample from data loader (front image, height map label and height map regularization)
             img, height_label, height_reg, weights_traversed, weights_reg = batch
@@ -145,7 +147,7 @@ class Trainer(object):
                 print('Skipping this batch...')
                 continue
 
-            if torch.any(torch.isnan(height_reg)) and self.regularization is not None:
+            if torch.any(torch.isnan(height_reg)) and self.cost_reg > 0.:
                 print('Warning: NaN values in height regularization (corrupted label)!')
                 print('Skipping this batch...')
                 continue
@@ -155,27 +157,34 @@ class Trainer(object):
             height_pred = self.models['decoder'](features, is_training=True)
 
             # loss is computed for the part of the predicted height map covered by robot's trajectory
-            if self.weighted_loss:
-                loss = self.loss_fn(height_pred, height_label)
-                loss = loss * weights_traversed
-                loss = loss.sum() / (weights_traversed.sum() + 1e-6)
-            else:
-                loss = self.loss_fn(height_pred[weights_traversed], height_label[weights_traversed])
-            # print('Loss: %f' % loss.item())
-            self.writer.add_scalar('Loss(iter)/%s' % mode, loss.item(), i + epoch_n * len(dataloader))
+            loss = torch.as_tensor(0.0, device=self.device)
+            if self.cost_trav > 0.:
+                if self.weighted_loss:
+                    loss_trav = self.loss_fn(height_pred, height_label)
+                    loss_trav = loss_trav * weights_traversed
+                    loss_trav = loss_trav.sum() / (weights_traversed.sum() + 1e-6)
+                else:
+                    loss_trav = self.loss_fn(height_pred[weights_traversed], height_label[weights_traversed])
+                loss += self.cost_trav * loss_trav
+
+                # print('Loss trav: %f' % loss_trav.item())
+                self.writer.add_scalar('Loss_trav(iter)/%s' % mode, loss_trav.item(), i + epoch_n * len(dataloader))
 
             # add regularization loss
-            if self.regularization is not None:
+            if self.cost_reg > 0.:
                 if self.weighted_loss:
                     loss_reg = self.loss_fn(height_pred, height_reg)
                     loss_reg = loss_reg * weights_reg
                     loss_reg = loss_reg.sum() / (weights_reg.sum() + 1e-6)
                 else:
                     loss_reg = self.loss_fn(height_pred, height_reg)
+                loss += self.cost_reg * loss_reg
 
                 # print('Loss reg: %f' % loss_reg.item())
                 self.writer.add_scalar('Loss_reg(iter)/%s' % mode, loss_reg.item(), i + epoch_n * len(dataloader))
-                loss += self.regularization * loss_reg
+
+            # add total dataset loss
+            loss_ds += loss
 
             if mode == 'train':
                 # backpropagate gradients and update model params
@@ -183,9 +192,7 @@ class Trainer(object):
                 loss.backward()
                 self.optimizer.step()
 
-            loss_sum += loss
-
-        loss_sum /= len(dataloader)
+        loss_ds /= len(dataloader)
 
         # visualize
         if self.vis:
@@ -200,7 +207,7 @@ class Trainer(object):
             self.writer.add_images(f'Mask Traversed ({mode})', weights_traversed, 0)
             self.writer.add_images(f'Mask Regularization ({mode})', weights_reg, 0)
 
-        return loss_sum
+        return loss_ds
 
     def train(self, n_epochs=1):
         for e in range(n_epochs):
@@ -244,6 +251,7 @@ class Trainer(object):
 
 def main():
     args = parse_args()
+    print(args)
 
     # create dataset for MonoLayout training
     datasets = []
@@ -263,12 +271,11 @@ def main():
         train_ds = MonoDemDataset(path, img_size=img_size, is_train=True,
                                   random_camera_selection_prob=args.random_camera_selection_prob, cfg=cfg)
         # print('Dataset size:', len(train_ds))
-
-        if args.visualize:
-            # visualize a data sample from the dataset
-            for _ in range(1):
-                i = np.random.choice(len(train_ds))
-                train_ds.__getitem__(i, visualize=True)
+        # if args.visualize:
+        #     # visualize a data sample from the dataset
+        #     for _ in range(1):
+        #         i = np.random.choice(len(train_ds))
+        #         train_ds.__getitem__(i, visualize=True)
 
         datasets.append(train_ds)
     train_ds = ConcatDataset(datasets)
@@ -295,7 +302,7 @@ def main():
     trainer = Trainer(train_ds, val_ds,
                       img_size=img_size,
                       batch_size=args.batch_size, lr=args.lr,
-                      regularization=args.regularization, weighted_loss=args.weighted_loss,
+                      cost_trav=args.cost_trav, cost_reg=args.cost_reg, weighted_loss=args.weighted_loss,
                       pretrained_paths=pretrained_paths,
                       vis=args.visualize, save=args.save)
     trainer.train(n_epochs=args.n_epochs)
