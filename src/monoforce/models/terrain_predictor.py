@@ -1,3 +1,4 @@
+import numpy as np
 from torch.nn import ConvTranspose2d
 from torch.nn import Conv2d
 from torch.nn import MaxPool2d
@@ -7,18 +8,24 @@ from torch.nn import ReLU, LeakyReLU, Tanh
 from torchvision.transforms import CenterCrop
 from torch.nn import functional as F
 import torch
-import torchvision.models.segmentation
+
+
+__all__ = [
+    'TerrainPredictor',
+    'Rigid2Trav',
+    'create_torchvision_model',
+]
 
 
 class Block(Module):
     def __init__(self, inChannels, outChannels):
         super().__init__()
         # store the convolution and RELU layers
-        self.conv1 = Conv2d(inChannels, outChannels, 2)
+        self.conv1 = Conv2d(inChannels, outChannels, 2, bias=False)
         self.nonlin = LeakyReLU(0.1, inplace=True)
         # self.nonlin = ReLU()
         # self.nonlin = Tanh()
-        self.conv2 = Conv2d(outChannels, outChannels, 2)
+        self.conv2 = Conv2d(outChannels, outChannels, 2, bias=False)
 
     def forward(self, x):
         # apply CONV => NONLIN => CONV block to the inputs and return it
@@ -115,6 +122,37 @@ class LinearPredictor(Module):
     def forward(self, x):
         y = self.w * x + self.b
         return y
+    
+
+class Rigid2Trav(torch.nn.Module):
+    """
+    Rigid2Trav is a simple model that predicts the traversability height map from a rigid height map.
+    It consists of two convolutional layers followed by two transposed convolutional layers.
+    CONV => RELU => CONV => RELU => UPCONV => RELU => UPCONV => RELU
+    """
+    def __init__(self):
+        super(Rigid2Trav, self).__init__()
+        self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+        self.conv2 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+        self.upconv1 = torch.nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+        self.upconv2 = torch.nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
+        self.nonlin = torch.nn.LeakyReLU()
+
+        # Initialize weights
+        self.init_weights()
+
+    def forward(self, x):
+        x = self.conv2(self.nonlin(self.conv1(x)))
+        x = self.upconv2(self.nonlin(self.upconv1(x)))
+        return x
+
+    def init_weights(self):
+        # Initialize weights of the model
+        for m in self.modules():
+            if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.ConvTranspose2d):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
 
 
 def create_torchvision_model(architecture, n_inputs, n_outputs, pretrained_backbone=True):
@@ -146,6 +184,7 @@ def create_torchvision_model(architecture, n_inputs, n_outputs, pretrained_backb
         model.classifier[-1] = torch.nn.Conv2d(256, n_outputs, kernel_size=(1, 1), stride=(1, 1))
 
     return model
+
 
 def learn_identity(n_iters=100, lr=1e-2, bs=512):
     import matplotlib.pyplot as plt
@@ -202,35 +241,17 @@ def learn_identity(n_iters=100, lr=1e-2, bs=512):
 
 def demo():
     import matplotlib.pyplot as plt
-    from ..utils import plot_grad_flow
-    from segmentation_models_pytorch import PSPNet as Model
+    from ..vis import plot_grad_flow
 
-    height_true = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                               [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],
-                               [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],
-                               [0.5, 0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5],
-                               [1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
-                               [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                               [0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5],
-                               [0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5],
-                               [0.5, 0.5, 0.0, 0.5, 0.7, 0.5, 0.5, 0.0, 0.5, 0.7],
-                               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-    # ground truth
-    H, W = 10, 10
-    # H, W = 16, 16
-    # height_true = height_true[None][None]
-    height_true = torch.randn((1, 1, H, W))
-    # height_true = torch.ones((1, 1, H, W))
+    seed = 0
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    height_true = torch.from_numpy(5 * np.random.random((1, 1, 256, 256)))
+    
+    # model that transforms rigid height map to traversability map
+    model = Rigid2Trav()
 
-    model = TerrainPredictor(encChannels=(1, 2, 4), decChannels=(4, 2), retainDim=False)
-    # model = Model(in_channels=1, classes=1, upsampling=8, psp_out_channels=4).eval()
-    # model = LinearPredictor()
-    # height_init = torch.randn((1, 1, H, W))
-    height_init = 0.9 * height_true - 0.5
-
-    # check encoder-decoder output shapes
-    # for out in model.encoder(height_init):
-    #     print(out.shape)
+    height_init = height_true.clone() + torch.randn_like(height_true) * 0.1
     print(model(height_init).shape)
 
     loss_fn = torch.nn.MSELoss()
@@ -238,7 +259,7 @@ def demo():
     model = model.train()
 
     losses = []
-    for i in range(100):
+    for i in range(500):
         height_pred = model(height_init)
         loss = loss_fn(height_pred, height_true)
 
@@ -248,43 +269,33 @@ def demo():
         # plt.draw()
         # plt.pause(0.01)
         optim.step()
-
-        print(loss.item())
         losses.append(loss.item())
+    print(loss.item())
 
     plt.figure(figsize=(20, 5))
     plt.subplot(1, 4, 1)
     plt.title('Prediction')
-    plt.imshow(height_pred.squeeze().detach().cpu().numpy())
+    plt.imshow(height_pred.squeeze().detach().cpu().numpy(), cmap='jet')
+    plt.colorbar()
 
     plt.subplot(1, 4, 2)
     plt.title('GT')
-    plt.imshow(height_true.squeeze().detach().cpu().numpy())
+    plt.imshow(height_true.squeeze().detach().cpu().numpy(), cmap='jet')
+    plt.colorbar()
 
     plt.subplot(1, 4, 3)
     plt.title('Loss')
     plt.plot(losses)
     plt.grid()
 
-    # plt.subplot(1, 4, 4)
-    # plot_grad_flow(model.named_parameters())
+    plt.subplot(1, 4, 4)
+    plot_grad_flow(model.named_parameters())
     plt.show()
 
 
-def test():
-    import numpy as np
-    from segmentation_models_pytorch import Unet
-
-    # model = TerrainPredictor(encChannels=(1, 2, 4), decChannels=(4, 2), retainDim=False)
-    # model = Unet(in_channels=1, classes=1)
-    model = create_torchvision_model(architecture='fcn_resnet50', n_inputs=1, n_outputs=1)
-    inp = torch.tensor(np.random.random((1, 1, 50, 50)), dtype=torch.float32)
-    out = model(inp)['out']
-    print(out.shape)
-
 def main():
     # learn_identity(n_iters=400, lr=0.01, bs=1024)
-    test()
+    demo()
 
 
 if __name__ == '__main__':
