@@ -12,7 +12,7 @@ import torch
 
 __all__ = [
     'TerrainPredictor',
-    'Rigid2Trav',
+    'Geom2Trav',
     'create_torchvision_model',
 ]
 
@@ -124,14 +124,15 @@ class LinearPredictor(Module):
         return y
     
 
-class Rigid2Trav(torch.nn.Module):
+class Geom2Trav(torch.nn.Module):
     """
-    Rigid2Trav is a simple model that predicts the traversability height map from a rigid height map.
+    Geom2Trav is a simple model that predicts the traversability height map from a estimated (geometrical) height map.
+    For example, it should correct the height map of a high vegetation area to a flat terrain.
     It consists of two convolutional layers followed by two transposed convolutional layers.
     CONV => RELU => CONV => RELU => UPCONV => RELU => UPCONV => RELU
     """
     def __init__(self):
-        super(Rigid2Trav, self).__init__()
+        super(Geom2Trav, self).__init__()
         self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
         self.conv2 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
         self.upconv1 = torch.nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=3, padding=1, bias=False)
@@ -249,7 +250,7 @@ def demo():
     height_true = torch.from_numpy(5 * np.random.random((1, 1, 256, 256)))
     
     # model that transforms rigid height map to traversability map
-    model = Rigid2Trav()
+    model = Geom2Trav()
 
     height_init = height_true.clone() + torch.randn_like(height_true) * 0.1
     print(model(height_init).shape)

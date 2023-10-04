@@ -120,9 +120,9 @@ class Decoder(nn.Module):
         Processes input image features into output occupancy maps/layouts
     """
 
-    def __init__(self, num_ch_enc):
+    def __init__(self, num_ch_enc, num_output_channels=1):
         super(Decoder, self).__init__()
-        self.num_output_channels = 1
+        self.num_output_channels = num_output_channels
         self.num_ch_enc = num_ch_enc
         self.num_ch_dec = np.array([16, 32, 64, 128, 256])
         # decoder

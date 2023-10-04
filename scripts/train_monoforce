@@ -10,7 +10,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.config import Config
-from monoforce.models import monolayout
+from monoforce.models import monolayout, Geom2Trav
 from monoforce.utils import normalize
 from argparse import ArgumentParser
 
@@ -20,17 +20,28 @@ def str2bool(v):
 
 def parse_args():
     parser = ArgumentParser(description='Train Monolayout')
+    parser.add_argument('--train_mode', type=str,
+                        default='regularization', choices=['sequential', 'regularization'],
+                        help='Training mode:'
+                             '- sequential (Monolayout(img)->HM_geom, Geom2Trav(HM_geom)->HM_trav),'
+                             '- or regularization: Monolayout(img)->HM: loss_reg(HM, HM_geom) + loss_trav(HM, HM_trav)')
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save', type=str2bool, default=True)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--n_epochs', type=int, default=500)
-    parser.add_argument('--img_size', type=int, default=512)
-    parser.add_argument('--cost_trav', type=float, default=1.)
-    parser.add_argument('--cost_reg', type=float, default=0.2)
-    parser.add_argument('--weighted_loss', type=str2bool, default=False)
-    parser.add_argument('--pretrained_paths', type=str, nargs='+', default=None)
-    parser.add_argument('--random_camera_selection_prob', type=float, default=0.2)
+    parser.add_argument('--img_size', type=int, default=512,
+                        help='Input image size')
+    parser.add_argument('--cost_trav', type=float, default=1.,
+                        help='Cost for traversed height loss (for regularization mode only)')
+    parser.add_argument('--cost_reg', type=float, default=0.2,
+                        help='Cost for regularization loss (for regularization mode only)')
+    parser.add_argument('--weighted_loss', type=str2bool, default=False,
+                        help='Use weighted MSE loss between height maps')
+    parser.add_argument('--pretrained_paths', type=str, nargs='+', default=None,
+                        help='Paths to pretrained weights for models: encoder, decoder, geom2trav')
+    parser.add_argument('--random_camera_selection_prob', type=float, default=0.2,
+                        help='Probability of random camera selection')
     return parser.parse_args()
 
 
@@ -39,6 +50,7 @@ class Trainer(object):
                  batch_size=1, lr=1e-3,
                  cost_trav=1., cost_reg=0., weighted_loss=False,
                  pretrained_paths=None,
+                 train_mode='sequential',  # 'sequential' or 'regularization'
                  vis=False, save=True):
         self.train_ds = train_dataset
         self.val_ds = val_dataset
@@ -48,6 +60,7 @@ class Trainer(object):
         self.cost_reg = cost_reg
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.img_size = img_size
+        self.train_mode = train_mode
 
         # models
         self.models = self.init_models(pretrained_paths=pretrained_paths)
@@ -73,15 +86,18 @@ class Trainer(object):
 
         # logging: tensorboard and weights
         path = os.path.dirname(os.path.realpath(__file__))
-        train_label = '%s_trav_cost_%.1f_reg_cost_%.1f_lr_%f' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), cost_trav, cost_reg, lr)
+        train_label = '%s_trav_lr_%f' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), lr)
         self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
         self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
 
     def init_models(self, pretrained_paths=None):
         assert isinstance(pretrained_paths, dict) or pretrained_paths is None
         models = {}
+        # MonoLayout encoder and decoder
         models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=self.img_size[0], img_wt=self.img_size[1], pretrained=True)
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
+        # Geom2Trav
+        models["geom2trav"] = Geom2Trav()
 
         if pretrained_paths is not None:
             assert "encoder" in pretrained_paths.keys() and "decoder" in pretrained_paths.keys()
@@ -91,6 +107,7 @@ class Trainer(object):
             filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
             models["encoder"].load_state_dict(filtered_dict_enc)
             models["decoder"].load_state_dict(torch.load(pretrained_paths["decoder"], map_location=self.device))
+            models["geom2trav"].load_state_dict(torch.load(pretrained_paths["geom2trav"], map_location=self.device))
 
         for key in models.keys():
             models[key].train()
@@ -98,7 +115,7 @@ class Trainer(object):
 
         return models
 
-    def visualize(self, img, height_label, height_pred, height_reg, weights_trav, weights_reg):
+    def visualize(self, img, height_trav, height_geom, weights_trav, weights_geom, height_pred):
         plt.figure(figsize=(20, 5))
         plt.subplot(1, 5, 1)
         plt.title('Input Image')
@@ -107,47 +124,72 @@ class Trainer(object):
         plt.imshow(img_vis)
 
         plt.subplot(1, 5, 2)
-        plt.title('Height Label')
-        plt.imshow(height_label[0].detach().squeeze().cpu().numpy(), cmap='jet')
+        plt.title('Height Traversed')
+        plt.imshow(height_trav[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
         plt.imshow(weights_trav[0].detach().squeeze().cpu().numpy(), alpha=0.5, cmap='jet')
 
         plt.subplot(1, 5, 3)
-        plt.title('Height Prediction')
-        plt.imshow(height_pred[0].detach().squeeze().cpu().numpy(), cmap='jet')
+        plt.title('Height Geom (from Lidar)')
+        plt.imshow(height_geom[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.subplot(1, 5, 4)
-        plt.title('Height Regularization')
-        plt.imshow(height_reg[0].detach().squeeze().cpu().numpy(), cmap='jet')
+        plt.title('Weights Geom')
+        plt.imshow(weights_geom[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.subplot(1, 5, 5)
-        plt.title('Weights Regularization')
-        plt.imshow(weights_reg[0].detach().squeeze().cpu().numpy(), cmap='jet')
+        plt.title('Height Prediction')
+        plt.imshow(height_pred[0].detach().squeeze().cpu().numpy(), cmap='jet')
         plt.colorbar()
 
         plt.show()
 
     def epoch(self, dataloader, epoch_n, mode='train'):
+        if self.train_mode == 'regularization':
+            loss_ds, cash = self.epoch_regularization(dataloader, epoch_n, mode=mode)
+        else:
+            assert self.train_mode == 'sequential'
+            loss_ds, cash = self.epoch_sequantial(dataloader, epoch_n, mode=mode)
+        # unpack cash
+        img, height_trav, height_geom, weights_trav, weights_geom, height_pred = cash
+
+        # visualize
+        if self.vis:
+            self.visualize(img, height_trav, height_geom, weights_trav, weights_geom, height_pred)
+
+            # add input image to tensorboard logger
+            self.writer.add_images(f'Input Image ({mode})', img, 0)
+            # add predictions to tensorboard logger
+            self.writer.add_images(f'Height Traversed ({mode})', normalize(height_trav), 0)
+            self.writer.add_images(f'Height Predicted ({mode})', normalize(height_pred), 0)
+            self.writer.add_images(f'Height Geom ({mode})', normalize(height_geom), 0)
+            self.writer.add_images(f'Weights Traversed ({mode})', weights_trav, 0)
+            self.writer.add_images(f'Weights Geom ({mode})', weights_geom, 0)
+
+        return loss_ds
+
+    def epoch_regularization(self, dataloader, epoch_n, mode='train'):
         assert mode in ['train', 'val']
 
         loss_ds = torch.as_tensor(0.0, device=self.device)
+        img, height_trav, height_geom, weights_trav, weights_geom, height_pred = None, None, None, None, None, None
         for i, batch in tqdm(enumerate(dataloader)):
             # get sample from data loader (front image, height map label and height map regularization)
-            img, height_label, height_reg, weights_traversed, weights_reg = batch
+            img, height_trav, height_geom, weights_trav, weights_geom = batch
             img = img.to(self.device)
-            height_label = height_label.to(self.device)
-            height_reg = height_reg.to(self.device)
-            weights_traversed = weights_traversed.to(self.device)
-            weights_reg = weights_reg.to(self.device)
+            height_trav = height_trav.to(self.device)
+            height_geom = height_geom.to(self.device)
+            weights_trav = weights_trav.to(self.device)
+            weights_geom = weights_geom.to(self.device)
 
-            if torch.any(torch.isnan(height_label)):
+            if torch.any(torch.isnan(height_trav)):
                 print('Warning: NaN values in height label (corrupted label)!')
                 print('Skipping this batch...')
                 continue
 
-            if torch.any(torch.isnan(height_reg)) and self.cost_reg > 0.:
+            if torch.any(torch.isnan(height_geom)) and self.cost_reg > 0.:
                 print('Warning: NaN values in height regularization (corrupted label)!')
                 print('Skipping this batch...')
                 continue
@@ -160,11 +202,11 @@ class Trainer(object):
             loss = torch.as_tensor(0.0, device=self.device)
             if self.cost_trav > 0.:
                 if self.weighted_loss:
-                    loss_trav = self.loss_fn(height_pred, height_label)
-                    loss_trav = loss_trav * weights_traversed
-                    loss_trav = loss_trav.sum() / (weights_traversed.sum() + 1e-6)
+                    loss_trav = self.loss_fn(height_pred, height_trav)
+                    loss_trav = loss_trav * weights_trav
+                    loss_trav = loss_trav.sum() / (weights_trav.sum() + 1e-6)
                 else:
-                    loss_trav = self.loss_fn(height_pred[weights_traversed], height_label[weights_traversed])
+                    loss_trav = self.loss_fn(height_pred[weights_trav], height_trav[weights_trav])
                 loss += self.cost_trav * loss_trav
 
                 # print('Loss trav: %f' % loss_trav.item())
@@ -173,11 +215,11 @@ class Trainer(object):
             # add regularization loss
             if self.cost_reg > 0.:
                 if self.weighted_loss:
-                    loss_reg = self.loss_fn(height_pred, height_reg)
-                    loss_reg = loss_reg * weights_reg
-                    loss_reg = loss_reg.sum() / (weights_reg.sum() + 1e-6)
+                    loss_reg = self.loss_fn(height_pred, height_geom)
+                    loss_reg = loss_reg * weights_geom
+                    loss_reg = loss_reg.sum() / (weights_geom.sum() + 1e-6)
                 else:
-                    loss_reg = self.loss_fn(height_pred, height_reg)
+                    loss_reg = self.loss_fn(height_pred, height_geom)
                 loss += self.cost_reg * loss_reg
 
                 # print('Loss reg: %f' % loss_reg.item())
@@ -193,21 +235,74 @@ class Trainer(object):
                 self.optimizer.step()
 
         loss_ds /= len(dataloader)
+        cash = (img, height_trav, height_geom, weights_trav, weights_geom, height_pred)
 
-        # visualize
-        if self.vis:
-            self.visualize(img, height_label, height_pred, height_reg, weights_traversed, weights_reg)
+        return loss_ds, cash
 
-            # add input image to tensorboard logger
-            self.writer.add_images(f'Input Image ({mode})', img, 0)
-            # add predictions to tensorboard logger
-            self.writer.add_images(f'Height Label ({mode})', normalize(height_label), 0)
-            self.writer.add_images(f'Height Prediction ({mode})', normalize(height_pred), 0)
-            self.writer.add_images(f'Height Regularization ({mode})', normalize(height_reg), 0)
-            self.writer.add_images(f'Mask Traversed ({mode})', weights_traversed, 0)
-            self.writer.add_images(f'Mask Regularization ({mode})', weights_reg, 0)
+    def epoch_sequantial(self, dataloader, epoch_n, mode='train'):
+        assert mode in ['train', 'val']
 
-        return loss_ds
+        loss_ds = torch.as_tensor(0.0, device=self.device)
+        img, height_trav, height_geom, weights_trav, weights_geom, height_pred = None, None, None, None, None, None
+        for i, batch in tqdm(enumerate(dataloader)):
+            # get sample from data loader (front image, height map label and height map regularization)
+            img, height_trav, height_geom, weights_trav, weights_geom = batch
+            img = img.to(self.device)
+            height_trav = height_trav.to(self.device)
+            height_geom = height_geom.to(self.device)
+            weights_trav = weights_trav.to(self.device)
+            weights_geom = weights_geom.to(self.device)
+
+            if torch.any(torch.isnan(height_trav)):
+                print('Warning: NaN values in height label (corrupted label)!')
+                print('Skipping this batch...')
+                continue
+
+            if torch.any(torch.isnan(height_geom)):
+                print('Warning: NaN values in height regularization (corrupted label)!')
+                print('Skipping this batch...')
+                continue
+
+            # model inference
+            features = self.models['encoder'](img)
+            height_pred_geom = self.models['decoder'](features, is_training=True)
+
+            # loss between MonoLayout prediction and height map estimated from point cloud
+            if self.weighted_loss:
+                loss_geom = self.loss_fn(height_pred_geom, height_geom)
+                loss_geom = loss_geom * weights_geom
+                loss_geom = loss_geom.sum() / (weights_geom.sum() + 1e-6)
+            else:
+                loss_geom = self.loss_fn(height_pred_geom, height_geom)
+            # print('Loss geom: %f' % loss_geom.item())
+            self.writer.add_scalar('Loss_geom(iter)/%s' % mode, loss_geom.item(), i + epoch_n * len(dataloader))
+
+            # loss is computed for the part of the predicted height map covered by robot's trajectory
+            height_pred_trav = self.models['geom2trav'](height_pred_geom)
+            height_pred = height_pred_trav
+            if self.weighted_loss:
+                loss_trav = self.loss_fn(height_pred_trav, height_trav)
+                loss_trav = loss_trav * weights_trav
+                loss_trav = loss_trav.sum() / (weights_trav.sum() + 1e-6)
+            else:
+                loss_trav = self.loss_fn(height_pred_trav[weights_trav], height_trav[weights_trav])
+            # print('Loss trav: %f' % loss_trav.item())
+            self.writer.add_scalar('Loss_trav(iter)/%s' % mode, loss_trav.item(), i + epoch_n * len(dataloader))
+
+            # add total dataset loss
+            loss = loss_trav + loss_geom
+            loss_ds += loss
+
+            if mode == 'train':
+                # backpropagate gradients and update model params
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+        loss_ds /= len(dataloader)
+        cash = (img, height_trav, height_geom, weights_trav, weights_geom, height_pred)
+
+        return loss_ds, cash
 
     def train(self, n_epochs=1):
         for e in range(n_epochs):
@@ -304,6 +399,7 @@ def main():
                       batch_size=args.batch_size, lr=args.lr,
                       cost_trav=args.cost_trav, cost_reg=args.cost_reg, weighted_loss=args.weighted_loss,
                       pretrained_paths=pretrained_paths,
+                      train_mode=args.train_mode,
                       vis=args.visualize, save=args.save)
     trainer.train(n_epochs=args.n_epochs)
 
