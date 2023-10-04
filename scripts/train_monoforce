@@ -49,7 +49,7 @@ class Trainer(object):
     def __init__(self, train_ds_paths, val_ds_path, img_size=(512, 512),
                  batch_size=1, lr=1e-3,
                  cost_trav=1., cost_reg=0., weighted_loss=False,
-                 pretrained_paths=None,
+                 pretrained_model_paths=None,
                  train_mode='sequential',  # 'sequential' or 'regularization'
                  vis=False, save=True):
         self.cost_trav = cost_trav
@@ -64,7 +64,7 @@ class Trainer(object):
         self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
 
         # models
-        self.models = self.init_models(pretrained_paths=pretrained_paths)
+        self.models = self.init_models(pretrained_paths=pretrained_model_paths)
 
         # optimizer
         self.parameters_to_train = []
@@ -87,9 +87,9 @@ class Trainer(object):
 
         # logging: tensorboard and weights
         path = os.path.dirname(os.path.realpath(__file__))
-        train_label = ('%s_mode_%s_travcost_%.1f_regcost_%.1f_lr_%f' %
+        train_label = ('%s_mode_%s_travcost_%.1f_regcost_%.1f_weightedloss_%s_lr_%f' %
                        (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), train_mode,
-                        cost_trav, cost_reg, lr))
+                        cost_trav, cost_reg, weighted_loss, lr))
         self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
         self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
 
@@ -192,7 +192,7 @@ class Trainer(object):
             loss_ds, cash = self.epoch_regularization(dataloader, epoch_n, mode=mode)
         else:
             assert self.train_mode == 'sequential'
-            loss_ds, cash = self.epoch_sequantial(dataloader, epoch_n, mode=mode)
+            loss_ds, cash = self.epoch_sequential(dataloader, epoch_n, mode=mode)
         # unpack cash
         img, height_trav, height_geom, weights_trav, weights_geom, height_pred = cash
 
@@ -225,16 +225,6 @@ class Trainer(object):
             weights_trav = weights_trav.to(self.device)
             weights_geom = weights_geom.to(self.device)
 
-            if torch.any(torch.isnan(height_trav)):
-                print('Warning: NaN values in height label (corrupted label)!')
-                print('Skipping this batch...')
-                continue
-
-            if torch.any(torch.isnan(height_geom)) and self.cost_reg > 0.:
-                print('Warning: NaN values in height regularization (corrupted label)!')
-                print('Skipping this batch...')
-                continue
-
             # model inference
             features = self.models['encoder'](img)
             height_pred = self.models['decoder'](features, is_training=True)
@@ -242,14 +232,21 @@ class Trainer(object):
             # loss is computed for the part of the predicted height map covered by robot's trajectory
             loss = torch.as_tensor(0.0, device=self.device)
             if self.cost_trav > 0.:
-                if self.weighted_loss:
-                    loss_trav = self.loss_fn(height_pred, height_trav)
-                    loss_trav = loss_trav * weights_trav
-                    loss_trav = loss_trav.sum() / (weights_trav.sum() + 1e-6)
+                # handle NaN values in height_trav
+                if torch.any(torch.isnan(height_trav)):
+                    print('Warning: NaN values in height TRAV (corrupted label)!')
+                    valid_mask = ~torch.isnan(height_trav)
+                    height_trav = height_trav[valid_mask]
+                    weights_trav = weights_trav[valid_mask]
+                    loss_trav = self.loss_fn(height_pred[valid_mask][weights_trav], height_trav[weights_trav])
                 else:
                     loss_trav = self.loss_fn(height_pred[weights_trav], height_trav[weights_trav])
-                loss += self.cost_trav * loss_trav
 
+                # reduce loss if custom weights are used to height map loss computation
+                if self.weighted_loss:
+                    loss_trav = loss_trav.mean()
+
+                loss += self.cost_trav * loss_trav
                 # print('Loss trav: %f' % loss_trav.item())
                 self.writer.add_scalar('Loss_trav(iter)/%s' % mode, loss_trav.item(), i + epoch_n * len(dataloader))
 
@@ -262,7 +259,6 @@ class Trainer(object):
                 else:
                     loss_reg = self.loss_fn(height_pred, height_geom)
                 loss += self.cost_reg * loss_reg
-
                 # print('Loss reg: %f' % loss_reg.item())
                 self.writer.add_scalar('Loss_reg(iter)/%s' % mode, loss_reg.item(), i + epoch_n * len(dataloader))
 
@@ -280,7 +276,7 @@ class Trainer(object):
 
         return loss_ds, cash
 
-    def epoch_sequantial(self, dataloader, epoch_n, mode='train'):
+    def epoch_sequential(self, dataloader, epoch_n, mode='train'):
         assert mode in ['train', 'val']
 
         loss_ds = torch.as_tensor(0.0, device=self.device)
@@ -293,16 +289,6 @@ class Trainer(object):
             height_geom = height_geom.to(self.device)
             weights_trav = weights_trav.to(self.device)
             weights_geom = weights_geom.to(self.device)
-
-            if torch.any(torch.isnan(height_trav)):
-                print('Warning: NaN values in height label (corrupted label)!')
-                print('Skipping this batch...')
-                continue
-
-            if torch.any(torch.isnan(height_geom)):
-                print('Warning: NaN values in height regularization (corrupted label)!')
-                print('Skipping this batch...')
-                continue
 
             # model inference
             features = self.models['encoder'](img)
@@ -321,12 +307,20 @@ class Trainer(object):
             # loss is computed for the part of the predicted height map covered by robot's trajectory
             height_pred_trav = self.models['geom2trav'](height_pred_geom)
             height_pred = height_pred_trav
-            if self.weighted_loss:
-                loss_trav = self.loss_fn(height_pred_trav, height_trav)
-                loss_trav = loss_trav * weights_trav
-                loss_trav = loss_trav.sum() / (weights_trav.sum() + 1e-6)
+
+            # hadnle NaN values in height_trav
+            if torch.any(torch.isnan(height_trav)):
+                print('Warning: NaN values in height TRAV (corrupted label)!')
+                valid_mask = ~torch.isnan(height_trav)
+                height_trav = height_trav[valid_mask]
+                weights_trav = weights_trav[valid_mask]
+                loss_trav = self.loss_fn(height_pred[valid_mask][weights_trav], height_trav[weights_trav])
             else:
-                loss_trav = self.loss_fn(height_pred_trav[weights_trav], height_trav[weights_trav])
+                loss_trav = self.loss_fn(height_pred[weights_trav], height_trav[weights_trav])
+
+            # reduce loss if custom weights are used to height map loss computation
+            if self.weighted_loss:
+                loss_trav = loss_trav.mean()
             # print('Loss trav: %f' % loss_trav.item())
             self.writer.add_scalar('Loss_trav(iter)/%s' % mode, loss_trav.item(), i + epoch_n * len(dataloader))
 
@@ -383,9 +377,9 @@ class Trainer(object):
                 # train mode
                 f.write('Train mode: %s\n' % self.train_mode)
                 # train dataset paths
-                f.write('Train dataset paths: %s\n' % ', '.join([os.path.basename(p) for p in self.train_ds_paths]))
+                f.write('Train datasets: %s\n' % ', '.join([os.path.basename(p) for p in self.train_ds_paths]))
                 # val dataset path
-                f.write('Val dataset path: %s\n' % os.path.basename(self.val_ds_path))
+                f.write('Val dataset: %s\n' % os.path.basename(self.val_ds_path))
         else:
             print('Training finished!')
 
@@ -398,22 +392,22 @@ def main():
     print(args)
 
     # pretrained weights paths for MonoDEM (encoder and decoder)
-    # pretrained_paths = {
+    # pretrained_model_paths = {
     #     "encoder": "../config/weights/monolayout/encoder.pth",
     #     "decoder": "../config/weights/monolayout/decoder.pth",
+    #     "geom2trav": "../config/weights/monolayout/geom2trav.pth"
     # }
-    pretrained_paths = args.pretrained_paths
-    img_size = (args.img_size, args.img_size)
+    pretrained_model_paths = args.pretrained_paths
 
     train_ds_paths = seq_paths[:-1]
     val_ds_path = seq_paths[-1]
 
     # MonoDEM Training
     trainer = Trainer(train_ds_paths=train_ds_paths, val_ds_path=val_ds_path,
-                      img_size=img_size,
+                      img_size=(args.img_size, args.img_size),
                       batch_size=args.batch_size, lr=args.lr,
                       cost_trav=args.cost_trav, cost_reg=args.cost_reg, weighted_loss=args.weighted_loss,
-                      pretrained_paths=pretrained_paths,
+                      pretrained_model_paths=pretrained_model_paths,
                       train_mode=args.train_mode,
                       vis=args.visualize, save=args.save)
     trainer.train(n_epochs=args.n_epochs)
