@@ -38,6 +38,7 @@ seq_paths = [
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
 ]
+seq_paths = [os.path.normpath(path) for path in seq_paths]
 
 
 class SegmentationDataset(Dataset):

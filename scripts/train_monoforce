@@ -46,21 +46,22 @@ def parse_args():
 
 
 class Trainer(object):
-    def __init__(self, train_dataset, val_dataset, img_size=(512, 512),
+    def __init__(self, train_ds_paths, val_ds_path, img_size=(512, 512),
                  batch_size=1, lr=1e-3,
                  cost_trav=1., cost_reg=0., weighted_loss=False,
                  pretrained_paths=None,
                  train_mode='sequential',  # 'sequential' or 'regularization'
                  vis=False, save=True):
-        self.train_ds = train_dataset
-        self.val_ds = val_dataset
-        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
-        self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
         self.cost_trav = cost_trav
         self.cost_reg = cost_reg
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.img_size = img_size
         self.train_mode = train_mode
+        self.train_ds_paths = train_ds_paths
+        self.val_ds_path = val_ds_path
+        self.train_ds, self.val_ds = self.create_datasets(train_ds_paths, val_ds_path)
+        self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
+        self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
 
         # models
         self.models = self.init_models(pretrained_paths=pretrained_paths)
@@ -86,7 +87,9 @@ class Trainer(object):
 
         # logging: tensorboard and weights
         path = os.path.dirname(os.path.realpath(__file__))
-        train_label = '%s_trav_lr_%f' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), lr)
+        train_label = ('%s_mode_%s_travcost_%.1f_regcost_%.1f_lr_%f' %
+                       (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), train_mode,
+                        cost_trav, cost_reg, lr))
         self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
         self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
 
@@ -114,6 +117,44 @@ class Trainer(object):
             models[key].to(self.device)
 
         return models
+
+    def create_datasets(self, train_paths, val_path, random_camera_selection_prob=0.2, hm_interp_method='nearest'):
+        # create dataset for MonoLayout training
+        datasets = []
+        print('Train paths:', train_paths)
+        print('Val path:', val_path)
+        for path in train_paths:
+            assert os.path.exists(path)
+
+            cfg_train = Config()
+            cfg_train.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+            cfg_train.hm_interp_method = hm_interp_method
+
+            # create dataset for MonoDEM training
+            train_ds = MonoDemDataset(path, img_size=self.img_size, is_train=True,
+                                      random_camera_selection_prob=random_camera_selection_prob, cfg=cfg_train)
+            # print('Dataset size:', len(train_ds))
+            # if args.visualize:
+            #     # visualize a data sample from the dataset
+            #     for _ in range(1):
+            #         i = np.random.choice(len(train_ds))
+            #         train_ds.__getitem__(i, visualize=True)
+
+            datasets.append(train_ds)
+        train_ds = ConcatDataset(datasets)
+
+        # create validation dataset
+        cfg_val = Config()
+        cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
+        cfg_val.hm_interp_method = hm_interp_method
+        val_ds = MonoDemDataset(val_path, img_size=self.img_size, is_train=False, cfg=cfg_val)
+
+        # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 64, replace=False))
+        # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
+        print('Training dataset size:', len(train_ds))
+        print('Validation dataset size:', len(val_ds))
+
+        return train_ds, val_ds
 
     def visualize(self, img, height_trav, height_geom, weights_trav, weights_geom, height_pred):
         plt.figure(figsize=(20, 5))
@@ -332,54 +373,29 @@ class Trainer(object):
                     for key in self.models.keys():
                         os.makedirs(self.weights_dir_path, exist_ok=True)
                         torch.save(self.models[key].state_dict(), os.path.join(self.weights_dir_path, '%s_train.pth' % key))
-        else:
-            print('Training finished!')
+
             # log training results: (write to file)
             with open(os.path.join(self.weights_dir_path, 'train_log.txt'), 'w') as f:
                 # val loss
                 f.write('Val loss: %f\n' % self.min_val_loss.item())
                 # train loss
                 f.write('Train loss: %f\n' % self.min_train_loss.item())
+                # train mode
+                f.write('Train mode: %s\n' % self.train_mode)
+                # train dataset paths
+                f.write('Train dataset paths: %s\n' % ', '.join([os.path.basename(p) for p in self.train_ds_paths]))
+                # val dataset path
+                f.write('Val dataset path: %s\n' % os.path.basename(self.val_ds_path))
+        else:
+            print('Training finished!')
 
             # close tensorboard logger
             self.writer.close()
 
+
 def main():
     args = parse_args()
     print(args)
-
-    # create dataset for MonoLayout training
-    datasets = []
-    img_size = (args.img_size, args.img_size)
-    train_paths = seq_paths[:-1]
-    val_path = seq_paths[-1]
-    print('Train paths:', train_paths)
-    print('Val path:', val_path)
-    for path in train_paths:
-        assert os.path.exists(path)
-
-        cfg = Config()
-        cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-        cfg.hm_interp_method = 'nearest'
-
-        # create dataset for MonoDEM training
-        train_ds = MonoDemDataset(path, img_size=img_size, is_train=True,
-                                  random_camera_selection_prob=args.random_camera_selection_prob, cfg=cfg)
-        # print('Dataset size:', len(train_ds))
-        # if args.visualize:
-        #     # visualize a data sample from the dataset
-        #     for _ in range(1):
-        #         i = np.random.choice(len(train_ds))
-        #         train_ds.__getitem__(i, visualize=True)
-
-        datasets.append(train_ds)
-    train_ds = ConcatDataset(datasets)
-
-    # create validation dataset
-    cfg_val = Config()
-    cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
-    cfg_val.hm_interp_method = 'nearest'
-    val_ds = MonoDemDataset(val_path, img_size=img_size, is_train=False, cfg=cfg_val)
 
     # pretrained weights paths for MonoDEM (encoder and decoder)
     # pretrained_paths = {
@@ -387,14 +403,13 @@ def main():
     #     "decoder": "../config/weights/monolayout/decoder.pth",
     # }
     pretrained_paths = args.pretrained_paths
+    img_size = (args.img_size, args.img_size)
 
-    # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 64, replace=False))
-    # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
-    print('Training dataset size:', len(train_ds))
-    print('Validation dataset size:', len(val_ds))
+    train_ds_paths = seq_paths[:-1]
+    val_ds_path = seq_paths[-1]
 
     # MonoDEM Training
-    trainer = Trainer(train_ds, val_ds,
+    trainer = Trainer(train_ds_paths=train_ds_paths, val_ds_path=val_ds_path,
                       img_size=img_size,
                       batch_size=args.batch_size, lr=args.lr,
                       cost_trav=args.cost_trav, cost_reg=args.cost_reg, weighted_loss=args.weighted_loss,

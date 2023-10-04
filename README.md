@@ -35,11 +35,14 @@ The traversability dataset has the following structure:
 └── <robot name>
     └── <sequence name>_trav/
         ├── calibration
-        │   └── cameras
+        │   ├── cameras
+        │   ├── img_statistics.yaml
+        |   └── transformations.yaml
         ├── cloud_colors
         ├── clouds
         ├── images
-        └── trajectories
+        ├── trajectories
+        └── traj_poses.csv
 ```
 Folders names example:
 [22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/](http://subtdata.felk.cvut.cz/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/).
