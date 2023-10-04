@@ -9,12 +9,34 @@ from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference, traj_dist
-from monoforce.models import monolayout
+from monoforce.models import monolayout, Geom2Trav
 from monoforce.transformations import rot2rpy, transform_cloud
 from monoforce.segmentation import position
 from mayavi import mlab
 from tqdm import tqdm
-    
+import pandas as pd
+from argparse import ArgumentParser
+
+
+def parse_args():
+    parser = ArgumentParser(description='Monolayout demo')
+    parser.add_argument('--model_name', type=str, default=None,
+                        help='Name of the model to evaluate')
+    parser.add_argument('--vis', action='store_true',
+                        help='Visualize the trajectory')
+    parser.add_argument('--device', type=str, default='cuda',
+                        help='Device to run the evaluation on')
+    parser.add_argument('--grid_res', type=float, default=0.1,
+                        help='Grid resolution for height map')
+    parser.add_argument('--d_max', type=float, default=12.8)
+    parser.add_argument('--d_min', type=float, default=1.)
+    parser.add_argument('--hm_interp_method', type=str, default='nearest',
+                        help='Interpolation method for height map')
+    parser.add_argument('--img_size', type=int, nargs='+', default=[512, 512],
+                        help='Image size')
+
+    return parser.parse_args()
+
 
 class Evaluator:
     def __init__(self, datasets: list, cfg: Config, model_name=None, vis=False):
@@ -26,21 +48,24 @@ class Evaluator:
         self.vis = vis
         self.metrics = {'trans_wp': [],
                         'rot_wp': [],
-                        'trans_traj': [],
-                        'rot_traj': [],
                         'flip_over_rate': 0.}
 
     def load_model(self):
         if self.model_name == 'monolayout':
-            self.models = self.load_monolayout()
+            self.models = self.load_monodem()
         elif self.model_name == 'kkt':
             self.model_s2d = self.load_kkt()
         else:
             pass
 
-    def load_monolayout(self,
-                        encoder_path='../config/weights/monolayout/encoder.pth',
-                        decoder_path='../config/weights/monolayout/decoder.pth'):
+    def load_monodem(self,
+                     encoder_path='../config/weights/monolayout/encoder.pth',
+                     decoder_path='../config/weights/monolayout/decoder.pth',
+                     geom2trav_path=None,
+                     # encoder_path='../config/weights/monolayout/2023_10_04-13:32:55_mode_sequential_travcost_1.0_regcost_0.2_lr_0.001000/encoder_train.pth',
+                     # decoder_path='../config/weights/monolayout/2023_10_04-13:32:55_mode_sequential_travcost_1.0_regcost_0.2_lr_0.001000/decoder_train.pth',
+                     # geom2trav_path='../config/weights/monolayout/2023_10_04-13:32:55_mode_sequential_travcost_1.0_regcost_0.2_lr_0.001000/geom2trav_train.pth',
+                     ):
         H, W = self.img_size
         models = {}
         # load encoder weights
@@ -52,13 +77,27 @@ class Evaluator:
         # load decoder weights
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
         models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
+
+        # load geom2trav weights
+        if geom2trav_path is not None:
+            models["geom2trav"] = Geom2Trav()
+            models["geom2trav"].load_state_dict(torch.load(geom2trav_path, map_location=self.cfg.device))
+        else:
+            models["geom2trav"] = None
+
+        # models in eval mode
+        for model in models.values():
+            if model is not None:
+                model.eval()
         return models
 
-    def monolayout_inference(self, img, debug=False):
+    def monodem_inference(self, img, debug=False):
         with torch.no_grad():
             img_tensor = torch.from_numpy(img).unsqueeze(0)
             features = self.models['encoder'](img_tensor)
             height_pred = self.models['decoder'](features, is_training=True)
+            if self.models['geom2trav'] is not None:
+                height_pred = self.models['geom2trav'](height_pred)
         height_pred = height_pred.squeeze().cpu().numpy()
         if debug:
             plt.figure()
@@ -156,7 +195,7 @@ class Evaluator:
 
         # select height map (can be given from a model output)
         if self.model_name == 'monolayout':
-            height = self.monolayout_inference(img, debug=False)
+            height = self.monodem_inference(img, debug=False)
         elif self.model_name == 'kkt':
             ds.cfg.hm_interp_method = None
             cloud = ds.get_cloud(i)
@@ -259,7 +298,7 @@ class Evaluator:
 
             if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
                 print('Robot is upside down, skipping evaluation')
-                return None, None, None, None
+                return None, None
 
             goal_pose = torch.eye(4, device=self.cfg.device)
             goal_pose[:3, 3:4] = xyz_true[i + 1]
@@ -307,11 +346,9 @@ class Evaluator:
 
         loss_trans_sum /= (n_true_states - 1)
         loss_rot_sum /= (n_true_states - 1)
-        loss_traj_trans, loss_traj_rot = traj_dist(states, states_true, cfg=self.cfg, return_trans_and_rot=True)
-        # print('Loss translation at closest points: %.2f [m]' % loss_traj_trans.item())
-        # print('Loss rotation at closest points: %.2f [deg]' % (loss_traj_rot.item() * 180 / np.pi))
-        print('Loss translation at waypoints: %.2f [m]' % loss_trans_sum.item())
-        print('Loss rotation at waypoints: %.2f [deg]' % (loss_rot_sum.item() * 180 / np.pi))
+        # loss_trans_sum, loss_rot_sum = traj_dist(states, states_true, cfg=self.cfg, return_trans_and_rot=True)
+        print('Loss at waypoints: trans %.2f [m], rotation %.2f [deg]' %
+              (loss_trans_sum.item(), loss_rot_sum.item() * 180 / np.pi))
 
         # visualize trajectory
         if self.vis:
@@ -321,7 +358,7 @@ class Evaluator:
 
             mlab.show()
 
-        return loss_trans_sum.item(), loss_rot_sum.item(), loss_traj_trans.item(), loss_traj_rot.item()
+        return loss_trans_sum.item(), loss_rot_sum.item()
 
     def eval_ds(self, ds):
         n_going_back = 0
@@ -335,7 +372,7 @@ class Evaluator:
                     n_going_back += 1
                     continue
                 # print('Evaluating sample %i' % i)
-                loss_trans_sum, loss_rot_sum, loss_traj_trans, loss_traj_rot = self.eval_p_control_diffdrive(states_true, height)
+                loss_trans_sum, loss_rot_sum = self.eval_p_control_diffdrive(states_true, height)
                 if loss_trans_sum is None:
                     n_flips_over += 1
                     continue
@@ -343,8 +380,6 @@ class Evaluator:
                 # update metrics
                 self.metrics['trans_wp'].append(loss_trans_sum)
                 self.metrics['rot_wp'].append(loss_rot_sum)
-                self.metrics['trans_traj'].append(loss_traj_trans)
-                self.metrics['rot_traj'].append(loss_traj_rot)
 
         n_eval_samples = len(ds) - n_going_back - n_flips_over
 
@@ -358,32 +393,38 @@ class Evaluator:
 
         # print results
         for key in self.metrics.keys():
-            self.metrics[key] = np.array(self.metrics[key]).mean()
+            self.metrics[key] = np.nanmean(np.array(self.metrics[key]))
             value = self.metrics[key] * 180 / np.pi if 'rot' in key else self.metrics[key]
             print('Metric %s: %.2f' % (key, value))
+            self.metrics[key] = value
+
+        # save results to csv
+        df = pd.DataFrame(self.metrics, index=[0])
+        df.to_csv('../config/eval_model_%s.csv' % self.model_name, index=False)
+        # print results
+        print(df)
+
 
 def main():
+    args = parse_args()
+    print(args)
+
     cfg = Config()
-    cfg.grid_res = 0.1
-    cfg.device = 'cuda'
-    cfg.d_max = 12.8
-    cfg.d_min = 1.
-    cfg.hm_interp_method = 'nearest'
+    cfg.grid_res = args.grid_res
+    cfg.device = args.device
+    cfg.d_max = args.d_max
+    cfg.d_min = args.d_min
+    cfg.hm_interp_method = args.hm_interp_method
 
     datasets = []
     for path in seq_paths:
-        img_size = (512, 512)
         ds = MonoDemDataset(path=path,
-                            img_size=img_size,
+                            img_size=args.img_size,
                             cameras=['camera_fisheye_front'],
                             cfg=cfg)
         datasets.append(ds)
 
-    eval = Evaluator(datasets=datasets,
-                     cfg=cfg,
-                     model_name='monolayout',
-                     # model_name='kkt',
-                     vis=False)
+    eval = Evaluator(datasets=datasets, cfg=cfg, model_name=args.model_name, vis=args.vis)
     eval.run()
 
 
