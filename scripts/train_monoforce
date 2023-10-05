@@ -100,7 +100,8 @@ class Trainer(object):
         models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=self.img_size[0], img_wt=self.img_size[1], pretrained=True)
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
         # Geom2Trav
-        models["geom2trav"] = Geom2Trav()
+        if self.train_mode == 'sequential':
+            models["geom2trav"] = Geom2Trav()
 
         if pretrained_paths is not None:
             assert "encoder" in pretrained_paths.keys() and "decoder" in pretrained_paths.keys()
@@ -110,7 +111,10 @@ class Trainer(object):
             filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
             models["encoder"].load_state_dict(filtered_dict_enc)
             models["decoder"].load_state_dict(torch.load(pretrained_paths["decoder"], map_location=self.device))
-            models["geom2trav"].load_state_dict(torch.load(pretrained_paths["geom2trav"], map_location=self.device))
+            if self.train_mode == 'sequential':
+                assert "geom2trav" in pretrained_paths.keys()
+                print('Loading pretrained weights for geom2trav from:\n%s...' % pretrained_paths["geom2trav"])
+                models["geom2trav"].load_state_dict(torch.load(pretrained_paths["geom2trav"], map_location=self.device))
 
         for key in models.keys():
             models[key].train()
@@ -118,7 +122,8 @@ class Trainer(object):
 
         return models
 
-    def create_datasets(self, train_paths, val_path, random_camera_selection_prob=0.2, hm_interp_method='nearest'):
+    def create_datasets(self, train_paths, val_path,
+                        random_camera_selection_prob=0.2, hm_interp_method='nearest', debug=False):
         # create dataset for MonoLayout training
         datasets = []
         print('Train paths:', train_paths)
@@ -149,8 +154,10 @@ class Trainer(object):
         cfg_val.hm_interp_method = hm_interp_method
         val_ds = MonoDemDataset(val_path, img_size=self.img_size, is_train=False, cfg=cfg_val)
 
-        # train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 64, replace=False))
-        # val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
+        if debug:
+            print('Debug mode: using small datasets')
+            train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
+            val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
         print('Training dataset size:', len(train_ds))
         print('Validation dataset size:', len(val_ds))
 
