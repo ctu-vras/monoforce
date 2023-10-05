@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
+import os
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
 from monoforce.config import Config
-from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.models import RigidBodySoftTerrain, State, Geom2Trav
 from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.vis import setup_visualization, animate_trajectory
 from monoforce.models import monolayout
@@ -24,13 +25,14 @@ class MonoForce:
 
     def load_model(self):
         if self.model_name == 'monolayout':
-            self.models = self.load_monolayout()
+            self.models = self.load_monodem()
         else:
             pass
 
-    def load_monolayout(self,
-                        encoder_path='../config/weights/monolayout/encoder.pth',
-                        decoder_path='../config/weights/monolayout/decoder.pth'):
+    def load_monodem(self,
+                     encoder_path='../config/weights/monolayout/encoder.pth',
+                     decoder_path='../config/weights/monolayout/decoder.pth',
+                     geom2trav_path='../config/weights/monolayout/geom2trav.pth'):
         H, W = self.img_size
         models = {}
         # load encoder weights
@@ -42,6 +44,17 @@ class MonoForce:
         # load decoder weights
         models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
         models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
+
+        # load geom2trav weights
+        if os.path.exists(geom2trav_path):
+            print('Loading geom2trav weights from %s' % geom2trav_path)
+            models["geom2trav"] = Geom2Trav()
+            models["geom2trav"].load_state_dict(torch.load(geom2trav_path, map_location=self.cfg.device))
+
+        # models in eval mode
+        for model in models.values():
+            if model is not None:
+                model.eval()
         return models
 
     def monolayout_inference(self, img, debug=False):
