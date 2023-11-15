@@ -79,7 +79,7 @@ def height_map_to_point_cloud_msg(height, grid_res, x=None, y=None):
     h, w = height.shape
     n_pts = h * w
     if x is None or y is None:
-        x, y = np.meshgrid(np.arange(-h//2, h//2), np.arange(-w//2, w//2))
+        x, y = np.meshgrid(np.arange(-h//2, h//2), np.arange(0, int(w)))
         x = x.ravel() * grid_res
         y = y.ravel() * grid_res
     z = height.ravel()
