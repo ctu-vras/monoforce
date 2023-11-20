@@ -21,7 +21,6 @@ Panels:
   - Class: rviz/Views
     Expanded:
       - /Current View1
-      - /ThirdPersonFollower1/Focal Point1
     Name: Views
     Splitter Ratio: 0.5418848395347595
   - Class: rviz/Time
@@ -78,50 +77,50 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
-        antenna:
+        base_footprint:
           Value: true
         base_link:
           Value: true
-        battery1:
+        bullet:
           Value: true
-        battery2:
+        bullet_antenna:
           Value: true
-        bottom_plate:
+        cam1_base:
           Value: true
-        camera_fisheye_front:
+        cam2_base:
           Value: true
-        camera_fisheye_rear:
+        camera_0:
           Value: true
-        camera_front:
+        camera_1:
           Value: true
-        camera_left:
+        camera_2:
           Value: true
-        camera_rear:
+        camera_3:
           Value: true
-        camera_right:
+        crystal:
           Value: true
-        camera_up:
+        front_bumper_link:
           Value: true
-        deck:
+        front_left_wheel_link:
           Value: true
-        front_left_flipper:
+        front_right_wheel_link:
           Value: true
-        front_left_flipper_end_point:
+        gps:
           Value: true
-        front_left_flipper_end_point_inflated:
-          Value: true
-        front_left_motor:
-          Value: true
-        front_right_flipper:
-          Value: true
-        front_right_flipper_end_point:
-          Value: true
-        front_right_flipper_end_point_inflated:
-          Value: true
-        front_right_motor:
+        gps_odom:
           Value: true
         imu:
           Value: false
+        imu_link:
+          Value: true
+        inertial_link:
+          Value: true
+        jetson:
+          Value: true
+        lidar:
+          Value: true
+        mount_base:
+          Value: true
         odom:
           Value: false
         os_imu:
@@ -130,126 +129,153 @@ Visualization Manager:
           Value: false
         os_sensor:
           Value: false
-        ouster_calib:
+        ouster_mount:
           Value: true
-        pylon_camera_fisheye_front:
+        ouster_mount_top:
           Value: true
-        pylon_camera_fisheye_rear:
+        payload_frame:
           Value: true
-        pylon_camera_front:
+        rear_bumper_link:
           Value: true
-        pylon_camera_left:
+        rear_left_wheel_link:
           Value: true
-        pylon_camera_rear:
+        rear_right_corner:
           Value: true
-        pylon_camera_right:
+        rear_right_wheel_link:
           Value: true
-        pylon_camera_up:
+        rs_lidar:
           Value: true
-        rear_left_flipper:
+        rslidar:
           Value: true
-        rear_left_flipper_end_point:
+        top_chassis_link:
           Value: true
-        rear_left_flipper_end_point_inflated:
+        top_plate_front_link:
           Value: true
-        rear_left_motor:
+        top_plate_link:
           Value: true
-        rear_right_box:
+        top_plate_rear_link:
           Value: true
-        rear_right_flipper:
+        tower:
           Value: true
-        rear_right_flipper_end_point:
+        tower_camera_floor:
           Value: true
-        rear_right_flipper_end_point_inflated:
+        tower_cap:
           Value: true
-        rear_right_motor:
+        tower_cap_top:
           Value: true
-        top_box:
+        tower_lower_floor:
           Value: true
-        total_mass_60_006:
+        tower_rear_right_corner:
+          Value: true
+        user_rail_link:
+          Value: true
+        utm:
+          Value: true
+        utm_local:
           Value: true
       Marker Alpha: 1
       Marker Scale: 1
       Name: TF
-      Show Arrows: true
+      Show Arrows: false
       Show Axes: true
       Show Names: true
       Tree:
         odom:
           base_link:
-            battery1:
+            base_footprint:
               {}
-            battery2:
+            bullet:
+              bullet_antenna:
+                {}
+            front_bumper_link:
               {}
-            bottom_plate:
+            front_left_wheel_link:
               {}
-            camera_fisheye_front:
-              pylon_camera_fisheye_front:
-                {}
-            camera_fisheye_rear:
-              pylon_camera_fisheye_rear:
-                {}
-            deck:
+            front_right_wheel_link:
               {}
-            front_left_flipper:
-              front_left_flipper_end_point:
-                {}
-              front_left_flipper_end_point_inflated:
-                {}
-            front_left_motor:
+            gps:
               {}
-            front_right_flipper:
-              front_right_flipper_end_point:
-                {}
-              front_right_flipper_end_point_inflated:
-                {}
-            front_right_motor:
-              {}
-            imu:
-              {}
-            rear_left_flipper:
-              rear_left_flipper_end_point:
-                {}
-              rear_left_flipper_end_point_inflated:
-                {}
-            rear_left_motor:
-              {}
-            rear_right_box:
-              camera_front:
-                pylon_camera_front:
+            gps_odom:
+              utm_local:
+                utm:
                   {}
-              camera_rear:
-                pylon_camera_rear:
-                  {}
-            rear_right_flipper:
-              rear_right_flipper_end_point:
-                {}
-              rear_right_flipper_end_point_inflated:
-                {}
-            rear_right_motor:
+            imu_link:
               {}
-            top_box:
-              antenna:
+            inertial_link:
+              {}
+            mount_base:
+              cam1_base:
                 {}
-              camera_left:
-                pylon_camera_left:
+              cam2_base:
+                {}
+              rs_lidar:
+                lidar:
                   {}
-              camera_right:
-                pylon_camera_right:
+                rslidar:
                   {}
-              camera_up:
-                pylon_camera_up:
-                  {}
-              ouster_calib:
-                os_sensor:
-                  os_imu:
-                    {}
-                  os_lidar:
-                    {}
-            total_mass_60_006:
+            payload_frame:
+              {}
+            rear_bumper_link:
+              {}
+            rear_left_wheel_link:
+              {}
+            rear_right_corner:
+              tower_rear_right_corner:
+                tower:
+                  tower_camera_floor:
+                    camera_0:
+                      {}
+                    camera_1:
+                      {}
+                    camera_2:
+                      {}
+                    camera_3:
+                      {}
+                  tower_cap:
+                    tower_cap_top:
+                      ouster_mount:
+                        ouster_mount_top:
+                          os_sensor:
+                            crystal:
+                              {}
+                            os_imu:
+                              {}
+                            os_lidar:
+                              {}
+                  tower_lower_floor:
+                    imu:
+                      {}
+                    jetson:
+                      {}
+            rear_right_wheel_link:
+              {}
+            top_chassis_link:
+              {}
+            top_plate_link:
+              top_plate_front_link:
+                {}
+              top_plate_rear_link:
+                {}
+            user_rail_link:
               {}
       Update Interval: 0
       Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+      Name: Marv Robot Model
+      Robot Description: marv/robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: false
+      Visual Enabled: true
     - Alpha: 1
       Class: rviz/RobotModel
       Collision Enabled: false
@@ -260,104 +286,99 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        antenna:
+        base_footprint:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         base_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        battery1:
+        bullet:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        battery2:
+        bullet_antenna:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        bottom_plate:
+        cam1_base:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        camera_fisheye_front:
+        cam2_base:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        camera_fisheye_rear:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        camera_front:
+        camera_0:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_left:
+        camera_1:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_rear:
+        camera_2:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_right:
+        camera_3:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_up:
+        crystal:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_bumper_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        deck:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_left_flipper:
+        front_left_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        front_left_flipper_end_point:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_left_flipper_end_point_inflated:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_left_motor:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_right_flipper:
+        front_right_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        front_right_flipper_end_point:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_right_flipper_end_point_inflated:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_right_motor:
+        gps:
           Alpha: 1
           Show Axes: false
           Show Trail: false
         imu:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        imu_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        inertial_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        jetson:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        lidar:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        mount_base:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -366,94 +387,107 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        ouster_calib:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_fisheye_front:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_fisheye_rear:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_front:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_left:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_rear:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_right:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        pylon_camera_up:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_left_flipper:
+        ouster_mount:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        rear_left_flipper_end_point:
+        ouster_mount_top:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        rear_left_flipper_end_point_inflated:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_left_motor:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_right_box:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_right_flipper:
+        payload_frame:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        rear_right_flipper_end_point:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_right_flipper_end_point_inflated:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_right_motor:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        top_box:
+        rear_bumper_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        total_mass_60_006:
+        rear_left_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-      Name: Robot Model
-      Robot Description: marv/robot_description
+          Value: true
+        rear_right_corner:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_right_wheel_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        rs_lidar:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rslidar:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        top_chassis_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        top_plate_front_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        top_plate_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        top_plate_rear_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        tower:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tower_camera_floor:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tower_cap:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tower_cap_top:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        tower_lower_floor:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tower_rear_right_corner:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        user_rail_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+      Name: RobotModel
+      Robot Description: robot_description
       TF Prefix: ""
       Update Interval: 0
       Value: true
       Visual Enabled: true
     - Class: rviz/Group
       Displays:
-        - Alpha: 0.5
+        - Alpha: 0.4000000059604645
           Autocompute Intensity Bounds: false
           Autocompute Value Bounds:
             Max Value: 8
@@ -462,8 +496,8 @@ Visualization Manager:
           Axis: Z
           Channel Name: t
           Class: rviz/PointCloud2
-          Color: 255; 255; 255
-          Color Transformer: Intensity
+          Color: 46; 52; 54
+          Color Transformer: FlatColor
           Decay Time: 0
           Enabled: false
           Invert Rainbow: false
@@ -476,8 +510,8 @@ Visualization Manager:
           Queue Size: 2
           Selectable: false
           Size (Pixels): 3
-          Size (m): 0.02500000037252903
-          Style: Flat Squares
+          Size (m): 0.019999999552965164
+          Style: Spheres
           Topic: /cloud
           Unreliable: false
           Use Fixed Frame: true
@@ -633,6 +667,18 @@ Visualization Manager:
       Name: Sensors
     - Class: rviz/Group
       Displays:
+        - Class: rviz/Image
+          Enabled: false
+          Image Topic: /monoforce/height_map/image
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Image
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: false
         - Alpha: 0.6000000238418579
           Autocompute Intensity Bounds: false
           Class: grid_map_rviz_plugin/GridMap
@@ -694,7 +740,7 @@ Visualization Manager:
           Length: 0.30000001192092896
           Line Style: Billboards
           Line Width: 0.029999999329447746
-          Name: Path
+          Name: Lower cost Path
           Offset:
             X: 0
             Y: 0
@@ -708,18 +754,14 @@ Visualization Manager:
           Topic: /monoforce/path
           Unreliable: false
           Value: true
-        - Class: rviz/Image
-          Enabled: false
-          Image Topic: /monoforce/height_map/image
-          Max Value: 1
-          Median window: 5
-          Min Value: 0
-          Name: Image
-          Normalize Range: true
-          Queue Size: 2
-          Transport Hint: raw
-          Unreliable: false
-          Value: false
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /monoforce/sampled_paths
+          Name: Sampled Paths
+          Namespaces:
+            paths: true
+          Queue Size: 100
+          Value: true
       Enabled: true
       Name: MonoForce
   Enabled: true
@@ -766,7 +808,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 3
-      Pitch: 0.25
+      Pitch: 0
       Target Frame: base_link
       Yaw: 3.140000104904175
     Saved:
@@ -787,29 +829,9 @@ Visualization Manager:
         Invert Z Axis: false
         Name: Behind Robot
         Near Clip Distance: 3
-        Pitch: 0.25
+        Pitch: 0
         Target Frame: base_link
         Yaw: 3.140000104904175
-      - Class: rviz/ThirdPersonFollower
-        Distance: 10
-        Enable Stereo Rendering:
-          Stereo Eye Separation: 0.05999999865889549
-          Stereo Focal Distance: 1
-          Swap Stereo Eyes: false
-          Value: false
-        Field of View: 0.7853981852531433
-        Focal Point:
-          X: 8
-          Y: 0
-          Z: 0
-        Focal Shape Fixed Size: false
-        Focal Shape Size: 0.05000000074505806
-        Invert Z Axis: false
-        Name: ThirdPersonFollower
-        Near Clip Distance: 1
-        Pitch: 1.5697963237762451
-        Target Frame: base_link
-        Yaw: 0
       - Class: rviz/FPS
         Enable Stereo Rendering:
           Stereo Eye Separation: 0.05999999865889549
@@ -821,12 +843,12 @@ Visualization Manager:
         Near Clip Distance: 0.009999999776482582
         Pitch: 0.9374947547912598
         Position:
-          X: 5
-          Y: 5
+          X: -5
+          Y: 0
           Z: 10
         Roll: 0
         Target Frame: base_link
-        Yaw: 3.140000104904175
+        Yaw: 0
       - Class: rviz/Orbit
         Distance: 20
         Enable Stereo Rendering:
@@ -921,6 +943,26 @@ Visualization Manager:
         Pitch: 0
         Target Frame: base_link
         Yaw: -1.5709999799728394
+      - Class: rviz/ThirdPersonFollower
+        Distance: 10
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Focal Shape Fixed Size: false
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: ThirdPersonFollower
+        Near Clip Distance: 1
+        Pitch: 1.5697963237762451
+        Target Frame: base_link
+        Yaw: 0
 Window Geometry:
   Camera Front:
     collapsed: false
