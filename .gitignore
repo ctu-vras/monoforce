@@ -166,6 +166,7 @@ gen/
 config/weights/
 runs/
 tb_runs/
+*.csv
 
 # sbatch jobs logging
 *.err

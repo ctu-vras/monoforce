@@ -20,7 +20,7 @@ cfg.grid_res = 0.2
 cfg.d_max = 12.8
 # cfg.device = 'cuda:0'
 cfg.device = 'cpu'
-cfg.lr = 0.01
+cfg.lr = 0.03
 cfg.total_sim_time = 10.0
 cfg.n_samples = 100 * int(cfg.total_sim_time)
 cfg.n_train_iters = 21
@@ -346,7 +346,7 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
         loss_trans_sum /= n_true_states
         loss_sum = cfg.trans_cost_weight * loss_trans_sum + cfg.rot_cost_weight * loss_rot_sum
         if regularization:
-            loss_sum += 0.2 * total_variation(system.height[None])
+            loss_sum += total_variation(system.height[None])
 
         # visualize
         if vis and k % 10 == 0:
@@ -365,7 +365,8 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
 
         print('Loss: %.3f (trans: %.3f, rot: %.3f)' % (loss_sum.item(), loss_trans_sum.item(), loss_rot_sum.item()))
 
-    mlab.show()
+    if vis:
+        mlab.show()
 
 
 def train_cmd_vel(regularization=True):

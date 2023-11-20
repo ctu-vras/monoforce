@@ -633,13 +633,13 @@ Visualization Manager:
       Name: Sensors
     - Class: rviz/Group
       Displays:
-        - Alpha: 1
+        - Alpha: 0.6000000238418579
           Autocompute Intensity Bounds: false
           Class: grid_map_rviz_plugin/GridMap
           Color: 200; 200; 200
           Color Layer: elevation
           Color Transformer: GridMapLayer
-          Enabled: false
+          Enabled: true
           Height Layer: elevation
           Height Transformer: GridMapLayer
           History Length: 1
@@ -653,8 +653,8 @@ Visualization Manager:
           Topic: /monoforce/grid_map
           Unreliable: false
           Use Rainbow: true
-          Value: false
-        - Alpha: 0.800000011920929
+          Value: true
+        - Alpha: 0.4000000059604645
           Autocompute Intensity Bounds: false
           Autocompute Value Bounds:
             Max Value: 10
@@ -666,7 +666,7 @@ Visualization Manager:
           Color: 255; 255; 255
           Color Transformer: Intensity
           Decay Time: 0
-          Enabled: true
+          Enabled: false
           Invert Rainbow: false
           Max Color: 255; 255; 255
           Max Intensity: 2
@@ -683,12 +683,12 @@ Visualization Manager:
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
-          Value: true
+          Value: false
         - Alpha: 1
           Buffer Length: 1
           Class: rviz/Path
           Color: 239; 41; 41
-          Enabled: false
+          Enabled: true
           Head Diameter: 0.20000000298023224
           Head Length: 0.03999999910593033
           Length: 0.30000001192092896
@@ -705,9 +705,9 @@ Visualization Manager:
           Radius: 0.029999999329447746
           Shaft Diameter: 0.10000000149011612
           Shaft Length: 0.10000000149011612
-          Topic: /robot_data/path
+          Topic: /monoforce/path
           Unreliable: false
-          Value: false
+          Value: true
         - Class: rviz/Image
           Enabled: false
           Image Topic: /monoforce/height_map/image

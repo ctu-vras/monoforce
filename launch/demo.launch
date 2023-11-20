@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="config" default="''"/>
     <arg name="rviz" default="true"/>
-    <arg name="record" default="false"/>
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/>
-    <arg name="params" default="$(eval bag.split()[0] + '.params')"/>
-    <!-- Cloud filter -->
-    <arg name="min_depth" default="1.0"/>
-    <arg name="max_depth" default="25.0"/>
-    <arg name="grid_res" default="0.1"/>
 
     <!-- Robot data: from bag file -->
     <include file="$(dirname)/play_bag.launch">
@@ -17,7 +10,10 @@
     </include>
 
     <!-- MonoForce node -->
-    <include file="$(dirname)/monoforce.launch"/>
+    <include file="$(dirname)/monoforce.launch">
+        <arg name="img_topic" value="/camera_front/image_color/compressed"/>
+        <arg name="robot_frame" value="base_link"/>
+    </include>
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"

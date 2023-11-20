@@ -6,14 +6,18 @@ import numpy as np
 import cv2
 import rospy
 from cv_bridge import CvBridge
+from geometry_msgs.msg import Pose, PoseStamped
 from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
-from monoforce.models import RigidBodySoftTerrain, State, Geom2Trav
-from monoforce.models import monolayout
+from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.models.monolayout import load_monodem
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.utils import normalize
+from nav_msgs.msg import Path
+from ros_numpy import msgify
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 import rospkg
+from time import time
 
 
 pkg_path = rospkg.RosPack().get_path('monoforce')
@@ -24,7 +28,6 @@ class MonoForce:
                  robot_frame='base_link',
                  img_topic='/camera/image_raw/compressed'):
         self.cfg = cfg
-        self.img_size = (512, 512)
         self.model_name = model_name
         rospy.loginfo('Loading model %s' % self.model_name)
         self.load_model()
@@ -39,50 +42,21 @@ class MonoForce:
         self.hm_grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
         # image subscriber
         self.img_sub = rospy.Subscriber(img_topic, CompressedImage, self.img_callback)
+        # path publisher
+        self.path_pub = rospy.Publisher('~path', Path, queue_size=1)
 
     def load_model(self):
         if self.model_name == 'monolayout':
-            self.models = self.load_monodem()
+            self.models = load_monodem(encoder_path=os.path.join(pkg_path, 'config/weights/monolayout/encoder.pth'),
+                                       decoder_path=os.path.join(pkg_path, 'config/weights/monolayout/decoder.pth'),
+                                       cfg=self.cfg)
         else:
             pass
-
-    def load_monodem(self,
-                     encoder_path='config/weights/monolayout/encoder.pth',
-                     decoder_path='config/weights/monolayout/decoder.pth',
-                     geom2trav_path='config/weights/monolayout/geom2trav.pth'):
-
-        encoder_path = os.path.normpath(os.path.join(pkg_path, encoder_path))
-        decoder_path = os.path.normpath(os.path.join(pkg_path, decoder_path))
-        geom2trav_path = os.path.normpath(os.path.join(pkg_path, geom2trav_path))
-
-        H, W = self.img_size
-        models = {}
-        # load encoder weights
-        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-        encoder_dict = torch.load(encoder_path, map_location=self.cfg.device)
-        filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
-        models["encoder"].load_state_dict(filtered_dict_enc)
-
-        # load decoder weights
-        models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
-        models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
-
-        # load geom2trav weights
-        if os.path.exists(geom2trav_path):
-            print('Loading geom2trav weights from %s' % geom2trav_path)
-            models["geom2trav"] = Geom2Trav()
-            models["geom2trav"].load_state_dict(torch.load(geom2trav_path, map_location=self.cfg.device))
-
-        # models in eval mode
-        for model in models.values():
-            if model is not None:
-                model.eval()
-        return models
 
     def preprocess_img(self, img_raw):
         # resize image
         H_raw, W_raw = img_raw.shape[:2]
-        h, w = self.img_size
+        h, w = self.cfg.img_size
         img = cv2.resize(img_raw, (int(h / H_raw * W_raw), h))
         # crop image
         H, W = img.shape[:2]
@@ -91,11 +65,23 @@ class MonoForce:
         img = img.transpose((2, 0, 1))  # (H, W, C) -> (C, H, W)
         return img
 
+    def monolayout_inference(self, img):
+        with torch.no_grad():
+            img_tensor = torch.from_numpy(img).unsqueeze(0)
+            features = self.models['encoder'](img_tensor)
+            height_pred = self.models['decoder'](features, is_training=True)
+        height_pred = height_pred.squeeze().cpu().numpy()
+
+        return height_pred
+
     def img_callback(self, msg):
+        t0 = time()
         img = self.cv_bridge.compressed_imgmsg_to_cv2(msg)
         img = self.preprocess_img(img)
         height = self.monolayout_inference(img)
-        rospy.loginfo('Height map shape: %s' % str(height.shape))
+        t1 = time()
+        rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
+        rospy.logdebug('MonoDem inference time: %.3f' % (t1 - t0))
 
         # publish image
         height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
@@ -106,6 +92,7 @@ class MonoForce:
 
         # rotate 180 deg because in the image the lower pixels (with height row number) are closer
         height = np.rot90(height, k=2).copy()
+
         # publish point cloud
         h, w = np.asarray(height.shape) * self.cfg.grid_res
         cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
@@ -113,21 +100,115 @@ class MonoForce:
         cloud_msg.header.stamp = msg.header.stamp
         cloud_msg.header.frame_id = self.robot_frame
         self.hm_cloud_pub.publish(cloud_msg)
+
         # publish grid map
         grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
                                              xyz=np.array([h / 2., 0, 0]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = msg.header.stamp
         grid_msg.info.header.frame_id = self.robot_frame
         self.hm_grid_pub.publish(grid_msg)
+        t2 = time()
+        rospy.logdebug('Height map publishing took %.3f' % (t2 - t1))
 
-    def monolayout_inference(self, img, debug=False):
+        # predict path
+        self.predict_path(height)
+
+    def sim(self, height, controls):
+        assert isinstance(height, np.ndarray)
+        assert height.shape[0] == height.shape[1]
+        assert isinstance(controls, dict)
+        assert 'stamps' in controls.keys()
+        assert 'vel_x' in controls.keys()
+        assert 'vel_omega' in controls.keys()
+
+        h, w = np.asarray(height.shape) * self.cfg.grid_res
+        state = State(xyz=torch.tensor([0, 0., 0.], device=self.cfg.device).view(3, 1),
+                   rot=torch.eye(3, device=self.cfg.device),
+                   vel=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                   omega=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                   device=self.cfg.device)
+        state[0][0] = -h / 2.  # move robot to the edge of the height map
+
+        """ Create robot-terrain interaction models """
+        system = RigidBodySoftTerrain(height=height,
+                                      grid_res=self.cfg.grid_res,
+                                      friction=self.cfg.friction,
+                                      mass=self.cfg.robot_mass,
+                                      state=state,
+                                      device=self.cfg.device, use_ode=False,
+                                      interaction_model='diffdrive')
+
+        # put models with their params to self.cfg.device
+        system = system.to(self.cfg.device)
+        tt = controls['stamps'].to(self.cfg.device)
+
+        """ Navigation loop """
+        dt = (tt[1:] - tt[:-1]).mean()
+
+        pos_x, pos_R, vel_x, vel_omega, forces = state
+        pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
+
+        for t in range(len(tt[1:])):
+            v, w = controls['vel_x'][t], controls['vel_omega'][t]
+
+            state[2][0] = v
+            state[3][2] = w
+
+            dstate = system.forward(t, state)
+            state = state.update(dstate, dt)
+
+            # height map origin is at the edge of the map
+            pos_x.append(state[0] + torch.tensor([h / 2., 0, 0], device=self.cfg.device).view(3, 1))
+            pos_R.append(state[1])
+            vel_x.append(state[2])
+            vel_omega.append(state[3])
+            forces.append(state[4])
+
+        states = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega), torch.stack(forces)]
+
+        return states
+
+    def predict_path(self, height, controls=None):
+        assert isinstance(height, np.ndarray)
+
+        if controls is None:
+            tt = torch.linspace(0., self.cfg.total_sim_time, self.cfg.n_samples)
+            controls = {
+                'stamps': tt,
+                'vel_x': 1. * torch.ones(self.cfg.n_samples),
+                'vel_omega': 0 * torch.ones(self.cfg.n_samples)
+            }
+
+        # predict states
+        t0 = time()
         with torch.no_grad():
-            img_tensor = torch.from_numpy(img).unsqueeze(0)
-            features = self.models['encoder'](img_tensor)
-            height_pred = self.models['decoder'](features, is_training=True)
-        height_pred = height_pred.squeeze().cpu().numpy()
+            states = self.sim(height, controls)
+        t1 = time()
+        rospy.logdebug('Path of %d samples simulation took %.3f' % (self.cfg.n_samples, t1 - t0))
 
-        return height_pred
+        # convert states to path
+        path = Path()
+        path.header.stamp = rospy.Time.now()
+        path.header.frame_id = self.robot_frame
+
+        for i in range(0, len(states[0]), 100):
+            # xyz, R to pose
+            xyz = states[0][i].cpu().numpy()
+            R = states[1][i].cpu().numpy()
+            pose = np.eye(4)
+            pose[:3, :3] = R
+            pose[:3, 3:4] = xyz
+            pose_msg = msgify(Pose, pose)
+
+            # pose to pose stamped
+            pose_msg_stamped = PoseStamped()
+            pose_msg_stamped.header.stamp = path.header.stamp
+            pose_msg_stamped.header.frame_id = path.header.frame_id
+            pose_msg_stamped.pose = pose_msg
+
+            path.poses.append(pose_msg_stamped)
+        self.path_pub.publish(path)
+        rospy.logdebug('Publishing path of %d poses took %.3f' % (len(path.poses), time() - t1))
 
 
 def main():
@@ -136,6 +217,9 @@ def main():
     cfg.device = 'cuda'
     cfg.d_max = 12.8
     cfg.d_min = 1.
+    cfg.img_size = (512, 512)
+    cfg.total_sim_time = 5.0
+    cfg.n_samples = 100 * int(cfg.total_sim_time)
 
     rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
     img_topic = rospy.get_param('~img_topic')

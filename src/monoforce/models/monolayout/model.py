@@ -1,11 +1,15 @@
 from collections import OrderedDict
 
 import numpy as np
+import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .resnet_encoder import ResnetEncoder
+from .. import monolayout
+from ...config import Config
+
 
 # Utils
 
@@ -227,3 +231,33 @@ class Discriminator(nn.Module):
         """
 
         return self.main(x)
+
+
+def load_monodem(encoder_path='encoder.pth',
+                 decoder_path='decoder.pth',
+                 # geom2trav_path='geom2trav.pth',
+                 cfg=Config()):
+    H, W = cfg.img_size
+    models = {}
+    # load encoder weights
+    models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
+    encoder_dict = torch.load(encoder_path, map_location=cfg.device)
+    filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
+    models["encoder"].load_state_dict(filtered_dict_enc)
+
+    # load decoder weights
+    models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
+    models["decoder"].load_state_dict(torch.load(decoder_path, map_location=cfg.device))
+
+    # # load geom2trav weights
+    # if os.path.exists(geom2trav_path):
+    #     print('Loading geom2trav weights from %s' % geom2trav_path)
+    #     models["geom2trav"] = Geom2Trav()
+    #     models["geom2trav"].load_state_dict(torch.load(geom2trav_path, map_location=cfg.device))
+
+    # models in eval mode
+    for model in models.values():
+        if model is not None:
+            model.eval()
+
+    return models
