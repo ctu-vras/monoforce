@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import cv2
@@ -12,6 +11,7 @@ from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State, Geom2Trav
 from monoforce.models import monolayout
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.utils import normalize
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 import rospkg
 
@@ -32,11 +32,11 @@ class MonoForce:
         # cv bridge
         self.cv_bridge = CvBridge()
         # height map publisher
-        self.height_pub = rospy.Publisher('~height_map', Image, queue_size=1)
+        self.hm_img_pub = rospy.Publisher('~height_map/image', Image, queue_size=1)
         # point cloud publisher
-        self.cloud_pub = rospy.Publisher('~height_map/points', PointCloud2, queue_size=1)
+        self.hm_cloud_pub = rospy.Publisher('~height_map/points', PointCloud2, queue_size=1)
         # grid map publisher
-        self.grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
+        self.hm_grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
         # image subscriber
         self.img_sub = rospy.Subscriber(img_topic, CompressedImage, self.img_callback)
 
@@ -94,23 +94,31 @@ class MonoForce:
     def img_callback(self, msg):
         img = self.cv_bridge.compressed_imgmsg_to_cv2(msg)
         img = self.preprocess_img(img)
-        height = self.monolayout_inference(img, debug=False)
+        height = self.monolayout_inference(img)
         rospy.loginfo('Height map shape: %s' % str(height.shape))
+
+        # publish image
+        height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
+        img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
+        img_msg.header.stamp = msg.header.stamp
+        img_msg.header.frame_id = self.robot_frame
+        self.hm_img_pub.publish(img_msg)
+
         # rotate 180 deg because in the image the lower pixels (with height row number) are closer
         height = np.rot90(height, k=2).copy()
-        # publish height map
-        height_msg = self.cv_bridge.cv2_to_imgmsg(height)
-        height_msg.header.stamp = msg.header.stamp
-        height_msg.header.frame_id = self.robot_frame
-        self.height_pub.publish(height_msg)
         # publish point cloud
-        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res)
+        h, w = np.asarray(height.shape) * self.cfg.grid_res
+        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
+                                                  xyz=np.array([h / 2., 0, 0]), q=np.array([0., 0., 0., 1.]))
         cloud_msg.header.stamp = msg.header.stamp
         cloud_msg.header.frame_id = self.robot_frame
-        self.cloud_pub.publish(cloud_msg)
+        self.hm_cloud_pub.publish(cloud_msg)
         # publish grid map
-        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res)
-        self.grid_pub.publish(grid_msg)
+        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
+                                             xyz=np.array([h / 2., 0, 0]), q=np.array([0., 0., 0., 1.]))
+        grid_msg.info.header.stamp = msg.header.stamp
+        grid_msg.info.header.frame_id = self.robot_frame
+        self.hm_grid_pub.publish(grid_msg)
 
     def monolayout_inference(self, img, debug=False):
         with torch.no_grad():
@@ -118,16 +126,7 @@ class MonoForce:
             features = self.models['encoder'](img_tensor)
             height_pred = self.models['decoder'](features, is_training=True)
         height_pred = height_pred.squeeze().cpu().numpy()
-        if debug:
-            plt.figure(figsize=(20, 10))
-            plt.subplot(1, 2, 1)
-            plt.title('Input image (normalized color)')
-            plt.imshow(img.transpose(1, 2, 0))
-            plt.subplot(1, 2, 2)
-            plt.title('Predicted height map')
-            plt.imshow(height_pred, cmap='jet')
-            plt.colorbar()
-            plt.show()
+
         return height_pred
 
 
@@ -138,7 +137,7 @@ def main():
     cfg.d_max = 12.8
     cfg.d_min = 1.
 
-    rospy.init_node('monoforce', anonymous=True)
+    rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
     img_topic = rospy.get_param('~img_topic')
     robot_frame = rospy.get_param('~robot_frame')
     node = MonoForce(cfg=cfg, model_name='monolayout', img_topic=img_topic, robot_frame=robot_frame)

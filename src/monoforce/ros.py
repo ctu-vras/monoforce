@@ -5,7 +5,7 @@ from tqdm import tqdm
 from std_msgs.msg import Header
 from nav_msgs.msg import Path
 from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion
-from tf.transformations import quaternion_from_matrix, euler_from_quaternion
+from tf.transformations import quaternion_from_matrix, euler_from_quaternion, quaternion_matrix
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import PointCloud2
@@ -73,19 +73,24 @@ def height_map_to_gridmap_msg(heightmap, grid_res,
     map.info.resolution = grid_res
     return map
 
-def height_map_to_point_cloud_msg(height, grid_res, x=None, y=None):
+def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.]), q=np.asarray([0., 0., 0., 1.])):
     assert isinstance(height, np.ndarray)
     assert height.ndim == 2
     h, w = height.shape
     n_pts = h * w
-    if x is None or y is None:
-        x, y = np.meshgrid(np.arange(-h//2, h//2), np.arange(0, int(w)))
-        x = x.ravel() * grid_res
-        y = y.ravel() * grid_res
+    y, x = np.meshgrid(np.arange(-h//2, h//2), np.arange(-w//2, w//2))
+    x = x.ravel() * grid_res
+    y = y.ravel() * grid_res
     z = height.ravel()
-    pts = np.concatenate([y[None], x[None], z[None]], axis=0).T
-    pts = np.asarray(pts, dtype='float32')
+    pts = np.concatenate([x[None], y[None], z[None]], axis=0).T
+    # transform points using xyz and q
+    if not np.allclose(xyz, 0) or not np.allclose(q, np.array([0., 0., 0., 1.])):
+        T = np.eye(4)
+        T[:3, :3] = quaternion_matrix(q)[:3, :3]
+        T[:3, 3] = xyz
+        pts = pts @ T[:3, :3].T + T[:3, 3]
     assert pts.shape == (n_pts, 3)
+    pts = np.asarray(pts, dtype='float32')
     cloud = unstructured_to_structured(pts, names=['x', 'y', 'z'])
     msg = msgify(PointCloud2, cloud)
     return msg

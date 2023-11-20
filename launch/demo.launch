@@ -17,12 +17,7 @@
     </include>
 
     <!-- MonoForce node -->
-    <node name="monoforce" pkg="monoforce" type="monoforce" output="screen">
-        <rosparam subst_value="true">
-            img_topic: /camera_front/image_color/compressed
-            robot_frame: base_link
-        </rosparam>
-    </node>
+    <include file="$(dirname)/monoforce.launch"/>
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
