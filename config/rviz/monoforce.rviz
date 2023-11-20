@@ -733,7 +733,7 @@ Visualization Manager:
         - Alpha: 1
           Buffer Length: 1
           Class: rviz/Path
-          Color: 239; 41; 41
+          Color: 0; 255; 0
           Enabled: true
           Head Diameter: 0.20000000298023224
           Head Length: 0.03999999910593033
@@ -751,17 +751,17 @@ Visualization Manager:
           Radius: 0.029999999329447746
           Shaft Diameter: 0.10000000149011612
           Shaft Length: 0.10000000149011612
-          Topic: /monoforce/path
+          Topic: /monoforce/lower_cost_path
           Unreliable: false
           Value: true
         - Class: rviz/MarkerArray
-          Enabled: true
+          Enabled: false
           Marker Topic: /monoforce/sampled_paths
           Name: Sampled Paths
           Namespaces:
-            paths: true
+            {}
           Queue Size: 100
-          Value: true
+          Value: false
       Enabled: true
       Name: MonoForce
   Enabled: true
@@ -791,26 +791,23 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Class: rviz/ThirdPersonFollower
-      Distance: 10
+      Class: rviz/FPS
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
-      Field of View: 0.5
-      Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
-      Focal Shape Fixed Size: false
-      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 3
-      Pitch: 0
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.9374947547912598
+      Position:
+        X: -5
+        Y: 0
+        Z: 10
+      Roll: 0
       Target Frame: base_link
-      Yaw: 3.140000104904175
+      Yaw: 0
     Saved:
       - Class: rviz/ThirdPersonFollower
         Distance: 10

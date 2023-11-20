@@ -11,7 +11,7 @@ from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.monolayout import load_monodem
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg, to_marker
+from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg, to_marker, to_path
 from monoforce.utils import normalize
 from nav_msgs.msg import Path
 from ros_numpy import msgify
@@ -33,6 +33,7 @@ class MonoForce:
         rospy.loginfo('Loading model %s' % self.model_name)
         self.load_model()
         self.robot_frame = robot_frame
+
         # cv bridge
         self.cv_bridge = CvBridge()
         # height map publisher
@@ -41,12 +42,13 @@ class MonoForce:
         self.hm_cloud_pub = rospy.Publisher('~height_map/points', PointCloud2, queue_size=1)
         # grid map publisher
         self.hm_grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
-        # image subscriber
-        self.img_sub = rospy.Subscriber(img_topic, CompressedImage, self.img_callback)
         # paths publisher
         self.paths_pub = rospy.Publisher('~sampled_paths', MarkerArray, queue_size=1)
         # lower cost path publisher
         self.lc_path_pub = rospy.Publisher('~lower_cost_path', Path, queue_size=1)
+
+        # image subscriber
+        self.img_sub = rospy.Subscriber(img_topic, CompressedImage, self.img_callback)
 
     def load_model(self):
         if self.model_name == 'monolayout':
@@ -119,7 +121,8 @@ class MonoForce:
         rospy.logdebug('Height map publishing took %.3f' % (t2 - t1))
 
         # predict path
-        self.predict_paths(height, linear_vels=[1.], angular_vels=np.linspace(-0.3, 0.3, 3))
+        with torch.no_grad():
+            self.predict_paths(height, linear_vels=[1.], angular_vels=np.linspace(-0.3, 0.3, 3))
 
     def sim(self, height, controls):
         assert isinstance(height, np.ndarray)
@@ -182,6 +185,18 @@ class MonoForce:
 
         return states
 
+    def path_cost(self, states):
+        assert isinstance(states, list)
+        assert len(states) == 5
+        xyz, Rs, linear_v, angular_w, forces = states
+        # path cost as a sum of force magnitudes
+        assert forces.ndim == 3  # (n_samples, 3, n_points)
+        # reduce forces acting on all robot points
+        forces = forces.sum(dim=2)
+        assert forces.shape[1] == 3
+        cost = forces.norm(dim=1).mean()
+        return cost
+
     def predict_paths(self, height, linear_vels=None, angular_vels=None):
         if angular_vels is None:
             angular_vels = [0.]
@@ -193,6 +208,9 @@ class MonoForce:
         # paths marker array
         marker_array = MarkerArray()
         path_id = 0
+        lower_cost_poses = None
+        max_path_cost = torch.tensor(-np.inf, device=self.cfg.device)
+        min_path_cost = torch.tensor(np.inf, device=self.cfg.device)
         for v in linear_vels:
             for w in angular_vels:
                 # controls
@@ -204,8 +222,7 @@ class MonoForce:
 
                 # predict states
                 t0 = time()
-                with torch.no_grad():
-                    states = self.sim(height, controls)
+                states = self.sim(height, controls)
                 t1 = time()
                 rospy.logdebug('Path of %d samples simulation took %.3f' % (self.cfg.n_samples, t1 - t0))
 
@@ -217,7 +234,21 @@ class MonoForce:
                 Ts[:, :3, 3:4] = xyz
                 Ts[:, 3, 3] = 1.
 
-                marker_msg = to_marker(Ts, color=[1., 0., 0.])
+                # compute path cost
+                path_cost = self.path_cost(states)
+                rospy.logdebug('Path cost: %.3f' % path_cost.item())
+                if path_cost > max_path_cost:
+                    max_path_cost = path_cost.clone()
+                if path_cost < min_path_cost:
+                    min_path_cost = path_cost.clone()
+                    lower_cost_poses = Ts
+                # normalize path cost
+                path_cost = (path_cost - min_path_cost) / (max_path_cost - min_path_cost) if max_path_cost > min_path_cost else path_cost
+                rospy.logdebug('Path cost normalized: %.3f' % path_cost.item())
+
+                # map path cost to color (lower cost -> greener, higher cost -> redder)
+                color = np.array([0., 1., 0.]) + (np.array([1., 0., 0.]) - np.array([0., 1., 0.])) * path_cost.item()
+                marker_msg = to_marker(Ts, color=color)
                 marker_msg.header.stamp = rospy.Time.now()
                 marker_msg.header.frame_id = self.robot_frame
                 marker_msg.ns = 'paths'
@@ -226,7 +257,14 @@ class MonoForce:
                 marker_array.markers.append(marker_msg)
                 rospy.logdebug('Path to marker array conversion took %.3f' % (time() - t1))
 
+        # publish all sampled paths
         self.paths_pub.publish(marker_array)
+        # publish lower cost path
+        if lower_cost_poses is not None:
+            path_msg = to_path(lower_cost_poses, stamp=rospy.Time.now(), frame_id=self.robot_frame)
+            path_msg.header.stamp = rospy.Time.now()
+            path_msg.header.frame_id = self.robot_frame
+            self.lc_path_pub.publish(path_msg)
 
 
 def main():

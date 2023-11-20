@@ -147,11 +147,18 @@ def to_pose_array(poses, stamp=None, frame_id=None):
 def to_path(poses, stamp=None, frame_id=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
     assert poses.shape[1:] == (4, 4)
+    if stamp is None:
+        stamp = rospy.Time.now()
+    if frame_id is None:
+        frame_id = 'base_link'
     path = Path()
     path.header.stamp = stamp
     path.header.frame_id = frame_id
     for i in range(poses.shape[0]):
-        pose = msgify(Pose, poses[i])
+        pose = PoseStamped()
+        pose.header.stamp = stamp
+        pose.header.frame_id = frame_id
+        pose.pose = msgify(Pose, poses[i])
         path.poses.append(pose)
     return path
 
