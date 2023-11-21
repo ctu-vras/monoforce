@@ -27,12 +27,16 @@ class MonoForce:
     def __init__(self, cfg: Config,
                  model_name=None,
                  robot_frame='base_link',
-                 img_topic='/camera/image_raw/compressed'):
+                 img_topic='/camera/image_raw/compressed',
+                 linear_vels=[1.],
+                 angular_vels=[0.]):
         self.cfg = cfg
         self.model_name = model_name
         rospy.loginfo('Loading model %s' % self.model_name)
         self.load_model()
         self.robot_frame = robot_frame
+        self.linear_vels = linear_vels
+        self.angular_vels = angular_vels
 
         # cv bridge
         self.cv_bridge = CvBridge()
@@ -89,9 +93,8 @@ class MonoForce:
         img = self.cv_bridge.compressed_imgmsg_to_cv2(msg)
         img = self.preprocess_img(img)
         height = self.monolayout_inference(img)
-        t1 = time()
         rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
-        rospy.logdebug('MonoDem inference time: %.3f' % (t1 - t0))
+        rospy.logdebug('MonoDem inference time: %.3f' % (time() - t0))
 
         # publish image
         height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
@@ -103,26 +106,26 @@ class MonoForce:
         # rotate 180 deg because in the image the lower pixels (with height row number) are closer
         height = np.rot90(height, k=2).copy()
 
+        # predict path
+        with torch.no_grad():
+            self.predict_paths(height, linear_vels=self.linear_vels, angular_vels=self.angular_vels)
+
         # publish point cloud
+        t1 = time()
         h, w = np.asarray(height.shape) * self.cfg.grid_res
         cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
-                                                  xyz=np.array([h / 2., 0, 0]), q=np.array([0., 0., 0., 1.]))
+                                                  xyz=np.array([h / 2., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         cloud_msg.header.stamp = msg.header.stamp
         cloud_msg.header.frame_id = self.robot_frame
         self.hm_cloud_pub.publish(cloud_msg)
 
         # publish grid map
         grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
-                                             xyz=np.array([h / 2., 0, 0]), q=np.array([0., 0., 0., 1.]))
+                                             xyz=np.array([h / 2., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = msg.header.stamp
         grid_msg.info.header.frame_id = self.robot_frame
         self.hm_grid_pub.publish(grid_msg)
-        t2 = time()
-        rospy.logdebug('Height map publishing took %.3f' % (t2 - t1))
-
-        # predict path
-        with torch.no_grad():
-            self.predict_paths(height, linear_vels=[1.], angular_vels=np.linspace(-0.3, 0.3, 3))
+        rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
 
     def sim(self, height, controls):
         assert isinstance(height, np.ndarray)
@@ -236,7 +239,7 @@ class MonoForce:
 
                 # compute path cost
                 path_cost = self.path_cost(states)
-                rospy.logdebug('Path cost: %.3f' % path_cost.item())
+                # rospy.logdebug('Path cost: %.3f' % path_cost.item())
                 if path_cost > max_path_cost:
                     max_path_cost = path_cost.clone()
                 if path_cost < min_path_cost:
@@ -244,7 +247,7 @@ class MonoForce:
                     lower_cost_poses = Ts
                 # normalize path cost
                 path_cost = (path_cost - min_path_cost) / (max_path_cost - min_path_cost) if max_path_cost > min_path_cost else path_cost
-                rospy.logdebug('Path cost normalized: %.3f' % path_cost.item())
+                # rospy.logdebug('Path cost normalized: %.3f' % path_cost.item())
 
                 # map path cost to color (lower cost -> greener, higher cost -> redder)
                 color = np.array([0., 1., 0.]) + (np.array([1., 0., 0.]) - np.array([0., 1., 0.])) * path_cost.item()
@@ -268,19 +271,24 @@ class MonoForce:
 
 
 def main():
+    rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
+
     cfg = Config()
     cfg.grid_res = 0.1
     cfg.device = 'cuda'
     cfg.d_max = 12.8
     cfg.d_min = 1.
     cfg.img_size = (512, 512)
-    cfg.total_sim_time = 5.0
+    cfg.total_sim_time = rospy.get_param('~total_sim_time')
     cfg.n_samples = 100 * int(cfg.total_sim_time)
 
-    rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
     img_topic = rospy.get_param('~img_topic')
     robot_frame = rospy.get_param('~robot_frame')
-    node = MonoForce(cfg=cfg, model_name='monolayout', img_topic=img_topic, robot_frame=robot_frame)
+    # control parameters
+    linear_vels = rospy.get_param('~linear_vels')
+    angular_vels = rospy.get_param('~angular_vels')
+    node = MonoForce(cfg=cfg, model_name='monolayout', img_topic=img_topic, robot_frame=robot_frame,
+                     linear_vels=linear_vels, angular_vels=angular_vels)
     rospy.spin()
 
 
