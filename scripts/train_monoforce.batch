@@ -3,7 +3,7 @@
 #SBATCH --nodes=1                         # number of node
 #SBATCH --ntasks-per-node=1               # tasks per node
 #SBATCH --cpus-per-task=12                # number of CPUs
-#SBATCH --time=0-11:59:00                 # time limit
+#SBATCH --time=1-00:00:00                 # time limit
 #SBATCH --error=train.out                 # standard error file
 #SBATCH --output=train.out                # standard output file
 #SBATCH --partition=amdgpu                # partition name

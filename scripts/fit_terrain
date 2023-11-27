@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import RobinGasDataset
+from monoforce.datasets import RobinGasDataset, seq_paths
 from monoforce.config import Config
 from monoforce.vis import setup_visualization, animate_trajectory, mlab_imshow, draw_coord_frames
 from monoforce.losses import translation_difference, rotation_difference, total_variation, traj_dist
@@ -20,7 +20,7 @@ cfg.grid_res = 0.2
 cfg.d_max = 12.8
 # cfg.device = 'cuda:0'
 cfg.device = 'cpu'
-cfg.lr = 0.01
+cfg.lr = 0.03
 cfg.total_sim_time = 10.0
 cfg.n_samples = 100 * int(cfg.total_sim_time)
 cfg.n_train_iters = 21
@@ -34,14 +34,14 @@ cfg.rot_cost_weight = 1.
 device = torch.device(cfg.device)
 
 
-def get_data(i: int = None, vis=True):
+def get_data(i: int = None, vis=True, path=seq_paths[0]):
     """
     Get ground truth data smple from the RobinGas dataset
     :param i: index of the sample
+    :param vis: visualize the sample
+    :param path: path to the dataset
     :return: states_true, tt_true, height
     """
-    path = '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    # path = '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
     ds = RobinGasDataset(path, cfg=cfg)
     if i is None:
         i = np.random.choice(range(len(ds)))
@@ -346,7 +346,7 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
         loss_trans_sum /= n_true_states
         loss_sum = cfg.trans_cost_weight * loss_trans_sum + cfg.rot_cost_weight * loss_rot_sum
         if regularization:
-            loss_sum += 0.2 * total_variation(system.height[None])
+            loss_sum += total_variation(system.height[None])
 
         # visualize
         if vis and k % 10 == 0:
@@ -365,7 +365,8 @@ def train_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.inf, vis
 
         print('Loss: %.3f (trans: %.3f, rot: %.3f)' % (loss_sum.item(), loss_trans_sum.item(), loss_rot_sum.item()))
 
-    mlab.show()
+    if vis:
+        mlab.show()
 
 
 def train_cmd_vel(regularization=True):
@@ -619,9 +620,9 @@ def train_p_track_vels(regularization=True, max_vel=np.inf, vis=True):
 
 def main():
     # train_omni()
-    # train_p_diffdrive()
+    train_p_diffdrive()
     # train_cmd_vel()
-    train_p_track_vels()
+    # train_p_track_vels()
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@
 <launch>
     <arg name="config" default="''"/>
     <arg name="rviz" default="true"/>
+    <arg name="record" default="false"/>
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/>
     <arg name="params" default="$(eval bag.split()[0] + '.params')"/>
     <!-- Cloud filter -->
@@ -32,5 +33,9 @@
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
-          args="-d $(dirname)/../config/rviz/bag_data.rviz"/>
+          args="-d $(dirname)/../config/rviz/slam.rviz"/>
+
+    <!-- Record new bag file with tf topic -->
+    <node if="$(arg record)" pkg="rosbag" type="record" name="rosbag_record"
+          args="/tf -O $(arg bag)_loc.bag"/>
 </launch>

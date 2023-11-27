@@ -1,0 +1,387 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+from torch.utils.tensorboard import SummaryWriter
+from monoforce.config import Config
+from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.datasets import MonoDemDataset, seq_paths
+from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
+from monoforce.control import pose_control
+from monoforce.losses import translation_difference, rotation_difference, traj_dist
+from monoforce.models import monolayout
+from monoforce.transformations import rot2rpy
+from mayavi import mlab
+from tqdm import tqdm
+from datetime import datetime
+    
+
+class Trainer:
+    def __init__(self, train_datasets: list, cfg: Config, pretrained_paths=None, vis=False):
+        self.cfg = cfg
+        self.device = cfg.device
+        self.img_size = (512, 512)
+        self.train_datasets = train_datasets
+        self.models = self.init_models(pretrained_paths=pretrained_paths)
+        self.vis = vis
+        self.metrics = {'trans_wp': [], 'rot_wp': []}
+
+        # optimizer
+        self.parameters_to_train = []
+        for key in self.models.keys():
+            self.models[key].to(self.device)
+            self.parameters_to_train += list(self.models[key].parameters())
+        self.optimizer = torch.optim.Adam(params=self.parameters_to_train, lr=cfg.lr)
+
+        # tensorboard
+        path = os.path.dirname(os.path.realpath(__file__))
+        train_label = '%s_lr_%f_traj_loss' % (datetime.now().strftime("%Y_%m_%d-%H:%M:%S"), cfg.lr)
+        self.writer = SummaryWriter(log_dir=os.path.join(path, '../config/tb_runs/monolayout/%s/' % train_label))
+        self.weights_dir_path = os.path.join(path, '../config/weights/monolayout/%s/' % train_label)
+
+        self.loss_hm = torch.nn.MSELoss(reduction='mean')
+        self.lambda_reg = 0.1
+        self.min_train_loss = np.inf
+
+    def init_models(self, pretrained_paths=None):
+        assert isinstance(pretrained_paths, dict) or pretrained_paths is None
+        models = {}
+        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=self.img_size[0], img_wt=self.img_size[1], pretrained=True)
+        models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
+
+        if pretrained_paths is not None:
+            assert "encoder" in pretrained_paths.keys() and "decoder" in pretrained_paths.keys()
+            print('Loading pretrained weights for encoder and decoder from:\n%s...' % pretrained_paths)
+
+            encoder_dict = torch.load(pretrained_paths["encoder"], map_location=self.device)
+            filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
+            models["encoder"].load_state_dict(filtered_dict_enc)
+            models["decoder"].load_state_dict(torch.load(pretrained_paths["decoder"], map_location=self.device))
+
+        for key in models.keys():
+            models[key].train()
+            models[key].to(self.device)
+
+        return models
+
+    def monolayout_inference(self, img, debug=False):
+        img_tensor = torch.from_numpy(img).unsqueeze(0).to(self.device)
+        features = self.models['encoder'](img_tensor)
+        height_pred = self.models['decoder'](features, is_training=True)
+        if debug:
+            plt.figure()
+            plt.subplot(1, 2, 1)
+            plt.title('Input image (normalized)')
+            plt.imshow(img.transpose(1, 2, 0))
+            plt.subplot(1, 2, 2)
+            plt.title('Predicted height map')
+            plt.imshow(height_pred.squeeze().detach().cpu().numpy(), cmap='jet')
+            plt.colorbar()
+            plt.show()
+        return height_pred
+
+    @staticmethod
+    def are_valid(poses):
+        # if some poses are behind the robot starting pose, mark the data as invalid
+        if poses[:, 0, 3].mean() < 0.2:
+            # print(poses[:, 0, 3].mean())
+            return False
+        return True
+
+    def debug(self, i, ds, height):
+        img_front = ds.get_image(i, camera='front')
+        img_rear = ds.get_image(i, camera='rear')
+        img_left = ds.get_image(i, camera='left')
+        img_right = ds.get_image(i, camera='right')
+
+        plt.figure(figsize=(12, 12))
+        plt.subplot(3, 3, 2)
+        plt.title('Front')
+        plt.imshow(img_front)
+        plt.subplot(3, 3, 8)
+        plt.title('Rear')
+        plt.imshow(img_rear)
+        plt.subplot(3, 3, 4)
+        plt.title('Left')
+        plt.imshow(img_left)
+        plt.subplot(3, 3, 6)
+        plt.title('Right')
+        plt.imshow(img_right)
+        plt.subplot(3, 3, 5)
+        plt.title('Height map')
+        plt.imshow(height, cmap='jet')
+        plt.colorbar()
+
+    def get_states(self, i: int, ds: MonoDemDataset):
+        """
+        Get ground truth data sample from the RobinGas dataset
+        :param i: index of the sample
+        :param ds: dataset
+        :return: states_true, tt_true, height
+        """
+        traj = ds.get_traj(i)
+        poses = traj['poses']
+        # move poses, points to robot frame
+        Tr = np.linalg.inv(poses[0])
+        poses = np.asarray([np.matmul(Tr, p) for p in poses])
+
+        # if some poses are behind the robot starting pose, mark the data as invalid
+        if not self.are_valid(poses):
+            return None
+
+        # start from the cropped height map origin
+        poses[:, 0, 3] = poses[:, 0, 3] - self.cfg.d_max / 2.
+
+        tstamps = traj['stamps']
+        tstamps = tstamps - tstamps[0]
+
+        xyz_true = torch.as_tensor(poses[:, :3, 3])
+        rot_true = torch.as_tensor(poses[:, :3, :3])
+
+        n_true_states = len(xyz_true)
+        tt_true = torch.tensor(tstamps)[None].T
+
+        dps = torch.diff(xyz_true, dim=0)
+        dt = torch.diff(tt_true, dim=0)
+        theta_true = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
+        theta_true = torch.cat([theta_true[:1], theta_true], dim=0)
+
+        vel_true = torch.zeros_like(xyz_true)
+        vel_true[:-1] = dps / dt
+        omega_true = torch.zeros_like(xyz_true)
+        omega_true[:-1, 2:3] = torch.diff(theta_true, dim=0) / dt  # + torch.diff(angles_true, dim=0)[:, 2:3] / dt
+
+        forces_true = torch.zeros((n_true_states, 3, 10))  # TODO: 10 is a hack, 10 is the number of contact points
+        states_true = (xyz_true.view(n_true_states, 3, 1),
+                       rot_true.view(n_true_states, 3, 3),
+                       vel_true.view(n_true_states, 3, 1),
+                       omega_true.view(n_true_states, 3, 1),
+                       forces_true.view(n_true_states, 3, 10))
+        states_true = tuple([s.to(self.cfg.device) for s in states_true])
+
+        return states_true
+
+    def eval_p_control_diffdrive(self, states_true, height):
+        """
+        Simulate the system with P control.
+        Robot visits a set of waypoints.
+        Diff-drive (controlled with X-linear and Z-angular velocities) robot motion model is used.
+        """
+        xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
+        n_true_states = len(xyz_true)
+        # height = np.zeros_like(height) + xyz_true[:, 2].numpy().min()
+
+        """ Create robot-terrain interaction models """
+        system = RigidBodySoftTerrain(height=height,
+                                      grid_res=self.cfg.grid_res,
+                                      friction=self.cfg.friction, mass=self.cfg.robot_mass,
+                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.], device=self.cfg.device).view(xyz_true[0].shape),
+                                                  rot=rot_true[0],
+                                                  vel=vel_true[0],
+                                                  omega=omega_true[0], device=self.cfg.device),
+                                      device=self.cfg.device, use_ode=False,
+                                      interaction_model='diffdrive',
+                                      learn_height=False)
+
+        # put models with their params to self.cfg.device
+        system = system.to(self.cfg.device)
+        s0 = system.state
+        tt = torch.linspace(0, self.cfg.total_sim_time, self.cfg.n_samples).to(self.cfg.device)
+
+        if self.vis:
+            states = system.sim(s0, tt)
+            """ Set-up visualization """
+            vis_cfg = setup_visualization(system=system,
+                                          states=states,
+                                          states_true=states_true,
+                                          cfg=self.cfg)
+            # mlab.show()
+        """ Navigation loop """
+        state = system.state
+        states = []
+        dt = (tt[1:] - tt[:-1]).mean()
+        loss_trans_traj = torch.tensor(0., device=self.cfg.device)
+        loss_rot_traj = torch.tensor(0., device=self.cfg.device)
+        poses_eval = []
+        for i in range(n_true_states-1):
+            # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
+            time_interval = tt[i * self.cfg.n_samples // (n_true_states - 1):(i+1) * self.cfg.n_samples // (n_true_states - 1)]
+
+            pos_x, pos_R, vel_x, vel_omega, forces = state
+            pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
+
+            # roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
+            # if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
+            #     print('Robot is upside down, skipping this data sample.')
+            #     return None, None
+
+            goal_pose = torch.eye(4, device=self.cfg.device)
+            goal_pose[:3, 3:4] = xyz_true[i + 1]
+            goal_pose[:3, :3] = rot_true[i + 1]
+
+            for t in time_interval[1:]:
+                v, w = pose_control(state, goal_pose, allow_backwards=True,
+                                    Kp_rho=2., Kp_theta=4., Kp_yaw=4., dist_reached=0.01)
+                state[2][0] = v
+                state[3][2] = w
+
+                dstate = system.forward(t, state)
+                state = state.update(dstate, dt)
+
+                pos_x.append(state[0])
+                pos_R.append(state[1])
+                vel_x.append(state[2])
+                vel_omega.append(state[3])
+                forces.append(state[4])
+            # print('Reached waypoint with accuracy: %.2f [m]' % dist.item())
+
+            states_interval = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega), torch.stack(forces)]
+            states.append(states_interval)
+
+            # compute loss
+            loss_trans = translation_difference(pos_x[-1].view(1, 3, 1), states_true[0][i + 1].view(1, 3, 1))
+            loss_rot = rotation_difference(pos_R[-1].view(1, 3, 3), states_true[1][i + 1].view(1, 3, 3))
+
+            loss_trans_traj += loss_trans
+            loss_rot_traj += loss_rot
+
+            # log poses at the end of each interval for which we compute loss
+            pose_eval = torch.eye(4)
+            pose_eval[:3, 3:4] = pos_x[-1].view(3, 1)
+            pose_eval[:3, :3] = pos_R[-1].view(3, 3)
+            poses_eval.append(pose_eval)
+
+        pos_x = torch.cat([x[0] for x in states], dim=0)
+        pos_R = torch.cat([x[1] for x in states], dim=0)
+        vel_x = torch.cat([x[2] for x in states], dim=0)
+        vel_omega = torch.cat([x[3] for x in states], dim=0)
+        forces = torch.cat([x[4] for x in states], dim=0)
+
+        states = (pos_x, pos_R, vel_x, vel_omega, forces)
+
+        loss_trans_traj /= (n_true_states - 1)
+        loss_rot_traj /= (n_true_states - 1)
+
+        # visualize trajectory
+        if self.vis:
+            system.update_trajectory(states=states)
+            draw_coord_frames(torch.stack(poses_eval).detach().cpu().numpy(), scale=0.1)
+            animate_trajectory(system, vis_cfg)
+
+            mlab.show()
+
+        return loss_trans_traj, loss_rot_traj
+
+    def train_ds(self, ds, epoch):
+        loss_trans_ds = torch.tensor(0., device=self.cfg.device)
+        loss_rot_ds = torch.tensor(0., device=self.cfg.device)
+        loss_reg_ds = torch.tensor(0., device=self.cfg.device)
+        n_train_samples = 0
+        for i in tqdm(range(len(ds))):
+            # print('Evaluating sample %i' % i)
+            states_true = self.get_states(i, ds)
+            if states_true is None:
+                # print('Skipping sample %i' % i)
+                continue
+            img, height_trav, height_reg, weights_trav, weights_reg = ds[i]
+            # height map from a model output
+            height_pred = self.monolayout_inference(img, debug=False)
+
+            # regularization loss
+            height_reg = torch.from_numpy(height_reg).to(self.cfg.device).reshape(height_pred.shape)
+            loss_reg = self.lambda_reg * self.loss_hm(height_pred, height_reg)
+
+            # self.debug(i, ds, height_pred.detach().cpu().numpy()); plt.show()
+            # rotate 180 deg because in the image the lower pixels (with height row number) are closer
+            height_pred = torch.rot90(height_pred.squeeze(), k=2)  # (H, W)
+            loss_trans, loss_rot = self.eval_p_control_diffdrive(states_true, height_pred)
+
+            if loss_trans is None:
+                continue
+            n_train_samples += 1
+
+            self.optimizer.zero_grad()
+            loss = loss_trans + loss_rot + loss_reg
+            loss.backward()
+            self.optimizer.step()
+
+            loss_trans_ds += loss_trans
+            loss_rot_ds += loss_rot
+            loss_reg_ds += loss_reg
+
+            # tensorboard logging
+            global_step = epoch * len(ds) + i
+            self.writer.add_scalar('Loss trans (%s) [m]' % ds.name, loss_trans.item(), global_step)
+            self.writer.add_scalar('Loss rot (%s) [rad' % ds.name, loss_rot.item(), global_step)
+            self.writer.add_scalar('Loss reg (%s) [m]' % ds.name, loss_reg.item(), global_step)
+
+        loss_trans_ds /= n_train_samples
+        loss_rot_ds /= n_train_samples
+        loss_reg_ds /= n_train_samples
+
+        return loss_trans_ds, loss_rot_ds, loss_reg_ds
+
+    def train(self):
+        for epoch in range(self.cfg.n_train_iters):
+            for ds in self.train_datasets:
+                print('\nTrain epoch %i on data sequence: %s\n' % (epoch, ds.path))
+                loss_trans_ds, loss_rot_ds, loss_reg_ds = self.train_ds(ds, epoch)
+
+                print('Loss translation: %.3f [m]' % loss_trans_ds.item())
+                print('Loss rotation: %.3f [deg]' % (loss_rot_ds.item() * 180 / np.pi))
+                print('Loss regularization: %.3f [m]' % loss_reg_ds.item())
+
+                # save best model for each dataset
+                loss = loss_trans_ds + loss_rot_ds + loss_reg_ds
+                if loss < self.min_train_loss:
+                    self.min_train_loss = loss
+                    print('Saving better train model for dataset %s.' % ds.name)
+                    for key in self.models.keys():
+                        os.makedirs(os.path.join(self.weights_dir_path, ds.name), exist_ok=True)
+                        torch.save(self.models[key].state_dict(),
+                                   os.path.join(self.weights_dir_path, '%s_train.pth' % key))
+
+                    # log model inference example
+                    k = np.random.randint(0, len(ds))
+                    img = ds[k][0]
+                    # height map from a model output
+                    with torch.no_grad():
+                        height = self.monolayout_inference(img, debug=False)
+                    self.writer.add_image('RGB image', torch.from_numpy(img), epoch)
+                    self.writer.add_image('Height map', height[0], epoch)
+
+
+def main():
+    cfg = Config()
+    cfg.grid_res = 0.1
+    cfg.device = 'cuda'
+    cfg.d_max = 12.8
+    cfg.d_min = 1.
+    cfg.hm_interp_method = 'nearest'
+    cfg.lr = 0.0001
+    cfg.n_train_iters = 100
+
+    datasets = []
+    for path in seq_paths:
+        img_size = (512, 512)
+        ds = MonoDemDataset(path=path,
+                            img_size=img_size,
+                            cameras=['camera_fisheye_front'],
+                            cfg=cfg)
+        datasets.append(ds)
+
+    # pretrained weights paths for MonoDEM (encoder and decoder)
+    # pretrained_paths = {
+    #     "encoder": "../config/weights/monolayout/encoder.pth",
+    #     "decoder": "../config/weights/monolayout/decoder.pth",
+    # }
+    pretrained_paths = None
+
+    trainer = Trainer(train_datasets=datasets, cfg=cfg, pretrained_paths=pretrained_paths, vis=False)
+    trainer.train()
+
+
+if __name__ == '__main__':
+    main()

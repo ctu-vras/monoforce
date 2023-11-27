@@ -99,6 +99,7 @@ class RigidBodySoftTerrain(nn.Module):
                  Kp_rho=2.0,  # position proportional gain
                  Kp_theta=50.0,  # heading proportional gain
                  Kp_yaw=1.0,  # yaw (at a pose) proportional gain
+                 learn_height=True,
                  ):
         super().__init__()
         self.device = device
@@ -109,7 +110,7 @@ class RigidBodySoftTerrain(nn.Module):
         self.height = torch.as_tensor(height, device=self.device)
         self.height0 = self.height.clone()
         self.height_soft = torch.ones_like(self.height, device=self.device) * soft_layer_height
-        self.height = nn.Parameter(self.height)
+        self.height = nn.Parameter(self.height) if learn_height else self.height
         self.height_soft = nn.Parameter(self.height_soft)
         self.damping = nn.Parameter(torch.ones_like(self.height) * damping)
         self.elasticity = nn.Parameter(torch.ones_like(self.height) * elasticity)

@@ -116,6 +116,8 @@ Visualization Manager:
           Value: true
         lidar:
           Value: true
+        map:
+          Value: true
         mount_base:
           Value: true
         odom:
@@ -173,79 +175,80 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        odom:
-          base_link:
-            base_footprint:
-              {}
-            bullet:
-              bullet_antenna:
+        map:
+          odom:
+            base_link:
+              base_footprint:
                 {}
-            front_bumper_link:
-              {}
-            front_left_wheel_link:
-              {}
-            front_right_wheel_link:
-              {}
-            imu_link:
-              {}
-            inertial_link:
-              {}
-            mount_base:
-              cam1_base:
-                {}
-              cam2_base:
-                {}
-              rs_lidar:
-                lidar:
+              bullet:
+                bullet_antenna:
                   {}
-                rslidar:
+              front_bumper_link:
+                {}
+              front_left_wheel_link:
+                {}
+              front_right_wheel_link:
+                {}
+              imu_link:
+                {}
+              inertial_link:
+                {}
+              mount_base:
+                cam1_base:
                   {}
-            payload_frame:
-              {}
-            rear_bumper_link:
-              {}
-            rear_left_wheel_link:
-              {}
-            rear_right_corner:
-              tower_rear_right_corner:
-                tower:
-                  tower_camera_floor:
-                    camera_0:
-                      {}
-                    camera_1:
-                      {}
-                    camera_2:
-                      {}
-                    camera_3:
-                      {}
-                  tower_cap:
-                    tower_cap_top:
-                      ouster_mount:
-                        ouster_mount_top:
-                          os_sensor:
-                            crystal:
-                              {}
-                            os_imu:
-                              {}
-                            os_lidar:
-                              {}
-                  tower_lower_floor:
-                    imu:
-                      gps:
+                cam2_base:
+                  {}
+                rs_lidar:
+                  lidar:
+                    {}
+                  rslidar:
+                    {}
+              payload_frame:
+                {}
+              rear_bumper_link:
+                {}
+              rear_left_wheel_link:
+                {}
+              rear_right_corner:
+                tower_rear_right_corner:
+                  tower:
+                    tower_camera_floor:
+                      camera_0:
                         {}
-                    jetson:
-                      {}
-            rear_right_wheel_link:
-              {}
-            top_chassis_link:
-              {}
-            top_plate_link:
-              top_plate_front_link:
+                      camera_1:
+                        {}
+                      camera_2:
+                        {}
+                      camera_3:
+                        {}
+                    tower_cap:
+                      tower_cap_top:
+                        ouster_mount:
+                          ouster_mount_top:
+                            os_sensor:
+                              crystal:
+                                {}
+                              os_imu:
+                                {}
+                              os_lidar:
+                                {}
+                    tower_lower_floor:
+                      imu:
+                        gps:
+                          {}
+                      jetson:
+                        {}
+              rear_right_wheel_link:
                 {}
-              top_plate_rear_link:
+              top_chassis_link:
                 {}
-            user_rail_link:
-              {}
+              top_plate_link:
+                top_plate_front_link:
+                  {}
+                top_plate_rear_link:
+                  {}
+              user_rail_link:
+                {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -300,7 +303,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 1e+08
@@ -317,7 +320,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 0.5
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -330,7 +333,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 1e+08
@@ -347,7 +350,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Class: rviz/Image
       Enabled: true
       Image Topic: /camera_left/image_color
@@ -518,7 +521,7 @@ Visualization Manager:
   Global Options:
     Background Color: 255; 255; 255
     Default Light: true
-    Fixed Frame: base_link
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:

@@ -6,19 +6,25 @@ import yaml
 
 class Config:
     def __init__(self):
+        # height map parameters
         self.grid_res = 0.1
         self.d_min = 1.
-        self.d_max = 12.8  # for Monolayout training
-        self.h_max = 1.3
+        self.d_max = 12.8
+        self.h_max = 2.0
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9
+        self.hm_interp_method = 'nearest'
+
+        # robot parameters
         self.vel_tracks = [0., 0.]
         self.robot_mass = 10.
         self.num_robot_points = 5
         self.robot_inertia = (5. * np.eye(3)).tolist()
         self.robot_init_xyz = [0., 0., 1.]
         self.robot_init_q = [0., 0., 0., 1.]
+
+        # training parameters
         self.use_terrain_cnn = False
         self.device = torch.device('cpu')
         self.lr = 0.001
@@ -31,10 +37,14 @@ class Config:
         self.dataset_path = '/tmp'
         self.trans_cost_weight = 1.
         self.rot_cost_weight = 1.
+
+        # control parameters
         self.robot_terrain_interaction_model = 'diffdrive'
         self.max_vel = 2.  # m/s
         self.max_omega = 2.  # rad/s
-        self.hm_interp_method = 'nearest'
+
+        # MonoDem parameters
+        self.img_size = (512, 512)
 
     def __str__(self):
         return str(self.__dict__)

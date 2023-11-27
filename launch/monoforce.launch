@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="config" default="''"/>
+    <arg name="img_topic" default="/camera_front/image_color/compressed"/>
+    <arg name="robot_frame" default="base_link"/>
+    <arg name="linear_vels" default="[1.]"/>
+    <arg name="angular_vels" default="[0.]"/>
+    <arg name="total_sim_time" default="5"/>
+
+    <!-- MonoForce node -->
+    <node name="monoforce" pkg="monoforce" type="monoforce">
+        <rosparam subst_value="true">
+            img_topic: $(arg img_topic)
+            robot_frame: $(arg robot_frame)
+            linear_vels: $(arg linear_vels)
+            angular_vels: $(arg angular_vels)
+            total_sim_time: $(arg total_sim_time)
+        </rosparam>
+    </node>
+</launch>

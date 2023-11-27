@@ -3,6 +3,7 @@
 <launch>
     <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
     <arg name="rate" default="1." doc="Playback rate"/>
+    <arg name="start" default="0." doc="Start moment in a bag file [sec]"/>
     <!--Bag file player -->
 <!--    <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky/husky_2022-10-27-15-23-47.bag"/>-->
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/>
@@ -12,7 +13,7 @@
     <param name="use_sim_time" value="true"/>
 
     <node name="rosbag_play" pkg="rosbag" type="play"
-          args="--clock --delay 3.0 --rate $(arg rate) --start 0 $(arg bag)">
+          args="--clock --delay 3.0 --rate $(arg rate) --start $(arg start) $(arg bag)">
         <remap from="points" to="cloud"/>
         <remap from="os_cloud_node/destaggered_points" to="cloud"/>
     </node>

@@ -5,9 +5,9 @@ import torch
 import numpy as np
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import MonoDemDataset
+from monoforce.datasets import MonoDemDataset, seq_paths
+from monoforce.models.monolayout import load_monodem
 from monoforce.vis import setup_visualization, animate_trajectory
-from monoforce.models import monolayout
 from mayavi import mlab
 
 
@@ -24,25 +24,12 @@ class MonoForce:
 
     def load_model(self):
         if self.model_name == 'monolayout':
-            self.models = self.load_monolayout()
+            self.models = load_monodem(encoder_path='../config/weights/monolayout/encoder.pth',
+                                       decoder_path='../config/weights/monolayout/decoder.pth',
+                                       # geom2trav_path='../config/weights/monolayout/geom2trav.pth',
+                                       cfg=self.cfg)
         else:
             pass
-
-    def load_monolayout(self,
-                        encoder_path='../config/weights/monolayout/encoder.pth',
-                        decoder_path='../config/weights/monolayout/decoder.pth'):
-        H, W = self.img_size
-        models = {}
-        # load encoder weights
-        models["encoder"] = monolayout.Encoder(num_layers=18, img_ht=H, img_wt=W, pretrained=False)
-        encoder_dict = torch.load(encoder_path, map_location=self.cfg.device)
-        filtered_dict_enc = {k: v for k, v in encoder_dict.items() if k in models["encoder"].state_dict()}
-        models["encoder"].load_state_dict(filtered_dict_enc)
-
-        # load decoder weights
-        models["decoder"] = monolayout.Decoder(models["encoder"].resnet_encoder.num_ch_enc)
-        models["decoder"].load_state_dict(torch.load(decoder_path, map_location=self.cfg.device))
-        return models
 
     def monolayout_inference(self, img, debug=False):
         with torch.no_grad():
@@ -132,19 +119,15 @@ def main():
     cfg.d_max = 12.8
     cfg.d_min = 1.
 
-    data_paths = [
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
-        '../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/',
-        '../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/',
-    ]
-    data_path = data_paths[0]
+    # data_path = seq_paths[0]
+    data_path = np.random.choice(seq_paths)
 
     ds = MonoDemDataset(path=data_path,
                         img_size=(512, 512),
                         cameras=['camera_fisheye_front'],
                         cfg=cfg)
-    i = 20
-    # i = np.random.choice(range(len(ds)))
+    # i = 20
+    i = np.random.choice(range(len(ds)))
     img_norm_CHW = ds[i][0]
 
     tt = torch.linspace(0., cfg.total_sim_time, cfg.n_samples)
@@ -152,11 +135,12 @@ def main():
         'stamps': tt,
         'vel_x': 1. * torch.ones(cfg.n_samples),
         # 'vel_omega': -0.1 * torch.ones(cfg.n_samples),
-        'vel_omega': -2 * torch.sin(2. * np.pi * tt),
+        # 'vel_omega': -2 * torch.sin(2. * np.pi * tt),
+        'vel_omega': 0.02 * tt**2,
     }
 
     # show image and controls
-    img_vis = ds.get_image(i, 'front')[..., (2, 1, 0)]
+    img_vis = ds.get_image(i, 'front')
     plt.figure(figsize=(20, 10))
     plt.subplot(121)
     plt.title('Input image')

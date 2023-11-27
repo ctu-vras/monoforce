@@ -79,6 +79,7 @@ def arg_parser():
     parser.add_argument('--output-path', '-o', type=str, default='{dir}/{name}_trav/clouds/{secs}_{nsecs:09d}.npz')
     parser.add_argument('--output-bag-path', '-O', type=str, default='{dir}/{name}_segmented.bag')
     parser.add_argument('--output-traj-path', type=str, default='{dir}/{name}_trav/trajectories/{secs}_{nsecs:09d}.csv')
+    parser.add_argument('--output-global-poses-path', type=str, default='{dir}/{name}_trav/traj_poses.csv')
     parser.add_argument('--output-topic', type=str, default='{topic}_segmented')
     parser.add_argument('--output-period', type=float, default=None)
     parser.add_argument('--visualize', type=str2bool, default=False)
@@ -247,7 +248,8 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                   discard_model=None, robot_model=None,
                   obstacles_primitives=False, z_support=None,
                   discard_empty=True, distance_horizon=None, time_horizon=None, time_step=None,
-                  output_path=None, output_bag_path=None, output_traj_path=None, output_topic=None, output_period=None,
+                  output_path=None, output_bag_path=None, output_traj_path=None, output_global_poses_path=None,
+                  output_topic=None, output_period=None,
                   visualize=False, save_data=True):
     assert bag_paths, bag_paths
     assert not exclude_times or all(len(t) == 2 for t in exclude_times), exclude_times
@@ -274,6 +276,7 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
         output_bag = None
 
     tf_buffer, imu_buffer = load_tf_imu_buffer(bag_paths, imu_topics=imu_topics, imu_rate=imu_rate)
+    recorded_traj_poses_header = False
 
     for bag_path in bag_paths:
 
@@ -441,6 +444,24 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                                                  'T20', 'T21', 'T22', 'T23'])
                                 for stamp, T in zip(traj_stamps, traj_poses):
                                     writer.writerow([stamp] + T[:3, :4].flatten().tolist())
+
+                        # write cloud poses relative to fixed frame
+                        if output_global_poses_path is not None:
+                            p = output_global_poses_path.format(**fmt_kwargs)
+                            os.makedirs(os.path.dirname(p), exist_ok=True)
+                            if not recorded_traj_poses_header and os.path.exists(p):
+                                # delete file if it exists (overwrite)
+                                os.remove(p)
+                            with open(p, 'a') as f:
+                                writer = csv.writer(f)
+                                # if file is empty, write header
+                                if not recorded_traj_poses_header:
+                                    writer.writerow(['stamp', 'T00', 'T01', 'T02', 'T03',
+                                                     'T10', 'T11', 'T12', 'T13',
+                                                     'T20', 'T21', 'T22', 'T23'])
+                                    recorded_traj_poses_header = True
+                                T = input_to_fixed_tf
+                                writer.writerow([stamp] + T[:3, :4].flatten().tolist())
 
     if output_bag:
         output_bag.close()

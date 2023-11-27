@@ -35,11 +35,14 @@ The traversability dataset has the following structure:
 └── <robot name>
     └── <sequence name>_trav/
         ├── calibration
-        │   └── cameras
+        │   ├── cameras
+        │   ├── img_statistics.yaml
+        |   └── transformations.yaml
         ├── cloud_colors
         ├── clouds
         ├── images
-        └── trajectories
+        ├── trajectories
+        └── traj_poses.csv
 ```
 Folders names example:
 [22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/](http://subtdata.felk.cvut.cz/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/).
@@ -124,3 +127,17 @@ An example of a trained model output is given bellow.
 
 ![](./docs/imgs/monodem_pred.png)
 ![](./docs/imgs/prediction.png)
+
+
+## Citation
+
+Consider citing the paper if you find it useful for your research:
+
+```bibtex
+@article{agishev2023monoforce,
+  title={MonoForce: Self-supervised learning of physics-aware grey-box model for predicting the robot-terrain interaction},
+  author={Agishev, Ruslan and Zimmermann, Karel and Pecka, Martin and Svoboda, Tom{\'a}{\v{s}}},
+  journal={arXiv preprint arXiv:2309.09007},
+  year={2023}
+}
+```

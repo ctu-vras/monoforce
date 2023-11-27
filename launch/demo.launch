@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="rviz" default="true"/>
+<!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/> -->
+    <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
+
+    <!-- Robot data: from bag file -->
+    <include file="$(dirname)/play_bag.launch">
+        <arg name="bag" value="$(arg bag)"/>
+        <arg name="rate" value="1."/>
+        <arg name="start" value="0."/>
+        <arg name="rviz" value="false"/>
+    </include>
+
+    <!-- MonoForce node -->
+    <include file="$(dirname)/monoforce.launch">
+        <arg name="img_topic" value="/camera_front/image_color/compressed"/>
+        <arg name="robot_frame" value="base_link"/>
+        <arg name="linear_vels" value="[1.]"/>
+        <arg name="angular_vels" value="[-0.3, 0., 0.5]"/>
+        <arg name="total_sim_time" value="5."/>
+    </include>
+
+    <!-- RVIZ -->
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(dirname)/../config/rviz/monoforce.rviz"/>
+</launch>
