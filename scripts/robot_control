@@ -89,6 +89,8 @@ def get_data(i: int = None, path=seq_paths[0]):
     ds = RobinGasDataset(path=path, cfg=cfg)
     if i is None:
         i = np.random.choice(range(len(ds)))
+        print('Sample index: %i' % i)
+
     points, traj, heightmap = ds[i]
     poses = traj['poses']
     tstamps = traj['stamps']

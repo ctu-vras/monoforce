@@ -8,7 +8,7 @@ from monoforce.datasets import MonoDemDataset, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout, Geom2Trav
 from monoforce.vis import set_axes_equal
-from monoforce.segmentation import filter_grid, position
+from monoforce.cloudproc import filter_grid, position
 from monoforce.transformations import transform_cloud
 from tqdm import tqdm
 from argparse import ArgumentParser
@@ -88,7 +88,7 @@ def demo():
         # filter point cloud in height map box range
         mask_x = np.logical_and(cloud['x'] > 0., cloud['x'] < cfg.d_max)
         mask_y = np.logical_and(cloud['y'] > -cfg.d_max / 2., cloud['y'] < cfg.d_max / 2.)
-        mask_z = np.logical_and(cloud['z'] > 0., cloud['z'] < cfg.h_max)
+        mask_z = np.logical_and(cloud['z'] > 0., cloud['z'] < cfg.h_above_lidar)
         mask = np.logical_and(mask_x, mask_y)
         mask = np.logical_and(mask, mask_z)
         cloud_hm = cloud[mask]

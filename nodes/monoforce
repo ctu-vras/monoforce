@@ -6,7 +6,6 @@ import numpy as np
 import cv2
 import rospy
 from cv_bridge import CvBridge
-from geometry_msgs.msg import Pose, PoseStamped
 from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
@@ -14,10 +13,10 @@ from monoforce.models.monolayout import load_monodem
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg, to_marker, to_path
 from monoforce.utils import normalize
 from nav_msgs.msg import Path
-from ros_numpy import msgify
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 import rospkg
 from time import time
+from scipy.ndimage import rotate
 
 from visualization_msgs.msg import MarkerArray
 
@@ -103,8 +102,8 @@ class MonoForce:
         img_msg.header.frame_id = self.robot_frame
         self.hm_img_pub.publish(img_msg)
 
-        # rotate 180 deg because in the image the lower pixels (with height row number) are closer
-        height = np.rot90(height, k=2).copy()
+        height = height.T
+        height = rotate(height, 180)
 
         # predict path
         with torch.no_grad():

@@ -10,7 +10,7 @@ class Config:
         self.grid_res = 0.1
         self.d_min = 1.
         self.d_max = 12.8
-        self.h_max = 2.0
+        self.h_above_lidar = 0.3
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9

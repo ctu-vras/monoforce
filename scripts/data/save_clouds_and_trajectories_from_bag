@@ -27,7 +27,7 @@ import rospy
 from sensor_msgs.msg import PointCloud2, Imu
 from tf2_ros import BufferCore, TransformException
 from monoforce.geometry import affine, Bodies, Body, Box, inverse, Sphere  # needed for eval
-from monoforce.segmentation import compute_rigid_support, fit_planes, position, valid_point_mask
+from monoforce.cloudproc import compute_rigid_support, fit_planes, position, valid_point_mask
 from monoforce.transformations import transform_cloud
 from monoforce.utils import slots, normalize
 from monoforce.vis import show_cloud
