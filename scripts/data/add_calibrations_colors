@@ -12,7 +12,7 @@ from ros_numpy import msgify, numpify
 from rosbag import Bag, ROSBagException, Compression
 from sensor_msgs.msg import PointCloud2, CompressedImage
 from cv_bridge import CvBridge
-from monoforce.segmentation import position
+from monoforce.cloudproc import position
 from monoforce.utils import slots, normalize, timing
 from monoforce.vis import show_cloud, show_cloud_plt, set_axes_equal
 from monoforce.transformations import transform_cloud

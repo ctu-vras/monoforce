@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="config" default="''"/>
+    <arg name="pts_topic" default="points"/>
+    <arg name="robot_frame" default="base_link"/>
+
+    <!-- Height map estimator node -->
+    <node name="hm_estimator" pkg="monoforce" type="hm_estimator" output="screen">
+        <rosparam subst_value="true">
+            pts_topic: $(arg pts_topic)
+            robot_frame: $(arg robot_frame)
+        </rosparam>
+    </node>
+</launch>

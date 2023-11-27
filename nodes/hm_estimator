@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+
+import numpy as np
+import rospy
+from cv_bridge import CvBridge
+from grid_map_msgs.msg import GridMap
+from monoforce.config import Config
+from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.utils import normalize
+from monoforce.cloudproc import estimate_heightmap, position
+from ros_numpy import numpify, msgify
+from sensor_msgs.msg import Image, CompressedImage, PointCloud2
+import rospkg
+from time import time
+
+
+pkg_path = rospkg.RosPack().get_path('monoforce')
+
+class HeightMapEstimator:
+    def __init__(self, cfg: Config,
+                 pts_topic='points'):
+        self.cfg = cfg
+
+        # cv bridge
+        self.cv_bridge = CvBridge()
+        # height map publisher
+        self.hm_img_pub = rospy.Publisher('~height_map/image', Image, queue_size=1)
+        # point cloud publisher
+        self.hm_cloud_pub = rospy.Publisher('~height_map/points', PointCloud2, queue_size=1)
+        # grid map publisher
+        self.hm_grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
+
+        # image subscriber
+        self.pts_sub = rospy.Subscriber(pts_topic, PointCloud2, self.pts_callback)
+
+    def pts_callback(self, msg):
+        # if message is old do not process it
+        if msg.header.stamp < rospy.Time.now() - rospy.Duration(1.):
+            rospy.logwarn('Old image message received, skipping')
+            return
+
+        t0 = time()
+        cloud = numpify(msg)
+        points = position(cloud)
+        hm = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+                                grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                hm_interp_method=self.cfg.hm_interp_method)
+        height = hm['z']
+        rospy.logdebug('Estimated height map shape: %s' % str(height.shape))
+        rospy.logdebug('HM estimation time: %.3f' % (time() - t0))
+
+        # publish image
+        height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
+        img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
+        img_msg.header.stamp = msg.header.stamp
+        img_msg.header.frame_id = msg.header.frame_id
+        self.hm_img_pub.publish(img_msg)
+
+        # publish point cloud
+        t1 = time()
+        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
+                                                  xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        cloud_msg.header.stamp = msg.header.stamp
+        cloud_msg.header.frame_id = msg.header.frame_id
+        self.hm_cloud_pub.publish(cloud_msg)
+
+        # publish grid map
+        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
+                                             xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        grid_msg.info.header.stamp = msg.header.stamp
+        grid_msg.info.header.frame_id = msg.header.frame_id
+        self.hm_grid_pub.publish(grid_msg)
+        rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
+
+
+def main():
+    rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.DEBUG)
+
+    cfg = Config()
+    cfg.grid_res = 0.1
+    cfg.d_max = 6.4
+    cfg.d_min = 1.
+    cfg.h_above_lidar = 0.3
+    cfg.hm_interp_method = 'nearest'
+
+    pts_topic = rospy.get_param('~pts_topic')
+    node = HeightMapEstimator(cfg=cfg, pts_topic=pts_topic)
+    rospy.spin()
+
+
+if __name__ == '__main__':
+    main()

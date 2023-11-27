@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
-from .segmentation import position
+from .cloudproc import position
 
 
 __all__ = [

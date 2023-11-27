@@ -6,7 +6,7 @@ import torch
 import rospy
 from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured
 from monoforce.datasets import RobinGasDataset
-from monoforce.segmentation import position
+from monoforce.cloudproc import position
 from monoforce.vis import set_axes_equal
 from monoforce.models import make_dphysics_model
 from monoforce.transformations import transform_cloud

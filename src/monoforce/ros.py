@@ -3,7 +3,6 @@ import numpy as np
 from scipy.ndimage import rotate
 from tqdm import tqdm
 from jsk_recognition_msgs.msg import BoundingBox
-from std_msgs.msg import Header
 from nav_msgs.msg import Path
 from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray, TransformStamped
 from tf.transformations import quaternion_from_matrix, euler_from_quaternion, quaternion_matrix
@@ -18,49 +17,44 @@ import rospy
 from visualization_msgs.msg import Marker
 
 
-def height_map_to_gridmap_msg(heightmap, grid_res,
+def height_map_to_gridmap_msg(height, grid_res,
                               xyz=np.array([0, 0, 0]), q=np.array([0., 0., 0., 1.])):
-    assert isinstance(heightmap, np.ndarray)
-    assert heightmap.ndim == 2
+    assert isinstance(height, np.ndarray)
+    assert height.ndim == 2
+
+    H, W = height.shape
+    # rotate height map by 180 degrees
+    height = rotate(height, 180)
+
     map = GridMap()
-
-    H, W = heightmap.shape
-
-    # TODO: remove this hack
-    # array is visualized flipped
-    heightmap = np.flip(heightmap, axis=1)
-    # somehow rotation does not get applied, do it manually here:
-    angle = euler_from_quaternion(q)[2]
-    heightmap = rotate(heightmap, np.rad2deg(angle) - 90, reshape=False)
-
-    multi_array = Float32MultiArray()
-    multi_array.layout.dim = [MultiArrayDimension(), MultiArrayDimension()]
-    multi_array.layout.data_offset = 0
-
-    multi_array.layout.dim[0].label = "column_index"
-    multi_array.layout.dim[0].size = W
-    multi_array.layout.dim[0].stride = W * H
-
-    multi_array.layout.dim[1].label = "row_index"
-    multi_array.layout.dim[1].size = H
-    multi_array.layout.dim[1].stride = H
-
-    multi_array.data = heightmap.flatten().tolist()
-    
-    map.layers.append("elevation")
-    map.data.append(multi_array)
-    map.info.length_x = H * grid_res
-    map.info.length_y = W * grid_res
-    map.info.pose = Pose(Point(*xyz), Quaternion(*q))
     map.info.resolution = grid_res
+    map.info.length_x = W * grid_res
+    map.info.length_y = H * grid_res
+    map.info.pose.position = msgify(Point, xyz)
+    map.info.pose.orientation = msgify(Quaternion, q)
+
+    map.layers.append('elevation')
+
+    height_array = Float32MultiArray()
+    height_array.layout.dim.append(MultiArrayDimension())
+    height_array.layout.dim.append(MultiArrayDimension())
+    height_array.layout.dim[0].label = 'column_index'
+    height_array.layout.dim[0].size = H
+    height_array.layout.dim[0].stride = H * W
+    height_array.layout.dim[1].label = 'row_index'
+    height_array.layout.dim[1].size = W
+    height_array.layout.dim[1].stride = W
+    height_array.data = height.ravel().tolist()
+    map.data.append(height_array)
+
     return map
 
 def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.]), q=np.asarray([0., 0., 0., 1.])):
     assert isinstance(height, np.ndarray)
     assert height.ndim == 2
-    h, w = height.shape
-    n_pts = h * w
-    y, x = np.meshgrid(np.arange(-h//2, h//2), np.arange(-w//2, w//2))
+    H, W = height.shape
+    n_pts = H * W
+    x, y = np.meshgrid(np.arange(-H//2, H//2), np.arange(-W//2, W//2))
     x = x.ravel() * grid_res
     y = y.ravel() * grid_res
     z = height.ravel()

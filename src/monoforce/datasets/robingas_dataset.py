@@ -7,10 +7,10 @@ from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_s
 from matplotlib import cm
 from mayavi import mlab
 from ..config import Config
-from ..segmentation import color, position
+from ..cloudproc import color, position
 from ..transformations import transform_cloud
-from ..segmentation import position
-from ..segmentation import filter_grid, filter_range
+from ..cloudproc import position, estimate_heightmap
+from ..cloudproc import filter_grid, filter_range
 from ..imgproc import undistort_image, project_cloud_to_image
 from tqdm import tqdm
 from .augmentations import horizontal_shift
@@ -45,6 +45,10 @@ class SegmentationDataset(Dataset):
     """
     Class to wrap semi-supervised traversability data generated using lidar odometry and IMU.
     Please, have a look at the `save_clouds_and_trajectories_from_bag` script for data generation from bag file.
+
+    A sample of the dataset contains:
+    - depth projection of a point cloud (H x W)
+    - semantic label projection of a point cloud (H x W)
     """
 
     def __init__(self, path, split='val'):
@@ -196,6 +200,11 @@ class RobinGasDataset(Dataset):
             - <id>.npy
             - ...
         - traj_poses.csv
+
+    A sample of the dataset contains:
+    - point cloud (N x 3), TODO: describe fields
+    - height map (H x W)
+    - trajectory (T x 4 x 4)
     """
 
     def __init__(self, path, cfg=Config()):
@@ -307,72 +316,6 @@ class RobinGasDataset(Dataset):
         # TODO: transformation issue (need to add a transposition hack)
         return terrain.T
 
-    def estimate_heightmap(self, points, fill_value=None, return_filtered_points=False):
-        assert points.ndim == 2
-        assert points.shape[1] >= 3  # (N x 3)
-        assert self.cfg.hm_interp_method in ['linear', 'nearest', 'cubic', None]
-
-        # filter height outliers points
-        z = points[:, 2]
-        h_min = z[z > np.percentile(z, 2)].min()
-        h_max = z[z < np.percentile(z, 98)].max()
-        points = points[points[:, 2] > h_min]
-        points = points[points[:, 2] < h_max]
-
-        # height above ground
-        points = points[points[:, 2] < self.cfg.h_max]
-
-        # filter point cloud in a square
-        mask_x = np.logical_and(points[:, 0] >= -self.cfg.d_max, points[:, 0] <= self.cfg.d_max)
-        mask_y = np.logical_and(points[:, 1] >= -self.cfg.d_max, points[:, 1] <= self.cfg.d_max)
-        mask = np.logical_and(mask_x, mask_y)
-        points = points[mask]
-
-        if fill_value is None:
-            fill_value = points[:, 2].min()
-
-        # robot points
-        robot_mask = filter_range(points, min=0., max=self.cfg.d_min if self.cfg.d_min > 0. else 0., return_mask=True)[1]
-        # points = points[~robot_mask]
-        points[robot_mask] = np.asarray([0., 0., fill_value])
-
-        # create a grid
-        n = int(2 * self.cfg.d_max / self.cfg.grid_res)
-        xi = np.linspace(-self.cfg.d_max, self.cfg.d_max, n)
-        yi = np.linspace(-self.cfg.d_max, self.cfg.d_max, n)
-        x_grid, y_grid = np.meshgrid(xi, yi)
-
-        if self.cfg.hm_interp_method is None:
-            # estimate heightmap
-            z_grid = np.full(x_grid.shape, fill_value=fill_value)
-            for i in range(len(points)):
-                x = points[i, 0]
-                y = points[i, 1]
-                z = points[i, 2]
-                # find the closest grid point
-                idx_x = np.argmin(np.abs(x_grid[0, :] - x))
-                idx_y = np.argmin(np.abs(y_grid[:, 0] - y))
-                # update heightmap
-                if z > z_grid[idx_y, idx_x] or z_grid[idx_y, idx_x] == fill_value:
-                    z_grid[idx_y, idx_x] = z
-                else:
-                    # print('Point is lower than the current heightmap value, skipping...')
-                    pass
-        else:
-            x, y, z = points[:, 0], points[:, 1], points[:, 2]
-            z_grid = griddata((x, y), z, (xi[None, :], yi[:, None]),
-                              method=self.cfg.hm_interp_method, fill_value=fill_value)
-
-        heightmap = {'x': np.asarray(x_grid, dtype=float),
-                     'y': np.asarray(y_grid, dtype=float),
-                     'z': np.asarray(z_grid, dtype=float),
-                     'mask': z_grid != fill_value}
-
-        if return_filtered_points:
-            return heightmap, points
-
-        return heightmap
-
     def global_cloud(self, colorize=False, vis=False, step_size=1):
         poses = self.get_poses()
 
@@ -412,6 +355,14 @@ class RobinGasDataset(Dataset):
 
         return global_cloud
 
+    def estimate_heightmap(self, points, fill_value=None, return_filtered_points=False):
+        # estimate heightmap from point cloud
+        height = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+                                    grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                    hm_interp_method=self.hm_interp_method,
+                                    fill_value=fill_value, return_filtered_points=return_filtered_points)
+        return height
+
     def __getitem__(self, i, visualize=False):
         cloud = self.get_cloud(i)
         points = position(cloud)
@@ -444,6 +395,17 @@ class RobinGasDataset(Dataset):
 
 
 class MonoDemDataset(RobinGasDataset):
+    """
+    A dataset for monocular traversability map estimation.
+
+    A sample of the dataset contains:
+    - image from a front camera (3 x H x W)
+    - traversed height map from a front camera (1 x H x W)
+    - lidar height map from a front camera (1 x H x W)
+    - weights for traversed height map from a front camera (1 x H x W)
+    - weights for lidar height map from a front camera (1 x H x W)
+    """
+
     def __init__(self,
                  path,
                  img_size=(512, 512),
@@ -778,8 +740,9 @@ class MonoDemDataset(RobinGasDataset):
 
 
 def segm_demo():
-    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    # path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     assert os.path.exists(path)
     ds = SegmentationDataset(path)
 
@@ -790,19 +753,20 @@ def segm_demo():
 
 def heightmap_demo():
     from ..vis import show_cloud_plt
-    from ..segmentation import filter_grid, filter_range
+    from ..cloudproc import filter_grid, filter_range
     import matplotlib.pyplot as plt
 
-    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'
-    # path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    # path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'
+    # path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     assert os.path.exists(path)
 
     cfg = Config()
     cfg.d_min = 1.
     cfg.d_max = 12.8
     cfg.grid_res = 0.1
-    cfg.h_max = 2.
+    cfg.h_above_lidar = 2.
 
     ds = RobinGasDataset(path, cfg=cfg)
 
@@ -826,11 +790,12 @@ def heightmap_demo():
     plt.show()
 
 
-def calibs_demo():
+def extrinsics_demo():
     from mayavi import mlab
     from ..vis import draw_coord_frames, draw_coord_frame
 
-    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     assert os.path.exists(path)
 
     cfg = Config()
@@ -855,11 +820,12 @@ def calibs_demo():
     mlab.show()
 
 
-def colored_clouds_demo():
+def project_rgb_to_cloud():
     from ..vis import show_cloud
     from ..utils import normalize
 
-    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     assert os.path.exists(path)
 
     cfg = Config()
@@ -923,12 +889,13 @@ def colored_clouds_demo():
     show_cloud(points, rgb)
 
 
-def terrain_demo():
+def traversed_height_map():
     from mayavi import mlab
     from ..vis import draw_coord_frames
 
-    # path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    # path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     assert os.path.exists(path)
 
     cfg = Config()
@@ -1000,18 +967,12 @@ def terrain_demo():
     # mlab.show()
 
 
-def monodem_demo():
+def vis_train_sample():
     cfg = Config()
-    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    # path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-
-    # camera = 'camera_fisheye_front'
-    # camera = 'camera_fisheye_rear'
-    # camera = 'camera_left'
-    camera = 'camera_right'
-    # camera = 'camera_front'
-    # camera = 'camera_rear'
 
     ds = MonoDemDataset(path=path,
                         img_size=(512, 512),
@@ -1021,7 +982,7 @@ def monodem_demo():
     print(f'Visualizing sample {i}...')
     img, height_opt, height_est, weights_opt, weights_est = ds.__getitem__(i, visualize=True)
     # img, height_opt, height_est, weights_opt = ds[i]
-    img = img.transpose(1, 2, 0) * ds.img_std + ds.img_mean
+    img = img.transpose(1, 2, 0)
 
     plt.figure(figsize=(20, 7))
     plt.subplot(1, 3, 1)
@@ -1037,7 +998,7 @@ def monodem_demo():
     plt.show()
 
 
-def weights_demo():
+def vis_hm_weights():
     cfg = Config()
 
     # circle mask: all points within a circle of radius 1 m are valid
@@ -1059,8 +1020,9 @@ def weights_demo():
     set_axes_equal(ax)
     plt.show()
 
-    # path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # # path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    # path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    # # path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    # path = os.path.join(os.path.join(data_dir, path))
     # cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
     #
     # ds = MonoDemDataset(path=path,
@@ -1072,18 +1034,19 @@ def weights_demo():
     # ds.__getitem__(i, visualize=True)
 
 
-def estimate_heightmap_from_cloud():
+def vis_estimated_height_map():
     from time import time
 
     cfg = Config()
     cfg.grid_res = 0.1
     cfg.d_max = 12.8
     cfg.d_min = 1.
-    cfg.h_max = 1.3
+    cfg.h_above_lidar = 1.3
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 
-    path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     ds = RobinGasDataset(path=path, cfg=cfg)
 
     # # check performance
@@ -1116,10 +1079,11 @@ def estimate_heightmap_from_cloud():
     plt.show()
 
 
-def augs_demo():
-    data_path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+def vis_img_augs():
+    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+    path = os.path.join(os.path.join(data_dir, path))
     cfg = Config()
-    ds = MonoDemDataset(path=data_path,
+    ds = MonoDemDataset(path=path,
                         img_size=(512, 512),
                         is_train=True,
                         cfg=cfg)
@@ -1159,15 +1123,15 @@ def global_cloud_demo():
 
 
 def main():
-    # segm_demo()
-    # heightmap_demo()
-    # calibs_demo()
-    # colored_clouds_demo()
-    # terrain_demo()
-    # monodem_demo()
-    # weights_demo()
-    # estimate_heightmap_from_cloud()
-    # augs_demo()
+    segm_demo()
+    heightmap_demo()
+    extrinsics_demo()
+    project_rgb_to_cloud()
+    traversed_height_map()
+    vis_train_sample()
+    vis_hm_weights()
+    vis_estimated_height_map()
+    vis_img_augs()
     global_cloud_demo()
 
 
