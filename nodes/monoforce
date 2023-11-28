@@ -85,7 +85,7 @@ class MonoForce:
     def img_callback(self, msg):
         # if message is old do not process it
         if msg.header.stamp < rospy.Time.now() - rospy.Duration(1.):
-            rospy.logwarn('Old image message received, skipping')
+            rospy.logdebug('Old image message received, skipping')
             return
 
         t0 = time()
@@ -95,22 +95,23 @@ class MonoForce:
         rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
         rospy.logdebug('MonoDem inference time: %.3f' % (time() - t0))
 
-        # publish image
+        # publish height map as image
         height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
         img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
         img_msg.header.stamp = msg.header.stamp
         img_msg.header.frame_id = self.robot_frame
         self.hm_img_pub.publish(img_msg)
 
-        height = height.T
+        # rotate height map by 180 degrees
         height = rotate(height, 180)
 
         # predict path
         with torch.no_grad():
             self.predict_paths(height, linear_vels=self.linear_vels, angular_vels=self.angular_vels)
 
-        # publish point cloud
+        # publish height map as point cloud
         t1 = time()
+        height = height.T
         h, w = np.asarray(height.shape) * self.cfg.grid_res
         cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
                                                   xyz=np.array([h / 2., 0., 0.]), q=np.array([0., 0., 0., 1.]))
@@ -118,7 +119,7 @@ class MonoForce:
         cloud_msg.header.frame_id = self.robot_frame
         self.hm_cloud_pub.publish(cloud_msg)
 
-        # publish grid map
+        # publish height map as grid map
         grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
                                              xyz=np.array([h / 2., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = msg.header.stamp

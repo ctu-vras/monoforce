@@ -99,8 +99,6 @@ Visualization Manager:
           Value: true
         inertial_link:
           Value: true
-        odom:
-          Value: false
         ouster_link:
           Value: true
         rear_bumper_link:
@@ -126,43 +124,42 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        odom:
-          base_link:
-            base_footprint:
+        base_link:
+          base_footprint:
+            {}
+          front_bumper_link:
+            {}
+          front_left_wheel_link:
+            {}
+          front_right_wheel_link:
+            {}
+          gps:
+            {}
+          imu_link:
+            {}
+          inertial_link:
+            {}
+          rear_bumper_link:
+            {}
+          rear_left_wheel_link:
+            {}
+          rear_right_wheel_link:
+            {}
+          top_chassis_link:
+            {}
+          top_plate_link:
+            blackfly:
+              blackfly_lens:
+                blackfly_optical:
+                  {}
+            ouster_link:
               {}
-            front_bumper_link:
+            top_plate_front_link:
               {}
-            front_left_wheel_link:
+            top_plate_rear_link:
               {}
-            front_right_wheel_link:
-              {}
-            gps:
-              {}
-            imu_link:
-              {}
-            inertial_link:
-              {}
-            rear_bumper_link:
-              {}
-            rear_left_wheel_link:
-              {}
-            rear_right_wheel_link:
-              {}
-            top_chassis_link:
-              {}
-            top_plate_link:
-              blackfly:
-                blackfly_lens:
-                  blackfly_optical:
-                    {}
-              ouster_link:
-                {}
-              top_plate_front_link:
-                {}
-              top_plate_rear_link:
-                {}
-            user_rail_link:
-              {}
+          user_rail_link:
+            {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -299,7 +296,7 @@ Visualization Manager:
           Queue Size: 2
           Selectable: false
           Size (Pixels): 3
-          Size (m): 0.019999999552965164
+          Size (m): 0.029999999329447746
           Style: Spheres
           Topic: /points
           Unreliable: false
@@ -403,7 +400,7 @@ Visualization Manager:
       Enabled: true
       Name: MonoForce
     - Class: rviz/InteractiveMarkers
-      Enable Transparency: true
+      Enable Transparency: false
       Enabled: true
       Name: InteractiveMarkers
       Show Axes: false
@@ -594,4 +591,4 @@ Window Geometry:
     collapsed: false
   Width: 1848
   X: 72
-  Y: 1227
+  Y: 27
