@@ -45,6 +45,10 @@ class HeightMapEstimator:
         hm = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
                                 grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
                                 hm_interp_method=self.cfg.hm_interp_method)
+        if hm is None:
+            rospy.logwarn('Could not estimate height map')
+            return
+
         height = hm['z']
         rospy.logdebug('Estimated height map shape: %s' % str(height.shape))
         rospy.logdebug('HM estimation time: %.3f' % (time() - t0))

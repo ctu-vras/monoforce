@@ -141,11 +141,17 @@ def compute_rigid_support(arr, transform=None, range=None, grid=None, scale=1.0,
     return support, rigid
 
 
-def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=2., hm_interp_method='nearest',
+def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_interp_method='nearest',
                        fill_value=None, return_filtered_points=False):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
+    assert len(points) > 0
+    assert isinstance(d_min, (float, int)) and d_min >= 0.
+    assert isinstance(d_max, (float, int)) and d_max >= 0.
+    assert isinstance(grid_res, (float, int)) and grid_res > 0.
+    assert isinstance(h_max, (float, int)) and h_max >= 0.
     assert hm_interp_method in ['linear', 'nearest', 'cubic', None]
+    assert fill_value is None or isinstance(fill_value, (float, int))
 
     # filter height outliers points
     z = points[:, 2]
@@ -156,6 +162,10 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=2., hm_
 
     # height above ground
     points = points[points[:, 2] < h_max]
+    if len(points) == 0:
+        if return_filtered_points:
+            return None, None
+        return None
 
     # filter point cloud in a square
     mask_x = np.logical_and(points[:, 0] >= -d_max, points[:, 0] <= d_max)
@@ -165,12 +175,12 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=2., hm_
 
     # robot points
     robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., return_mask=True)[1]
-    # points = points[~robot_mask]
 
-    if fill_value is None:
-        fill_value = points[robot_mask, 2].min()
-
-    points[robot_mask, 2] = fill_value
+    if robot_mask.sum() > 0:
+        if fill_value is None:
+            fill_value = points[robot_mask, 2].min()
+        # points = points[~robot_mask]
+        points[robot_mask, 2] = fill_value
 
     # create a grid
     n = int(2 * d_max / grid_res)
