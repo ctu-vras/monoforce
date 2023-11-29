@@ -132,9 +132,9 @@ class LiftSplatShoot(nn.Module):
         self.data_aug_conf = data_aug_conf
 
         dx, bx, nx = gen_dx_bx(self.grid_conf['xbound'],
-                                              self.grid_conf['ybound'],
-                                              self.grid_conf['zbound'],
-                                              )
+                               self.grid_conf['ybound'],
+                               self.grid_conf['zbound'],
+                               )
         self.dx = nn.Parameter(dx, requires_grad=False)
         self.bx = nn.Parameter(bx, requires_grad=False)
         self.nx = nn.Parameter(nx, requires_grad=False)

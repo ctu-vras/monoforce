@@ -28,6 +28,7 @@ class Config:
         self.use_terrain_cnn = False
         self.device = torch.device('cpu')
         self.lr = 0.001
+        self.weight_decay = 0.0
         self.total_sim_time = 10.0
         self.n_samples = 100 * int(self.total_sim_time)
         self.sample_len = 10

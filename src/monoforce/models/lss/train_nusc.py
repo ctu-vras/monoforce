@@ -118,3 +118,9 @@ def train(version,
                 print('saving', mname)
                 torch.save(model.state_dict(), mname)
                 model.train()
+
+
+if __name__ == '__main__':
+    train(version='mini',
+          dataroot='/home/ruslan/data/datasets/nuScenes/v1.0-mini',
+          gpuid=0)

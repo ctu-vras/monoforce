@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import RobinGasDataset, seq_paths
+from monoforce.datasets import HMTrajData, seq_paths
 from monoforce.vis import draw_coord_frames, setup_visualization, animate_trajectory
 from monoforce.control import keyboard_controller, pose_controller, pose_control, cmd_vel_from_goal
 from monoforce.transformations import rot2rpy
@@ -86,7 +86,7 @@ def get_data(i: int = None, path=seq_paths[0]):
     :param path: path to the dataset
     :return: states_true, tt_true, height
     """
-    ds = RobinGasDataset(path=path, cfg=cfg)
+    ds = HMTrajData(path=path, cfg=cfg)
     if i is None:
         i = np.random.choice(range(len(ds)))
         print('Sample index: %i' % i)

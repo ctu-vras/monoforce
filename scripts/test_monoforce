@@ -4,7 +4,7 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from monoforce.datasets import MonoDemDataset, seq_paths
+from monoforce.datasets import MonoDemData, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout, Geom2Trav
 from monoforce.vis import set_axes_equal
@@ -69,7 +69,7 @@ def demo():
     camera = 'camera_fisheye_front' if 'marv' in path else 'camera_front'
 
     # create dataset for MonoDEM training
-    ds = MonoDemDataset(path, cameras=[camera], img_size=img_size, cfg=cfg)
+    ds = MonoDemData(path, cameras=[camera], cfg=cfg)
     fig = plt.figure(figsize=(20, 10))
 
     for i in tqdm(range(len(ds))):

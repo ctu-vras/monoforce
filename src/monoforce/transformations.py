@@ -74,12 +74,12 @@ def test_rpy():
 
 def test_transform_cloud():
     import open3d as o3d
-    from .datasets.robingas_dataset import RobinGasDataset
+    from .datasets.data import HMTrajData
     from numpy.lib.recfunctions import structured_to_unstructured as stu
 
     # Load traversability data
     path = '/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    ds = RobinGasDataset(path)
+    ds = HMTrajData(path)
     print('Dataset contains %i samples' % len(ds))
     # Choose data sample
     # i = np.random.choice(range(len(ds)))

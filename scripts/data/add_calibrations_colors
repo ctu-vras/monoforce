@@ -19,7 +19,7 @@ from monoforce.transformations import transform_cloud
 from monoforce.ros import load_tf_buffer
 from monoforce.imgproc import project_cloud_to_image, undistort_image
 from monoforce.config import Config
-from monoforce.datasets import RobinGasDataset
+from monoforce.datasets import HMTrajData
 from tf2_ros import BufferCore, TransformException
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -279,7 +279,7 @@ def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buff
 
 def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=False):
     cfg = Config()
-    ds = RobinGasDataset(data_path, cfg=cfg)
+    ds = HMTrajData(data_path, cfg=cfg)
     cv_bridge = CvBridge()
     bag_path = data_path.replace('_trav/', '.bag')
     cloud_times = np.sort([str2time(i) for i in ds.ids])
@@ -371,7 +371,7 @@ def estimate_velocities(data_path, tf_buffer, imu_topic='/imu/data', robot_frame
     import pandas as pd
 
     cfg = Config()
-    ds = RobinGasDataset(data_path, cfg=cfg)
+    ds = HMTrajData(data_path, cfg=cfg)
     bag_path = data_path.replace('_trav/', '.bag')
 
     # for each time stamp in cloud_times estimate velocity as integral of accelerations from IMU measurements
@@ -513,7 +513,7 @@ def debug_colorize_clouds():
                   '/camera_right/image_color/compressed']
 
     cfg = Config()
-    ds = RobinGasDataset(data_path, cfg=cfg)
+    ds = HMTrajData(data_path, cfg=cfg)
     bag_path = data_path.replace('_trav/', '.bag')
     cloud_times = np.sort([str2time(i) for i in ds.ids])
     cv_bridge = CvBridge()

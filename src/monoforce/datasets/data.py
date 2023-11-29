@@ -1,15 +1,14 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.interpolate import griddata
+import torch
 from torch.utils.data import Dataset
 from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured, merge_arrays
 from matplotlib import cm
 from mayavi import mlab
 from ..config import Config
-from ..cloudproc import color, position
 from ..transformations import transform_cloud
-from ..cloudproc import position, estimate_heightmap
+from ..cloudproc import position, estimate_heightmap, color
 from ..cloudproc import filter_grid, filter_range
 from ..imgproc import undistort_image, project_cloud_to_image
 from tqdm import tqdm
@@ -19,12 +18,16 @@ from ..utils import normalize
 import yaml
 import cv2
 import albumentations as A
+from ..models.lss.tools import img_transform
+from PIL import Image
+# plt.switch_backend('Qt5Agg')
+
 
 
 __all__ = [
     'SegmentationDataset',
-    'RobinGasDataset',
-    'MonoDemDataset',
+    'HMTrajData',
+    'MonoDemData',
     'seq_paths',
 ]
 
@@ -170,11 +173,11 @@ class SegmentationDataset(Dataset):
         return len(self.ids)
 
 
-class RobinGasDataset(Dataset):
+class HMTrajData(Dataset):
     """
-    Class to wrap semi-supervised traversability data generated using lidar odometry and IMU.
+    Class to wrap semi-supervised traversability data generated using lidar odometry.
     Please, have a look at the `save_clouds_and_trajectories_from_bag` script for data generation from bag file.
-    The dataset additionally contains camera images, calibration data,
+    The dataset additionally contains camera images, calibration data, IMU measurements,
     and RGB colors projected from cameras onto the point clouds.
 
     The data is stored in the following structure:
@@ -302,11 +305,11 @@ class RobinGasDataset(Dataset):
         return color
 
     def get_image(self, i, camera='front'):
-        assert camera in ['front', 'rear', 'left', 'right', 'up'], 'Unknown camera: %s' % camera
-        prefix = 'camera_fisheye_' if 'marv' in self.path and camera in ['front', 'rear'] else 'camera_'
-        camera_name = prefix + camera
+        if camera in ['front', 'rear', 'left', 'right', 'up']:
+            prefix = 'camera_fisheye_' if 'marv' in self.path and camera in ['front', 'rear'] else 'camera_'
+            camera = prefix + camera
         ind = self.ids[i]
-        image = cv2.imread(os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera_name)))
+        image = cv2.imread(os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera)))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
 
@@ -394,7 +397,7 @@ class RobinGasDataset(Dataset):
         return len(self.ids)
 
 
-class MonoDemDataset(RobinGasDataset):
+class MonoDemData(HMTrajData):
     """
     A dataset for monocular traversability map estimation.
 
@@ -408,13 +411,12 @@ class MonoDemDataset(RobinGasDataset):
 
     def __init__(self,
                  path,
-                 img_size=(512, 512),
                  cameras=None,
                  is_train=False,
                  random_camera_selection_prob=0.2,
                  cfg=Config()):
-        super(MonoDemDataset, self).__init__(path, cfg)
-        self.img_size = img_size
+        super(MonoDemData, self).__init__(path, cfg)
+        self.img_size = cfg.img_size
         self.random_camera_selection_prob = random_camera_selection_prob
 
         img_statistics_path = os.path.join(self.path, 'calibration', 'img_statistics.yaml')
@@ -739,6 +741,112 @@ class MonoDemDataset(RobinGasDataset):
         return img_front_CHW, height_opt_cam[None], height_est_cam[None], weights_opt_cam[None], weights_est_cam[None]
 
 
+class OmniDemData(MonoDemData):
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 cfg=Config()):
+        super(OmniDemData, self).__init__(path, cfg=cfg)
+
+        self.data_aug_conf = data_aug_conf
+
+    def sample_augmentation(self):
+        H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        fH, fW = self.data_aug_conf['final_dim']
+        if self.is_train:
+            resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
+            resize_dims = (int(W*resize), int(H*resize))
+            newW, newH = resize_dims
+            crop_h = int((1 - np.random.uniform(*self.data_aug_conf['bot_pct_lim']))*newH) - fH
+            crop_w = int(np.random.uniform(0, max(0, newW - fW)))
+            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+            flip = False
+            if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
+                flip = True
+            rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
+        else:
+            resize = max(fH/H, fW/W)
+            resize_dims = (int(W*resize), int(H*resize))
+            newW, newH = resize_dims
+            crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim']))*newH) - fH
+            crop_w = int(max(0, newW - fW) / 2)
+            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+            flip = False
+            rotate = 0
+        return resize, resize_dims, crop, flip, rotate
+
+    def get_image_data(self, i):
+        imgs = []
+        rots = []
+        trans = []
+        post_rots = []
+        post_trans = []
+        intrins = []
+        for cam in self.cameras:
+            img, K = self.get_undistorted_image(i, cam)
+
+            post_rot = torch.eye(2)
+            post_tran = torch.zeros(2)
+
+            # augmentation (resize, crop, horizontal flip, rotate)
+            resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
+            img, post_rot2, post_tran2 = img_transform(Image.fromarray(img), post_rot, post_tran,
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate)
+
+            # for convenience, make augmentation matrices 3x3
+            post_tran = torch.zeros(3)
+            post_rot = torch.eye(3)
+            post_tran[:2] = post_tran2
+            post_rot[:2, :2] = post_rot2
+
+            img = self.standardize_img(np.asarray(img))
+            img = torch.as_tensor(img).permute((2, 0, 1))
+            K = torch.as_tensor(K)
+
+            T_lidar_cam = self.calib['transformations']['T_os_sensor__%s' % cam]['data']
+            T_lidar_cam = np.asarray(T_lidar_cam).reshape((4, 4))
+            rot = torch.as_tensor(T_lidar_cam[:3, :3])
+            tran = torch.as_tensor(T_lidar_cam[:3, 3])
+
+            imgs.append(img)
+            rots.append(rot)
+            trans.append(tran)
+            intrins.append(K)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+
+        return (torch.stack(imgs), torch.stack(rots), torch.stack(trans),
+                torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans))
+
+    def get_height_map_data(self, i):
+        cloud = self.get_cloud(i)
+        points = position(cloud)
+        traj = self.get_traj(i)
+        poses = traj['poses']
+
+        # move points to robot frame
+        Tr = np.linalg.inv(poses[0])
+        points = transform_cloud(points, Tr)
+
+        # estimate height map from point cloud
+        xyz_mask = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+                                      grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                      hm_interp_method=self.hm_interp_method)
+        # heightmap = torch.stack([torch.as_tensor(x) for x in xyz_mask.values()])
+        heightmap = torch.as_tensor(xyz_mask['z'])[None]
+
+        return heightmap
+
+    def __getitem__(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
+        height = self.get_height_map_data(i)
+        return imgs, rots, trans, intrins, post_rots, post_trans, height
+
+
 def segm_demo():
     path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
     # path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
@@ -768,7 +876,7 @@ def heightmap_demo():
     cfg.grid_res = 0.1
     cfg.h_above_lidar = 2.
 
-    ds = RobinGasDataset(path, cfg=cfg)
+    ds = HMTrajData(path, cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -799,7 +907,7 @@ def extrinsics_demo():
     assert os.path.exists(path)
 
     cfg = Config()
-    ds = RobinGasDataset(path, cfg=cfg)
+    ds = HMTrajData(path, cfg=cfg)
 
     lidar_pose = np.eye(4)
     lidar_frame = 'os_sensor'
@@ -829,7 +937,7 @@ def project_rgb_to_cloud():
     assert os.path.exists(path)
 
     cfg = Config()
-    ds = RobinGasDataset(path, cfg=cfg)
+    ds = HMTrajData(path, cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 10
@@ -902,7 +1010,7 @@ def traversed_height_map():
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
     # cfg.d_min = 1.
 
-    ds = RobinGasDataset(path, cfg=cfg)
+    ds = HMTrajData(path, cfg=cfg)
     i = np.random.choice(range(len(ds)))
 
     # trajectory poses
@@ -974,9 +1082,7 @@ def vis_train_sample():
     path = os.path.join(os.path.join(data_dir, path))
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
 
-    ds = MonoDemDataset(path=path,
-                        img_size=(512, 512),
-                        cfg=cfg)
+    ds = MonoDemData(path=path, cfg=cfg)
     i = np.random.choice(range(len(ds)))
     # i = 0
     print(f'Visualizing sample {i}...')
@@ -1026,7 +1132,6 @@ def vis_hm_weights():
     # cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
     #
     # ds = MonoDemDataset(path=path,
-    #                     img_size=(512, 512),
     #                     cfg=cfg)
     # i = np.random.choice(range(len(ds)))
     # # i = 0
@@ -1047,7 +1152,7 @@ def vis_estimated_height_map():
 
     path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
     path = os.path.join(os.path.join(data_dir, path))
-    ds = RobinGasDataset(path=path, cfg=cfg)
+    ds = HMTrajData(path=path, cfg=cfg)
 
     # # check performance
     # for interp_method in ['nearest', 'linear', 'cubic', None]:
@@ -1083,10 +1188,9 @@ def vis_img_augs():
     path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
     path = os.path.join(os.path.join(data_dir, path))
     cfg = Config()
-    ds = MonoDemDataset(path=path,
-                        img_size=(512, 512),
-                        is_train=True,
-                        cfg=cfg)
+    ds = MonoDemData(path=path,
+                     is_train=True,
+                     cfg=cfg)
     i = 0
     # img_raw = ds.get_image(i, 'front')
     img_raw, _ = ds.get_undistorted_image(i, 'front')
@@ -1118,7 +1222,7 @@ def vis_img_augs():
 
 def global_cloud_demo():
     for path in seq_paths:
-        ds = RobinGasDataset(path=path)
+        ds = HMTrajData(path=path)
         ds.global_cloud(vis=True, step_size=100)
 
 

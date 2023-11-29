@@ -12,8 +12,6 @@ from tqdm import tqdm
 from pyquaternion import Quaternion
 from PIL import Image
 from functools import reduce
-import matplotlib as mpl
-mpl.use('Agg')
 import matplotlib.pyplot as plt
 from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.utils.geometry_utils import transform_matrix
@@ -174,7 +172,7 @@ denormalize_img = torchvision.transforms.Compose((
 normalize_img = torchvision.transforms.Compose((
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
+                                                 std=[0.229, 0.224, 0.225]),
 ))
 
 
@@ -230,6 +228,16 @@ class SimpleLoss(torch.nn.Module):
     def __init__(self, pos_weight):
         super(SimpleLoss, self).__init__()
         self.loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([pos_weight]))
+
+    def forward(self, ypred, ytgt):
+        loss = self.loss_fn(ypred, ytgt)
+        return loss
+
+
+class MSELoss(torch.nn.Module):
+    def __init__(self):
+        super(MSELoss, self).__init__()
+        self.loss_fn = torch.nn.MSELoss()
 
     def forward(self, ypred, ytgt):
         loss = self.loss_fn(ypred, ytgt)

@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from monoforce.datasets import MonoDemDataset, seq_paths
+from monoforce.datasets import MonoDemData, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout, Geom2Trav
 from monoforce.utils import normalize
@@ -136,8 +136,8 @@ class Trainer(object):
             cfg_train.hm_interp_method = hm_interp_method
 
             # create dataset for MonoDEM training
-            train_ds = MonoDemDataset(path, img_size=self.img_size, is_train=True,
-                                      random_camera_selection_prob=random_camera_selection_prob, cfg=cfg_train)
+            train_ds = MonoDemData(path, is_train=True,
+                                   random_camera_selection_prob=random_camera_selection_prob, cfg=cfg_train)
             # print('Dataset size:', len(train_ds))
             # if args.visualize:
             #     # visualize a data sample from the dataset
@@ -152,7 +152,7 @@ class Trainer(object):
         cfg_val = Config()
         cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
         cfg_val.hm_interp_method = hm_interp_method
-        val_ds = MonoDemDataset(val_path, img_size=self.img_size, is_train=False, cfg=cfg_val)
+        val_ds = MonoDemData(val_path, is_train=False, cfg=cfg_val)
 
         if debug:
             print('Debug mode: using small datasets')

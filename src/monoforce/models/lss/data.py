@@ -17,7 +17,7 @@ from pyquaternion import Quaternion
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.splits import create_splits_scenes
 from nuscenes.utils.data_classes import Box
-from nuscenes.map_expansion.map_api import NuScenesMap, NuScenesMapExplorer
+from nuscenes.map_expansion.map_api import NuScenesMapExplorer
 from glob import glob
 from copy import deepcopy
 from collections import namedtuple
@@ -147,12 +147,11 @@ class NuscData(torch.utils.data.Dataset):
             # augmentation (resize, crop, horizontal flip, rotate)
             resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
             img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
-                                                     resize=resize,
-                                                     resize_dims=resize_dims,
-                                                     crop=crop,
-                                                     flip=flip,
-                                                     rotate=rotate,
-                                                     )
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate)
             
             # for convenience, make augmentation matrices 3x3
             post_tran = torch.zeros(3)

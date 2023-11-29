@@ -4,7 +4,6 @@ Licensed under the NVIDIA Source Code License. See LICENSE at https://github.com
 Authors: Jonah Philion and Sanja Fidler
 """
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 import matplotlib as mpl
 mpl.use('Agg')
@@ -16,7 +15,6 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map)
 from .model import compile_model
-
 
 def lidar_check(version,
                 dataroot='/data/nuscenes',

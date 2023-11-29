@@ -5,19 +5,19 @@ from monoforce.models import lss, monolayout
 
 if __name__ == '__main__':
     Fire({
-        'global_cloud': datasets.robingas_dataset.global_cloud_demo,
-        'traversed_cloud': datasets.robingas_dataset.segm_demo,
-        'extrinsics': datasets.robingas_dataset.extrinsics_demo,
-        'project_rgb_to_cloud': datasets.robingas_dataset.project_rgb_to_cloud,
-        'traversed_hm': datasets.robingas_dataset.traversed_height_map,
-        'train_sample': datasets.robingas_dataset.vis_train_sample,
-        'hm_weights': datasets.robingas_dataset.vis_hm_weights,
-        'hm_from_cloud': datasets.robingas_dataset.vis_estimated_height_map,
-        'img_augs': datasets.robingas_dataset.vis_img_augs,
+        'global_cloud': datasets.data.global_cloud_demo,
+        'traversed_cloud': datasets.data.segm_demo,
+        'extrinsics': datasets.data.extrinsics_demo,
+        'project_rgb_to_cloud': datasets.data.project_rgb_to_cloud,
+        'traversed_hm': datasets.data.traversed_height_map,
+        'train_sample': datasets.data.vis_train_sample,
+        'hm_weights': datasets.data.vis_hm_weights,
+        'hm_from_cloud': datasets.data.vis_estimated_height_map,
+        'img_augs': datasets.data.vis_img_augs,
 
         'lidar_check': lss.explore.lidar_check,
         'cumsum_check': lss.explore.cumsum_check,
-        'train_lss': lss.train.train,
+        'train_lss': lss.train_nusc.train,
         'eval_lss_iou': lss.explore.eval_model_iou,
         'viz_lss_preds': lss.explore.viz_model_preds,
     })

@@ -7,7 +7,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import MonoDemDataset, seq_paths
+from monoforce.datasets import MonoDemData, seq_paths
 from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference, traj_dist
@@ -114,7 +114,7 @@ class Trainer:
         plt.imshow(height, cmap='jet')
         plt.colorbar()
 
-    def get_states(self, i: int, ds: MonoDemDataset):
+    def get_states(self, i: int, ds: MonoDemData):
         """
         Get ground truth data sample from the RobinGas dataset
         :param i: index of the sample
@@ -362,14 +362,13 @@ def main():
     cfg.hm_interp_method = 'nearest'
     cfg.lr = 0.0001
     cfg.n_train_iters = 100
+    cfg.img_size = (512, 512)
 
     datasets = []
     for path in seq_paths:
-        img_size = (512, 512)
-        ds = MonoDemDataset(path=path,
-                            img_size=img_size,
-                            cameras=['camera_fisheye_front'],
-                            cfg=cfg)
+        ds = MonoDemData(path=path,
+                         cameras=['camera_fisheye_front'],
+                         cfg=cfg)
         datasets.append(ds)
 
     # pretrained weights paths for MonoDEM (encoder and decoder)

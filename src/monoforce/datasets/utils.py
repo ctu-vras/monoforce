@@ -3,7 +3,7 @@ import numpy as np
 from ..config import Config
 from ..transformations import xyz_rpy_to_matrix
 from ..vis import set_axes_equal
-from .robingas_dataset import RobinGasDataset
+from .data import HMTrajData
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
 from mpl_toolkits.mplot3d import Axes3D
@@ -22,7 +22,7 @@ def get_robingas_data(cfg: Config(),
                       i=None):
     # Load traversability data
     assert os.path.exists(path)
-    ds = RobinGasDataset(path, cfg=cfg)
+    ds = HMTrajData(path, cfg=cfg)
     i = np.random.choice(range(len(ds))) if i is None else i
     print('Selected data sample #{}'.format(i))
     sample = ds[i]
