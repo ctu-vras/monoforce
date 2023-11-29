@@ -20,8 +20,6 @@ import cv2
 import albumentations as A
 from ..models.lss.tools import img_transform
 from PIL import Image
-# plt.switch_backend('Qt5Agg')
-
 
 
 __all__ = [

@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import torch
-from time import time
-from tensorboardX import SummaryWriter
 import numpy as np
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDemData
@@ -11,6 +9,7 @@ from monoforce.datasets import seq_paths
 from monoforce.models.lss.tools import MSELoss
 from monoforce.utils import normalize
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 plt.switch_backend('Qt5Agg')
 
 
@@ -45,74 +44,73 @@ def explore_data(data, samples=1):
         ax[2, 1].imshow(imgs[1])
         plt.show()
 
-cfg = Config()
-cfg.d_min = 1.
-cfg.d_max = 6.4
-cfg.grid_res = 0.1
-cfg.h_above_lidar = 0.3
-cfg.device = torch.device('cuda:0')
-cfg.lr = 1e-3
-cfg.weight_decay = 1e-7
 
-max_grad_norm = 5.0
-logdir = './runs'
+def main():
+    cfg = Config()
+    cfg.d_min = 1.
+    cfg.d_max = 6.4
+    cfg.grid_res = 0.1
+    cfg.h_above_lidar = 0.3
+    cfg.device = torch.device('cuda:0')
+    cfg.lr = 1e-3
+    cfg.weight_decay = 1e-7
 
-bsz = 2
-nworkers = 10
-nepochs = 100
+    max_grad_norm = 5.0
 
-grid_conf = {
-    'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-    'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-    'zbound': [-2.0, 2.0, 4.0],
-    'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
-}
+    bsz = 2
+    nworkers = 10
+    nepochs = 100
 
-data_aug_conf = {
-                'resize_lim': (0.193, 0.225),
-                'final_dim': (128, 352),
-                'rot_lim': (-5.4, 5.4),
-                'H': 1200, 'W': 1920,
-                'rand_flip': False,
-                'bot_pct_lim': (0.0, 0.22),
-                'cams': ['CAM_LEFT', 'CAM_FRONT', 'CAM_RIGHT', 'CAM_BACK'],
-                'Ncams': 4,
-            }
+    grid_conf = {
+        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'zbound': [-2.0, 2.0, 4.0],
+        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
+    }
 
-train_data = OmniDemData(path=seq_paths[0], data_aug_conf=data_aug_conf, cfg=cfg)
-explore_data(train_data, samples=1)
-trainloader = torch.utils.data.DataLoader(train_data, batch_size=bsz, shuffle=True, num_workers=nworkers)
-valloader = torch.utils.data.DataLoader(train_data, batch_size=bsz, shuffle=False, num_workers=nworkers)
+    data_aug_conf = {
+                    'resize_lim': (0.7, 0.8),
+                    'final_dim': (128, 352),
+                    'rot_lim': (-5.4, 5.4),
+                    'H': 1200, 'W': 1920,
+                    'rand_flip': False,
+                    'bot_pct_lim': (0.0, 0.22),
+                    'cams': ['CAM_LEFT', 'CAM_FRONT', 'CAM_RIGHT', 'CAM_BACK'],
+                    'Ncams': 4,
+                }
 
-model = compile_model(grid_conf, data_aug_conf, outC=1)
-model.to(cfg.device)
+    train_data = OmniDemData(path=seq_paths[0], data_aug_conf=data_aug_conf, cfg=cfg)
+    explore_data(train_data, samples=5)
+    trainloader = torch.utils.data.DataLoader(train_data, batch_size=bsz, shuffle=True, num_workers=nworkers)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+    model.to(cfg.device)
 
-loss_fn = MSELoss().cuda()
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-writer = SummaryWriter(logdir=logdir)
-val_step = 1
+    loss_fn = MSELoss().cuda()
 
-model.train()
-counter = 0
-for epoch in range(nepochs):
-    for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) in enumerate(trainloader):
-        t0 = time()
-        optimizer.zero_grad()
-        preds = model(imgs.to(cfg.device),
-                rots.to(cfg.device),
-                trans.to(cfg.device),
-                intrins.to(cfg.device),
-                post_rots.to(cfg.device),
-                post_trans.to(cfg.device),
-                )
-        heightmap = heightmap.to(cfg.device)
-        loss = loss_fn(preds, heightmap)
-        loss.backward()
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-        optimizer.step()
-        counter += 1
-        t1 = time()
+    model.train()
+    counter = 0
+    for epoch in range(nepochs):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) in tqdm(enumerate(trainloader), total=len(trainloader)):
+            optimizer.zero_grad()
+            preds = model(imgs.to(cfg.device),
+                    rots.to(cfg.device),
+                    trans.to(cfg.device),
+                    intrins.to(cfg.device),
+                    post_rots.to(cfg.device),
+                    post_trans.to(cfg.device),
+                    )
+            heightmap = heightmap.to(cfg.device)
+            loss = loss_fn(preds, heightmap)
+            loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            optimizer.step()
+            counter += 1
 
-        print(counter, loss.item())
+            print(counter, loss.item())
+
+
+if __name__ == '__main__':
+    main()

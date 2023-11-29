@@ -2,7 +2,6 @@ from .geometry import affine
 from .utils import timing
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
-import open3d as o3d
 from scipy.spatial import cKDTree
 from scipy.interpolate import griddata
 
