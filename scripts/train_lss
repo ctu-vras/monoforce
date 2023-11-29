@@ -1,0 +1,118 @@
+#!/usr/bin/env python
+
+import torch
+from time import time
+from tensorboardX import SummaryWriter
+import numpy as np
+from monoforce.models.lss.model import compile_model
+from monoforce.datasets.data import OmniDemData
+from monoforce.config import Config
+from monoforce.datasets import seq_paths
+from monoforce.models.lss.tools import MSELoss
+from monoforce.utils import normalize
+import matplotlib.pyplot as plt
+plt.switch_backend('Qt5Agg')
+
+
+def explore_data(data, samples=1):
+    print('Cameras: ', data.cameras)
+
+    for counter in np.random.choice(range(len(data)), samples):
+        sample = data[counter]
+        imgs = sample[0].permute(0, 2, 3, 1)
+        imgs = [data.destandardize_img(img) for img in imgs]
+        imgs = [normalize(img) for img in imgs]
+        local_map = sample[6][0]
+
+        fig, ax = plt.subplots(3, 3)
+        # figsize
+        fig.set_size_inches(18.5, 10.5)
+        # switch off axis and grid
+        for i in range(3):
+            for j in range(3):
+                ax[i, j].axis('off')
+                ax[i, j].grid(False)
+
+        ax[0, 1].title.set_text('CAM_FRONT')
+        ax[0, 1].imshow(imgs[0])
+        ax[1, 0].title.set_text('CAM_LEFT')
+        ax[1, 0].imshow(imgs[3])
+        ax[1, 1].title.set_text('LOCAL_MAP')
+        ax[1, 1].imshow(local_map)
+        ax[1, 2].title.set_text('CAM_RIGHT')
+        ax[1, 2].imshow(imgs[2])
+        ax[2, 1].title.set_text('CAM_REAR')
+        ax[2, 1].imshow(imgs[1])
+        plt.show()
+
+cfg = Config()
+cfg.d_min = 1.
+cfg.d_max = 6.4
+cfg.grid_res = 0.1
+cfg.h_above_lidar = 0.3
+cfg.device = torch.device('cuda:0')
+cfg.lr = 1e-3
+cfg.weight_decay = 1e-7
+
+max_grad_norm = 5.0
+logdir = './runs'
+
+bsz = 2
+nworkers = 10
+nepochs = 100
+
+grid_conf = {
+    'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+    'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+    'zbound': [-2.0, 2.0, 4.0],
+    'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
+}
+
+data_aug_conf = {
+                'resize_lim': (0.193, 0.225),
+                'final_dim': (128, 352),
+                'rot_lim': (-5.4, 5.4),
+                'H': 1200, 'W': 1920,
+                'rand_flip': False,
+                'bot_pct_lim': (0.0, 0.22),
+                'cams': ['CAM_LEFT', 'CAM_FRONT', 'CAM_RIGHT', 'CAM_BACK'],
+                'Ncams': 4,
+            }
+
+train_data = OmniDemData(path=seq_paths[0], data_aug_conf=data_aug_conf, cfg=cfg)
+explore_data(train_data, samples=1)
+trainloader = torch.utils.data.DataLoader(train_data, batch_size=bsz, shuffle=True, num_workers=nworkers)
+valloader = torch.utils.data.DataLoader(train_data, batch_size=bsz, shuffle=False, num_workers=nworkers)
+
+model = compile_model(grid_conf, data_aug_conf, outC=1)
+model.to(cfg.device)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+
+loss_fn = MSELoss().cuda()
+
+writer = SummaryWriter(logdir=logdir)
+val_step = 1
+
+model.train()
+counter = 0
+for epoch in range(nepochs):
+    for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) in enumerate(trainloader):
+        t0 = time()
+        optimizer.zero_grad()
+        preds = model(imgs.to(cfg.device),
+                rots.to(cfg.device),
+                trans.to(cfg.device),
+                intrins.to(cfg.device),
+                post_rots.to(cfg.device),
+                post_trans.to(cfg.device),
+                )
+        heightmap = heightmap.to(cfg.device)
+        loss = loss_fn(preds, heightmap)
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        optimizer.step()
+        counter += 1
+        t1 = time()
+
+        print(counter, loss.item())
