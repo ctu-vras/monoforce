@@ -8,16 +8,16 @@ import torch
 from torchvision import transforms
 import os
 import numpy as np
-from PIL import ImageFile
-# https://github.com/eriklindernoren/PyTorch-YOLOv3/issues/162
-ImageFile.LOAD_TRUNCATED_IMAGES = True
 from PIL import Image
 import cv2
 from pyquaternion import Quaternion
-from nuscenes.nuscenes import NuScenes
-from nuscenes.utils.splits import create_splits_scenes
-from nuscenes.utils.data_classes import Box
-from nuscenes.map_expansion.map_api import NuScenesMapExplorer
+try:
+    from nuscenes.nuscenes import NuScenes
+    from nuscenes.utils.splits import create_splits_scenes
+    from nuscenes.utils.data_classes import Box
+    from nuscenes.map_expansion.map_api import NuScenesMapExplorer
+except ImportError:
+    print('nuscenes-devkit not available')
 from glob import glob
 from copy import deepcopy
 from collections import namedtuple

@@ -13,9 +13,12 @@ from pyquaternion import Quaternion
 from PIL import Image
 from functools import reduce
 import matplotlib.pyplot as plt
-from nuscenes.utils.data_classes import LidarPointCloud
-from nuscenes.utils.geometry_utils import transform_matrix
-from nuscenes.map_expansion.map_api import NuScenesMap
+try:
+    from nuscenes.utils.data_classes import LidarPointCloud
+    from nuscenes.utils.geometry_utils import transform_matrix
+    from nuscenes.map_expansion.map_api import NuScenesMap
+except ImportError:
+    print('nuscenes-devkit not installed')
 import yaml
 
 

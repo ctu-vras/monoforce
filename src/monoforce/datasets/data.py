@@ -743,8 +743,9 @@ class OmniDemData(MonoDemData):
     def __init__(self,
                  path,
                  data_aug_conf,
+                 is_train=True,
                  cfg=Config()):
-        super(OmniDemData, self).__init__(path, cfg=cfg)
+        super(OmniDemData, self).__init__(path, is_train=is_train, cfg=cfg)
 
         self.data_aug_conf = data_aug_conf
 

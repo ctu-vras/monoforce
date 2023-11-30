@@ -45,6 +45,48 @@ def parse_args():
     return parser.parse_args()
 
 
+def create_datasets(train_paths, val_path,
+                    random_camera_selection_prob=0.2, hm_interp_method='nearest', debug=False):
+    # create dataset for MonoLayout training
+    datasets = []
+    print('Train paths:', train_paths)
+    print('Val path:', val_path)
+    for path in train_paths:
+        assert os.path.exists(path)
+
+        cfg_train = Config()
+        cfg_train.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+        cfg_train.hm_interp_method = hm_interp_method
+
+        # create dataset for MonoDEM training
+        train_ds = MonoDemData(path, is_train=True,
+                               random_camera_selection_prob=random_camera_selection_prob, cfg=cfg_train)
+        # print('Dataset size:', len(train_ds))
+        # if args.visualize:
+        #     # visualize a data sample from the dataset
+        #     for _ in range(1):
+        #         i = np.random.choice(len(train_ds))
+        #         train_ds.__getitem__(i, visualize=True)
+
+        datasets.append(train_ds)
+    train_ds = ConcatDataset(datasets)
+
+    # create validation dataset
+    cfg_val = Config()
+    cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
+    cfg_val.hm_interp_method = hm_interp_method
+    val_ds = MonoDemData(val_path, is_train=False, cfg=cfg_val)
+
+    if debug:
+        print('Debug mode: using small datasets')
+        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
+        val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
+    print('Training dataset size:', len(train_ds))
+    print('Validation dataset size:', len(val_ds))
+
+    return train_ds, val_ds
+
+
 class Trainer(object):
     def __init__(self, train_ds_paths, val_ds_path, img_size=(512, 512),
                  batch_size=1, lr=1e-3,
@@ -59,7 +101,7 @@ class Trainer(object):
         self.train_mode = train_mode
         self.train_ds_paths = train_ds_paths
         self.val_ds_path = val_ds_path
-        self.train_ds, self.val_ds = self.create_datasets(train_ds_paths, val_ds_path)
+        self.train_ds, self.val_ds = create_datasets(train_ds_paths, val_ds_path)
         self.train_dataloader = DataLoader(self.train_ds, batch_size=batch_size, shuffle=True)
         self.val_dataloader = DataLoader(self.val_ds, batch_size=batch_size, shuffle=False)
 
@@ -121,47 +163,6 @@ class Trainer(object):
             models[key].to(self.device)
 
         return models
-
-    def create_datasets(self, train_paths, val_path,
-                        random_camera_selection_prob=0.2, hm_interp_method='nearest', debug=False):
-        # create dataset for MonoLayout training
-        datasets = []
-        print('Train paths:', train_paths)
-        print('Val path:', val_path)
-        for path in train_paths:
-            assert os.path.exists(path)
-
-            cfg_train = Config()
-            cfg_train.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-            cfg_train.hm_interp_method = hm_interp_method
-
-            # create dataset for MonoDEM training
-            train_ds = MonoDemData(path, is_train=True,
-                                   random_camera_selection_prob=random_camera_selection_prob, cfg=cfg_train)
-            # print('Dataset size:', len(train_ds))
-            # if args.visualize:
-            #     # visualize a data sample from the dataset
-            #     for _ in range(1):
-            #         i = np.random.choice(len(train_ds))
-            #         train_ds.__getitem__(i, visualize=True)
-
-            datasets.append(train_ds)
-        train_ds = ConcatDataset(datasets)
-
-        # create validation dataset
-        cfg_val = Config()
-        cfg_val.from_yaml(os.path.join(val_path, 'terrain', 'train_log', 'cfg.yaml'))
-        cfg_val.hm_interp_method = hm_interp_method
-        val_ds = MonoDemData(val_path, is_train=False, cfg=cfg_val)
-
-        if debug:
-            print('Debug mode: using small datasets')
-            train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
-            val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
-        print('Training dataset size:', len(train_ds))
-        print('Validation dataset size:', len(val_ds))
-
-        return train_ds, val_ds
 
     def visualize(self, img, height_trav, height_geom, weights_trav, weights_geom, height_pred):
         plt.figure(figsize=(20, 5))
