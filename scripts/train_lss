@@ -12,12 +12,12 @@ from monoforce.models.lss.tools import MSELoss
 from monoforce.utils import normalize
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-plt.switch_backend('Qt5Agg')
 
 
 def explore_data(ds, samples=1):
-    print('Cameras: ', ds.cameras)
+    plt.switch_backend('Qt5Agg')
 
+    print('Cameras: ', ds.cameras)
     for counter in np.random.choice(range(len(ds)), samples):
         sample = ds[counter]
         imgs = sample[0].permute(0, 2, 3, 1)
