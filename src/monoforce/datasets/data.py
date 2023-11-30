@@ -831,10 +831,28 @@ class OmniDemData(MonoDemData):
         Tr = np.linalg.inv(poses[0])
         points = transform_cloud(points, Tr)
 
-        # estimate height map from point cloud
-        xyz_mask = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                      grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
-                                      hm_interp_method=self.hm_interp_method)
+        # height map from point cloud (!!! assumes points are in robot frame)
+        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
+        dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
+        # if height map was estimated before - load it
+        if os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
+            # print('Loading height map from file...')
+            xyz_mask = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
+        # otherwise - estimate it
+        else:
+            # print('Estimating and saving height map...')
+            xyz_mask = estimate_heightmap(points,
+                                          d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+                                          grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                          hm_interp_method=self.hm_interp_method)
+            # save height map as numpy array
+            result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
+                              dtype=[(key, np.float64) for key in xyz_mask.keys()])
+            for key in xyz_mask.keys():
+                result[key] = xyz_mask[key]
+            os.makedirs(dir_path, exist_ok=True)
+            np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
+
         # heightmap = torch.stack([torch.as_tensor(x) for x in xyz_mask.values()])
         heightmap = torch.as_tensor(xyz_mask['z'])[None]
 
