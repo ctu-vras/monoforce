@@ -17,8 +17,8 @@ from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 import rospkg
 from time import time
 from scipy.ndimage import rotate
-
 from visualization_msgs.msg import MarkerArray
+
 
 pkg_path = rospkg.RosPack().get_path('monoforce')
 
@@ -40,15 +40,15 @@ class MonoForce:
         # cv bridge
         self.cv_bridge = CvBridge()
         # height map publisher
-        self.hm_img_pub = rospy.Publisher('~height_map/image', Image, queue_size=1)
+        self.hm_img_pub = rospy.Publisher('/height_map/image', Image, queue_size=1)
         # point cloud publisher
-        self.hm_cloud_pub = rospy.Publisher('~height_map/points', PointCloud2, queue_size=1)
+        self.hm_cloud_pub = rospy.Publisher('/height_map/points', PointCloud2, queue_size=1)
         # grid map publisher
-        self.hm_grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
+        self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
         # paths publisher
-        self.paths_pub = rospy.Publisher('~sampled_paths', MarkerArray, queue_size=1)
+        self.paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         # lower cost path publisher
-        self.lc_path_pub = rospy.Publisher('~lower_cost_path', Path, queue_size=1)
+        self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
 
         # image subscriber
         self.img_sub = rospy.Subscriber(img_topic, CompressedImage, self.img_callback)

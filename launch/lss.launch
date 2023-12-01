@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="config" default="''"/>
+    <arg name="img_topics" default="['/realsense_front/color/image_raw/compressed',
+                                     '/realsense_left/color/image_raw/compressed',
+                                     '/realsense_right/color/image_raw/compressed',
+                                     '/realsense_rear/color/image_raw/compressed']"/>
+    <arg name="camera_info_topics" default="['/realsense_front/color/camera_info',
+                                             '/realsense_left/color/camera_info',
+                                             '/realsense_right/color/camera_info',
+                                             '/realsense_rear/color/camera_info']"/>
+    <arg name="height_map_frame" default="ouster_link"/>
+    <arg name="linear_vels" default="[1.]"/>
+    <arg name="angular_vels" default="[0.]"/>
+    <arg name="total_sim_time" default="5"/>
+
+    <!-- Lss node -->
+    <node name="lss" pkg="monoforce" type="lss_ros" output="screen">
+        <rosparam subst_value="true">
+            img_topics: $(arg img_topics)
+            camera_info_topics: $(arg camera_info_topics)
+            height_map_frame: $(arg height_map_frame)
+            linear_vels: $(arg linear_vels)
+            angular_vels: $(arg angular_vels)
+            total_sim_time: $(arg total_sim_time)
+        </rosparam>
+    </node>
+</launch>

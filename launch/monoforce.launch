@@ -8,7 +8,7 @@
     <arg name="total_sim_time" default="5"/>
 
     <!-- MonoForce node -->
-    <node name="monoforce" pkg="monoforce" type="monoforce">
+    <node name="monoforce" pkg="monoforce" type="monoforce_ros">
         <rosparam subst_value="true">
             img_topic: $(arg img_topic)
             robot_frame: $(arg robot_frame)

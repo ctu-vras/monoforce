@@ -116,7 +116,7 @@ def main():
                     'H': 1200, 'W': 1920,
                     'rand_flip': False,
                     'bot_pct_lim': (0.0, 0.22),
-                    'cams': ['CAM_LEFT', 'CAM_FRONT', 'CAM_RIGHT', 'CAM_BACK'],
+                    'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
                     'Ncams': 4,
                 }
 

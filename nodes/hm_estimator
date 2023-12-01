@@ -24,13 +24,13 @@ class HeightMapEstimator:
         # cv bridge
         self.cv_bridge = CvBridge()
         # height map publisher
-        self.hm_img_pub = rospy.Publisher('~height_map/image', Image, queue_size=1)
+        self.hm_img_pub = rospy.Publisher('/height_map/image', Image, queue_size=1)
         # point cloud publisher
-        self.hm_cloud_pub = rospy.Publisher('~height_map/points', PointCloud2, queue_size=1)
+        self.hm_cloud_pub = rospy.Publisher('/height_map/points', PointCloud2, queue_size=1)
         # grid map publisher
-        self.hm_grid_pub = rospy.Publisher('~grid_map', GridMap, queue_size=1)
+        self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
 
-        # image subscriber
+        # point cloud subscriber
         self.pts_sub = rospy.Subscriber(pts_topic, PointCloud2, self.pts_callback)
 
     def pts_callback(self, msg):
