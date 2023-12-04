@@ -808,8 +808,9 @@ class OmniDemData(MonoDemData):
 
             T_lidar_cam = self.calib['transformations']['T_os_sensor__%s' % cam]['data']
             T_lidar_cam = np.asarray(T_lidar_cam).reshape((4, 4))
-            rot = torch.as_tensor(T_lidar_cam[:3, :3])
-            tran = torch.as_tensor(T_lidar_cam[:3, 3])
+            T_cam_lidar = np.linalg.inv(T_lidar_cam)
+            rot = torch.as_tensor(T_cam_lidar[:3, :3])
+            tran = torch.as_tensor(T_cam_lidar[:3, 3])
 
             imgs.append(img)
             rots.append(rot)
@@ -862,6 +863,22 @@ class OmniDemData(MonoDemData):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
         height = self.get_height_map_data(i)
         return imgs, rots, trans, intrins, post_rots, post_trans, height
+
+
+class OmniDemDataVis(OmniDemData):
+    def __int__(self,
+                path,
+                data_aug_conf,
+                is_train=True,
+                cfg=Config()
+                ):
+        super(OmniDemDataVis, self).__init__(path, data_aug_conf, is_train=True, cfg=cfg)
+
+    def __getitem__(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
+        height = self.get_height_map_data(i)
+        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
+        return imgs, rots, trans, intrins, post_rots, post_trans, lidar_pts, height
 
 
 def segm_demo():

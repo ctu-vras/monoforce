@@ -1,17 +1,16 @@
 #!/usr/bin/env python
 
-import os
 import torch
 import numpy as np
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDemData
+from monoforce.datasets.data import OmniDemData, OmniDemDataVis
 from monoforce.config import Config
 from monoforce.datasets import seq_paths
-from monoforce.models.lss.tools import MSELoss
+from monoforce.models.lss.tools import MSELoss, ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import normalize
 import matplotlib.pyplot as plt
-# projection 3d import
+import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
 
@@ -89,35 +88,91 @@ def explore_data(ds, model=None, samples=1):
         plt.show()
 
 
-def create_datasets(train_paths, val_path, data_aug_conf, cfg, debug=False, vis=False):
-    # create dataset for LSS model training
-    datasets = []
-    print('Train paths:', train_paths)
-    print('Val path:', val_path)
-    for path in train_paths:
-        assert os.path.exists(path)
-        train_ds = OmniDemData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
-        if vis:
-            explore_data(train_ds)
-        datasets.append(train_ds)
-    train_ds = ConcatDataset(datasets)
+def lidar_check():
+    cfg = Config()
+    cfg.d_min = 0.6
+    cfg.d_max = 6.4
+    cfg.grid_res = 0.1
+    cfg.h_above_lidar = 0.3
+    cfg.device = torch.device('cuda:0')
 
-    # create validation dataset
-    val_ds = OmniDemData(val_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
-    if vis:
-        explore_data(val_ds)
+    grid_conf = {
+        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'zbound': [-2.0, 2.0, 4.0],
+        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
+    }
 
-    if debug:
-        print('Debug mode: using small datasets')
-        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
-        val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 16, replace=False))
-    print('Training dataset size:', len(train_ds))
-    print('Validation dataset size:', len(val_ds))
+    data_aug_conf = {
+        'resize_lim': (0.193, 0.225),
+        'final_dim': (128, 352),
+        'rot_lim': (-5.4, 5.4),
+        'H': 1200, 'W': 1920,
+        'rand_flip': False,
+        'bot_pct_lim': (0.0, 0.22),
+        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
+        'Ncams': 4,
+    }
 
-    return train_ds, val_ds
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+
+    ds = OmniDemDataVis(seq_paths[-1], is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=False, num_workers=0)
+
+    H, W = data_aug_conf['H'], data_aug_conf['W']
+    cams = data_aug_conf['cams']
+    rat = H / W
+    val = 10.1
+    fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
+    gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
+    for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map) in enumerate(loader):
+
+        img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+        for si in range(imgs.shape[0]):
+            plt.clf()
+            final_ax = plt.subplot(gs[:, 4:5])
+            for imgi, img in enumerate(imgs[si]):
+                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                mask = get_only_in_img_mask(ego_pts, H, W)
+                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+
+                ax = plt.subplot(gs[imgi // 2, imgi % 2])
+                showimg = ds.destandardize_img(img.permute(1, 2, 0))
+
+                plt.imshow(showimg)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask],
+                            s=5, alpha=0.1, cmap='jet')
+                # plot_pts = post_rots[si, imgi].matmul(img_pts[si, imgi].view(-1, 3).t()) + post_trans[si, imgi].unsqueeze(1)
+                # plt.scatter(img_pts[:, :, :, 0].view(-1), img_pts[:, :, :, 1].view(-1), s=1)
+                plt.axis('off')
+
+                plt.sca(final_ax)
+                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                         label=cams[imgi].replace('_', ' '))
+
+            plt.legend(loc='upper right')
+            final_ax.set_aspect('equal')
+            plt.xlim((-cfg.d_max, cfg.d_max))
+            plt.ylim((-cfg.d_max, cfg.d_max))
+
+            ax = plt.subplot(gs[:, 2:3])
+            plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-5, vmax=5, s=5)
+            plt.xlim((-cfg.d_max, cfg.d_max))
+            plt.ylim((-cfg.d_max, cfg.d_max))
+            ax.set_aspect('equal')
+
+            ax = plt.subplot(gs[:, 3:4])
+            plt.imshow(bev_map[si].squeeze(0).T, origin='lower', cmap='Greys', vmin=0, vmax=1)
+
+            imname = f'lcheck_{batchi:05}_{si:02}.jpg'
+            print('saving', imname)
+            plt.savefig(imname)
 
 
-def main():
+def eval():
     cfg = Config()
     cfg.d_min = 0.6
     cfg.d_max = 6.4
@@ -148,40 +203,44 @@ def main():
                     'Ncams': 4,
                 }
 
-    train_ds_paths = seq_paths[:-1]
-    val_ds_path = seq_paths[-1]
-    _, val_ds = create_datasets(train_ds_paths, val_ds_path,
-                                data_aug_conf=data_aug_conf, cfg=cfg, vis=False, debug=False)
-    valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+    all_seqs_mean_loss = 0.0
+    for val_ds_path in seq_paths:
+        val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+        valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    print('loading', modelf)
-    model.load_state_dict(torch.load(modelf))
-    model.to(cfg.device)
-    model.eval()
+        model = compile_model(grid_conf, data_aug_conf, outC=1)
+        print('loading', modelf)
+        model.load_state_dict(torch.load(modelf))
+        model.to(cfg.device)
+        model.eval()
 
-    loss_fn = MSELoss()
+        loss_fn = MSELoss()
 
-    # validation epoch
-    with torch.no_grad():
-        # explore_data(val_ds, model=model, samples=3)
-        val_loss = 0.0
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
-                in tqdm(enumerate(valloader), total=len(valloader)):
-            preds = model(imgs.to(cfg.device),
-                          rots.to(cfg.device),
-                          trans.to(cfg.device),
-                          intrins.to(cfg.device),
-                          post_rots.to(cfg.device),
-                          post_trans.to(cfg.device),
-                          )
-            heightmap = heightmap.to(cfg.device)
-            loss = loss_fn(preds, heightmap)
-            val_loss += loss.item()
-        val_loss /= len(valloader)
-        print('Validation loss:', val_loss)
-        explore_data(val_ds, model=model, samples=1)
+        # validation epoch
+        with torch.no_grad():
+            # explore_data(val_ds, model=model, samples=3)
+            val_loss = 0.0
+            for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
+                    in tqdm(enumerate(valloader), total=len(valloader)):
+                preds = model(imgs.to(cfg.device),
+                              rots.to(cfg.device),
+                              trans.to(cfg.device),
+                              intrins.to(cfg.device),
+                              post_rots.to(cfg.device),
+                              post_trans.to(cfg.device),
+                              )
+                heightmap = heightmap.to(cfg.device)
+                loss = loss_fn(preds, heightmap)
+                val_loss += loss.item()
+            val_loss /= len(valloader)
+
+        print(f'For seq {val_ds_path.split("/")[-1]} Validation loss: {val_loss:.3f}')
+        # explore_data(val_ds, model=model, samples=1)
+        all_seqs_mean_loss += val_loss
+    all_seqs_mean_loss /= len(seq_paths)
+    print(f'Average validation loss: {all_seqs_mean_loss:.3f}')
 
 
 if __name__ == '__main__':
-    main()
+    eval()
+    # lidar_check()

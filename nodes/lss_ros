@@ -234,7 +234,7 @@ class LSS:
             img_msg.header.frame_id = self.height_map_frame
             self.hm_img_pub.publish(img_msg)
 
-            # # predict path
+            # predict path
             # self.predict_paths(height, linear_vels=self.linear_vels, angular_vels=self.angular_vels)
 
             # publish height map as point cloud
