@@ -56,12 +56,8 @@ class LSS:
 
         self.img_topics = img_topics
         self.camera_info_topics = camera_info_topics
-        if img_mean is None or img_std is None:
-            rospy.logwarn('Image mean and std not provided, using ImageNet stats')
-            img_mean = [0.485, 0.456, 0.406]
-            img_std = [0.229, 0.224, 0.225]
-        self.img_mean = np.asarray(img_mean)
-        self.img_std = np.asarray(img_std)
+        self.img_mean = img_mean
+        self.img_std = img_std
 
         self.linear_vels = linear_vels
         self.angular_vels = angular_vels
@@ -172,12 +168,6 @@ class LSS:
             self.cam_info_subs[i].unregister()
             rospy.logwarn('Camera %i (%s) unsubscribed.', i, msg.header.frame_id)
 
-    def model_inference(self, img):
-        with torch.no_grad():
-            height_pred = None
-
-        return height_pred
-
     def imgs_callback(self, msg1, msg2, msg3, msg4):
         with torch.no_grad():
             # if message is old do not process it
@@ -187,6 +177,16 @@ class LSS:
             t0 = time()
 
             msgs = [msg1, msg2, msg3, msg4]
+
+            # estimate image statistics if not provided
+            if self.img_mean is None or self.img_std is None:
+                rospy.logwarn('Image mean and std not provided. Estimating from data.')
+                imgs = [self.cv_bridge.compressed_imgmsg_to_cv2(msg) for msg in msgs]
+                imgs = np.stack(imgs)
+                self.img_mean = imgs.mean(axis=(0, 1, 2))
+                self.img_std = imgs.std(axis=(0, 1, 2))
+                rospy.logwarn('Image mean: %s' % str(self.img_mean))
+                rospy.logwarn('Image std: %s' % str(self.img_std))
 
             imgs = {}
             post_rots = {}
@@ -217,12 +217,12 @@ class LSS:
             rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
 
             pred = self.model(imgs.unsqueeze(0).to(self.cfg.device),
-                                rots.unsqueeze(0).to(self.cfg.device),
-                                trans.unsqueeze(0).to(self.cfg.device),
-                                intrins.unsqueeze(0).to(self.cfg.device),
-                                post_rots.unsqueeze(0).to(self.cfg.device),
-                                post_trans.unsqueeze(0).to(self.cfg.device),
-                                )
+                              rots.unsqueeze(0).to(self.cfg.device),
+                              trans.unsqueeze(0).to(self.cfg.device),
+                              intrins.unsqueeze(0).to(self.cfg.device),
+                              post_rots.unsqueeze(0).to(self.cfg.device),
+                              post_trans.unsqueeze(0).to(self.cfg.device),
+                              )
             height = pred.squeeze().cpu().numpy()
             rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
             rospy.logdebug('LSS inference time: %.3f' % (time() - t0))
@@ -262,11 +262,11 @@ class LSS:
         assert 'angular_w' in controls.keys()
 
         h, w = np.asarray(height.shape) * self.cfg.grid_res
-        state = State(xyz=torch.tensor([0, 0., 0.], device=self.self.cfg.device).view(3, 1),
-                   rot=torch.eye(3, device=self.self.cfg.device),
-                   vel=torch.tensor([0., 0., 0.], device=self.self.cfg.device).view(3, 1),
-                   omega=torch.tensor([0., 0., 0.], device=self.self.cfg.device).view(3, 1),
-                   device=self.self.cfg.device)
+        state = State(xyz=torch.tensor([0, 0., 0.], device=self.cfg.device).view(3, 1),
+                   rot=torch.eye(3, device=self.cfg.device),
+                   vel=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                   omega=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                   device=self.cfg.device)
         state[0][0] = -h / 2.  # move robot to the edge of the height map
 
         """ Create robot-terrain interaction models """
@@ -275,12 +275,12 @@ class LSS:
                                       friction=self.cfg.friction,
                                       mass=self.cfg.robot_mass,
                                       state=state,
-                                      device=self.self.cfg.device, use_ode=False,
+                                      device=self.cfg.device, use_ode=False,
                                       interaction_model='diffdrive')
 
-        # put models with their params to self.self.cfg.device
-        system = system.to(self.self.cfg.device)
-        tt = controls['stamps'].to(self.self.cfg.device)
+        # put models with their params to self.cfg.device
+        system = system.to(self.cfg.device)
+        tt = controls['stamps'].to(self.cfg.device)
 
         """ Navigation loop """
         dt = (tt[1:] - tt[:-1]).mean()
@@ -304,7 +304,7 @@ class LSS:
             forces.append(state[4])
 
         # height map origin is at the edge of the map
-        xyz = torch.stack(xyz) + torch.tensor([h / 2., 0., 0.], device=self.self.cfg.device).view(3, 1)
+        xyz = torch.stack(xyz) + torch.tensor([h / 2., 0., 0.], device=self.cfg.device).view(3, 1)
         Rs = torch.stack(Rs)
         linear_v = torch.stack(linear_v)
         angular_w = torch.stack(angular_w)
@@ -338,8 +338,8 @@ class LSS:
         marker_array = MarkerArray()
         path_id = 0
         lower_cost_poses = None
-        max_path_cost = torch.tensor(-np.inf, device=self.self.cfg.device)
-        min_path_cost = torch.tensor(np.inf, device=self.self.cfg.device)
+        max_path_cost = torch.tensor(-np.inf, device=self.cfg.device)
+        min_path_cost = torch.tensor(np.inf, device=self.cfg.device)
         for v in linear_vels:
             for w in angular_vels:
                 # controls
@@ -429,16 +429,21 @@ def main():
     camera_info_topics = rospy.get_param('~camera_info_topics')
     height_map_frame = rospy.get_param('~height_map_frame')
     # model weights
-    model_weights = rospy.get_param('~model_weights', os.path.join(pkg_path, 'config/weights/lss/lss11.pt'))
+    model_weights = rospy.get_param('~model_weights', os.path.join(pkg_path, 'config/weights/lss/lss_train9.pt'))
     # control parameters
-    linear_vels = rospy.get_param('~linear_vels')
-    angular_vels = rospy.get_param('~angular_vels')
-    node = LSS(cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
-               model_weights=model_weights,
-               img_topics=img_topics, camera_info_topics=camera_info_topics,
-               height_map_frame=height_map_frame,
-               linear_vels=linear_vels, angular_vels=angular_vels)
-    rospy.spin()
+    # linear_vels = rospy.get_param('~linear_vels')
+    # angular_vels = rospy.get_param('~angular_vels')
+
+    try:
+        node = LSS(cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
+                   model_weights=model_weights,
+                   img_topics=img_topics, camera_info_topics=camera_info_topics,
+                   height_map_frame=height_map_frame,
+                   # linear_vels=linear_vels, angular_vels=angular_vels
+                   )
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass
 
 
 if __name__ == '__main__':
