@@ -5,61 +5,14 @@ import torch
 import numpy as np
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDemData
+from monoforce.datasets.data import OmniDemData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths
 from monoforce.models.lss.tools import MSELoss
-from monoforce.utils import normalize
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 
-def explore_data(ds, samples=1):
-    plt.switch_backend('Qt5Agg')
-
-    print('Cameras: ', ds.cameras)
-    for counter in np.random.choice(range(len(ds)), samples):
-        sample = ds[counter]
-        imgs = sample[0].permute(0, 2, 3, 1)
-        imgs = [ds.destandardize_img(img) for img in imgs]
-        imgs = [normalize(img) for img in imgs]
-        local_map = sample[6][0]
-
-        fig, ax = plt.subplots(3, 3)
-        # figsize
-        fig.set_size_inches(18.5, 10.5)
-        # switch off axis and grid
-        for i in range(3):
-            for j in range(3):
-                if i == 1 and j == 1:
-                    continue
-                ax[i, j].axis('off')
-                ax[i, j].grid(False)
-
-        ax[0, 1].title.set_text('CAM_FRONT')
-        ax[0, 1].imshow(imgs[0])
-        ax[1, 0].title.set_text('CAM_LEFT')
-        ax[1, 0].imshow(imgs[3])
-
-        ax[1, 1].title.set_text('LOCAL_MAP')
-        fig.colorbar(ax[1, 1].imshow(local_map, cmap='jet'), ax=ax[1, 1])
-        ax[1, 1].plot(local_map.shape[0]//2, local_map.shape[1]//2, 'k+')
-        # set x ticks from -d_max to d_max
-        ax[1, 1].set_xticks(np.linspace(0, local_map.shape[0], 5))
-        ax[1, 1].set_yticks(np.linspace(0, local_map.shape[1], 5))
-        ax[1, 1].set_xticklabels(np.linspace(-ds.cfg.d_max, ds.cfg.d_max, 5))
-        ax[1, 1].set_yticklabels(np.linspace(-ds.cfg.d_max, ds.cfg.d_max, 5))
-        ax[1, 1].set_xlabel('x (m)')
-        ax[1, 1].set_ylabel('y (m)')
-
-        ax[1, 2].title.set_text('CAM_RIGHT')
-        ax[1, 2].imshow(imgs[2])
-        ax[2, 1].title.set_text('CAM_REAR')
-        ax[2, 1].imshow(imgs[1])
-        plt.show()
-
-
-def create_datasets(train_paths, val_path, data_aug_conf, cfg, debug=False, vis=False):
+def create_datasets(train_paths, val_path, data_aug_conf, grid_conf, cfg, debug=False, vis=False):
     # create dataset for LSS model training
     datasets = []
     print('Train paths:', train_paths)
@@ -68,14 +21,14 @@ def create_datasets(train_paths, val_path, data_aug_conf, cfg, debug=False, vis=
         assert os.path.exists(path)
         train_ds = OmniDemData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
         if vis:
-            explore_data(train_ds)
+            explore_data(path, grid_conf, data_aug_conf, cfg)
         datasets.append(train_ds)
     train_ds = ConcatDataset(datasets)
 
     # create validation dataset
     val_ds = OmniDemData(val_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
     if vis:
-        explore_data(val_ds)
+        explore_data(val_path, grid_conf, data_aug_conf, cfg)
 
     if debug:
         print('Debug mode: using small datasets')
@@ -120,11 +73,11 @@ def main():
                     'Ncams': 4,
                 }
 
-    train_ds_paths = seq_paths[:-1]
+    train_ds_paths = [seq_paths[-2]]
     val_ds_path = seq_paths[-1]
 
     train_ds, val_ds = create_datasets(train_ds_paths, val_ds_path,
-                                       data_aug_conf=data_aug_conf, cfg=cfg,
+                                       data_aug_conf=data_aug_conf, grid_conf=grid_conf, cfg=cfg,
                                        vis=False, debug=False)
     trainloader = torch.utils.data.DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
     valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)

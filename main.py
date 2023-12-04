@@ -8,7 +8,7 @@ if __name__ == '__main__':
         'global_cloud': datasets.data.global_cloud_demo,
         'traversed_cloud': datasets.data.segm_demo,
         'extrinsics': datasets.data.extrinsics_demo,
-        'project_rgb_to_cloud': datasets.data.project_rgb_to_cloud,
+        'rgb_cloud': datasets.data.vis_rgb_cloud,
         'traversed_hm': datasets.data.traversed_height_map,
         'train_sample': datasets.data.vis_train_sample,
         'hm_weights': datasets.data.vis_hm_weights,

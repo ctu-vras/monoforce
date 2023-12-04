@@ -1,11 +1,12 @@
 import os
-import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured, merge_arrays
-from matplotlib import cm
+from matplotlib import cm, pyplot as plt
 from mayavi import mlab
+from monoforce.models.lss.model import compile_model
 from ..config import Config
 from ..transformations import transform_cloud
 from ..cloudproc import position, estimate_heightmap, color
@@ -18,8 +19,10 @@ from ..utils import normalize
 import yaml
 import cv2
 import albumentations as A
-from ..models.lss.tools import img_transform
+from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
+import matplotlib
+matplotlib.use('QtAgg')
 
 
 __all__ = [
@@ -31,6 +34,7 @@ __all__ = [
 
 IGNORE_LABEL = 255
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
+vis_dir = os.path.realpath(os.path.join(data_dir, 'robingas', 'visuals'))
 
 seq_paths = [
         os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
@@ -141,7 +145,7 @@ class SegmentationDataset(Dataset):
         if cloud.ndim == 2:
             cloud = cloud.reshape((-1,))
 
-        points = structured_to_unstructured(cloud[['x', 'y', 'z']])
+        points = position(cloud)
         trav = np.asarray(cloud['traversability'], dtype=points.dtype)
 
         depth_proj, label_proj, points_proj = self.range_projection(points, trav)
@@ -288,11 +292,19 @@ class HMTrajData(Dataset):
         calib['transformations'] = transforms
         return calib
 
-    def get_cloud(self, i):
+    def get_raw_cloud(self, i):
         ind = self.ids[i]
         cloud = np.load(os.path.join(self.cloud_path, '%s.npz' % ind))['cloud']
         if cloud.ndim == 2:
             cloud = cloud.reshape((-1,))
+        return cloud
+
+    def get_cloud(self, i):
+        cloud = self.get_raw_cloud(i)
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
         return cloud
 
     def get_cloud_color(self, i):
@@ -322,7 +334,7 @@ class HMTrajData(Dataset):
 
         # create global cloud
         for i in tqdm(range(len(self))):
-            cloud = self.get_cloud(i)
+            cloud = self.get_raw_cloud(i)
             if colorize:
                 # cloud color
                 color_struct = self.get_cloud_color(i)
@@ -379,10 +391,8 @@ class HMTrajData(Dataset):
         traj = self.get_traj(i)
         poses = traj['poses']
 
-        # move poses, points to robot frame
+        # move poses to robot frame
         Tr = np.linalg.inv(poses[0])
-        cloud = transform_cloud(cloud, Tr)
-        points = transform_cloud(points, Tr)
         poses = np.asarray([Tr @ pose for pose in poses])
         traj['poses'] = poses
 
@@ -524,7 +534,7 @@ class MonoDemData(HMTrajData):
 
         lidar = 'os_sensor'
 
-        cloud = self.get_cloud(i)
+        cloud = self.get_raw_cloud(i)
         traj = self.get_traj(i)
 
         points = position(cloud)
@@ -802,15 +812,21 @@ class OmniDemData(MonoDemData):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
+            # rgb and intrinsics
             img = self.standardize_img(np.asarray(img))
             img = torch.as_tensor(img).permute((2, 0, 1))
             K = torch.as_tensor(K)
 
+            # extrinsics
             T_lidar_cam = self.calib['transformations']['T_os_sensor__%s' % cam]['data']
-            T_lidar_cam = np.asarray(T_lidar_cam).reshape((4, 4))
+            T_lidar_cam = np.asarray(T_lidar_cam, dtype=float).reshape((4, 4))
             T_cam_lidar = np.linalg.inv(T_lidar_cam)
-            rot = torch.as_tensor(T_cam_lidar[:3, :3])
-            tran = torch.as_tensor(T_cam_lidar[:3, 3])
+            T_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
+            T_robot_lidar = np.asarray(T_robot_lidar, dtype=float).reshape((4, 4))
+            T_robot_cam = T_robot_lidar @ T_cam_lidar
+
+            rot = torch.as_tensor(T_robot_cam[:3, :3])
+            tran = torch.as_tensor(T_robot_cam[:3, 3])
 
             imgs.append(img)
             rots.append(rot)
@@ -825,18 +841,12 @@ class OmniDemData(MonoDemData):
     def get_height_map_data(self, i):
         cloud = self.get_cloud(i)
         points = position(cloud)
-        traj = self.get_traj(i)
-        poses = traj['poses']
-
-        # move points to robot frame
-        Tr = np.linalg.inv(poses[0])
-        points = transform_cloud(points, Tr)
 
         # height map from point cloud (!!! assumes points are in robot frame)
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
         dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
         # if height map was estimated before - load it
-        if os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
+        if False and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
             xyz_mask = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
         # otherwise - estimate it
@@ -936,33 +946,41 @@ def extrinsics_demo():
     from mayavi import mlab
     from ..vis import draw_coord_frames, draw_coord_frame
 
-    path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    path = os.path.join(os.path.join(data_dir, path))
-    assert os.path.exists(path)
+    for path in seq_paths:
+        # path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
+        # path = os.path.join(os.path.join(data_dir, path))
+        assert os.path.exists(path)
 
-    cfg = Config()
-    ds = HMTrajData(path, cfg=cfg)
+        cfg = Config()
+        ds = HMTrajData(path, cfg=cfg)
 
-    lidar_pose = np.eye(4)
-    lidar_frame = 'os_sensor'
-    camera_frames = ['camera_left', 'camera_right', 'camera_up', 'camera_fisheye_front', 'camera_fisheye_rear']
+        robot_pose = np.eye(4)
+        robot_frame = 'base_link'
+        lidar_frame = 'os_sensor'
 
-    poses = []
-    for frame in camera_frames:
-        pose = ds.calib['transformations'][f'T_{lidar_frame}__{frame}']['data']
-        pose = np.asarray(pose).reshape((4, 4))
-        pose = np.linalg.inv(pose)
-        poses.append(pose[np.newaxis])
-    poses = np.concatenate(poses, axis=0)
+        Tr_robot_lidar = ds.calib['transformations'][f'T_{robot_frame}__{lidar_frame}']['data']
+        Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
+        camera_frames = ['camera_left', 'camera_right', 'camera_up', 'camera_fisheye_front', 'camera_fisheye_rear'] \
+        if 'marv' in path else ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
 
-    # draw coordinate frames
-    mlab.figure(size=(800, 800))
-    draw_coord_frame(lidar_pose, scale=0.5)
-    draw_coord_frames(poses, scale=0.1)
-    mlab.show()
+        cam_poses = []
+        for frame in camera_frames:
+            Tr_lidar_cam = ds.calib['transformations'][f'T_{lidar_frame}__{frame}']['data']
+            Tr_lidar_cam = np.asarray(Tr_lidar_cam, dtype=float).reshape((4, 4))
+            Tr_cam_lidar= np.linalg.inv(Tr_lidar_cam)
+            Tr_robot_cam = Tr_robot_lidar @ Tr_cam_lidar
+            cam_poses.append(Tr_robot_cam[np.newaxis])
+        cam_poses = np.concatenate(cam_poses, axis=0)
+
+        # draw coordinate frames
+        mlab.figure(size=(800, 800))
+        draw_coord_frame(robot_pose, scale=0.5)
+        draw_coord_frame(Tr_robot_lidar, scale=0.3)
+        draw_coord_frames(cam_poses, scale=0.1)
+        mlab.show()
 
 
-def project_rgb_to_cloud():
+def vis_rgb_cloud():
     from ..vis import show_cloud
     from ..utils import normalize
 
@@ -1055,9 +1073,8 @@ def traversed_height_map():
 
     img = ds.get_image(i)
 
-    # transform point cloud to robot frame
+    # transform to robot frame
     Tr = np.linalg.inv(poses[0])
-    points = transform_cloud(points, Tr)
     poses = np.asarray([np.dot(Tr, pose) for pose in poses])
 
     # height map: estimated from point cloud

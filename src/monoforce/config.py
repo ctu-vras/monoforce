@@ -8,8 +8,8 @@ class Config:
     def __init__(self):
         # height map parameters
         self.grid_res = 0.1
-        self.d_min = 1.
-        self.d_max = 12.8
+        self.d_min = 0.6
+        self.d_max = 6.4
         self.h_above_lidar = 0.3
         self.damping = 0.
         self.elasticity = 0.

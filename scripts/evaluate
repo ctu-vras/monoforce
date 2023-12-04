@@ -194,7 +194,6 @@ class Evaluator:
             ds.cfg.hm_interp_method = None
             cloud = ds.get_cloud(i)
             points = position(cloud)
-            points = transform_cloud(points, Tr)
             heightmap = ds.estimate_heightmap(points)
             height_full = heightmap['z']
             # self.debug(i, ds, height_full)

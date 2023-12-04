@@ -43,8 +43,10 @@ def arg_parser():
     parser.add_argument('--bag-path', type=str)
     return parser
 
+
 def str2bool(v):
     return v.lower() in ('1', 'yes', 'true', 't', 'y')
+
 
 def str2time(s):
     sec, nsec = s.split('_')
@@ -52,6 +54,7 @@ def str2time(s):
     assert len(nsec) == 9, 'nano-sec should be 9 digits long'
     t = float(sec) + float(nsec) * 1e-9
     return t
+
 
 def get_topic_types(bag):
     return {k: v.msg_type for k, v in bag.get_type_and_topic_info().topics.items()}
@@ -62,6 +65,7 @@ def img_msg_to_cv2(msg, cv_bridge=CvBridge()):
     # convert compressed image message to numpy array
     img_raw = cv_bridge.compressed_imgmsg_to_cv2(img_msg)
     return img_raw
+
 
 def differentiate_velocity(bag, imu_topic, time, time_window=1.0, beta0=None):
     assert beta0 is None or beta0.shape == (3,)
@@ -102,6 +106,7 @@ def differentiate_velocity(bag, imu_topic, time, time_window=1.0, beta0=None):
     # plt.show()
     return beta
 
+
 @timing
 def integrate_acceleration(bag, imu_topic, time, time_window=1.0, vel0=np.zeros(3), gravity=9.81):
     t_stamps_in_window = []
@@ -140,6 +145,7 @@ def integrate_acceleration(bag, imu_topic, time, time_window=1.0, vel0=np.zeros(
     # plt.legend(['acc(t)', 'vel(t)'])
     # plt.show()
     return vel, vel_mean
+
 
 @timing
 def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5):
@@ -269,7 +275,7 @@ def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buff
                             f.write('T_{lidar}__{camera}:\n'.format(lidar=cloud_msg.header.frame_id, camera=camera))
                             f.write('  rows: 4\n')
                             f.write('  cols: 4\n')
-                            f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in Tr.reshape(-1)]))
+                            f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
                         break
         except ROSBagException as ex:
             print('Could not read %s: %s' % (bag_path, ex))
@@ -294,7 +300,7 @@ def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=Fal
     with Bag(bag_path, 'r') as bag:
         for i in tqdm(range(len(cloud_times))):
 
-            cloud_struct = ds.get_cloud(i)
+            cloud_struct = ds.get_raw_cloud(i)
             points = position(cloud_struct)
             # print('Processing points %i/%i' % (i+1, len(ds)))
 
@@ -366,6 +372,7 @@ def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=Fal
                 output_bag.write(topic='/points', msg=cloud_msg, t=rospy.Time.from_seconds(cloud_times[i]))
     if save:
         output_bag.close()
+
 
 def estimate_velocities(data_path, tf_buffer, imu_topic='/imu/data', robot_frame='base_link'):
     import pandas as pd
@@ -455,27 +462,27 @@ def estimate_velocities(data_path, tf_buffer, imu_topic='/imu/data', robot_frame
             traj_data.to_csv(traj_csv, index=False)
 
 
-def get_base_link_to_base_footprint_transformations(bag_path, base_link_frame='base_link', base_footprint_frame='base_footprint', save=True):
+def append_transformation(bag_path, source_frame='base_link', target_frame='base_footprint', save=True):
     tf_buffer = load_tf_buffer([bag_path], tf_topics=['/tf_static'])
     try:
-        transform = tf_buffer.lookup_transform_core(base_link_frame, base_footprint_frame, rospy.Time())
+        transform = tf_buffer.lookup_transform_core(source_frame, target_frame, rospy.Time())
         Tr = numpify(transform.transform)
     except TransformException as ex:
-        print('Could find transformation from %s to %s.' % (base_link_frame, base_footprint_frame))
+        print('Could not find transformation from %s to %s.' % (source_frame, target_frame))
         print('Using identity matrix.')
         Tr = np.eye(4)
-    print('Transformation from %s to %s:' % (base_link_frame, base_footprint_frame))
+    print('Transformation from %s to %s:' % (source_frame, target_frame))
     print(Tr)
 
     if save:
         output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
-        output_path = output_path_pattern.format(dir=os.path.dirname(bag_path), name=os.path.basename(bag_path).replace('.bag', ''))
+        output_path = output_path_pattern.format(dir=os.path.dirname(bag_path),
+                                                 name=os.path.basename(bag_path).replace('.bag', ''))
 
-        new_yaml_data_dict = {'T_{base_link_frame}__{base_footprint_frame}'.format(base_link_frame=base_link_frame,
-                                                                                    base_footprint_frame=base_footprint_frame):
+        new_yaml_data_dict = {f'T_{source_frame}__{target_frame}':
                                   {'rows': 4,
                                    'cols': 4,
-                                   'data': ['%.12f' % x for x in Tr.reshape(-1)]}}
+                                   'data': ['%.3f' % x for x in Tr.reshape(-1)]}}
 
         with open(output_path, 'r') as yamlfile:
             print('Updating yaml file: %s' % output_path)
@@ -497,7 +504,7 @@ def process(bag_path, lidar_topic, camera_topics, camera_info_topics, visualize,
     print('Obtaining lidar to camera transformations from bag file...')
     get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=save_data)
     print('Obtaining base_link to base_footprint transformations from bag file...')
-    get_base_link_to_base_footprint_transformations(bag_path, save=save_data)
+    append_transformation(bag_path, source_frame='base_link', target_frame='base_footprint', save=save_data)
     print('Colorizing clouds...')
     colorize_clouds(data_path, camera_topics, vis=visualize, save=save_data)
     # TODO: it does not work yet
@@ -528,7 +535,7 @@ def debug_colorize_clouds():
         img_times[topic] = []
     with Bag(bag_path, 'r') as bag:
         for i in tqdm(range(len(cloud_times))):
-            cloud = ds.get_cloud(i)
+            cloud = ds.get_raw_cloud(i)
             # write point cloud to bag
             cloud_msg = msgify(PointCloud2, cloud)
             cloud_msg.header.stamp = rospy.Time.from_seconds(cloud_times[i])
