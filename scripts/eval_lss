@@ -43,7 +43,7 @@ def eval():
                 }
 
     all_seqs_mean_loss = 0.0
-    for val_ds_path in seq_paths[-2:]:
+    for val_ds_path in seq_paths:
         # explore_data(val_ds_path, grid_conf, data_aug_conf, cfg, save=False)
 
         val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
@@ -75,12 +75,39 @@ def eval():
             val_loss /= len(valloader)
 
         print(f'For seq {val_ds_path.split("/")[-1]} Validation loss: {val_loss:.3f}')
-        # explore_data(val_ds, model=model, samples=1)
         all_seqs_mean_loss += val_loss
     all_seqs_mean_loss /= len(seq_paths)
     print(f'Average validation loss: {all_seqs_mean_loss:.3f}')
 
 
-if __name__ == '__main__':
+def main():
+    cfg = Config()
+    cfg.d_min = 0.6
+    cfg.d_max = 6.4
+    cfg.grid_res = 0.1
+    cfg.h_above_lidar = 0.3
+
+    grid_conf = {
+        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'zbound': [-2.0, 2.0, 4.0],
+        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
+    }
+
+    data_aug_conf = {
+        'resize_lim': (0.193, 0.225),
+        'final_dim': (128, 352),
+        'rot_lim': (-5.4, 5.4),
+        'H': 1200, 'W': 1920,
+        'rand_flip': False,
+        'bot_pct_lim': (0.0, 0.22),
+        'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT',],
+        'Ncams': 4,
+    }
+
     eval()
-    # lidar_check()
+    # explore_data(seq_paths[2], grid_conf, data_aug_conf, cfg, save=False)
+
+
+if __name__ == '__main__':
+    main()

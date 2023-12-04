@@ -21,14 +21,14 @@ def create_datasets(train_paths, val_path, data_aug_conf, grid_conf, cfg, debug=
         assert os.path.exists(path)
         train_ds = OmniDemData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
         if vis:
-            explore_data(path, grid_conf, data_aug_conf, cfg)
+            explore_data(path, grid_conf, data_aug_conf, cfg, save=False)
         datasets.append(train_ds)
     train_ds = ConcatDataset(datasets)
 
     # create validation dataset
     val_ds = OmniDemData(val_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
     if vis:
-        explore_data(val_path, grid_conf, data_aug_conf, cfg)
+        explore_data(val_path, grid_conf, data_aug_conf, cfg, save=False)
 
     if debug:
         print('Debug mode: using small datasets')
@@ -69,11 +69,11 @@ def main():
                     'H': 1200, 'W': 1920,
                     'rand_flip': False,
                     'bot_pct_lim': (0.0, 0.22),
-                    'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
+                    'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
                     'Ncams': 4,
                 }
 
-    train_ds_paths = [seq_paths[-2]]
+    train_ds_paths = seq_paths[:-1]
     val_ds_path = seq_paths[-1]
 
     train_ds, val_ds = create_datasets(train_ds_paths, val_ds_path,
@@ -89,6 +89,7 @@ def main():
     loss_fn = MSELoss()
 
     min_loss = np.inf
+    min_train_loss = np.inf
     for epoch in range(nepochs):
         # training epoch
         model.train()
@@ -111,6 +112,10 @@ def main():
             train_loss += loss.item()
         train_loss /= len(trainloader)
         print('Training loss:', train_loss)
+        if train_loss < min_train_loss:
+            min_train_loss = train_loss
+            print('Saving train model...')
+            torch.save(model.state_dict(), f'train_lss.pt')
 
         # validation epoch
         with torch.no_grad():
@@ -134,7 +139,7 @@ def main():
             if val_loss < min_loss:
                 min_loss = val_loss
                 print('Saving model...')
-                torch.save(model.state_dict(), f'lss{epoch}.pt')
+                torch.save(model.state_dict(), 'lss.pt')
 
 
 if __name__ == '__main__':

@@ -495,6 +495,7 @@ class MonoDemData(HMTrajData):
     def destandardize_img(self, img_norm):
         H, W, C = img_norm.shape
         img_01 = img_norm * self.img_std.reshape((1, 1, C)) + self.img_mean.reshape((1, 1, C))
+        img_01 = normalize(img_01)
         return img_01
 
     def preprocess_img(self, img_raw):
@@ -1277,11 +1278,74 @@ def global_cloud_demo():
         ds.global_cloud(vis=True, step_size=100)
 
 
+def explore_data(path, grid_conf, data_aug_conf, cfg, save=False):
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+
+    ds = OmniDemDataVis(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+
+    H, W = data_aug_conf['H'], data_aug_conf['W']
+    cams = data_aug_conf['cams']
+    rat = H / W
+    val = 10.1
+    fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
+    gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
+    batchi = np.random.choice(range(len(ds)))
+    sample = ds[batchi]
+    sample = [s[None] for s in sample]
+    imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map = sample
+
+    img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+    for si in range(imgs.shape[0]):
+        plt.clf()
+        final_ax = plt.subplot(gs[:, 4:5])
+        for imgi, img in enumerate(imgs[si]):
+            ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+            mask = get_only_in_img_mask(ego_pts, H, W)
+            plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+
+            ax = plt.subplot(gs[imgi // 2, imgi % 2])
+            showimg = ds.destandardize_img(img.permute(1, 2, 0))
+
+            plt.imshow(showimg)
+            plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=5, alpha=0.1, cmap='jet')
+            plt.axis('off')
+            # camera name as text on image
+            plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
+                     transform=ax.transAxes, fontsize=10)
+
+            plt.sca(final_ax)
+            plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                     label=cams[imgi].replace('_', ' '))
+
+        plt.legend(loc='upper right')
+        final_ax.set_aspect('equal')
+        plt.xlim((-cfg.d_max, cfg.d_max))
+        plt.ylim((-cfg.d_max, cfg.d_max))
+
+        ax = plt.subplot(gs[:, 2:3])
+        plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-1, vmax=1, s=5, cmap='Greys')
+        plt.xlim((-cfg.d_max, cfg.d_max))
+        plt.ylim((-cfg.d_max, cfg.d_max))
+        ax.set_aspect('equal')
+
+        ax = plt.subplot(gs[:, 3:4])
+        plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet')
+
+        if save:
+            imname = f'lcheck_{batchi:05}_{si:02}.jpg'
+            print('saving', imname)
+            plt.savefig(imname)
+        else:
+            plt.show()
+
 def main():
     segm_demo()
     heightmap_demo()
     extrinsics_demo()
-    project_rgb_to_cloud()
+    vis_rgb_cloud()
     traversed_height_map()
     vis_train_sample()
     vis_hm_weights()

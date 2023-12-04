@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This script synchronizes data sequences from a remote server
-DATA_PATH=/home/$USER/data/robingas/data
+DATA_PATH=/home/$USER/data/bags/robingas/data
 
 # list of sequences to process
 SEQUENCES=(
