@@ -33,7 +33,7 @@ class LSS:
                  data_aug_conf: dict,
                  grid_conf: dict,
                  model_weights,
-                 height_map_frame='base_link',
+                 hm_frame='base_link',
                  img_topics=['/camera_front/color/image_raw/compressed',
                              '/camera_left/color/image_raw/compressed',
                              '/camera_right/color/image_raw/compressed',
@@ -50,7 +50,7 @@ class LSS:
 
         self.model = self.load_model(model_weights)
 
-        self.height_map_frame = height_map_frame
+        self.hm_frame = hm_frame
 
         self.img_topics = img_topics
         self.camera_info_topics = camera_info_topics
@@ -144,10 +144,10 @@ class LSS:
         time = rospy.Time(0)
         timeout = rospy.Duration.from_sec(1.0)
         try:
-            tf = self.tf_buffer.lookup_transform(self.height_map_frame, msg.header.frame_id, time, timeout)
+            tf = self.tf_buffer.lookup_transform(self.hm_frame, msg.header.frame_id, time, timeout)
         except tf2_ros.TransformException as ex:
             rospy.logerr('Could not transform from camera %s to robot %s: %s.',
-                         msg.header.frame_id, self.height_map_frame, ex)
+                         msg.header.frame_id, self.hm_frame, ex)
             return
 
         Tr = torch.tensor(numpify(tf.transform), dtype=torch.float32)
@@ -223,7 +223,7 @@ class LSS:
             height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
             img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
             img_msg.header.stamp = msg.header.stamp
-            img_msg.header.frame_id = self.height_map_frame
+            img_msg.header.frame_id = self.hm_frame
             self.hm_img_pub.publish(img_msg)
 
             # publish height map as point cloud
@@ -231,14 +231,14 @@ class LSS:
             cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
                                                       xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
             cloud_msg.header.stamp = msg.header.stamp
-            cloud_msg.header.frame_id = self.height_map_frame
+            cloud_msg.header.frame_id = self.hm_frame
             self.hm_cloud_pub.publish(cloud_msg)
 
             # publish height map as grid map
             grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
                                                  xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
             grid_msg.info.header.stamp = msg.header.stamp
-            grid_msg.info.header.frame_id = self.height_map_frame
+            grid_msg.info.header.frame_id = self.hm_frame
             self.hm_grid_pub.publish(grid_msg)
             rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
 
@@ -272,7 +272,7 @@ def main():
 
     img_topics = rospy.get_param('~img_topics')
     camera_info_topics = rospy.get_param('~camera_info_topics')
-    height_map_frame = rospy.get_param('~height_map_frame')
+    hm_frame = rospy.get_param('~hm_frame')
     # model weights
     model_weights = rospy.get_param('~model_weights', os.path.join(pkg_path, 'config/weights/lss/lss.pt'))
 
@@ -282,7 +282,7 @@ def main():
                    img_std=np.array([0.229, 0.224, 0.225]),
                    model_weights=model_weights,
                    img_topics=img_topics, camera_info_topics=camera_info_topics,
-                   height_map_frame=height_map_frame,
+                   hm_frame=hm_frame,
                    )
         rospy.spin()
     except rospy.ROSInterruptException:

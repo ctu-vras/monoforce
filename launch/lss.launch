@@ -9,14 +9,14 @@
                                              '/realsense_left/color/camera_info',
                                              '/realsense_right/color/camera_info',
                                              '/realsense_rear/color/camera_info']"/>
-    <arg name="height_map_frame" default="base_link"/>
+    <arg name="hm_frame" default="base_link"/>
 
     <!-- Lss node -->
     <node name="lss" pkg="monoforce" type="lss_ros" output="screen">
         <rosparam subst_value="true">
             img_topics: $(arg img_topics)
             camera_info_topics: $(arg camera_info_topics)
-            height_map_frame: $(arg height_map_frame)
+            hm_frame: $(arg hm_frame)
         </rosparam>
     </node>
 </launch>
