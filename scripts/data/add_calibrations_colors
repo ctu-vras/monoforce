@@ -198,7 +198,8 @@ def get_camera_infos(bag_path, camera_info_topics, save=True):
                     # save intinsics and distortion coeffs to output_path yaml file
                     if save:
                         camera = topic.split('/')[1]
-                        output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0], camera=camera)
+                        output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0],
+                                                                 camera=camera)
                         os.makedirs(os.path.dirname(output_path), exist_ok=True)
                         print('Saving to %s' % output_path)
                         with open(output_path, 'w') as f:
@@ -326,7 +327,8 @@ def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=Fal
                 cloud_cam = transform_cloud(points, lidar_to_camera)
 
                 # project point points to image
-                cloud_fov, colors_view, fov_mask = project_cloud_to_image(cloud_cam, img, K, return_mask=True, debug=False)
+                cloud_fov, colors_view, fov_mask = project_cloud_to_image(cloud_cam, img, K, return_mask=True,
+                                                                          debug=False)
 
                 # set colors from a particular camera viewpoint
                 colors[fov_mask] = colors_view[fov_mask]

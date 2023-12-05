@@ -1278,8 +1278,12 @@ def global_cloud_demo():
         ds.global_cloud(vis=True, step_size=100)
 
 
-def explore_data(path, grid_conf, data_aug_conf, cfg, save=False):
+def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None, save=False):
     model = compile_model(grid_conf, data_aug_conf, outC=1)
+    if modelf is not None:
+        model.load_state_dict(torch.load(modelf))
+        print('Loaded LSS model from', modelf)
+        model.eval()
 
     ds = OmniDemDataVis(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
 
@@ -1291,10 +1295,20 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, save=False):
     gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    batchi = np.random.choice(range(len(ds)))
-    sample = ds[batchi]
+    if sample_i is None:
+        sample_i = np.random.choice(range(len(ds)))
+    sample = ds[sample_i]
     sample = [s[None] for s in sample]
     imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map = sample
+    if modelf is not None:
+        with torch.no_grad():
+            bev_map = model(imgs,
+                            rots,
+                            trans,
+                            intrins,
+                            post_rots,
+                            post_trans,
+                            )
 
     img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
@@ -1326,16 +1340,17 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, save=False):
         plt.ylim((-cfg.d_max, cfg.d_max))
 
         ax = plt.subplot(gs[:, 2:3])
-        plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-1, vmax=1, s=5, cmap='Greys')
+        plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=5, cmap='Greys')
         plt.xlim((-cfg.d_max, cfg.d_max))
         plt.ylim((-cfg.d_max, cfg.d_max))
         ax.set_aspect('equal')
 
         ax = plt.subplot(gs[:, 3:4])
-        plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet')
+        plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+        plt.colorbar()
 
         if save:
-            imname = f'lcheck_{batchi:05}_{si:02}.jpg'
+            imname = f'lcheck_{sample_i:05}_{si:02}.jpg'
             print('saving', imname)
             plt.savefig(imname)
         else:
