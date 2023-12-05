@@ -1,0 +1,309 @@
+#!/usr/bin/env python
+
+from threading import RLock
+import numpy as np
+import torch
+import rospy
+from cv_bridge import CvBridge
+from grid_map_msgs.msg import GridMap
+from monoforce.cloudproc import position, estimate_heightmap
+from monoforce.config import Config
+from monoforce.models.lss.model import compile_model
+from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
+from monoforce.utils import normalize
+from sensor_msgs.msg import Image, CompressedImage, PointCloud2, CameraInfo
+import rospkg
+from message_filters import ApproximateTimeSynchronizer, Subscriber
+import tf2_ros
+from PIL import Image as PILImage
+from ros_numpy import numpify
+from collections import OrderedDict
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+# gui backend
+plt.switch_backend('TkAgg')
+
+
+pkg_path = rospkg.RosPack().get_path('monoforce')
+
+class DataProcessor:
+    def __init__(self, cfg: Config,
+                 data_aug_conf: dict,
+                 grid_conf: dict,
+                 hm_frame='base_link',
+                 img_topics=['/camera_front/color/image_raw/compressed',
+                             '/camera_left/color/image_raw/compressed',
+                             '/camera_right/color/image_raw/compressed',
+                             '/camera_rear/color/image_raw/compressed'],
+                 camera_info_topics=['/camera_front/color/camera_info',
+                                     '/camera_left/color/camera_info',
+                                     '/camera_right/color/camera_info',
+                                     '/camera_rear/color/camera_info'],
+                 points_topic='/points'):
+        self.cfg = cfg
+        self.data_aug_conf = data_aug_conf
+        self.grid_conf = grid_conf
+
+        self.hm_frame = hm_frame
+
+        self.img_topics = img_topics
+        self.camera_info_topics = camera_info_topics
+        self.points_topic = points_topic
+        
+        self.model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
+
+        # cv bridge
+        self.cv_bridge = CvBridge()
+        # tf listener
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        # height map publisher
+        self.hm_img_pub = rospy.Publisher('/height_map/image', Image, queue_size=1)
+        # point cloud publisher
+        self.hm_cloud_pub = rospy.Publisher('/height_map/points', PointCloud2, queue_size=1)
+        # grid map publisher
+        self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
+
+        # subscribe to camera intrinsics (ones)
+        self.num_cameras = self.data_aug_conf['Ncams']
+        self.cam_info_lock = RLock()
+        self.cams_intrins = {}
+        self.cams_to_hm = {}
+        assert self.num_cameras == len(img_topics)
+        self.cam_info_subs = [rospy.Subscriber(self.camera_info_topics[i], CameraInfo,
+                                               lambda msg, i=i: self.get_cam_calib(msg, i), queue_size=2)
+                              for i in range(self.num_cameras)]
+
+        # subscribe to images with approximate time synchronization
+        self.subs = []
+        for topic in img_topics:
+            rospy.loginfo('Subscribing to %s' % topic)
+            self.subs.append(Subscriber(topic, CompressedImage))
+        self.subs.append(Subscriber(points_topic, PointCloud2))
+        self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=0.2)
+        self.sync.registerCallback(self.callback)
+
+    def vis(self, imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map, fname=None):
+        H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        cams = self.data_aug_conf['cams']
+        rat = H / W
+        val = 10.1
+        fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
+        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+        img_pts = self.model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+        for si in range(imgs.shape[0]):
+            plt.clf()
+            final_ax = plt.subplot(gs[:, 4:5])
+            for imgi, img in enumerate(imgs[si]):
+                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                mask = get_only_in_img_mask(ego_pts, H, W)
+                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+
+                ax = plt.subplot(gs[imgi // 2, imgi % 2])
+                showimg = img.permute(1, 2, 0).numpy()
+                showimg = normalize(showimg)
+
+                plt.imshow(showimg)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=5, alpha=0.1, cmap='jet')
+                plt.axis('off')
+                # camera name as text on image
+                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
+                         transform=ax.transAxes, fontsize=10)
+
+                plt.sca(final_ax)
+                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                         label=cams[imgi].replace('_', ' '))
+
+            plt.legend(loc='upper right')
+            final_ax.set_aspect('equal')
+            plt.xlim((-self.cfg.d_max, self.cfg.d_max))
+            plt.ylim((-self.cfg.d_max, self.cfg.d_max))
+
+            ax = plt.subplot(gs[:, 2:3])
+            plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=5, cmap='Greys')
+            plt.xlim((-self.cfg.d_max, self.cfg.d_max))
+            plt.ylim((-self.cfg.d_max, self.cfg.d_max))
+            ax.set_aspect('equal')
+
+            ax = plt.subplot(gs[:, 3:4])
+            plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+            # plt.colorbar()
+
+            if fname is None:
+                plt.show()
+            fig.savefig(fname, dpi=300)
+
+    def preprocess_params(self):
+        H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        fH, fW = self.data_aug_conf['final_dim']
+        resize = max(fH/H, fW/W)
+        resize_dims = (int(W*resize), int(H*resize))
+        newW, newH = resize_dims
+        crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim']))*newH) - fH
+        crop_w = int(max(0, newW - fW) / 2)
+        crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+        return resize, resize_dims, crop
+
+    def preprocess_img(self, img):
+        post_rot = np.eye(2)
+        post_tran = np.zeros(2)
+
+        # preprocessing parameters (resize, crop)
+        resize, resize_dims, crop = self.preprocess_params()
+        img, post_rot2, post_tran2 = img_transform(PILImage.fromarray(img),
+                                                   torch.as_tensor(post_rot),
+                                                   torch.as_tensor(post_tran),
+                                                   resize=resize,
+                                                   resize_dims=resize_dims,
+                                                   crop=crop,
+                                                   flip=False,
+                                                   rotate=0)
+        post_tran2 = post_tran2.numpy()
+        post_rot2 = post_rot2.numpy()
+
+        # for convenience, make augmentation matrices 3x3
+        post_tran = np.zeros(3, dtype=np.float32)
+        post_rot = np.eye(3, dtype=np.float32)
+        post_tran[:2] = post_tran2
+        post_rot[:2, :2] = post_rot2
+
+        img = np.asarray(img, dtype=np.float32).transpose((2, 0, 1))
+
+        return img, post_rot, post_tran
+
+    def get_cam_calib(self, msg, i):
+        """Store camera calibration for i-th camera."""
+        assert isinstance(msg, CameraInfo)
+        assert isinstance(i, int)
+
+        time = rospy.Time(0)
+        timeout = rospy.Duration.from_sec(1.0)
+        try:
+            tf = self.tf_buffer.lookup_transform(self.hm_frame, msg.header.frame_id, time, timeout)
+        except tf2_ros.TransformException as ex:
+            rospy.logerr('Could not transform from camera %s to robot %s: %s.',
+                         msg.header.frame_id, self.hm_frame, ex)
+            return
+
+        Tr = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        K = np.array(msg.K, dtype=np.float32).reshape((3, 3))
+        with self.cam_info_lock:
+            rospy.loginfo('Got calibration for camera %i (%s).', i, msg.header.frame_id)
+            rospy.loginfo('K:\n%s', str(K))
+            rospy.loginfo('Tr:\n%s', str(Tr))
+            self.cams_intrins[msg.header.frame_id] = K
+            self.cams_to_hm[msg.header.frame_id] = Tr
+            self.cam_info_subs[i].unregister()
+            rospy.logwarn('Camera %i (%s) unsubscribed.', i, msg.header.frame_id)
+
+    def callback(self, msg1, msg2, msg3, msg4, msg5):
+        # if message is stale do not process it
+        dt = rospy.Time.now() - msg1.header.stamp
+        if dt > rospy.Duration(1.):
+            rospy.logdebug(f'Stale image messages received ({dt.to_sec():.1f} [sec]), skipping')
+            return
+
+        # process image data
+        img_msgs = [msg1, msg2, msg3, msg4]
+        imgs = {}
+        post_rots = {}
+        post_trans = {}
+        for msg in img_msgs:
+            img = self.cv_bridge.compressed_imgmsg_to_cv2(msg)
+            img, post_rot, post_tran = self.preprocess_img(img)
+            imgs[msg.header.frame_id] = img
+            post_rots[msg.header.frame_id] = post_rot
+            post_trans[msg.header.frame_id] = post_tran
+
+        # to ordered dicts
+        imgs = OrderedDict(sorted(imgs.items()))
+        post_rots = OrderedDict(sorted(post_rots.items()))
+        post_trans = OrderedDict(sorted(post_trans.items()))
+        intrins = OrderedDict(sorted(self.cams_intrins.items()))
+        cams_to_hm = OrderedDict(sorted(self.cams_to_hm.items()))
+
+        # to arrays
+        imgs = np.stack(list(imgs.values()))
+        post_rots = np.stack(list(post_rots.values()))
+        post_trans = np.stack(list(post_trans.values()))
+        intrins = np.stack(list(intrins.values()))
+        cams_to_hm = np.stack(list(cams_to_hm.values()))
+        rots, trans = cams_to_hm[:, :3, :3], cams_to_hm[:, :3, 3]
+        rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
+
+        # process point cloud data
+        points_msg = msg5
+        cloud = numpify(points_msg)
+        points = position(cloud)
+        # transform cloud to height map frame
+        time = rospy.Time(0)
+        timeout = rospy.Duration.from_sec(1.0)
+        try:
+            tf = self.tf_buffer.lookup_transform(self.hm_frame, points_msg.header.frame_id, time, timeout)
+        except tf2_ros.TransformException as ex:
+            rospy.logerr('Could not transform from cloud %s to robot %s: %s.',
+                         points_msg.header.frame_id, self.hm_frame, ex)
+            return
+        Tr = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        points = Tr[:3, :3] @ points.T + Tr[:3, 3:4]
+        hm = estimate_heightmap(points.T, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+                                grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                hm_interp_method=self.cfg.hm_interp_method)
+        if hm is None:
+            rospy.logwarn('Could not estimate height map')
+            return
+        height = hm['z']
+        rospy.logdebug('Point cloud shape: %s' % str(points.shape))
+        rospy.logdebug('Estimated height map shape: %s' % str(height.shape))
+
+        inputs = [imgs, rots, trans, intrins, post_rots, post_trans, points, height]
+        inputs = [torch.as_tensor(i[np.newaxis]) for i in inputs]
+
+        self.vis(*inputs, fname='lss_data.png')
+
+
+def main():
+    rospy.init_node('lss', anonymous=True, log_level=rospy.DEBUG)
+
+    cfg = Config()
+    cfg.grid_res = 0.1
+    cfg.device = 'cuda'
+    cfg.d_max = 6.4
+    cfg.d_min = 0.6
+
+    grid_conf = {
+        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'zbound': [-2.0, 2.0, 4.0],
+        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
+    }
+
+    data_aug_conf = {
+        'resize_lim': (0.0, 0.0),
+        'final_dim': (480, 640),
+        'rot_lim': (0., 0.),
+        'H': 480, 'W': 640,
+        'rand_flip': False,
+        'bot_pct_lim': (0.0, 0.0),
+        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
+        'Ncams': 4,
+    }
+
+    img_topics = rospy.get_param('~img_topics')
+    camera_info_topics = rospy.get_param('~camera_info_topics')
+    points_topic = rospy.get_param('~points_topic')
+    hm_frame = rospy.get_param('~hm_frame')
+    try:
+        node = DataProcessor(cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
+                             img_topics=img_topics, camera_info_topics=camera_info_topics,
+                             points_topic=points_topic,
+                             hm_frame=hm_frame)
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass
+
+
+if __name__ == '__main__':
+    main()
