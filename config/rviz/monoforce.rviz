@@ -669,7 +669,7 @@ Visualization Manager:
       Displays:
         - Class: rviz/Image
           Enabled: false
-          Image Topic: /monoforce/height_map/image
+          Image Topic: /height_map/image
           Max Value: 1
           Median window: 5
           Min Value: 0
@@ -696,7 +696,7 @@ Visualization Manager:
           Min Intensity: -1
           Name: GridMap
           Show Grid Lines: true
-          Topic: /monoforce/grid_map
+          Topic: /grid_map
           Unreliable: false
           Use Rainbow: true
           Value: true
@@ -725,7 +725,7 @@ Visualization Manager:
           Size (Pixels): 3
           Size (m): 0.10000000149011612
           Style: Flat Squares
-          Topic: /monoforce/height_map/points
+          Topic: /height_map/points
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
@@ -751,17 +751,17 @@ Visualization Manager:
           Radius: 0.029999999329447746
           Shaft Diameter: 0.10000000149011612
           Shaft Length: 0.10000000149011612
-          Topic: /monoforce/lower_cost_path
+          Topic: /lower_cost_path
           Unreliable: false
           Value: true
         - Class: rviz/MarkerArray
-          Enabled: false
-          Marker Topic: /monoforce/sampled_paths
+          Enabled: true
+          Marker Topic: /sampled_paths
           Name: Sampled Paths
           Namespaces:
-            {}
+            paths: true
           Queue Size: 100
-          Value: false
+          Value: true
       Enabled: true
       Name: MonoForce
   Enabled: true

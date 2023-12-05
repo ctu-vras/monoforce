@@ -9,18 +9,16 @@
                                              '/realsense_left/color/camera_info',
                                              '/realsense_right/color/camera_info',
                                              '/realsense_rear/color/camera_info']"/>
+    <arg name="points_topic" default="/points"/>
     <arg name="hm_frame" default="base_link"/>
-    <arg name="model_weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
-    <arg name="max_imgs_delay" default="0.1"/>
 
     <!-- Lss node -->
-    <node name="lss" pkg="monoforce" type="lss_ros" output="screen">
+    <node name="lss_dataproc" pkg="monoforce" type="lss_dataproc" output="screen">
         <rosparam subst_value="true">
             img_topics: $(arg img_topics)
             camera_info_topics: $(arg camera_info_topics)
+            points_topic: $(arg points_topic)
             hm_frame: $(arg hm_frame)
-            model_weights: $(arg model_weights)
-            max_imgs_delay: $(arg max_imgs_delay)
         </rosparam>
     </node>
 </launch>

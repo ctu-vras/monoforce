@@ -20,8 +20,6 @@ from ros_numpy import numpify
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-# gui backend
-plt.switch_backend('TkAgg')
 
 
 pkg_path = rospkg.RosPack().get_path('monoforce')

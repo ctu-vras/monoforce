@@ -42,7 +42,8 @@ class LSS:
                                      '/camera_right/color/camera_info',
                                      '/camera_rear/color/camera_info'],
                  img_mean=None,
-                 img_std=None):
+                 img_std=None,
+                 max_img_delay=0.1):
         self.cfg = cfg
         self.data_aug_conf = data_aug_conf
         self.grid_conf = grid_conf
@@ -83,7 +84,7 @@ class LSS:
         for img_topic in img_topics:
             rospy.loginfo('Subscribing to %s' % img_topic)
             self.img_subs.append(Subscriber(img_topic, CompressedImage))
-        self.img_sync = ApproximateTimeSynchronizer(self.img_subs, queue_size=1, slop=0.1)
+        self.img_sync = ApproximateTimeSynchronizer(self.img_subs, queue_size=1, slop=max_img_delay)
         self.img_sync.registerCallback(self.imgs_callback)
 
     def load_model(self, modelf):
@@ -256,14 +257,24 @@ def main():
         'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
     }
 
+    # data_aug_conf = {
+    #     'resize_lim': (0.193, 0.225),
+    #     'final_dim': (128, 352),
+    #     'rot_lim': (-5.4, 5.4),
+    #     'H': 1200, 'W': 1920,
+    #     # 'H': 480, 'W': 640,
+    #     'rand_flip': False,
+    #     'bot_pct_lim': (0.0, 0.22),
+    #     'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
+    #     'Ncams': 4,
+    # }
     data_aug_conf = {
-        'resize_lim': (0.193, 0.225),
+        'resize_lim': (0.0, 0.),
         'final_dim': (128, 352),
-        'rot_lim': (-5.4, 5.4),
-        # 'H': 1200, 'W': 1920,
-        'H': 480, 'W': 640,
+        'rot_lim': (0., 0.),
+        'H': 1200, 'W': 1920,
         'rand_flip': False,
-        'bot_pct_lim': (0.0, 0.22),
+        'bot_pct_lim': (0.0, 0.0),
         'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
         'Ncams': 4,
     }
@@ -281,6 +292,7 @@ def main():
                    model_weights=model_weights,
                    img_topics=img_topics, camera_info_topics=camera_info_topics,
                    hm_frame=hm_frame,
+                   max_img_delay=rospy.get_param('~max_img_delay', 0.1)
                    )
         rospy.spin()
     except rospy.ROSInterruptException:
