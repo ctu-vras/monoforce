@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from monoforce.utils import normalize
 
 
 __all__ = [
@@ -63,3 +64,17 @@ def project_cloud_to_image(points, img, K, return_mask=False, debug=False):
         return points[fov_mask], colors, fov_mask
 
     return points[fov_mask], colors
+
+
+def destandardize_img(img_norm, img_mean, img_std):
+    H, W, C = img_norm.shape
+    img_01 = img_norm * img_std.reshape((1, 1, C)) + img_mean.reshape((1, 1, C))
+    img_01 = normalize(img_01)
+    return img_01
+
+
+def standardize_img(img, img_mean, img_std):
+    H, W, C = img.shape
+    img_01 = normalize(img)
+    img_norm = (img_01 - img_mean.reshape((1, 1, C))) / img_std.reshape((1, 1, C))
+    return img_norm

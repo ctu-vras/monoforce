@@ -8,17 +8,15 @@ import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
-from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.imgproc import standardize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.tools import img_transform
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg, to_marker, to_path
+from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.utils import normalize
-from nav_msgs.msg import Path
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, CameraInfo
 import rospkg
 from time import time
 from message_filters import ApproximateTimeSynchronizer, Subscriber
-from visualization_msgs.msg import MarkerArray
 import tf2_ros
 from PIL import Image as PILImage
 from ros_numpy import numpify
@@ -27,6 +25,7 @@ from collections import OrderedDict
 
 pkg_path = rospkg.RosPack().get_path('monoforce')
 torch.set_default_dtype(torch.float32)
+
 
 class LSS:
     def __init__(self, cfg: Config,
@@ -88,7 +87,7 @@ class LSS:
         self.img_sync.registerCallback(self.imgs_callback)
 
     def load_model(self, modelf):
-        rospy.loginfo('Loading model %s' % modelf)
+        rospy.loginfo('Loading LSS model from %s' % modelf)
         model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
         model.load_state_dict(torch.load(modelf))
         model.to(self.cfg.device)
@@ -105,12 +104,6 @@ class LSS:
         crop_w = int(max(0, newW - fW) / 2)
         crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
         return resize, resize_dims, crop
-
-    def standardize_img(self, img):
-        H, W, C = img.shape
-        img_01 = normalize(img)
-        img_norm = (img_01 - self.img_mean.reshape((1, 1, C))) / self.img_std.reshape((1, 1, C))
-        return img_norm
 
     def preprocess_img(self, img):
         post_rot = torch.eye(2)
@@ -131,7 +124,7 @@ class LSS:
         post_tran[:2] = post_tran2
         post_rot[:2, :2] = post_rot2
 
-        img = self.standardize_img(np.asarray(img))
+        img = standardize_img(np.asarray(img), self.img_mean, self.img_std)
         img = torch.as_tensor(img, dtype=torch.float32).permute((2, 0, 1))
 
         return img, post_rot, post_tran
@@ -150,11 +143,13 @@ class LSS:
                          msg.header.frame_id, self.hm_frame, ex)
             return
 
-        Tr = torch.tensor(numpify(tf.transform), dtype=torch.float32)
+        Tr = torch.tensor(numpify(tf.transform), dtype=torch.float32).view(4, 4)
         K = torch.tensor(msg.K, dtype=torch.float32).view(3, 3)
         assert isinstance(Tr, torch.Tensor)
         with self.cam_info_lock:
-            rospy.loginfo('Got calibration for camera %i (%s).', i, msg.header.frame_id)
+            rospy.loginfo('Camera %i (%s) calibration:\n%s', i, msg.header.frame_id, str(K))
+            rospy.loginfo('Camera %i (%s) to robot (%s) transform:\n%s', i, msg.header.frame_id,
+                          self.hm_frame, str(Tr))
             self.cams_intrins[msg.header.frame_id] = K
             self.cams_to_hm[msg.header.frame_id] = Tr
             self.cam_info_subs[i].unregister()
@@ -162,12 +157,12 @@ class LSS:
 
     def imgs_callback(self, msg1, msg2, msg3, msg4):
         with torch.no_grad():
-            # if message is old do not process it
-            if msg1.header.stamp < rospy.Time.now() - rospy.Duration(1.):
-                rospy.logdebug('Old image message received, skipping')
-                return
             t0 = time()
-
+            # if message is stale do not process it
+            dt = rospy.Time.now() - msg1.header.stamp
+            if dt > rospy.Duration(1.):
+                rospy.logdebug(f'Stale image messages received ({dt.to_sec():.1f} [sec]), skipping')
+                return
             msgs = [msg1, msg2, msg3, msg4]
 
             # estimate image statistics if not provided
@@ -208,13 +203,15 @@ class LSS:
             rospy.logdebug('Image preprocessing took %.3f' % (time() - t0))
             rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
 
-            pred = self.model(imgs.unsqueeze(0).to(self.cfg.device),
-                              rots.unsqueeze(0).to(self.cfg.device),
-                              trans.unsqueeze(0).to(self.cfg.device),
-                              intrins.unsqueeze(0).to(self.cfg.device),
-                              post_rots.unsqueeze(0).to(self.cfg.device),
-                              post_trans.unsqueeze(0).to(self.cfg.device),
-                              )
+            inputs = (imgs.unsqueeze(0).to(self.cfg.device),
+                      rots.unsqueeze(0).to(self.cfg.device),
+                      trans.unsqueeze(0).to(self.cfg.device),
+                      intrins.unsqueeze(0).to(self.cfg.device),
+                      post_rots.unsqueeze(0).to(self.cfg.device),
+                      post_trans.unsqueeze(0).to(self.cfg.device),
+                      )
+            pred = self.model(*inputs)
+
             height = pred.squeeze().cpu().numpy()
             rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
             rospy.logdebug('LSS inference time: %.3f' % (time() - t0))
@@ -263,10 +260,11 @@ def main():
         'resize_lim': (0.193, 0.225),
         'final_dim': (128, 352),
         'rot_lim': (-5.4, 5.4),
-        'H': 1200, 'W': 1920,
+        # 'H': 1200, 'W': 1920,
+        'H': 480, 'W': 640,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.22),
-        'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
+        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
         'Ncams': 4,
     }
 

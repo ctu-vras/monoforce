@@ -11,7 +11,7 @@ from ..config import Config
 from ..transformations import transform_cloud
 from ..cloudproc import position, estimate_heightmap, color
 from ..cloudproc import filter_grid, filter_range
-from ..imgproc import undistort_image, project_cloud_to_image
+from ..imgproc import undistort_image, project_cloud_to_image, standardize_img, destandardize_img
 from tqdm import tqdm
 from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
@@ -487,16 +487,12 @@ class MonoDemData(HMTrajData):
         return img
 
     def standardize_img(self, img):
-        H, W, C = img.shape
-        img_01 = normalize(img)
-        img_norm = (img_01 - self.img_mean.reshape((1, 1, C))) / self.img_std.reshape((1, 1, C))
+        img_norm = standardize_img(img, self.img_mean, self.img_std)
         return img_norm
 
     def destandardize_img(self, img_norm):
-        H, W, C = img_norm.shape
-        img_01 = img_norm * self.img_std.reshape((1, 1, C)) + self.img_mean.reshape((1, 1, C))
-        img_01 = normalize(img_01)
-        return img_01
+        img = destandardize_img(img_norm, self.img_mean, self.img_std)
+        return img
 
     def preprocess_img(self, img_raw):
         img = self.resize_crop_img(img_raw)

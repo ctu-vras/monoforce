@@ -8,16 +8,13 @@ import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
-from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.monolayout import load_monodem
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg, to_marker, to_path
+from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.utils import normalize
-from nav_msgs.msg import Path
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 import rospkg
 from time import time
 from scipy.ndimage import rotate
-from visualization_msgs.msg import MarkerArray
 
 
 pkg_path = rospkg.RosPack().get_path('monoforce')

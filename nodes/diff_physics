@@ -1,23 +1,16 @@
 #!/usr/bin/env python
 
-import os
 import torch
 import numpy as np
-import cv2
 import rospy
-from cv_bridge import CvBridge
-from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.models.monolayout import load_monodem
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg, to_marker, to_path
-from monoforce.utils import normalize
+from monoforce.ros import to_marker, to_path
 from nav_msgs.msg import Path
 from ros_numpy import numpify
-from sensor_msgs.msg import Image, CompressedImage, PointCloud2
+from sensor_msgs.msg import PointCloud2
 import rospkg
 from time import time
-from scipy.ndimage import rotate
 from visualization_msgs.msg import MarkerArray
 
 
