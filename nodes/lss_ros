@@ -168,6 +168,18 @@ class LSS:
         # for msg in msgs:
         #     print(msg.header.frame_id)
         # print('---')
+        assert isinstance(img_msg1, CompressedImage)
+        assert isinstance(img_msg2, CompressedImage)
+        assert isinstance(img_msg3, CompressedImage)
+        assert isinstance(img_msg4, CompressedImage)
+        assert isinstance(info_msg1, CameraInfo)
+        assert isinstance(info_msg2, CameraInfo)
+        assert isinstance(info_msg3, CameraInfo)
+        assert isinstance(info_msg4, CameraInfo)
+        assert img_msg1.header.frame_id == info_msg1.header.frame_id
+        assert img_msg2.header.frame_id == info_msg2.header.frame_id
+        assert img_msg3.header.frame_id == info_msg3.header.frame_id
+        assert img_msg4.header.frame_id == info_msg4.header.frame_id
 
         img_msgs = [img_msg1, img_msg2, img_msg3, img_msg4]
         info_msgs = [info_msg1, info_msg2, info_msg3, info_msg4]
@@ -176,7 +188,7 @@ class LSS:
         post_rots = []
         post_trans = []
         intriniscs = []
-        cams_to_hm = []
+        cams_to_robot = []
         for img_msg, info_msg in zip(img_msgs, info_msgs):
             img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
             E, K, D = self.get_cam_calib(info_msg)
@@ -188,15 +200,15 @@ class LSS:
             post_rots.append(post_rot)
             post_trans.append(post_tran)
             intriniscs.append(K)
-            cams_to_hm.append(E)
+            cams_to_robot.append(E)
 
         # to arrays
         imgs = np.stack(imgs)
         post_rots = np.stack(post_rots)
         post_trans = np.stack(post_trans)
         intrins = np.stack(intriniscs)
-        cams_to_hm = np.stack(cams_to_hm)
-        rots, trans = cams_to_hm[:, :3, :3], cams_to_hm[:, :3, 3]
+        cams_to_robot = np.stack(cams_to_robot)
+        rots, trans = cams_to_robot[:, :3, :3], cams_to_robot[:, :3, 3]
         rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
 
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]

@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="config" default="''"/>
-<!--     <arg name="img_topics" default="['/realsense_front/color/image_raw/compressed', -->
-<!--                                      '/realsense_left/color/image_raw/compressed', -->
-<!--                                      '/realsense_right/color/image_raw/compressed', -->
-<!--                                      '/realsense_rear/color/image_raw/compressed']"/> -->
-<!--     <arg name="camera_info_topics" default="['/realsense_front/color/camera_info', -->
-<!--                                              '/realsense_left/color/camera_info', -->
-<!--                                              '/realsense_right/color/camera_info', -->
-<!--                                              '/realsense_rear/color/camera_info']"/> -->
     <arg name="img_topics" default="['/camera_fisheye_front/image_color/compressed',
                                      '/camera_left/image_color/compressed',
                                      '/camera_right/image_color/compressed',

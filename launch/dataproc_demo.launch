@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="rviz" default="true"/>
+    <arg name="rviz" default="false"/>
 <!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/> -->
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
 
@@ -13,7 +13,7 @@
     </include>
 
     <!-- LSS node -->
-    <include file="$(dirname)/lss.launch">
+    <include file="$(dirname)/lss_dataproc.launch">
 <!--         <arg name="img_topics" value="['/camera_fisheye_front/image_color/compressed', -->
 <!--                                        '/camera_left/image_color/compressed', -->
 <!--                                        '/camera_right/image_color/compressed', -->
@@ -33,8 +33,6 @@
                                                '/camera_rear/camera_info']"/>
 
         <arg name="hm_frame" value="base_link"/>
-        <arg name="model_weights" value="$(dirname)/../config/weights/lss/train_lss.pt"/>
-        <arg name="max_imgs_delay" value="1."/>
     </include>
 
     <!-- RVIZ -->
