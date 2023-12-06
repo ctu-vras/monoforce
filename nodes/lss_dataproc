@@ -11,6 +11,8 @@ from monoforce.config import Config
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from monoforce.utils import normalize
+from monoforce.imgproc import undistort_image
+from monoforce.cloudproc import filter_grid
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, CameraInfo
 import rospkg
 from message_filters import ApproximateTimeSynchronizer, Subscriber
@@ -64,19 +66,16 @@ class DataProcessor:
 
         # subscribe to camera intrinsics (ones)
         self.num_cameras = self.data_aug_conf['Ncams']
-        self.cam_info_lock = RLock()
-        self.cams_intrins = {}
-        self.cams_to_hm = {}
-        assert self.num_cameras == len(img_topics)
-        self.cam_info_subs = [rospy.Subscriber(self.camera_info_topics[i], CameraInfo,
-                                               lambda msg, i=i: self.get_cam_calib(msg, i), queue_size=2)
-                              for i in range(self.num_cameras)]
+        self.proc_lock = RLock()
 
         # subscribe to images with approximate time synchronization
         self.subs = []
         for topic in img_topics:
             rospy.loginfo('Subscribing to %s' % topic)
             self.subs.append(Subscriber(topic, CompressedImage))
+        for topic in camera_info_topics:
+            rospy.loginfo('Subscribing to %s' % topic)
+            self.subs.append(Subscriber(topic, CameraInfo))
         self.subs.append(Subscriber(points_topic, PointCloud2))
         self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=0.2)
         self.sync.registerCallback(self.callback)
@@ -104,7 +103,7 @@ class DataProcessor:
                 showimg = normalize(showimg)
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=5, alpha=0.1, cmap='jet')
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, cmap='jet', alpha=0.2)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
@@ -120,7 +119,7 @@ class DataProcessor:
             plt.ylim((-self.cfg.d_max, self.cfg.d_max))
 
             ax = plt.subplot(gs[:, 2:3])
-            plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=5, cmap='Greys')
+            plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], s=5, cmap='Greys', vmin=-0.5, vmax=0.5)
             plt.xlim((-self.cfg.d_max, self.cfg.d_max))
             plt.ylim((-self.cfg.d_max, self.cfg.d_max))
             ax.set_aspect('equal')
@@ -171,10 +170,8 @@ class DataProcessor:
 
         return img, post_rot, post_tran
 
-    def get_cam_calib(self, msg, i):
-        """Store camera calibration for i-th camera."""
+    def get_cam_calib(self, msg):
         assert isinstance(msg, CameraInfo)
-        assert isinstance(i, int)
 
         time = rospy.Time(0)
         timeout = rospy.Duration.from_sec(1.0)
@@ -185,55 +182,61 @@ class DataProcessor:
                          msg.header.frame_id, self.hm_frame, ex)
             return
 
-        Tr = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        E = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
         K = np.array(msg.K, dtype=np.float32).reshape((3, 3))
-        with self.cam_info_lock:
-            rospy.loginfo('Got calibration for camera %i (%s).', i, msg.header.frame_id)
-            rospy.loginfo('K:\n%s', str(K))
-            rospy.loginfo('Tr:\n%s', str(Tr))
-            self.cams_intrins[msg.header.frame_id] = K
-            self.cams_to_hm[msg.header.frame_id] = Tr
-            self.cam_info_subs[i].unregister()
-            rospy.logwarn('Camera %i (%s) unsubscribed.', i, msg.header.frame_id)
+        D = np.array(msg.D, dtype=np.float32)
 
-    def callback(self, msg1, msg2, msg3, msg4, msg5):
+        return E, K, D
+
+    def callback(self, img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4, pts_msg):
         # if message is stale do not process it
-        dt = rospy.Time.now() - msg1.header.stamp
+        dt = rospy.Time.now() - img_msg1.header.stamp
         if dt > rospy.Duration(1.):
             rospy.logdebug(f'Stale image messages received ({dt.to_sec():.1f} [sec]), skipping')
             return
 
-        # process image data
-        img_msgs = [msg1, msg2, msg3, msg4]
-        imgs = {}
-        post_rots = {}
-        post_trans = {}
-        for msg in img_msgs:
-            img = self.cv_bridge.compressed_imgmsg_to_cv2(msg)
-            img, post_rot, post_tran = self.preprocess_img(img)
-            imgs[msg.header.frame_id] = img
-            post_rots[msg.header.frame_id] = post_rot
-            post_trans[msg.header.frame_id] = post_tran
+        with self.proc_lock:
+            self.proc(img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4, pts_msg)
 
-        # to ordered dicts
-        imgs = OrderedDict(sorted(imgs.items()))
-        post_rots = OrderedDict(sorted(post_rots.items()))
-        post_trans = OrderedDict(sorted(post_trans.items()))
-        intrins = OrderedDict(sorted(self.cams_intrins.items()))
-        cams_to_hm = OrderedDict(sorted(self.cams_to_hm.items()))
+    def proc(self, img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4, points_msg):
+        # msgs = [img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4, pts_msg]
+        # for msg in msgs:
+        #     print(msg.header.frame_id)
+
+        img_msgs = [img_msg1, img_msg2, img_msg3, img_msg4]
+        info_msgs = [info_msg1, info_msg2, info_msg3, info_msg4]
+
+        imgs = []
+        post_rots = []
+        post_trans = []
+        intriniscs = []
+        cams_to_hm = []
+        for img_msg, info_msg in zip(img_msgs, info_msgs):
+            img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+            E, K, D = self.get_cam_calib(info_msg)
+            # img, K = undistort_image(img, K, D)
+            img = img[..., (2, 1, 0)]  # BGR -> RGB
+
+            img, post_rot, post_tran = self.preprocess_img(img)
+            imgs.append(img)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+            intriniscs.append(K)
+            cams_to_hm.append(E)
 
         # to arrays
-        imgs = np.stack(list(imgs.values()))
-        post_rots = np.stack(list(post_rots.values()))
-        post_trans = np.stack(list(post_trans.values()))
-        intrins = np.stack(list(intrins.values()))
-        cams_to_hm = np.stack(list(cams_to_hm.values()))
+        imgs = np.stack(imgs)
+        post_rots = np.stack(post_rots)
+        post_trans = np.stack(post_trans)
+        intrins = np.stack(intriniscs)
+        cams_to_hm = np.stack(cams_to_hm)
         rots, trans = cams_to_hm[:, :3, :3], cams_to_hm[:, :3, 3]
         rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
 
         # process point cloud data
-        points_msg = msg5
         cloud = numpify(points_msg)
+        if cloud.ndim > 1:
+            cloud = cloud.reshape(-1)
         points = position(cloud)
         # transform cloud to height map frame
         time = rospy.Time(0)
@@ -274,18 +277,19 @@ def main():
     grid_conf = {
         'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
         'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'zbound': [-2.0, 2.0, 4.0],
+        'zbound': [-10.0, 10.0, 20.0],
         'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
     }
 
     data_aug_conf = {
         'resize_lim': (0.0, 0.0),
-        'final_dim': (480, 640),
+        'final_dim': (128, 352),
         'rot_lim': (0., 0.),
-        'H': 480, 'W': 640,
+        # 'H': 480, 'W': 640,
+        'H': 1200, 'W': 1920,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
-        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
+        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_RIGHT', 'CAM_REAR'],
         'Ncams': 4,
     }
 

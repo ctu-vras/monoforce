@@ -18,7 +18,7 @@
 
     <!-- Cloud filterring -->
     <include file="$(dirname)/cloud_filter.launch">
-        <arg name="input" value="cloud"/>
+        <arg name="input" value="points"/>
         <arg name="output" value="filtered_cloud"/>
         <arg name="min_depth" value="$(arg min_depth)"/>
         <arg name="max_depth" value="$(arg max_depth)"/>

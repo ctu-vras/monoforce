@@ -41,6 +41,8 @@ class HeightMapEstimator:
 
         t0 = time()
         cloud = numpify(msg)
+        if cloud.ndim > 1:
+            cloud = cloud.reshape(-1)
         points = position(cloud)
         hm = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
                                 grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,

@@ -65,7 +65,7 @@ def filter_range(cloud, min, max, log=False, return_mask=False):
 
 def filter_grid(cloud, grid_res, keep='first', log=False, rng=default_rng, return_mask=False):
     """Keep single point within each cell. Order is not preserved."""
-    assert isinstance(cloud, np.ndarray)
+    assert isinstance(cloud, np.ndarray), type(cloud)
     # assert cloud.dtype.names
     assert isinstance(grid_res, (float, int)) and grid_res > 0.0
     assert keep in ('first', 'random', 'last')

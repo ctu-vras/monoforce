@@ -14,8 +14,7 @@
 
     <node name="rosbag_play" pkg="rosbag" type="play"
           args="--clock --delay 3.0 --rate $(arg rate) --start $(arg start) $(arg bag)">
-        <remap from="points" to="cloud"/>
-        <remap from="os_cloud_node/destaggered_points" to="cloud"/>
+        <remap from="os_cloud_node/destaggered_points" to="points"/>
     </node>
 
     <!-- Visualization -->

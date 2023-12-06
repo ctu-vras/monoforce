@@ -7,8 +7,9 @@ import numpy as np
 import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
+from monoforce.cloudproc import position
 from monoforce.config import Config
-from monoforce.imgproc import standardize_img
+from monoforce.imgproc import standardize_img, undistort_image
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.tools import img_transform
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
@@ -70,22 +71,18 @@ class LSS:
         self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
 
         # subscribe to camera intrinsics (ones)
-        self.num_cameras = self.data_aug_conf['Ncams']
-        self.cam_info_lock = RLock()
-        self.cams_intrins = {}
-        self.cams_to_hm = {}
-        assert self.num_cameras == len(img_topics)
-        self.cam_info_subs = [rospy.Subscriber(self.camera_info_topics[i], CameraInfo,
-                                               lambda msg, i=i: self.get_cam_calib(msg, i), queue_size=2)
-                              for i in range(self.num_cameras)]
+        self.proc_lock = RLock()
 
         # subscribe to images with approximate time synchronization
-        self.img_subs = []
-        for img_topic in img_topics:
-            rospy.loginfo('Subscribing to %s' % img_topic)
-            self.img_subs.append(Subscriber(img_topic, CompressedImage))
-        self.img_sync = ApproximateTimeSynchronizer(self.img_subs, queue_size=1, slop=max_img_delay)
-        self.img_sync.registerCallback(self.imgs_callback)
+        self.subs = []
+        for topic in img_topics:
+            rospy.loginfo('Subscribing to %s' % topic)
+            self.subs.append(Subscriber(topic, CompressedImage))
+        for topic in camera_info_topics:
+            rospy.loginfo('Subscribing to %s' % topic)
+            self.subs.append(Subscriber(topic, CameraInfo))
+        self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=0.2)
+        self.sync.registerCallback(self.callback)
 
     def load_model(self, modelf):
         rospy.loginfo('Loading LSS model from %s' % modelf)
@@ -130,10 +127,15 @@ class LSS:
 
         return img, post_rot, post_tran
 
-    def get_cam_calib(self, msg, i):
-        """Store camera calibration for i-th camera."""
+    def get_cam_calib(self, msg):
+        """
+        Get camera calibration parameters from CameraInfo message.
+        :param msg: CameraInfo message
+        :return: E - extrinsics (4x4),
+                 K - intrinsics (3x3),
+                 D - distortion coefficients (5,)
+        """
         assert isinstance(msg, CameraInfo)
-        assert isinstance(i, int)
 
         time = rospy.Time(0)
         timeout = rospy.Duration.from_sec(1.0)
@@ -144,138 +146,120 @@ class LSS:
                          msg.header.frame_id, self.hm_frame, ex)
             return
 
-        Tr = torch.tensor(numpify(tf.transform), dtype=torch.float32).view(4, 4)
-        K = torch.tensor(msg.K, dtype=torch.float32).view(3, 3)
-        assert isinstance(Tr, torch.Tensor)
-        with self.cam_info_lock:
-            rospy.loginfo('Camera %i (%s) calibration:\n%s', i, msg.header.frame_id, str(K))
-            rospy.loginfo('Camera %i (%s) to robot (%s) transform:\n%s', i, msg.header.frame_id,
-                          self.hm_frame, str(Tr))
-            self.cams_intrins[msg.header.frame_id] = K
-            self.cams_to_hm[msg.header.frame_id] = Tr
-            self.cam_info_subs[i].unregister()
-            rospy.logwarn('Camera %i (%s) unsubscribed.', i, msg.header.frame_id)
+        E = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        K = np.array(msg.K, dtype=np.float32).reshape((3, 3))
+        D = np.array(msg.D, dtype=np.float32)
 
-    def imgs_callback(self, msg1, msg2, msg3, msg4):
+        return E, K, D
+
+    def callback(self, img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4):
+        # if message is stale do not process it
+        dt = rospy.Time.now() - img_msg1.header.stamp
+        if dt > rospy.Duration(1.):
+            rospy.logdebug(f'Stale image messages received ({dt.to_sec():.1f} [sec]), skipping')
+            return
+
         with torch.no_grad():
-            t0 = time()
-            # if message is stale do not process it
-            dt = rospy.Time.now() - msg1.header.stamp
-            if dt > rospy.Duration(1.):
-                rospy.logdebug(f'Stale image messages received ({dt.to_sec():.1f} [sec]), skipping')
-                return
-            msgs = [msg1, msg2, msg3, msg4]
+            with self.proc_lock:
+                self.proc(img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4)
 
-            # estimate image statistics if not provided
-            if self.img_mean is None or self.img_std is None:
-                rospy.logwarn('Image mean and std not provided. Estimating from data.')
-                imgs = [self.cv_bridge.compressed_imgmsg_to_cv2(msg) for msg in msgs]
-                imgs = np.stack(imgs)
-                self.img_mean = imgs.mean(axis=(0, 1, 2))
-                self.img_std = imgs.std(axis=(0, 1, 2))
-                rospy.logwarn('Image mean: %s' % str(self.img_mean))
-                rospy.logwarn('Image std: %s' % str(self.img_std))
+    def proc(self, img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4):
+        # msgs = [img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4]
+        # for msg in msgs:
+        #     print(msg.header.frame_id)
+        # print('---')
 
-            imgs = {}
-            post_rots = {}
-            post_trans = {}
-            for msg in msgs:
-                img = self.cv_bridge.compressed_imgmsg_to_cv2(msg)
-                img, post_rot, post_tran = self.preprocess_img(img)
-                imgs[msg.header.frame_id] = img
-                post_rots[msg.header.frame_id] = post_rot
-                post_trans[msg.header.frame_id] = post_tran
+        img_msgs = [img_msg1, img_msg2, img_msg3, img_msg4]
+        info_msgs = [info_msg1, info_msg2, info_msg3, info_msg4]
 
-            # to ordered dicts
-            imgs = OrderedDict(sorted(imgs.items()))
-            post_rots = OrderedDict(sorted(post_rots.items()))
-            post_trans = OrderedDict(sorted(post_trans.items()))
-            intrins = OrderedDict(sorted(self.cams_intrins.items()))
-            cams_to_hm = OrderedDict(sorted(self.cams_to_hm.items()))
+        imgs = []
+        post_rots = []
+        post_trans = []
+        intriniscs = []
+        cams_to_hm = []
+        for img_msg, info_msg in zip(img_msgs, info_msgs):
+            img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+            E, K, D = self.get_cam_calib(info_msg)
+            img, K = undistort_image(img, K, D)
+            img = img[..., (2, 1, 0)]  # BGR -> RGB
 
-            # to tensors
-            imgs = torch.stack(list(imgs.values()))
-            post_rots = torch.stack(list(post_rots.values()))
-            post_trans = torch.stack(list(post_trans.values()))
-            intrins = torch.stack(list(intrins.values()))
-            cams_to_hm = torch.stack(list(cams_to_hm.values()))
-            rots, trans = cams_to_hm[:, :3, :3], cams_to_hm[:, :3, 3]
+            img, post_rot, post_tran = self.preprocess_img(img)
+            imgs.append(img)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+            intriniscs.append(K)
+            cams_to_hm.append(E)
 
-            rospy.logdebug('Image preprocessing took %.3f' % (time() - t0))
-            rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
+        # to arrays
+        imgs = np.stack(imgs)
+        post_rots = np.stack(post_rots)
+        post_trans = np.stack(post_trans)
+        intrins = np.stack(intriniscs)
+        cams_to_hm = np.stack(cams_to_hm)
+        rots, trans = cams_to_hm[:, :3, :3], cams_to_hm[:, :3, 3]
+        rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
 
-            inputs = (imgs.unsqueeze(0).to(self.cfg.device),
-                      rots.unsqueeze(0).to(self.cfg.device),
-                      trans.unsqueeze(0).to(self.cfg.device),
-                      intrins.unsqueeze(0).to(self.cfg.device),
-                      post_rots.unsqueeze(0).to(self.cfg.device),
-                      post_trans.unsqueeze(0).to(self.cfg.device),
-                      )
-            pred = self.model(*inputs)
+        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        inputs = [torch.as_tensor(i[np.newaxis], device=self.cfg.device) for i in inputs]
 
-            height = pred.squeeze().cpu().numpy()
-            rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
-            rospy.logdebug('LSS inference time: %.3f' % (time() - t0))
+        # model inference
+        pred = self.model(*inputs)
 
-            # publish height map as image
-            height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
-            img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
-            img_msg.header.stamp = msg.header.stamp
-            img_msg.header.frame_id = self.hm_frame
-            self.hm_img_pub.publish(img_msg)
+        height = pred.squeeze().cpu().numpy()
+        rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
+        rospy.logdebug('Height min: %.3f, max: %.3f' % (height.min(), height.max()))
 
-            # publish height map as point cloud
-            t1 = time()
-            cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
-                                                      xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
-            cloud_msg.header.stamp = msg.header.stamp
-            cloud_msg.header.frame_id = self.hm_frame
-            self.hm_cloud_pub.publish(cloud_msg)
+        # publish height map as image
+        stamp = rospy.Time.now()
+        height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
+        img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
+        img_msg.header.stamp = stamp
+        img_msg.header.frame_id = self.hm_frame
+        self.hm_img_pub.publish(img_msg)
 
-            # publish height map as grid map
-            grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
-                                                 xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
-            grid_msg.info.header.stamp = msg.header.stamp
-            grid_msg.info.header.frame_id = self.hm_frame
-            self.hm_grid_pub.publish(grid_msg)
-            rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
+        # publish height map as point cloud
+        t1 = time()
+        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
+                                                  xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        cloud_msg.header.stamp = stamp
+        cloud_msg.header.frame_id = self.hm_frame
+        self.hm_cloud_pub.publish(cloud_msg)
+
+        # publish height map as grid map
+        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
+                                             xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        grid_msg.info.header.stamp = stamp
+        grid_msg.info.header.frame_id = self.hm_frame
+        self.hm_grid_pub.publish(grid_msg)
+        rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
 
 
 def main():
     rospy.init_node('lss', anonymous=True, log_level=rospy.DEBUG)
 
     cfg = Config()
-    cfg.grid_res = 0.1
-    cfg.device = 'cuda'
-    cfg.d_max = 6.4
     cfg.d_min = 0.6
+    cfg.d_max = 6.4
+    cfg.grid_res = 0.1
+    cfg.h_above_lidar = 0.3
+    cfg.device = torch.device('cuda:0')
 
     grid_conf = {
         'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
         'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'zbound': [-2.0, 2.0, 4.0],
+        'zbound': [-10.0, 10.0, 20.0],
         'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
     }
 
-    # data_aug_conf = {
-    #     'resize_lim': (0.193, 0.225),
-    #     'final_dim': (128, 352),
-    #     'rot_lim': (-5.4, 5.4),
-    #     'H': 1200, 'W': 1920,
-    #     # 'H': 480, 'W': 640,
-    #     'rand_flip': False,
-    #     'bot_pct_lim': (0.0, 0.22),
-    #     'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
-    #     'Ncams': 4,
-    # }
     data_aug_conf = {
-        'resize_lim': (0.0, 0.),
+        # 'resize_lim': (0.0, 0.0),
         'final_dim': (128, 352),
-        'rot_lim': (0., 0.),
+        'rot_lim': (0.0, 0.0),
         'H': 1200, 'W': 1920,
+        # 'H': 1536, 'W': 2048,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
-        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_REAR', 'CAM_RIGHT'],
+        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_RIGHT', 'CAM_REAR'],
         'Ncams': 4,
     }
 
@@ -287,8 +271,8 @@ def main():
 
     try:
         node = LSS(cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
-                   img_mean=np.array([0.485, 0.456, 0.406]),
-                   img_std=np.array([0.229, 0.224, 0.225]),
+                   img_mean=np.array([0.44175903, 0.44948574, 0.45226233]),
+                   img_std=np.array([0.25382164, 0.26486757, 0.2440394]),
                    model_weights=model_weights,
                    img_topics=img_topics, camera_info_topics=camera_info_topics,
                    hm_frame=hm_frame,

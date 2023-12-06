@@ -14,17 +14,17 @@
 
     <!-- LSS node -->
     <include file="$(dirname)/lss.launch">
-        <arg name="img_topics" value="['/camera_front/image_color/compressed',
+        <arg name="img_topics" value="['/camera_fisheye_front/image_color/compressed',
                                        '/camera_left/image_color/compressed',
                                        '/camera_right/image_color/compressed',
-                                       '/camera_rear/image_color/compressed']"/>
+                                       '/camera_fisheye_rear/image_color/compressed']"/>
         <arg name="camera_info_topics" value="['/camera_front/camera_info',
                                                '/camera_left/camera_info',
                                                '/camera_right/camera_info',
                                                '/camera_rear/camera_info']"/>
         <arg name="hm_frame" value="base_link"/>
-        <arg name="model_weights" value="$(dirname)/../config/weights/lss/lss.pt"/>
-        <arg name="max_imgs_delay" value="0.2"/>
+        <arg name="model_weights" value="$(dirname)/../config/weights/lss/train_lss.pt"/>
+        <arg name="max_imgs_delay" value="1."/>
     </include>
 
     <!-- RVIZ -->

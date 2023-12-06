@@ -1,13 +1,63 @@
 #!/usr/bin/env python
-
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDemData, explore_data
+from monoforce.datasets.data import OmniDemData, OmniDemDataVis, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths
 from monoforce.models.lss.tools import MSELoss
 from tqdm import tqdm
+
+
+def test(data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+    print('loading', modelf)
+    model.load_state_dict(torch.load(modelf))
+    model.to(cfg.device)
+    model.eval()
+
+    val_ds_path = seq_paths[-1]
+    val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+
+    fig = plt.figure(figsize=(10, 5))
+    ax1 = fig.add_subplot(121)
+    ax2 = fig.add_subplot(122, projection='3d')
+    with torch.no_grad():
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, height_gt)\
+                in tqdm(enumerate(valloader), total=len(valloader)):
+            preds = model(imgs.to(cfg.device),
+                          rots.to(cfg.device),
+                          trans.to(cfg.device),
+                          intrins.to(cfg.device),
+                          post_rots.to(cfg.device),
+                          post_trans.to(cfg.device),
+                          )
+            plt.cla()
+            # plot image
+            img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
+            img = val_ds.destandardize_img(img)
+            ax1.imshow(img)
+
+            # plot prediction as surface
+            height = preds[0].squeeze().cpu().numpy()
+            # height = np.random.rand(128, 128)
+            x_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+            y_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+            x_grid, y_grid = np.meshgrid(x_grid, y_grid)
+            ax2.plot_surface(x_grid, y_grid, height, cmap='viridis')
+            # # plot points
+            # points = points[0].cpu().numpy().T
+            # ax2.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', s=1)
+            ax2.set_zlim(-1.0, 1.0)
+            ax2.set_xlabel('x [m]')
+            ax2.set_ylabel('y [m]')
+            ax2.set_zlabel('z [m]')
+            plt.pause(0.01)
+            plt.draw()
+            # plt.show()
 
 
 def eval(data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
@@ -21,7 +71,7 @@ def eval(data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
 
     all_seqs_mean_loss = 0.0
     for val_ds_path in seq_paths:
-        # explore_data(val_ds_path, grid_conf, data_aug_conf, cfg, save=False)
+        # explore_data(val_ds_path, grid_conf, data_aug_conf, cfg, modelf, save=False)
 
         val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
         valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
