@@ -7,7 +7,6 @@ import numpy as np
 import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
-from monoforce.cloudproc import position
 from monoforce.config import Config
 from monoforce.imgproc import standardize_img, undistort_image
 from monoforce.models.lss.model import compile_model
@@ -21,7 +20,6 @@ from message_filters import ApproximateTimeSynchronizer, Subscriber
 import tf2_ros
 from PIL import Image as PILImage
 from ros_numpy import numpify
-from collections import OrderedDict
 
 
 pkg_path = rospkg.RosPack().get_path('monoforce')
@@ -44,7 +42,7 @@ class LSS:
                                      '/camera_rear/color/camera_info'],
                  img_mean=None,
                  img_std=None,
-                 max_img_delay=0.1):
+                 max_imgs_delay=0.1):
         self.cfg = cfg
         self.data_aug_conf = data_aug_conf
         self.grid_conf = grid_conf
@@ -81,7 +79,7 @@ class LSS:
         for topic in camera_info_topics:
             rospy.loginfo('Subscribing to %s' % topic)
             self.subs.append(Subscriber(topic, CameraInfo))
-        self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=0.2)
+        self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=max_imgs_delay)
         self.sync.registerCallback(self.callback)
 
     def load_model(self, modelf):
@@ -288,7 +286,7 @@ def main():
                    model_weights=model_weights,
                    img_topics=img_topics, camera_info_topics=camera_info_topics,
                    hm_frame=hm_frame,
-                   max_img_delay=rospy.get_param('~max_img_delay', 0.1)
+                   max_imgs_delay=rospy.get_param('~max_imgs_delay', 0.1)
                    )
         rospy.spin()
     except rospy.ROSInterruptException:

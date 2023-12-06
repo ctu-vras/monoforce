@@ -43,14 +43,11 @@ def test(data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
 
             # plot prediction as surface
             height = preds[0].squeeze().cpu().numpy()
-            # height = np.random.rand(128, 128)
+            print('Height min/max:', height.min(), height.max())
             x_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
             y_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
             x_grid, y_grid = np.meshgrid(x_grid, y_grid)
             ax2.plot_surface(x_grid, y_grid, height, cmap='viridis')
-            # # plot points
-            # points = points[0].cpu().numpy().T
-            # ax2.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', s=1)
             ax2.set_zlim(-1.0, 1.0)
             ax2.set_xlabel('x [m]')
             ax2.set_ylabel('y [m]')
