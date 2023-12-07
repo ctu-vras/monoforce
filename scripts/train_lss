@@ -100,6 +100,7 @@ def main():
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
                 in tqdm(enumerate(trainloader), total=len(trainloader)):
             optimizer.zero_grad()
+
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
             inputs = [i.to(cfg.device) for i in inputs]
@@ -107,6 +108,7 @@ def main():
 
             heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
             heightmap = heightmap.to(cfg.device)
+
             loss = loss_fn(preds, heightmap)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -132,6 +134,7 @@ def main():
 
                 heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
                 heightmap = heightmap.to(cfg.device)
+
                 loss = loss_fn(preds, heightmap)
                 val_loss += loss.item()
             val_loss /= len(valloader)

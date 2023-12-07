@@ -65,6 +65,10 @@ def demo():
 
     cfg = Config()
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+    cfg.d_max = 12.8
+    cfg.d_min = 1.0
+    cfg.grid_res = 0.1
+    cfg.h_above_lidar = 1.0
 
     camera = 'camera_fisheye_front' if 'marv' in path else 'camera_front'
 

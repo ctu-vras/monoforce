@@ -576,7 +576,7 @@ class MonoDemData(HMTrajData):
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
         dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
         # if height map was estimated before - load it
-        if os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
+        if False and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
             heightmap = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
         # otherwise - estimate it

@@ -55,7 +55,7 @@ Visualization Manager:
     - Alpha: 1
       Class: rviz/RobotModel
       Collision Enabled: false
-      Enabled: true
+      Enabled: false
       Links:
         All Links Enabled: true
         Expand Joint Details: false
@@ -66,7 +66,7 @@ Visualization Manager:
       Robot Description: /marv/robot_description
       TF Prefix: ""
       Update Interval: 0
-      Value: true
+      Value: false
       Visual Enabled: true
     - Alpha: 1
       Class: rviz/RobotModel
@@ -630,6 +630,38 @@ Visualization Manager:
       Show Descriptions: true
       Show Visual Aids: false
       Update Topic: /twist_marker_server/update
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.20000000298023224
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Lower cost Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: Axes
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /lower_cost_path
+      Unreliable: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /sampled_paths
+      Name: Sampled Paths
+      Namespaces:
+        paths: true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
