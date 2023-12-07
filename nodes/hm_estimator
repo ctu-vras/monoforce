@@ -85,8 +85,8 @@ def main():
     cfg = Config()
     cfg.grid_res = 0.1
     cfg.d_max = 6.4
-    cfg.d_min = 1.
-    cfg.h_above_lidar = 0.3
+    cfg.d_min = 0.6
+    cfg.h_above_lidar = 1.0
     cfg.hm_interp_method = 'nearest'
 
     pts_topic = rospy.get_param('~pts_topic')

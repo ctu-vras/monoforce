@@ -34,7 +34,7 @@
 
         <arg name="hm_frame" value="base_link"/>
         <arg name="model_weights" value="$(dirname)/../config/weights/lss/train_lss.pt"/>
-        <arg name="max_imgs_delay" value="1."/>
+        <arg name="max_imgs_delay" value="0.2"/>
     </include>
 
     <!-- RVIZ -->

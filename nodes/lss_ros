@@ -145,6 +145,11 @@ class LSS:
             return
 
         E = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        # T_cor = np.array([[0, 0, 1, 0],
+        #                   [-1, 0, 0, 0],
+        #                   [0, -1, 0, 0],
+        #                   [0, 0, 0, 1]], dtype=np.float32)
+        # E = E @ T_cor
         K = np.array(msg.K, dtype=np.float32).reshape((3, 3))
         D = np.array(msg.D, dtype=np.float32)
 
@@ -153,7 +158,7 @@ class LSS:
     def callback(self, img_msg1, img_msg2, img_msg3, img_msg4, info_msg1, info_msg2, info_msg3, info_msg4):
         # if message is stale do not process it
         dt = rospy.Time.now() - img_msg1.header.stamp
-        if dt > rospy.Duration(1.):
+        if dt > rospy.Duration(0.2):
             rospy.logdebug(f'Stale image messages received ({dt.to_sec():.1f} [sec]), skipping')
             return
 
