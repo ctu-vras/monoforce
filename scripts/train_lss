@@ -12,6 +12,9 @@ from monoforce.models.lss.tools import MSELoss
 from tqdm import tqdm
 
 
+torch.set_default_dtype(torch.float32)
+
+
 def create_datasets(train_paths, val_path, data_aug_conf, grid_conf, cfg, debug=False, vis=False):
     # create dataset for LSS model training
     datasets = []
@@ -97,13 +100,12 @@ def main():
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
                 in tqdm(enumerate(trainloader), total=len(trainloader)):
             optimizer.zero_grad()
-            preds = model(imgs.to(cfg.device),
-                    rots.to(cfg.device),
-                    trans.to(cfg.device),
-                    intrins.to(cfg.device),
-                    post_rots.to(cfg.device),
-                    post_trans.to(cfg.device),
-                    )
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+            inputs = [i.to(cfg.device) for i in inputs]
+            preds = model(*inputs)
+
+            heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
             heightmap = heightmap.to(cfg.device)
             loss = loss_fn(preds, heightmap)
             loss.backward()
@@ -123,13 +125,12 @@ def main():
             val_loss = 0.0
             for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
                     in tqdm(enumerate(valloader), total=len(valloader)):
-                preds = model(imgs.to(cfg.device),
-                              rots.to(cfg.device),
-                              trans.to(cfg.device),
-                              intrins.to(cfg.device),
-                              post_rots.to(cfg.device),
-                              post_trans.to(cfg.device),
-                              )
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+                inputs = [i.to(cfg.device) for i in inputs]
+                preds = model(*inputs)
+
+                heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
                 heightmap = heightmap.to(cfg.device)
                 loss = loss_fn(preds, heightmap)
                 val_loss += loss.item()
