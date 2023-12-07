@@ -127,7 +127,7 @@ def main():
     modelf = '../config/weights/lss/train_lss.pt'
     # modelf = None
 
-    # explore_data(seq_paths[-1], grid_conf, data_aug_conf, cfg, modelf, sample_i=10, save=False)
+    explore_data(seq_paths[-1], grid_conf, data_aug_conf, cfg, modelf, sample_i=10, save=False)
     eval(data_aug_conf, grid_conf, cfg, modelf)
     # test(data_aug_conf, grid_conf, cfg, modelf)
 

@@ -177,7 +177,7 @@ class DataProcessor:
         except tf2_ros.TransformException as ex:
             rospy.logerr('Could not transform from camera %s to robot %s: %s.',
                          msg.header.frame_id, self.hm_frame, ex)
-            return
+            raise ex
 
         E = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
         K = np.array(msg.K, dtype=np.float32).reshape((3, 3))
@@ -270,6 +270,7 @@ def main():
     cfg.device = 'cuda'
     cfg.d_max = 6.4
     cfg.d_min = 0.6
+    cfg.h_max = 1.0
 
     grid_conf = {
         'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],

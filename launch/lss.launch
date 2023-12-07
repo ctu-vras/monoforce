@@ -20,6 +20,7 @@
     <arg name="hm_frame" default="base_link"/>
     <arg name="model_weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
     <arg name="max_imgs_delay" default="0.1"/>
+    <arg name="calib_path" default="$(dirname)/../data"/>
 
     <!-- Lss node -->
     <node name="lss" pkg="monoforce" type="lss_ros" output="screen">
@@ -29,6 +30,8 @@
             hm_frame: $(arg hm_frame)
             model_weights: $(arg model_weights)
             max_imgs_delay: $(arg max_imgs_delay)
+            calib_path: $(arg calib_path)
+            debug: true
         </rosparam>
     </node>
 </launch>
