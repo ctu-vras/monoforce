@@ -370,7 +370,7 @@ class HMTrajData(Dataset):
     def estimate_heightmap(self, points, fill_value=None, return_filtered_points=False):
         # estimate heightmap from point cloud
         height = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                    grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                    grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
                                     hm_interp_method=self.hm_interp_method,
                                     fill_value=fill_value, return_filtered_points=return_filtered_points)
         return height
@@ -850,7 +850,7 @@ class OmniDemData(MonoDemData):
             # print('Estimating and saving height map...')
             xyz_mask = estimate_heightmap(points,
                                           d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                          grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                          grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
                                           hm_interp_method=self.hm_interp_method)
             # save height map as numpy array
             result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
@@ -914,7 +914,7 @@ def heightmap_demo():
     cfg.d_min = 1.
     cfg.d_max = 12.8
     cfg.grid_res = 0.1
-    cfg.h_above_lidar = 2.
+    cfg.h_max = 1.
 
     ds = HMTrajData(path, cfg=cfg)
 
@@ -1193,7 +1193,7 @@ def vis_estimated_height_map():
     cfg.grid_res = 0.1
     cfg.d_max = 12.8
     cfg.d_min = 1.
-    cfg.h_above_lidar = 1.3
+    cfg.h_max = 1.
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 

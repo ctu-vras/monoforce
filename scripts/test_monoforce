@@ -68,7 +68,7 @@ def demo():
     cfg.d_max = 12.8
     cfg.d_min = 1.0
     cfg.grid_res = 0.1
-    cfg.h_above_lidar = 1.0
+    cfg.h_max = 1.0
 
     camera = 'camera_fisheye_front' if 'marv' in path else 'camera_front'
 
@@ -92,7 +92,7 @@ def demo():
         # filter point cloud in height map box range
         mask_x = np.logical_and(cloud['x'] > 0., cloud['x'] < cfg.d_max)
         mask_y = np.logical_and(cloud['y'] > -cfg.d_max / 2., cloud['y'] < cfg.d_max / 2.)
-        mask_z = np.logical_and(cloud['z'] > 0., cloud['z'] < cfg.h_above_lidar)
+        mask_z = np.logical_and(cloud['z'] > 0., cloud['z'] < cfg.h_max)
         mask = np.logical_and(mask_x, mask_y)
         mask = np.logical_and(mask, mask_z)
         cloud_hm = cloud[mask]

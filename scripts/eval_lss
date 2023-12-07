@@ -101,8 +101,8 @@ def main():
     cfg.d_min = 0.6
     cfg.d_max = 6.4
     cfg.grid_res = 0.1
-    cfg.h_above_lidar = 0.3
-    cfg.device = torch.device('cuda:0')
+    cfg.h_max = 1.0
+    cfg.device = torch.device('cuda')
 
     grid_conf = {
         'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],

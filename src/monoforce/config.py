@@ -10,7 +10,7 @@ class Config:
         self.grid_res = 0.1
         self.d_min = 0.6
         self.d_max = 6.4
-        self.h_above_lidar = 0.3
+        self.h_max = 1.0  # above robot frame (base_link)
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9

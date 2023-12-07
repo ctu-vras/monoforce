@@ -247,7 +247,7 @@ class DataProcessor:
         Tr = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
         points = Tr[:3, :3] @ points.T + Tr[:3, 3:4]
         hm = estimate_heightmap(points.T, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
                                 hm_interp_method=self.cfg.hm_interp_method)
         if hm is None:
             rospy.logwarn('Could not estimate height map')

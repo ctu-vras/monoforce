@@ -45,7 +45,7 @@ class HeightMapEstimator:
             cloud = cloud.reshape(-1)
         points = position(cloud)
         hm = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                grid_res=self.cfg.grid_res, h_max=self.cfg.h_above_lidar,
+                                grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
                                 hm_interp_method=self.cfg.hm_interp_method)
         if hm is None:
             rospy.logwarn('Could not estimate height map')
@@ -86,7 +86,7 @@ def main():
     cfg.grid_res = 0.1
     cfg.d_max = 6.4
     cfg.d_min = 0.6
-    cfg.h_above_lidar = 1.0
+    cfg.h_max = 1.0
     cfg.hm_interp_method = 'nearest'
 
     pts_topic = rospy.get_param('~pts_topic')
