@@ -98,7 +98,7 @@ Colored point cloud            |            Front-facing camera            |    
 
 To explore the data, please run:
 ```commandline
-python -m monoforce.datasets.robingas_dataset
+python -m monoforce.datasets.data
 ```
 
 ## Differentiable Physics
