@@ -6,22 +6,24 @@ from torch.utils.data import Dataset
 from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured, merge_arrays
 from matplotlib import cm, pyplot as plt
 from mayavi import mlab
-from monoforce.models.lss.model import compile_model
+from ..models.lss.model import compile_model
 from ..config import Config
 from ..transformations import transform_cloud
 from ..cloudproc import position, estimate_heightmap, color
 from ..cloudproc import filter_grid, filter_range
 from ..imgproc import undistort_image, project_cloud_to_image, standardize_img, destandardize_img
-from tqdm import tqdm
 from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
 from ..utils import normalize
+from .utils import load_cam_calib
 import yaml
 import cv2
 import albumentations as A
 from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
+from tqdm import tqdm
 import matplotlib
+matplotlib.use('QtAgg')
 
 
 __all__ = [
@@ -227,7 +229,7 @@ class HMTrajData(Dataset):
         # assert os.path.exists(self.calib_path)
         self.ids = np.sort([f[:-4] for f in os.listdir(self.cloud_path)])
         self.cfg = cfg
-        self.calib = self.get_calibrations()
+        self.calib = load_cam_calib(calib_path=self.calib_path)
         self.hm_interp_method = self.cfg.hm_interp_method
 
     @staticmethod
@@ -272,24 +274,6 @@ class HMTrajData(Dataset):
         traj['poses'] = np.asarray([T @ pose for pose in traj['poses']])
 
         return traj
-
-    def get_calibrations(self):
-        calib = {}
-        # read camera calibration
-        cams_path = os.path.join(self.calib_path, 'cameras')
-        for file in os.listdir(cams_path):
-            if file.endswith('.yaml'):
-                with open(os.path.join(cams_path, file), 'r') as f:
-                    cam_info = yaml.load(f, Loader=yaml.FullLoader)
-                    calib[file.replace('.yaml', '')] = cam_info
-                f.close()
-        # read cameras-lidar transformations
-        trans_path = os.path.join(self.calib_path, 'transformations.yaml')
-        with open(trans_path, 'r') as f:
-            transforms = yaml.load(f, Loader=yaml.FullLoader)
-        f.close()
-        calib['transformations'] = transforms
-        return calib
 
     def get_raw_cloud(self, i):
         ind = self.ids[i]

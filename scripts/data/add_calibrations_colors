@@ -582,10 +582,17 @@ def debug_colorize_clouds():
 
 
 def main():
-    args = arg_parser().parse_args()
-    print(args)
-
-    process(**vars(args))
+    from monoforce.datasets import seq_paths
+    # args = arg_parser().parse_args()
+    # print(args)
+    #
+    # process(**vars(args))
+    bag_paths = [s.replace('_trav', '.bag') for s in seq_paths]
+    for bag_path in bag_paths:
+        if 'husky' in bag_path:
+            continue
+        # append_transformation(bag_path=bag_path, target_frame='os_sensor', source_frame='base_link', save=False)
+        append_transformation(bag_path=bag_path, source_frame='pylon_camera_fisheye_front', target_frame='camera_fisheye_front', save=False)
 
 
 if __name__ == '__main__':

@@ -1,9 +1,10 @@
 import os
 import numpy as np
+import yaml
+
 from ..config import Config
 from ..transformations import xyz_rpy_to_matrix
 from ..vis import set_axes_equal
-from .data import HMTrajData
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
 from mpl_toolkits.mplot3d import Axes3D
@@ -20,6 +21,7 @@ __all__ = [
 def get_robingas_data(cfg: Config(),
                       path='/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
                       i=None):
+    from monoforce.datasets.data import HMTrajData
     # Load traversability data
     assert os.path.exists(path)
     ds = HMTrajData(path, cfg=cfg)
@@ -124,6 +126,30 @@ def visualize_data(heightmap, traj, img=None, cfg=Config()):
         ax.axis('off')
 
     plt.show()
+
+
+def load_cam_calib(calib_path):
+    calib = {}
+    # read camera calibration
+    cams_path = os.path.join(calib_path, 'cameras')
+    if not os.path.exists(cams_path):
+        print('No cameras calibration found in path {}'.format(cams_path))
+        return None
+
+    for file in os.listdir(cams_path):
+        if file.endswith('.yaml'):
+            with open(os.path.join(cams_path, file), 'r') as f:
+                cam_info = yaml.load(f, Loader=yaml.FullLoader)
+                calib[file.replace('.yaml', '')] = cam_info
+            f.close()
+    # read cameras-lidar transformations
+    trans_path = os.path.join(calib_path, 'transformations.yaml')
+    with open(trans_path, 'r') as f:
+        transforms = yaml.load(f, Loader=yaml.FullLoader)
+    f.close()
+    calib['transformations'] = transforms
+
+    return calib
 
 
 if __name__ == '__main__':
