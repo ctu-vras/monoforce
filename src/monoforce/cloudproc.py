@@ -203,15 +203,17 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
             else:
                 # print('Point is lower than the current heightmap value, skipping...')
                 pass
+        mask = np.asarray(z_grid != fill_value, dtype=float)
     else:
         x, y, z = points[:, 0], points[:, 1], points[:, 2]
         z_grid = griddata((x, y), z, (xi[None, :], yi[:, None]),
                           method=hm_interp_method, fill_value=fill_value)
+        mask = np.full(z_grid.shape, None)
 
     heightmap = {'x': np.asarray(x_grid, dtype=float),
                  'y': np.asarray(y_grid, dtype=float),
                  'z': np.asarray(z_grid, dtype=float),
-                 'mask': z_grid != fill_value}
+                 'mask': mask}
 
     if return_filtered_points:
         return heightmap, points

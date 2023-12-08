@@ -39,8 +39,8 @@ vis_dir = os.path.realpath(os.path.join(data_dir, 'robingas', 'visuals'))
 
 seq_paths = [
         os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
-        os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
         os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/'),
+        os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
 ]
@@ -815,8 +815,11 @@ class OmniDemData(MonoDemData):
             post_rots.append(post_rot)
             post_trans.append(post_tran)
 
-        return (torch.stack(imgs), torch.stack(rots), torch.stack(trans),
-                torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans))
+        outputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
+                   torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+        outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
+
+        return outputs
 
     def get_height_map_data(self, i):
         cloud = self.get_cloud(i)
@@ -838,14 +841,14 @@ class OmniDemData(MonoDemData):
                                           hm_interp_method=self.hm_interp_method)
             # save height map as numpy array
             result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
-                              dtype=[(key, np.float64) for key in xyz_mask.keys()])
+                              dtype=[(key, np.float32) for key in xyz_mask.keys()])
             for key in xyz_mask.keys():
                 result[key] = xyz_mask[key]
             os.makedirs(dir_path, exist_ok=True)
             np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
 
-        # heightmap = torch.stack([torch.as_tensor(x) for x in xyz_mask.values()])
-        heightmap = torch.as_tensor(xyz_mask['z'])[None]
+        heightmap = torch.stack([torch.as_tensor(xyz_mask[i], dtype=torch.float32) for i in ['z', 'mask']])
+        # heightmap = torch.as_tensor(xyz_mask['z'])[None]
 
         return heightmap
 
