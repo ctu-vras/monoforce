@@ -302,7 +302,8 @@ class LSSVis(LSS):
                  img_mean=None,
                  img_std=None,
                  calib_path='',
-                 max_msgs_delay=0.1
+                 max_msgs_delay=0.1,
+                 max_stale_msg_delay=0.2,
                  ):
         super(LSSVis, self).__init__(
             cfg=cfg,
@@ -316,6 +317,7 @@ class LSSVis(LSS):
             img_std=img_std,
             calib_path=calib_path,
             max_msgs_delay=max_msgs_delay,
+            max_stale_msg_delay=max_stale_msg_delay,
         )
         self.points_topic = points_topic
 
@@ -476,6 +478,7 @@ def main():
         'rot_lim': (0.0, 0.0),
         'H': 1200, 'W': 1920,
         # 'H': 1536, 'W': 2048,
+        # 'H': 480, 'W': 640,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
         'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_RIGHT', 'CAM_REAR'],

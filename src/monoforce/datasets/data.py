@@ -1325,7 +1325,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None
         ax.set_aspect('equal')
 
         ax = plt.subplot(gs[:, 3:4])
-        plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+        plt.imshow(bev_map[si][0], origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
         plt.colorbar()
 
         if save:
