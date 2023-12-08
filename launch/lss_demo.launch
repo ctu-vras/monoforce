@@ -2,6 +2,7 @@
 <launch>
     <arg name="rviz" default="true"/>
     <arg name="diffphys" default="false" doc="Whether to run the diff physics node or not"/>
+    <arg name="lss_debug" default="false"/>
 
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
@@ -40,7 +41,9 @@
         <arg name="calib_path" value="$(arg calib_path)"/>
         <arg name="hm_frame" value="base_link"/>
         <arg name="model_weights" value="$(dirname)/../config/weights/lss/train_lss.pt"/>
-        <arg name="max_imgs_delay" value="0.2"/>
+        <arg name="max_msgs_delay" value="0.5"/>
+        <arg name="max_stale_msg_delay" value="0.5"/>
+        <arg name="debug" value="$(arg lss_debug)"/>
     </include>
 
     <!-- Diff Physics node -->

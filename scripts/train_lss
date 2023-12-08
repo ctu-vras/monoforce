@@ -48,7 +48,7 @@ def main():
     cfg.d_min = 0.6
     cfg.d_max = 6.4
     cfg.grid_res = 0.1
-    cfg.h_above_lidar = 1.0
+    cfg.h_max = 1.0
     cfg.device = torch.device('cuda:0')
     cfg.lr = 1e-3
     cfg.weight_decay = 1e-7

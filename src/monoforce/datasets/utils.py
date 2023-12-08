@@ -133,7 +133,7 @@ def load_cam_calib(calib_path):
     # read camera calibration
     cams_path = os.path.join(calib_path, 'cameras')
     if not os.path.exists(cams_path):
-        print('No cameras found in {}'.format(cams_path))
+        print('No cameras calibration found in path {}'.format(cams_path))
         return None
 
     for file in os.listdir(cams_path):
