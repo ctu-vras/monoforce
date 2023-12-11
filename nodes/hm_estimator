@@ -34,9 +34,12 @@ class HeightMapEstimator:
         self.pts_sub = rospy.Subscriber(pts_topic, PointCloud2, self.pts_callback)
 
     def pts_callback(self, msg):
-        # if message is old do not process it
-        if msg.header.stamp < rospy.Time.now() - rospy.Duration(1.):
-            rospy.logwarn('Old image message received, skipping')
+        # if message is stale do not process it
+        dt = rospy.Time.now() - msg.header.stamp
+        max_stale_msg_delay = 0.5
+        if dt > rospy.Duration(max_stale_msg_delay):
+            rospy.logdebug(
+                f'Stale image messages received ({dt.to_sec():.3f} > {max_stale_msg_delay} [sec]), skipping')
             return
 
         t0 = time()

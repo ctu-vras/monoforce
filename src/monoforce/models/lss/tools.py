@@ -236,29 +236,6 @@ class SimpleLoss(torch.nn.Module):
         loss = self.loss_fn(ypred, ytgt)
         return loss
 
-
-class MSELoss(torch.nn.Module):
-    def __init__(self):
-        super(MSELoss, self).__init__()
-        self.loss_fn = torch.nn.MSELoss()
-
-    def forward(self, ypred, ytgt):
-        loss = self.loss_fn(ypred, ytgt)
-        return loss
-
-
-class WeightedMSELoss(torch.nn.Module):
-    def __init__(self):
-        super(WeightedMSELoss, self).__init__()
-        self.loss_fn = torch.nn.MSELoss(reduction='none')
-
-    def forward(self, ypred, ytgt, weights=None):
-        loss = self.loss_fn(ypred, ytgt)
-        if weights is not None:
-            loss = loss * weights
-        return loss.mean()
-
-
 def get_batch_iou(preds, binimgs):
     """Assumes preds has NOT been sigmoided yet
     """

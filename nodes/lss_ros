@@ -97,12 +97,15 @@ class LSS:
         rospy.loginfo('Loading LSS model from %s' % modelf)
         model.load_state_dict(torch.load(modelf))
         model.to(self.cfg.device)
-        model.eval()
+        # model.eval()
         # model.train()
         return model
 
-    def preprocess_params(self):
+    def preprocess_params(self, img=None):
+        if img is not None:
+            self.data_aug_conf['H'], self.data_aug_conf['W'] = img.shape[:2]
         H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        rospy.logdebug('Input image shape: %s' % str((H, W)))
         fH, fW = self.data_aug_conf['final_dim']
         resize = max(fH/H, fW/W)
         resize_dims = (int(W*resize), int(H*resize))
@@ -117,7 +120,7 @@ class LSS:
         post_tran = torch.zeros(2)
 
         # preprocessing parameters (resize, crop)
-        resize, resize_dims, crop = self.preprocess_params()
+        resize, resize_dims, crop = self.preprocess_params(img)
         img, post_rot2, post_tran2 = img_transform(PILImage.fromarray(img), post_rot, post_tran,
                                                    resize=resize,
                                                    resize_dims=resize_dims,
@@ -477,8 +480,6 @@ def main():
         'final_dim': (128, 352),
         'rot_lim': (0.0, 0.0),
         'H': 1200, 'W': 1920,
-        # 'H': 1536, 'W': 2048,
-        # 'H': 480, 'W': 640,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
         'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_RIGHT', 'CAM_REAR'],

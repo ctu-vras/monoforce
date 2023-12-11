@@ -178,8 +178,8 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     if robot_mask.sum() > 0:
         if fill_value is None:
             fill_value = points[robot_mask, 2].min()
-        # points = points[~robot_mask]
-        points[robot_mask, 2] = fill_value
+        points = points[~robot_mask]
+        # points[robot_mask, 2] = fill_value
 
     # create a grid
     n = int(2 * d_max / grid_res)

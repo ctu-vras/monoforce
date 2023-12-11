@@ -1291,7 +1291,6 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None
                             post_rots,
                             post_trans,
                             )
-
     img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
     for si in range(imgs.shape[0]):

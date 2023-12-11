@@ -8,7 +8,7 @@
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_stale_msg_delay" default="0.2"/>
     <arg name="calib_path" default="''"/>
-    <arg name="debug" default="true"/>
+    <arg name="debug" default="false"/>
 
     <!-- Lss node -->
     <node name="lss" pkg="monoforce" type="lss_ros" output="screen">

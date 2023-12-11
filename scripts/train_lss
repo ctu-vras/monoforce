@@ -8,9 +8,9 @@ from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDemData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths
-from monoforce.models.lss.tools import MSELoss, WeightedMSELoss
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 
 
 torch.set_default_dtype(torch.float32)
@@ -45,6 +45,44 @@ def create_datasets(train_paths, val_path, data_aug_conf, grid_conf, cfg, debug=
     return train_ds, val_ds
 
 
+def epoch(model, loss_fn, loader, device, writer, counter, optimizer=None, train=True):
+    if train:
+        assert optimizer is not None
+        model.train()
+
+    epoch_loss = 0.0
+    max_grad_norm = 5.0
+    for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) \
+            in tqdm(enumerate(loader), total=len(loader)):
+        if train:
+            optimizer.zero_grad()
+
+        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+        inputs = [i.to(device) for i in inputs]
+        preds = model(*inputs)
+
+        heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
+        heightmap = heightmap.to(device)
+        B, D, H, W = heightmap.shape
+        height, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
+
+        loss = loss_fn(preds[weights.bool()], height[weights.bool()])
+
+        if train:
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            optimizer.step()
+        epoch_loss += loss.item()
+
+        counter += 1
+        writer.add_scalar('train/loss', loss, counter)
+
+    epoch_loss /= len(loader)
+
+    return epoch_loss, counter
+
+
 def main():
     cfg = Config()
     cfg.d_min = 0.6
@@ -56,7 +94,6 @@ def main():
     cfg.weight_decay = 1e-7
     cfg.hm_interp_method = None
 
-    max_grad_norm = 5.0
     bsz = 4
     nworkers = 10
     nepochs = 100
@@ -86,52 +123,30 @@ def main():
 
     train_ds, val_ds = create_datasets(train_ds_paths, val_ds_path,
                                        data_aug_conf=data_aug_conf, grid_conf=grid_conf, cfg=cfg,
-                                       vis=False, debug=False)
+                                       vis=False, debug=True)
     trainloader = torch.utils.data.DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
     valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     model.to(cfg.device)
+    model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    loss_fn = WeightedMSELoss()
+    loss_fn = torch.nn.MSELoss()
 
-    writer = SummaryWriter(log_dir='../config/tb_runs/lss/')
+    writer = SummaryWriter(log_dir=f'../config/tb_runs/lss_{datetime.now()}/')
 
     min_loss = np.inf
     min_train_loss = np.inf
     train_counter = 0
     val_counter = 0
-    for epoch in range(nepochs):
+    for e in range(nepochs):
         # training epoch
-        model.train()
-        train_loss = 0.0
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
-                in tqdm(enumerate(trainloader), total=len(trainloader)):
-            optimizer.zero_grad()
-
-            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-            inputs = [i.to(cfg.device) for i in inputs]
-            preds = model(*inputs)
-
-            heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
-            heightmap = heightmap.to(cfg.device)
-            B, D, H, W = heightmap.shape
-            height, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
-
-            loss = loss_fn(preds, height, weights)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            optimizer.step()
-            train_loss += loss.item()
-
-            train_counter += 1
-            writer.add_scalar('train/loss', loss, train_counter)
-
+        train_loss, train_counter = epoch(model, loss_fn, trainloader,
+                                          cfg.device, writer, train_counter, optimizer, train=True)
         train_loss /= len(trainloader)
-        print('Epoch:', epoch, 'Train loss:', train_loss)
-        writer.add_scalar('train/epoch_loss', train_loss, epoch)
+        print('Epoch:', e, 'Train loss:', train_loss)
+        writer.add_scalar('train/epoch_loss', train_loss, e)
         if train_loss < min_train_loss:
             min_train_loss = train_loss
             print('Saving train model...')
@@ -139,29 +154,11 @@ def main():
 
         # validation epoch
         with torch.no_grad():
-            val_loss = 0.0
-            for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
-                    in tqdm(enumerate(valloader), total=len(valloader)):
-                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                inputs = [i.to(cfg.device) for i in inputs]
-                preds = model(*inputs)
-
-                heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
-                heightmap = heightmap.to(cfg.device)
-                B, D, H, W = heightmap.shape
-                height, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
-
-                loss = loss_fn(preds, height, weights)
-                val_loss += loss.item()
-
-                val_counter += 1
-                writer.add_scalar('val/loss', loss, val_counter)
-
+            val_loss, val_counter = epoch(model, loss_fn, valloader,
+                                          cfg.device, writer, val_counter, train=False)
             val_loss /= len(valloader)
-            print('Epoch:', epoch, 'Validation loss:', val_loss)
-            writer.add_scalar('val/epoch_loss', val_loss, epoch)
-
+            print('Epoch:', e, 'Validation loss:', val_loss)
+            writer.add_scalar('val/epoch_loss', val_loss, e)
             if val_loss < min_loss:
                 min_loss = val_loss
                 model.eval()
