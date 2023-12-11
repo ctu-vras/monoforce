@@ -14,7 +14,7 @@ class Config:
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9
-        self.hm_interp_method = 'nearest'
+        self.hm_interp_method = None
 
         # robot parameters
         self.vel_tracks = [0., 0.]
