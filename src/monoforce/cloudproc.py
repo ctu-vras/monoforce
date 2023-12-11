@@ -198,7 +198,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
             idx_x = np.argmin(np.abs(x_grid[0, :] - x))
             idx_y = np.argmin(np.abs(y_grid[:, 0] - y))
             # update heightmap
-            if z > z_grid[idx_y, idx_x] or z_grid[idx_y, idx_x] == fill_value:
+            if z_grid[idx_y, idx_x] == fill_value or z > z_grid[idx_y, idx_x]:
                 z_grid[idx_y, idx_x] = z
             else:
                 # print('Point is lower than the current heightmap value, skipping...')

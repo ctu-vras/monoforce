@@ -277,7 +277,9 @@ class HMTrajData(Dataset):
 
     def get_raw_cloud(self, i):
         ind = self.ids[i]
-        cloud = np.load(os.path.join(self.cloud_path, '%s.npz' % ind))['cloud']
+        cloud_path = os.path.join(self.cloud_path, '%s.npz' % ind)
+        assert os.path.exists(cloud_path), f'Cloud path {cloud_path} does not exist'
+        cloud = np.load(cloud_path)['cloud']
         if cloud.ndim == 2:
             cloud = cloud.reshape((-1,))
         return cloud
@@ -302,8 +304,10 @@ class HMTrajData(Dataset):
             prefix = 'camera_fisheye_' if 'marv' in self.path and camera in ['front', 'rear'] else 'camera_'
             camera = prefix + camera
         ind = self.ids[i]
-        image = cv2.imread(os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera)))
+        img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
+        image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # image = image[..., ::-1]
         return image
 
     def get_optimized_terrain(self, i):
@@ -410,6 +414,15 @@ class MonoDemData(HMTrajData):
         self.img_size = cfg.img_size
         self.random_camera_selection_prob = random_camera_selection_prob
 
+        if cameras is None:
+            cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
+            cams = [cam.replace('.yaml', '') for cam in cams_yaml]
+            if 'camera_up' in cams:
+                cams.remove('camera_up')
+            self.cameras = sorted(cams)
+        else:
+            self.cameras = cameras
+
         img_statistics_path = os.path.join(self.path, 'calibration', 'img_statistics.yaml')
         if not os.path.exists(img_statistics_path):
             self.img_mean, self.img_std = self.calculate_img_statistics()
@@ -424,11 +437,6 @@ class MonoDemData(HMTrajData):
                 img_std = img_statistics['std']
             self.img_mean = np.asarray(img_mean)
             self.img_std = np.asarray(img_std)
-
-        self.cameras = ['camera_fisheye_front' if 'marv' in self.path else 'camera_front',
-                        'camera_fisheye_rear' if 'marv' in self.path else 'camera_rear',
-                        'camera_right',
-                        'camera_left'] if cameras is None else cameras
 
         self.img_augs = A.Compose([
             A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
@@ -489,7 +497,7 @@ class MonoDemData(HMTrajData):
         means, stds = [], []
         print('Calculating images mean and std from the entire dataset...')
         for i in tqdm(range(len(self))):
-            img = self.get_image(i)
+            img = self.get_image(i, camera=self.cameras[0])
             img_01 = normalize(img)
 
             mean = img_01.reshape([-1, 3]).mean(axis=0)

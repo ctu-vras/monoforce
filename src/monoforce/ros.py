@@ -1,17 +1,22 @@
+from __future__ import division, absolute_import, print_function
+import os
 import torch
 import numpy as np
+import yaml
 from scipy.ndimage import rotate
 from tqdm import tqdm
+from cv_bridge import CvBridge
 from jsk_recognition_msgs.msg import BoundingBox
+from monoforce.utils import slots, timing
 from nav_msgs.msg import Path
 from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray, TransformStamped
 from tf.transformations import quaternion_from_matrix, euler_from_quaternion, quaternion_matrix
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from grid_map_msgs.msg import GridMap
-from sensor_msgs.msg import PointCloud2
-from ros_numpy import msgify
+from sensor_msgs.msg import PointCloud2, CompressedImage
+from ros_numpy import msgify, numpify
 from numpy.lib.recfunctions import unstructured_to_structured
-from tf2_ros import BufferCore
+from tf2_ros import BufferCore, TransformException
 from rosbag import Bag, ROSBagException
 import rospy
 from visualization_msgs.msg import Marker
@@ -195,3 +200,192 @@ def to_marker(poses, color=None):
         p = poses[t]
         marker.points.append(msgify(Pose, p).position)
     return marker
+
+
+def img_msg_to_cv2(msg, cv_bridge=CvBridge()):
+    img_msg = CompressedImage(*slots(msg))
+    # convert compressed image message to numpy array
+    img_raw = cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+    return img_raw
+
+
+def get_topic_types(bag):
+    return {k: v.msg_type for k, v in bag.get_type_and_topic_info().topics.items()}
+
+
+@timing
+def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5):
+    stamps_in_window = []
+    msgs = []
+    for topic, msg, stamp in bag.read_messages(topics=[topic],
+                                               start_time=rospy.Time.from_seconds(time - time_window / 2.),
+                                               end_time=rospy.Time.from_seconds(time + time_window / 2.)):
+        # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), topic, stamp.to_sec()))
+        # break
+        stamps_in_window.append(stamp.to_sec())
+        msgs.append(msg)
+
+    if len(stamps_in_window) == 0:
+        # raise Exception('No image messages in window')
+        print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time, topic))
+        return None
+
+    time_diffs = np.abs(np.array(stamps_in_window) - time)
+    msg = msgs[np.argmin(time_diffs)]
+
+    time_diff = np.min(time_diffs)
+    # print('Got the closest message with time difference: %.3f [sec]' % time_diff)
+    assert time_diff < max_time_diff, 'Time difference is too large: %.3f [sec]' % time_diff
+
+    return msg
+
+
+def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=True, output_path=None):
+    dir = os.path.dirname(bag_path)
+    if output_path is None:
+        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, 'w') as f:
+        try:
+            with Bag(bag_path, 'r') as bag:
+                for cam_topic in camera_topics:
+                    img_msg = None
+                    cloud_msg = None
+                    for topic, msg, stamp in bag.read_messages(topics=[cam_topic] + [lidar_topic]):
+                        if topic == lidar_topic:
+                            cloud_msg = msg
+                            # print('Got cloud msg at %.3f s' % cloud_msg.header.stamp.to_sec())
+                        if topic == cam_topic:
+                            img_msg = msg
+                            # print('Got image msg at %.3f s' % img_msg.header.stamp.to_sec())
+
+                        if img_msg is None:
+                            # print('No image msg read from %s' % bag_path)
+                            continue
+
+                        if cloud_msg is None:
+                            # print('No lidar msg read from %s' % bag_path)
+                            continue
+
+                        print('Got both image and lidar msgs at %.3f s and %.3f' %
+                              (img_msg.header.stamp.to_sec(), cloud_msg.header.stamp.to_sec()))
+
+                        # find transformation between camera and lidar
+                        try:
+                            lidar_to_camera = tf_buffer.lookup_transform_core(img_msg.header.frame_id,
+                                                                              cloud_msg.header.frame_id,
+                                                                              cloud_msg.header.stamp)
+                        except TransformException as ex:
+                            print('Could not transform from %s to %s at %.3f s.' %
+                                  (cloud_msg.header.frame_id, img_msg.header.frame_id, cloud_msg.header.stamp.to_sec()))
+                            continue
+                        print('Got transformation from %s to %s at %.3f s' % (cloud_msg.header.frame_id,
+                                                                              img_msg.header.frame_id,
+                                                                              cloud_msg.header.stamp.to_sec()))
+                        Tr = numpify(lidar_to_camera.transform)
+                        print('Tr:\n', Tr)
+
+                        # save transformation to output_path_patern yaml file
+                        if save:
+                            camera = cam_topic.split('/')[1]
+                            print('Saving to %s' % output_path)
+
+                            # lidar = cloud_msg.header.frame_id
+                            lidar = 'os_sensor'
+                            f.write('T_{lidar}__{camera}:\n'.format(lidar=lidar, camera=camera))
+                            f.write('  rows: 4\n')
+                            f.write('  cols: 4\n')
+                            f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
+                        break
+        except ROSBagException as ex:
+            print('Could not read %s: %s' % (bag_path, ex))
+
+        f.close()
+
+
+def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
+    """
+    Read camera intrinsics and distortion coefficients from bag file
+    """
+    if output_path is None:
+        dir = os.path.dirname(bag_path)
+        output_path_pattern = '{dir}/{name}_trav/calibration/cameras/'
+        output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
+
+    Ks = []
+    Ds = []
+    try:
+        with Bag(bag_path, 'r') as bag:
+            for caminfo_topic in camera_info_topics:
+                for topic, msg, stamp in bag.read_messages(topics=[caminfo_topic]):
+                    K = np.asarray(msg.K).reshape(3, 3)
+                    D = np.asarray(msg.D)
+                    print('Read the camera params from "%s" for intrinsics topic "%s"' % (bag_path, topic))
+                    print('K:\n', K)
+                    print('D:\n', D)
+                    Ks.append(K)
+                    Ds.append(D)
+
+                    # save intinsics and distortion coeffs to output_path yaml file
+                    if save:
+                        camera = topic.split('/')[1]
+                        output_path_cam = os.path.join(output_path, '%s.yaml' % camera)
+                        os.makedirs(os.path.dirname(output_path_cam), exist_ok=True)
+                        print('Saving to %s' % output_path_cam)
+                        with open(output_path_cam, 'w') as f:
+                            f.write('image_width: %d\n' % msg.width)
+                            f.write('image_height: %d\n' % msg.height)
+                            f.write('camera_name: %s\n' % camera)
+                            f.write('camera_matrix:\n')
+                            f.write('  rows: 3\n')
+                            f.write('  cols: 3\n')
+                            f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in K.reshape(-1)]))
+                            f.write('distortion_model: %s\n' % msg.distortion_model)
+                            f.write('distortion_coefficients:\n')
+                            f.write('  rows: 1\n')
+                            f.write('  cols: %d\n' % len(D))
+                            f.write('  data: [%s]\n' % ', '.join(['%.12f' % x for x in D]))
+                        f.close()
+                    break
+    except ROSBagException as ex:
+        print('Could not read %s: %s' % (bag_path, ex))
+    return Ks, Ds
+
+
+def append_transformation(bag_path, source_frame='base_link', target_frame='base_footprint', save=True, tf_buffer=None,
+                          matrix_name=None):
+    """
+    Append transformation from source_frame to target_frame to the yaml file
+    """
+    if tf_buffer is None:
+        tf_buffer = load_tf_buffer([bag_path], tf_topics=['/tf_static'])
+    try:
+        transform = tf_buffer.lookup_transform_core(source_frame, target_frame, rospy.Time())
+        Tr = numpify(transform.transform)
+    except TransformException as ex:
+        print('Could not find transformation from %s to %s.' % (source_frame, target_frame))
+        return
+    print('Transformation from %s to %s:' % (source_frame, target_frame))
+    print(Tr)
+
+    if save:
+        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        output_path = output_path_pattern.format(dir=os.path.dirname(bag_path),
+                                                 name=os.path.basename(bag_path).replace('.bag', ''))
+
+        if matrix_name is None:
+            matrix_name = f'T_{source_frame}__{target_frame}'
+        new_yaml_data_dict = {matrix_name:
+                                  {'rows': 4,
+                                   'cols': 4,
+                                   'data': ['%.3f' % x for x in Tr.reshape(-1)]}}
+
+        with open(output_path, 'r') as yamlfile:
+            print('Updating yaml file: %s' % output_path)
+            cur_yaml = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            cur_yaml.update(new_yaml_data_dict)
+
+        with open(output_path, 'w') as yamlfile:
+            yaml.safe_dump(cur_yaml, yamlfile)  # Also note the safe_dump

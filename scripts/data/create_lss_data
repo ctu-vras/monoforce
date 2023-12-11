@@ -1,0 +1,169 @@
+#!/usr/bin/env python
+"""
+"""
+from __future__ import absolute_import, division, print_function
+import numpy as np
+import os
+import cv2
+from monoforce.datasets.utils import load_cam_calib
+from monoforce.utils import slots
+from ros_numpy import msgify, numpify
+from rosbag import Bag, Compression
+from sensor_msgs.msg import PointCloud2
+from cv_bridge import CvBridge
+from monoforce.ros import load_tf_buffer, img_msg_to_cv2, get_closest_msg, get_cams_lidar_transformations, \
+    get_camera_infos, append_transformation
+from tqdm import tqdm
+from argparse import ArgumentParser
+
+
+def arg_parser():
+    parser = ArgumentParser(epilog="""Path format uses following placeholders:
+    {dir} - parent directory of the first bag file,
+    {name} - name without extension of the first bag file,
+    {topic} - name of the topic as read from bag file,
+    {secs}, {nsecs} - timestamp from the header (if available).
+    """)
+    parser.add_argument('--lidar-topic', type=str, default='/points')
+    parser.add_argument('--camera-topics', type=str, nargs='+')
+    parser.add_argument('--camera-info-topics', type=str, nargs='+')
+    parser.add_argument('--save-data', type=str2bool, default=True)
+    parser.add_argument('--bag-path', type=str)
+    return parser
+
+
+def str2bool(v):
+    return v.lower() in ('1', 'yes', 'true', 't', 'y')
+
+
+def str2time(s):
+    sec, nsec = s.split('_')
+    assert len(sec) == 10, 'sec should be 10 digits long'
+    assert len(nsec) == 9, 'nano-sec should be 9 digits long'
+    t = float(sec) + float(nsec) * 1e-9
+    return t
+
+
+def save_clouds_and_images(bag_path, cam_topics, lidar_topic, time_diff=5.0, lidar='os_sensor', save=True):
+    data_path = bag_path.replace('.bag', '_trav')
+    clouds_path = os.path.join(data_path, 'clouds')
+    os.makedirs(clouds_path, exist_ok=True)
+    last_time = None
+    cv_bridge = CvBridge()
+
+    calib = load_cam_calib(os.path.join(data_path, 'calibration'))
+
+    # save clouds and get timestamps
+    timestamps = []
+    ids = []
+    with Bag(bag_path, 'r') as bag:
+        for topic, msg, t in tqdm(bag.read_messages(topics=[lidar_topic]),
+                                  total=bag.get_message_count(topic_filters=[lidar_topic])):
+            # skip messages which are too close to each other (time difference < 5 s)
+            if last_time is not None and (t.to_sec() - last_time) < time_diff:
+                continue
+            last_time = t.to_sec()
+            print('Got lidar msg from topic "%s" at %.3f s' % (topic, t.to_sec()))
+
+            msg = PointCloud2(*slots(msg))
+            cloud_struct = numpify(msg)
+            # print('Cloud struct:', cloud_struct.shape)
+            if cloud_struct.ndim == 2:
+                cloud_struct = cloud_struct.reshape((-1,))
+
+            if lidar is None:
+                lidar = msg.header.frame_id
+            timestamps.append(t.to_sec())
+            id = '{secs}_{nsecs:09d}'.format(secs=msg.header.stamp.secs, nsecs=msg.header.stamp.nsecs)
+            ids.append(id)
+
+            if save:
+                # save cloud
+                p = os.path.join(clouds_path, f'{id}.npz')
+                np.savez_compressed(p, cloud=cloud_struct)
+
+    # save images at timestamps
+    for cam_topic in cam_topics:
+        last_time = None
+        i = 0
+        with Bag(bag_path, 'r') as bag:
+            for topic, msg, t in tqdm(bag.read_messages(topics=[cam_topic]),
+                                      total=bag.get_message_count(topic_filters=[cam_topic])):
+                # skip messages which are too close to each other (time difference < 5 s)
+                if last_time is not None and (t.to_sec() - last_time) < time_diff:
+                    continue
+                last_time = t.to_sec()
+                print('Got image msg from topic "%s" at %.3f s' % (topic, t.to_sec()))
+
+                # # get the closest image at points time
+                # msg = get_closest_msg(bag=bag, topic=cam_topic, time=cloud_times[i])
+                img_raw = img_msg_to_cv2(msg, cv_bridge)
+                camera = cam_topic.split('/')[1]
+
+                if save:
+                    # save images
+                    os.makedirs(os.path.join(data_path, 'images'), exist_ok=True)
+                    cv2.imwrite(os.path.join(data_path, 'images', '%s_%s.png' % (ids[i], camera)), img_raw)
+                    i += 1
+
+def debug():
+    from monoforce.datasets.data import explore_data, seq_paths
+    from monoforce.config import Config
+
+    cfg = Config()
+    cfg.d_min = 0.6
+    cfg.d_max = 6.4
+    cfg.grid_res = 0.1
+    cfg.h_max = 1.0
+
+    grid_conf = {
+        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
+        'zbound': [-10.0, 10.0, 20.0],
+        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
+    }
+
+    data_aug_conf = {
+        'resize_lim': (0.193, 0.225),
+        'final_dim': (128, 352),
+        'rot_lim': (-5.4, 5.4),
+        'H': 480, 'W': 680,
+        # 'H': 1200, 'W': 1920,
+        'rand_flip': False,
+        'bot_pct_lim': (0.0, 0.0),
+        'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
+        'Ncams': 4,
+    }
+
+    path = '/home/ruslan/data/bags/lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'
+    # path = seq_paths[-2]
+    explore_data(path, grid_conf, data_aug_conf, cfg)
+
+
+def process(bag_path, lidar_topic, camera_topics, camera_info_topics, save_data,
+            robot_frame='base_link', lidar_frame='ouster_link'):
+    assert os.path.exists(bag_path), 'Bag file does not exist: %s' % bag_path
+
+    tf_buffer = load_tf_buffer([bag_path])
+    print('Obtaining camera infos from bag file...')
+    get_camera_infos(bag_path, camera_info_topics, save=save_data)
+    print('Obtaining lidar to camera transformations from bag file...')
+    get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=save_data)
+    print(f'Obtaining {robot_frame} to base_footprint transformations from bag file...')
+    append_transformation(bag_path, source_frame=robot_frame, target_frame='base_footprint', save=save_data, tf_buffer=tf_buffer)
+    print(f'Obtaining {robot_frame} to {lidar_frame} transformations from bag file...')
+    append_transformation(bag_path, source_frame=robot_frame, target_frame=lidar_frame, save=save_data, tf_buffer=tf_buffer,
+                          matrix_name=f'T_{robot_frame}__os_sensor')
+    print('Saving clouds and images...')
+    save_clouds_and_images(bag_path, camera_topics, lidar_topic, save=save_data)
+
+
+def main():
+    args = arg_parser().parse_args()
+    print(args)
+    process(**vars(args))
+    # debug()
+
+
+if __name__ == '__main__':
+    main()
