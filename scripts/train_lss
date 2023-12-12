@@ -7,7 +7,7 @@ from torch.utils.data import ConcatDataset
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDemData, explore_data
 from monoforce.config import Config
-from monoforce.datasets import seq_paths
+from monoforce.datasets import seq_paths, sim_seq_paths
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -36,7 +36,7 @@ def create_datasets(seq_paths, data_aug_conf, grid_conf, cfg, val_fraction=0.1, 
 
     if debug:
         print('Debug mode: using small datasets')
-        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
+        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 16, replace=False))
         val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 8, replace=False))
     print('Training dataset size:', len(train_ds))
     print('Validation dataset size:', len(val_ds))
@@ -75,7 +75,7 @@ def epoch(model, loss_fn, loader, device, writer, counter, optimizer=None, train
         epoch_loss += loss.item()
 
         counter += 1
-        writer.add_scalar('train/loss', loss, counter)
+        writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
     epoch_loss /= len(loader)
 
@@ -87,15 +87,16 @@ def main():
     cfg.d_min = 0.6
     cfg.d_max = 6.4
     cfg.grid_res = 0.1
-    cfg.h_max = 2.0
+    cfg.h_max = 1.5
     cfg.device = torch.device('cuda:0')
     cfg.lr = 1e-3
     cfg.weight_decay = 1e-7
     cfg.hm_interp_method = None
 
-    bsz = 4
+    bsz = 2
     nworkers = 10
     nepochs = 100
+    save_model = True
 
     grid_conf = {
         'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
@@ -116,10 +117,10 @@ def main():
                     'Ncams': 4,
                 }
 
-    # ds_paths = seq_paths
-    ds_paths = seq_paths
+    ds_paths = seq_paths[:3]
+    # ds_paths = sim_seq_paths
     train_ds, val_ds = create_datasets(ds_paths, data_aug_conf=data_aug_conf, grid_conf=grid_conf, cfg=cfg,
-                                       vis=True, debug=False)
+                                       vis=False, debug=False)
     trainloader = torch.utils.data.DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
     valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
@@ -130,7 +131,8 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     loss_fn = torch.nn.MSELoss()
 
-    writer = SummaryWriter(log_dir=f'../config/tb_runs/lss_{datetime.now()}/')
+    log_dir = f'../config/tb_runs/lss_{datetime.now()}/'
+    writer = SummaryWriter(log_dir=log_dir)
 
     min_loss = np.inf
     min_train_loss = np.inf
@@ -138,28 +140,29 @@ def main():
     val_counter = 0
     for e in range(nepochs):
         # training epoch
-        train_loss, train_counter = epoch(model, loss_fn, trainloader,
-                                          cfg.device, writer, train_counter, optimizer, train=True)
+        train_loss, train_counter = epoch(model=model, loss_fn=loss_fn, loader=trainloader,
+                                          device=cfg.device, writer=writer, counter=train_counter,
+                                          optimizer=optimizer, train=True)
         train_loss /= len(trainloader)
         print('Epoch:', e, 'Train loss:', train_loss)
         writer.add_scalar('train/epoch_loss', train_loss, e)
-        if train_loss < min_train_loss:
+        if save_model and train_loss < min_train_loss:
             min_train_loss = train_loss
             print('Saving train model...')
-            torch.save(model.state_dict(), f'train_lss.pt')
+            torch.save(model.state_dict(), os.path.join(log_dir, 'train_lss.pt'))
 
         # validation epoch
         with torch.no_grad():
-            val_loss, val_counter = epoch(model, loss_fn, valloader,
-                                          cfg.device, writer, val_counter, train=False)
+            val_loss, val_counter = epoch(model=model, loss_fn=loss_fn, loader=valloader,
+                                          device=cfg.device, writer=writer, counter=val_counter, train=False)
             val_loss /= len(valloader)
             print('Epoch:', e, 'Validation loss:', val_loss)
             writer.add_scalar('val/epoch_loss', val_loss, e)
-            if val_loss < min_loss:
+            if save_model and val_loss < min_loss:
                 min_loss = val_loss
                 model.eval()
                 print('Saving model...')
-                torch.save(model.state_dict(), 'lss.pt')
+                torch.save(model.state_dict(), os.path.join(log_dir, 'lss.pt'))
                 model.train()
 
 

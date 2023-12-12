@@ -31,6 +31,7 @@ __all__ = [
     'HMTrajData',
     'MonoDemData',
     'seq_paths',
+    'sim_seq_paths',
 ]
 
 IGNORE_LABEL = 255
@@ -45,6 +46,12 @@ seq_paths = [
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
 ]
 seq_paths = [os.path.normpath(path) for path in seq_paths]
+
+sim_seq_paths = [
+        os.path.join(data_dir, 'lss_input/husky_emtyfarm_2023-12-11-17-27-51_trav'),
+        os.path.join(data_dir, 'lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'),
+]
+sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 
 
 class SegmentationDataset(Dataset):
@@ -829,7 +836,7 @@ class OmniDemData(MonoDemData):
 
         return outputs
 
-    def get_height_map_data(self, i):
+    def get_height_map_data(self, i, cached=False):
         cloud = self.get_cloud(i)
         points = position(cloud)
 
@@ -837,7 +844,7 @@ class OmniDemData(MonoDemData):
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
         dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
         # if height map was estimated before - load it
-        if False and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
+        if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
             xyz_mask = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
         # otherwise - estimate it
