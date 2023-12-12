@@ -35,23 +35,13 @@ def arg_parser():
 def str2bool(v):
     return v.lower() in ('1', 'yes', 'true', 't', 'y')
 
-
-def str2time(s):
-    sec, nsec = s.split('_')
-    assert len(sec) == 10, 'sec should be 10 digits long'
-    assert len(nsec) == 9, 'nano-sec should be 9 digits long'
-    t = float(sec) + float(nsec) * 1e-9
-    return t
-
-
 def save_clouds_and_images(bag_path, cam_topics, lidar_topic, time_diff=5.0, lidar='os_sensor', save=True):
     data_path = bag_path.replace('.bag', '_trav')
     clouds_path = os.path.join(data_path, 'clouds')
     os.makedirs(clouds_path, exist_ok=True)
     last_time = None
     cv_bridge = CvBridge()
-
-    calib = load_cam_calib(os.path.join(data_path, 'calibration'))
+    # calib = load_cam_calib(os.path.join(data_path, 'calibration'))
 
     # save clouds and get timestamps
     timestamps = []
@@ -135,7 +125,8 @@ def debug():
         'Ncams': 4,
     }
 
-    path = '/home/ruslan/data/bags/lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'
+    # path = '/home/ruslan/data/bags/lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'
+    path = '/home/ruslan/data/bags/lss_input/husky_emtyfarm_2023-12-11-17-27-51_trav'
     # path = seq_paths[-2]
     explore_data(path, grid_conf, data_aug_conf, cfg)
 
