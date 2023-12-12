@@ -250,3 +250,9 @@ def skew_symmetric(x):
                          [x[2], 0., -x[0]],
                          [-x[1], x[0], 0.]], device=x.device)
     return U
+
+
+def read_yaml(path):
+    with open(path, 'r') as f:
+        data = yaml.load(f, Loader=yaml.Loader)
+    return data

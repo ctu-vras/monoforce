@@ -13,7 +13,7 @@ from monoforce.imgproc import standardize_img, undistort_image
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
-from monoforce.utils import normalize
+from monoforce.utils import normalize, read_yaml
 from monoforce.datasets.utils import load_cam_calib
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, CameraInfo
 import rospkg
@@ -462,32 +462,19 @@ def main():
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
     cfg = Config()
-    cfg.d_min = 0.6
-    cfg.d_max = 6.4
-    cfg.grid_res = 0.1
-    cfg.h_max = 1.0
-    cfg.device = torch.device('cuda:0')
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
 
-    grid_conf = {
-        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'zbound': [-10.0, 10.0, 20.0],
-        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
-    }
+    # load LSS config
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss.yaml'))
+    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+    lss_config = read_yaml(lss_config_path)
+    grid_conf = lss_config['grid_conf']
+    data_aug_conf = lss_config['data_aug_conf']
 
-    data_aug_conf = {
-        'resize_lim': (0.0, 0.0),
-        'final_dim': (128, 352),
-        'rot_lim': (0.0, 0.0),
-        'H': 1200, 'W': 1920,
-        'rand_flip': False,
-        'bot_pct_lim': (0.0, 0.0),
-        'cams': ['CAM_FRONT', 'CAM_LEFT', 'CAM_RIGHT', 'CAM_REAR'],
-        'Ncams': 4,
-    }
-
-    img_mean = np.array([0.44175903, 0.44948574, 0.45226233])
-    img_std = np.array([0.25382164, 0.26486757, 0.2440394])
+    img_mean = np.asarray(lss_config['img_mean'])
+    img_std = np.asarray(lss_config['img_std'])
     img_topics = rospy.get_param('~img_topics', [])
     camera_info_topics = rospy.get_param('~camera_info_topics', [])
     hm_frame = rospy.get_param('~hm_frame', 'base_link')

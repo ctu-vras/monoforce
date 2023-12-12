@@ -26,7 +26,7 @@ class Config:
 
         # training parameters
         self.use_terrain_cnn = False
-        self.device = torch.device('cpu')
+        self.device = 'cpu'
         self.lr = 0.001
         self.weight_decay = 0.0
         self.total_sim_time = 10.0
@@ -35,7 +35,7 @@ class Config:
         self.n_train_iters = 100
         self.convergence_std = 1e-3
         self.convergence_n_samples = 10
-        self.dataset_path = '/tmp'
+        self.dataset_path = ''
         self.trans_cost_weight = 1.
         self.rot_cost_weight = 1.
 
@@ -71,7 +71,7 @@ class Config:
                 setattr(self, k, v.tolist())
 
         with open(path, 'w') as f:
-            yaml.dump(self.__dict__, f, default_flow_style=False)
+            yaml.safe_dump(self.__dict__, f)
 
     def from_yaml(self, path):
         with open(path, 'r') as f:
@@ -79,3 +79,8 @@ class Config:
 
         for k, v in params.items():
             setattr(self, k, v)
+
+
+if __name__ == '__main__':
+    cfg = Config()
+    cfg.to_yaml('../../config/cfg.yaml')

@@ -1,0 +1,51 @@
+convergence_n_samples: 10
+convergence_std: 0.001
+d_max: 6.4
+d_min: 0.6
+damping: 0.0
+dataset_path: ''
+device: cpu
+elasticity: 0.0
+friction: 0.9
+grid_res: 0.1
+h_max: 1.0
+hm_interp_method: null
+img_size:
+- 512
+- 512
+lr: 0.001
+max_omega: 2.0
+max_vel: 2.0
+n_samples: 1000
+n_train_iters: 100
+num_robot_points: 5
+robot_inertia:
+- - 5.0
+  - 0.0
+  - 0.0
+- - 0.0
+  - 5.0
+  - 0.0
+- - 0.0
+  - 0.0
+  - 5.0
+robot_init_q:
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+robot_init_xyz:
+- 0.0
+- 0.0
+- 1.0
+robot_mass: 10.0
+robot_terrain_interaction_model: diffdrive
+rot_cost_weight: 1.0
+sample_len: 10
+total_sim_time: 10.0
+trans_cost_weight: 1.0
+use_terrain_cnn: false
+vel_tracks:
+- 0.0
+- 0.0
+weight_decay: 0.0

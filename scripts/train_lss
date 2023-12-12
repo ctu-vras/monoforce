@@ -11,7 +11,7 @@ from monoforce.datasets import seq_paths, sim_seq_paths
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-
+import matplotlib.pyplot as plt
 
 torch.set_default_dtype(torch.float32)
 
@@ -36,7 +36,7 @@ def create_datasets(seq_paths, data_aug_conf, grid_conf, cfg, val_fraction=0.1, 
 
     if debug:
         print('Debug mode: using small datasets')
-        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 16, replace=False))
+        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
         val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 8, replace=False))
     print('Training dataset size:', len(train_ds))
     print('Validation dataset size:', len(val_ds))
@@ -51,24 +51,24 @@ def epoch(model, loss_fn, loader, device, writer, counter, optimizer=None, train
 
     epoch_loss = 0.0
     max_grad_norm = 5.0
+
     for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) \
             in tqdm(enumerate(loader), total=len(loader)):
-        if train:
-            optimizer.zero_grad()
 
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
         inputs = [i.to(device) for i in inputs]
-        preds = model(*inputs)
+        height_pred = model(*inputs)
 
         heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
         heightmap = heightmap.to(device)
         B, D, H, W = heightmap.shape
-        height, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
+        height_gt, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
 
-        loss = loss_fn(preds[weights.bool()], height[weights.bool()])
+        loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
 
         if train:
+            optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             optimizer.step()
@@ -81,6 +81,61 @@ def epoch(model, loss_fn, loader, device, writer, counter, optimizer=None, train
 
     return epoch_loss, counter
 
+
+def vis_pred(loader, model, grid_conf, device):
+    fig = plt.figure(figsize=(20, 10))
+    ax1 = fig.add_subplot(231, projection='3d')
+    ax2 = fig.add_subplot(232, projection='3d')
+    ax4 = fig.add_subplot(234)
+    ax5 = fig.add_subplot(235)
+    ax6 = fig.add_subplot(236)
+
+    # visualize training predictions
+    with torch.no_grad():
+        inputs = next(iter(loader))
+        inputs, hm_gt = inputs[:-1], inputs[-1]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+        inputs = [i.to(device) for i in inputs]
+        height_pred = model(*inputs)
+
+        for ax in [ax1, ax2, ax4, ax5, ax6]:
+            ax.clear()
+
+        # plot prediction as surface
+        ax1.set_title('Pred Surface')
+        height = height_pred[0][0].cpu().numpy()
+        height_gt = hm_gt[0][0].cpu().numpy()
+        mask = hm_gt[0][1].bool().cpu().numpy()
+        x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
+        y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
+        x_grid, y_grid = np.meshgrid(x_grid, y_grid)
+        ax1.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
+        ax1.set_zlim(-1.0, 1.0)
+        ax1.set_xlabel('x [m]')
+        ax1.set_ylabel('y [m]')
+        ax1.set_zlabel('z [m]')
+
+        # plot ground truth as surface
+        ax2.set_title('GT Surface')
+        ax2.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+        ax2.set_zlim(-1.0, 1.0)
+        ax2.set_xlabel('x [m]')
+        ax2.set_ylabel('y [m]')
+        ax2.set_zlabel('z [m]')
+
+        # plot prediction as image
+        ax4.set_title('Prediction')
+        ax4.imshow(height, cmap='jet', vmin=-1.0, vmax=1.0)
+
+        ax5.set_title('Masked Prediction')
+        height_vis = height_gt.copy()
+        height_vis[mask] = height[mask]
+        ax5.imshow(height_vis, cmap='jet', vmin=-1.0, vmax=1.0)
+
+        ax6.set_title('Ground truth')
+        ax6.imshow(height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+
+        return fig
 
 def main():
     cfg = Config()
@@ -110,7 +165,6 @@ def main():
                     'final_dim': (128, 352),
                     'rot_lim': (-5.4, 5.4),
                     'H': 1200, 'W': 1920,
-                    # 'H': 480, 'W': 680,
                     'rand_flip': False,
                     'bot_pct_lim': (0.0, 0.0),
                     'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
@@ -118,9 +172,9 @@ def main():
                 }
 
     ds_paths = seq_paths[:3]
-    # ds_paths = sim_seq_paths
-    train_ds, val_ds = create_datasets(ds_paths, data_aug_conf=data_aug_conf, grid_conf=grid_conf, cfg=cfg,
-                                       vis=False, debug=False)
+    train_ds, val_ds = create_datasets(ds_paths, data_aug_conf=data_aug_conf,
+                                       grid_conf=grid_conf, cfg=cfg,
+                                       vis=False, debug=True)
     trainloader = torch.utils.data.DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
     valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
@@ -138,24 +192,28 @@ def main():
     min_train_loss = np.inf
     train_counter = 0
     val_counter = 0
+
     for e in range(nepochs):
         # training epoch
         train_loss, train_counter = epoch(model=model, loss_fn=loss_fn, loader=trainloader,
                                           device=cfg.device, writer=writer, counter=train_counter,
                                           optimizer=optimizer, train=True)
-        train_loss /= len(trainloader)
         print('Epoch:', e, 'Train loss:', train_loss)
         writer.add_scalar('train/epoch_loss', train_loss, e)
+
         if save_model and train_loss < min_train_loss:
             min_train_loss = train_loss
             print('Saving train model...')
             torch.save(model.state_dict(), os.path.join(log_dir, 'train_lss.pt'))
 
+            # visualize training predictions
+            fig = vis_pred(trainloader, model, grid_conf, device=cfg.device)
+            writer.add_figure('train/prediction', fig, e)
+
         # validation epoch
         with torch.no_grad():
             val_loss, val_counter = epoch(model=model, loss_fn=loss_fn, loader=valloader,
                                           device=cfg.device, writer=writer, counter=val_counter, train=False)
-            val_loss /= len(valloader)
             print('Epoch:', e, 'Validation loss:', val_loss)
             writer.add_scalar('val/epoch_loss', val_loss, e)
             if save_model and val_loss < min_loss:
@@ -164,6 +222,10 @@ def main():
                 print('Saving model...')
                 torch.save(model.state_dict(), os.path.join(log_dir, 'lss.pt'))
                 model.train()
+
+                # visualize validation predictions
+                fig = vis_pred(valloader, model, grid_conf, device=cfg.device)
+                writer.add_figure('val/prediction', fig, e)
 
 
 if __name__ == '__main__':

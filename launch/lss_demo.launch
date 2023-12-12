@@ -40,6 +40,8 @@
         <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
         <arg name="calib_path" value="$(arg calib_path)"/>
         <arg name="hm_frame" value="base_link"/>
+        <arg name="config_path" value="$(dirname)/../config/cfg.yaml"/>
+        <arg name="lss_config_path" value="$(dirname)/../config/lss.yaml"/>
         <arg name="model_weights" value="$(dirname)/../config/weights/lss/train_lss.pt"/>
         <arg name="max_msgs_delay" value="0.5"/>
         <arg name="max_stale_msg_delay" value="0.5"/>
