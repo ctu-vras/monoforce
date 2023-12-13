@@ -8,6 +8,7 @@ from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDemData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths, sim_seq_paths
+from monoforce.losses import MSE
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -174,7 +175,7 @@ def main():
     ds_paths = seq_paths[:3]
     train_ds, val_ds = create_datasets(ds_paths, data_aug_conf=data_aug_conf,
                                        grid_conf=grid_conf, cfg=cfg,
-                                       vis=False, debug=True)
+                                       vis=False, debug=False)
     trainloader = torch.utils.data.DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
     valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
@@ -183,7 +184,7 @@ def main():
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    loss_fn = torch.nn.MSELoss()
+    loss_fn = MSE()
 
     log_dir = f'../config/tb_runs/lss_{datetime.now()}/'
     writer = SummaryWriter(log_dir=log_dir)

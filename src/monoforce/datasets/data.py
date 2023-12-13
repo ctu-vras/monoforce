@@ -23,7 +23,7 @@ from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
 import matplotlib
-matplotlib.use('QtAgg')
+# matplotlib.use('QtAgg')
 
 
 __all__ = [
