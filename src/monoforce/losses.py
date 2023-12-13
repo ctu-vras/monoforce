@@ -18,7 +18,25 @@ __all__ = [
     'find_dist_correspondences',
     'find_time_correspondences',
     'total_variation',
+    'MSE',
 ]
+
+
+class MSE:
+    def __init__(self, reduction='mean'):
+        self.reduction = reduction
+
+    def __call__(self, x, x_true):
+        assert isinstance(x, torch.Tensor) and isinstance(x_true, torch.Tensor)
+        assert x.shape == x_true.shape
+        loss = torch.sqrt((x - x_true) ** 2)
+        if self.reduction == 'mean':
+            return torch.mean(loss)
+        elif self.reduction == 'sum':
+            return torch.sum(loss)
+        else:
+            return loss
+
 
 def slerp(q1, q2, t, diff_thresh=0.9995):
     assert isinstance(q1, torch.Tensor) and isinstance(q2, torch.Tensor)
