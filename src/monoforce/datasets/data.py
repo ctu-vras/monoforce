@@ -1299,13 +1299,10 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None
     imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map = sample
     if modelf is not None:
         with torch.no_grad():
-            bev_map = model(imgs,
-                            rots,
-                            trans,
-                            intrins,
-                            post_rots,
-                            post_trans,
-                            )
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+            bev_map = model(*inputs)
+
     img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
     for si in range(imgs.shape[0]):

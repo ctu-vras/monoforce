@@ -149,9 +149,9 @@ def main():
     cfg.weight_decay = 1e-7
     cfg.hm_interp_method = None
 
-    bsz = 2
-    nworkers = 10
-    nepochs = 100
+    bsz = 8
+    nworkers = 12
+    nepochs = 500
     save_model = True
 
     grid_conf = {

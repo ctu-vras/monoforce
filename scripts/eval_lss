@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -7,67 +9,105 @@ from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDemData, OmniDemDataVis, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths
-from monoforce.models.lss.tools import MSELoss
+from monoforce.losses import MSE
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('QtAgg')
+
+torch.set_default_dtype(torch.float32)
 
 
-def test(data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
+def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(cfg.device)
     model.eval()
 
-    val_ds_path = seq_paths[-1]
-    val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
-    valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+    ds = OmniDemData(seq_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    loader = torch.utils.data.DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
-    fig = plt.figure(figsize=(10, 5))
-    ax1 = fig.add_subplot(121)
-    ax2 = fig.add_subplot(122, projection='3d')
+    loss_fn = MSE()
+
+    fig = plt.figure(figsize=(20, 7))
+    ax1 = fig.add_subplot(231)
+    ax2 = fig.add_subplot(232, projection='3d')
+    ax3 = fig.add_subplot(233, projection='3d')
+    ax4 = fig.add_subplot(234)
+    ax5 = fig.add_subplot(235)
+    ax6 = fig.add_subplot(236)
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, height_gt)\
-                in tqdm(enumerate(valloader), total=len(valloader)):
-            preds = model(imgs.to(cfg.device),
-                          rots.to(cfg.device),
-                          trans.to(cfg.device),
-                          intrins.to(cfg.device),
-                          post_rots.to(cfg.device),
-                          post_trans.to(cfg.device),
-                          )
-            plt.cla()
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_gt)\
+                in tqdm(enumerate(loader), total=len(loader)):
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i, dtype=torch.float32, device=cfg.device) for i in inputs]
+            height_pred = model(*inputs)
+
+            # compute loss
+            hm_gt = hm_gt.to(cfg.device)
+            B, D, H, W = hm_gt.shape
+            height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
+            loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+
+            # figure title
+            fig.suptitle(f'Loss: {loss.item():.3f}')
+
+            # clear axes
+            for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+                ax.clear()
+
             # plot image
             img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
-            img = val_ds.destandardize_img(img)
+            img = ds.destandardize_img(img)
             ax1.imshow(img)
 
             # plot prediction as surface
-            height = preds[0].squeeze().cpu().numpy()
-            print('Height min/max:', height.min(), height.max())
+            height = height_pred[0].squeeze().cpu().numpy()
             x_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
             y_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
             x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-            ax2.plot_surface(x_grid, y_grid, height, cmap='viridis')
+            ax2.plot_surface(x_grid, y_grid, height, cmap='jet')
             ax2.set_zlim(-1.0, 1.0)
             ax2.set_xlabel('x [m]')
             ax2.set_ylabel('y [m]')
             ax2.set_zlabel('z [m]')
-            plt.pause(0.01)
+            
+            # plot ground truth as surface
+            height_gt = hm_gt[0][0].cpu().numpy()
+            ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet')
+            ax3.set_zlim(-1.0, 1.0)
+            ax3.set_xlabel('x [m]')
+            ax3.set_ylabel('y [m]')
+            ax3.set_zlabel('z [m]')
+            
+            # plot prediction as image
+            ax4.imshow(height, cmap='jet', vmin=-1.0, vmax=1.0)
+            
+            # plot masked prediction as image
+            mask = hm_gt[0][1].bool().cpu().numpy()
+            height_vis = height_gt.copy()
+            height_vis[mask] = height[mask]
+            ax5.imshow(height_vis, cmap='jet', vmin=-1.0, vmax=1.0)
+            
+            # plot ground truth as image
+            ax6.imshow(height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+            
+            plt.pause(1.)
             plt.draw()
-            # plt.show()
 
 
-def eval(data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
+def eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(cfg.device)
     model.eval()
 
-    loss_fn = MSELoss()
+    loss_fn = MSE()
 
     all_seqs_mean_loss = 0.0
-    for val_ds_path in seq_paths:
+    for val_ds_path in paths:
+        print(f'Evaluation on {os.path.basename(val_ds_path)}...')
         # explore_data(val_ds_path, grid_conf, data_aug_conf, cfg, modelf, save=False)
 
         val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
@@ -76,21 +116,22 @@ def eval(data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
         # validation epoch
         with torch.no_grad():
             val_loss = 0.0
-            for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap)\
+            for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_gt)\
                     in tqdm(enumerate(valloader), total=len(valloader)):
-                preds = model(imgs.to(cfg.device),
-                              rots.to(cfg.device),
-                              trans.to(cfg.device),
-                              intrins.to(cfg.device),
-                              post_rots.to(cfg.device),
-                              post_trans.to(cfg.device),
-                              )
-                heightmap = heightmap.to(cfg.device)
-                loss = loss_fn(preds, heightmap)
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                inputs = [torch.as_tensor(i, dtype=torch.float32, device=cfg.device) for i in inputs]
+                height_pred = model(*inputs)
+
+                # compute loss
+                hm_gt = hm_gt.to(cfg.device)
+                B, D, H, W = hm_gt.shape
+                height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
+                loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+
                 val_loss += loss.item()
             val_loss /= len(valloader)
 
-        print(f'For seq {val_ds_path.split("/")[-1]} Validation loss: {val_loss:.3f}')
+        print(f'For seq {os.path.basename(val_ds_path)} Validation loss: {val_loss:.3f}')
         all_seqs_mean_loss += val_loss
     all_seqs_mean_loss /= len(seq_paths)
     print(f'Average validation loss: {all_seqs_mean_loss:.3f}')
@@ -119,17 +160,16 @@ def main():
         # 'H': 1536, 'W': 2048,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
-        'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
+        'cams': sorted(['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT']),
         'Ncams': 4,
     }
 
-    # modelf = '../config/weights/lss/lss.pt'
-    modelf = '../config/weights/lss/train_lss.pt'
+    modelf = '../config/tb_runs/lss_2023-12-12 17:42:10.557253/lss.pt'
     # modelf = None
 
-    explore_data(seq_paths[-1], grid_conf, data_aug_conf, cfg, modelf, sample_i=10, save=False)
-    eval(data_aug_conf, grid_conf, cfg, modelf)
-    # test(data_aug_conf, grid_conf, cfg, modelf)
+    explore_data(seq_paths[0], grid_conf, data_aug_conf, cfg, modelf, save=False)
+    # eval(seq_paths, data_aug_conf, grid_conf, cfg, modelf)
+    test(seq_paths[0], data_aug_conf, grid_conf, cfg, modelf)
 
 
 if __name__ == '__main__':

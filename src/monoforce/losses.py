@@ -23,13 +23,16 @@ __all__ = [
 
 
 class MSE:
-    def __init__(self, reduction='mean'):
+    def __init__(self, reduction='mean', eps=1e-6):
+        assert reduction in ['mean', 'sum', 'none']
+        assert isinstance(eps, float) and eps > 0
         self.reduction = reduction
+        self.eps = eps
 
     def __call__(self, x, x_true):
         assert isinstance(x, torch.Tensor) and isinstance(x_true, torch.Tensor)
         assert x.shape == x_true.shape
-        loss = torch.sqrt((x - x_true) ** 2)
+        loss = torch.sqrt((x - x_true) ** 2 + self.eps)
         if self.reduction == 'mean':
             return torch.mean(loss)
         elif self.reduction == 'sum':
