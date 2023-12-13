@@ -97,7 +97,7 @@ def save_clouds_and_images(bag_path, cam_topics, lidar_topic, time_diff=5.0, lid
                     i += 1
 
 def debug():
-    from monoforce.datasets.data import explore_data, seq_paths
+    from monoforce.datasets.data import explore_data, seq_paths, sim_seq_paths
     from monoforce.config import Config
 
     cfg = Config()
@@ -118,17 +118,14 @@ def debug():
         'final_dim': (128, 352),
         'rot_lim': (-5.4, 5.4),
         'H': 480, 'W': 680,
-        # 'H': 1200, 'W': 1920,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
-        'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
+        'cams': sorted(['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT']),
         'Ncams': 4,
     }
 
-    # path = '/home/ruslan/data/bags/lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'
-    path = '/home/ruslan/data/bags/lss_input/husky_emtyfarm_2023-12-11-17-27-51_trav'
-    # path = seq_paths[-2]
-    explore_data(path, grid_conf, data_aug_conf, cfg)
+    for path in sim_seq_paths:
+        explore_data(path, grid_conf, data_aug_conf, cfg)
 
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, save_data,

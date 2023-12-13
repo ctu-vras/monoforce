@@ -4,6 +4,7 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import ConcatDataset
+from monoforce.imgproc import destandardize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDemData, explore_data
 from monoforce.config import Config
@@ -17,11 +18,11 @@ import matplotlib.pyplot as plt
 torch.set_default_dtype(torch.float32)
 
 
-def create_datasets(seq_paths, data_aug_conf, grid_conf, cfg, val_fraction=0.1, debug=False, vis=False):
+def create_datasets(paths, data_aug_conf, grid_conf, cfg, val_fraction=0.1, debug=False, vis=False):
     # create dataset for LSS model training
     datasets = []
-    print('Data paths:', seq_paths)
-    for path in seq_paths:
+    print('Data paths:', paths)
+    for path in paths:
         assert os.path.exists(path)
         ds = OmniDemData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
         # print(f'Train dataset from path {path} size is {len(ds)}')
@@ -85,44 +86,51 @@ def epoch(model, loss_fn, loader, device, writer, counter, optimizer=None, train
 
 def vis_pred(loader, model, grid_conf, device):
     fig = plt.figure(figsize=(20, 10))
-    ax1 = fig.add_subplot(231, projection='3d')
+    ax1 = fig.add_subplot(231)
     ax2 = fig.add_subplot(232, projection='3d')
+    ax3 = fig.add_subplot(233, projection='3d')
     ax4 = fig.add_subplot(234)
     ax5 = fig.add_subplot(235)
     ax6 = fig.add_subplot(236)
 
     # visualize training predictions
     with torch.no_grad():
-        inputs = next(iter(loader))
-        inputs, hm_gt = inputs[:-1], inputs[-1]
-        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-        inputs = [i.to(device) for i in inputs]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_gt = next(iter(loader))
+        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
+        hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
         height_pred = model(*inputs)
 
-        for ax in [ax1, ax2, ax4, ax5, ax6]:
+        for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
             ax.clear()
 
+        # plot image
+        img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
+        # use ImageNet mean and std
+        img = destandardize_img(img, img_mean=np.array([0.485, 0.456, 0.406]), img_std=np.array([0.229, 0.224, 0.225]))
+        ax1.imshow(img)
+
         # plot prediction as surface
-        ax1.set_title('Pred Surface')
+        ax2.set_title('Pred Surface')
         height = height_pred[0][0].cpu().numpy()
         height_gt = hm_gt[0][0].cpu().numpy()
         mask = hm_gt[0][1].bool().cpu().numpy()
         x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
         y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
         x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-        ax1.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
-        ax1.set_zlim(-1.0, 1.0)
-        ax1.set_xlabel('x [m]')
-        ax1.set_ylabel('y [m]')
-        ax1.set_zlabel('z [m]')
-
-        # plot ground truth as surface
-        ax2.set_title('GT Surface')
-        ax2.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+        ax2.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
         ax2.set_zlim(-1.0, 1.0)
         ax2.set_xlabel('x [m]')
         ax2.set_ylabel('y [m]')
         ax2.set_zlabel('z [m]')
+
+        # plot ground truth as surface
+        ax3.set_title('GT Surface')
+        ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+        ax3.set_zlim(-1.0, 1.0)
+        ax3.set_xlabel('x [m]')
+        ax3.set_ylabel('y [m]')
+        ax3.set_zlabel('z [m]')
 
         # plot prediction as image
         ax4.set_title('Prediction')
@@ -149,7 +157,7 @@ def main():
     cfg.weight_decay = 1e-7
     cfg.hm_interp_method = None
 
-    bsz = 8
+    bsz = 4
     nworkers = 12
     nepochs = 500
     save_model = True
