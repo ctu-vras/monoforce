@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import HMTrajData, seq_paths
+from monoforce.datasets import DEMTrajData, seq_paths
 from monoforce.config import Config
 from monoforce.vis import setup_visualization, animate_trajectory, mlab_imshow, draw_coord_frames
 from monoforce.losses import translation_difference, rotation_difference, total_variation, traj_dist
@@ -42,7 +42,7 @@ def get_data(i: int = None, vis=True, path=seq_paths[0]):
     :param path: path to the dataset
     :return: states_true, tt_true, height
     """
-    ds = HMTrajData(path, cfg=cfg)
+    ds = DEMTrajData(path, cfg=cfg)
     if i is None:
         i = np.random.choice(range(len(ds)))
     points, traj, heightmap = ds[i]

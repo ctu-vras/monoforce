@@ -23,9 +23,9 @@ def horizontal_shift(img, shift):
 
 def demo():
     import matplotlib.pyplot as plt
-    from .data import HMTrajData
+    from .data import DEMTrajData
 
-    ds = HMTrajData('/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/')
+    ds = DEMTrajData('/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/')
     # test augmentation
     img = ds.get_image(0, 'front')
     img = pil.fromarray(img)

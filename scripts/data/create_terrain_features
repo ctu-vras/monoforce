@@ -7,7 +7,7 @@ from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
 from monoforce.vis import setup_visualization, animate_trajectory, set_axes_equal
 from monoforce.datasets.utils import visualize_data
-from monoforce.datasets import HMTrajData
+from monoforce.datasets import DEMTrajData
 from monoforce.config import Config
 from monoforce.control import pose_control
 from monoforce.transformations import transform_cloud
@@ -400,7 +400,7 @@ def main():
     # cfg.robot_terrain_interaction_model = 'diffdrive'
     cfg.robot_terrain_interaction_model = args.control_model
 
-    ds = HMTrajData(path=cfg.dataset_path, cfg=cfg)
+    ds = DEMTrajData(path=cfg.dataset_path, cfg=cfg)
     train(ds, cfg=cfg, vis=args.visualize, save_data=args.save_data)
 
 

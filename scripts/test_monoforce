@@ -4,7 +4,7 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from monoforce.datasets import MonoDemData, seq_paths
+from monoforce.datasets import MonoDEMData, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout, Geom2Trav
 from monoforce.vis import set_axes_equal
@@ -73,7 +73,7 @@ def demo():
     camera = 'camera_fisheye_front' if 'marv' in path else 'camera_front'
 
     # create dataset for MonoDEM training
-    ds = MonoDemData(path, cameras=[camera], cfg=cfg)
+    ds = MonoDEMData(path, cameras=[camera], cfg=cfg)
     fig = plt.figure(figsize=(20, 10))
 
     for i in tqdm(range(len(ds))):
@@ -81,11 +81,6 @@ def demo():
         img, height_opt, height_est, mask_traversed, mask_reg = ds[i]
         cloud = ds.get_cloud(i)
         poses = ds.get_traj(i)['poses']
-
-        # transform point cloud to robot frame
-        Tr = np.linalg.inv(poses[0])
-        cloud = transform_cloud(cloud, Tr)
-        poses = np.asarray([np.matmul(Tr, pose) for pose in poses])
 
         # grid filter
         cloud = filter_grid(cloud, cfg.grid_res)

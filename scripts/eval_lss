@@ -6,10 +6,10 @@ import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDemData, OmniDemDataVis, explore_data
+from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths
-from monoforce.losses import MSE
+from monoforce.losses import RMSE
 from tqdm import tqdm
 import matplotlib
 matplotlib.use('QtAgg')
@@ -24,10 +24,10 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
     model.to(cfg.device)
     model.eval()
 
-    ds = OmniDemData(seq_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = OmniDEMData(seq_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
     loader = torch.utils.data.DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
-    loss_fn = MSE()
+    loss_fn = RMSE()
 
     fig = plt.figure(figsize=(20, 7))
     ax1 = fig.add_subplot(231)
@@ -103,14 +103,14 @@ def eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
     model.to(cfg.device)
     model.eval()
 
-    loss_fn = MSE()
+    loss_fn = RMSE()
 
     all_seqs_mean_loss = 0.0
     for val_ds_path in paths:
         print(f'Evaluation on {os.path.basename(val_ds_path)}...')
         # explore_data(val_ds_path, grid_conf, data_aug_conf, cfg, modelf, save=False)
 
-        val_ds = OmniDemData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+        val_ds = OmniDEMData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
         valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
         # validation epoch

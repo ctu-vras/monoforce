@@ -141,7 +141,7 @@ def compute_rigid_support(arr, transform=None, range=None, grid=None, scale=1.0,
 
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_interp_method='nearest',
-                       fill_value=None, return_filtered_points=False):
+                       fill_value=0., return_filtered_points=False):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
     assert len(points) > 0
@@ -176,8 +176,8 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., return_mask=True)[1]
 
     if robot_mask.sum() > 0:
-        if fill_value is None:
-            fill_value = points[robot_mask, 2].min()
+        # if fill_value is None:
+        #     fill_value = points[robot_mask, 2].min()
         points = points[~robot_mask]
         # points[robot_mask, 2] = fill_value
 
@@ -208,7 +208,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
         x, y, z = points[:, 0], points[:, 1], points[:, 2]
         z_grid = griddata((x, y), z, (xi[None, :], yi[:, None]),
                           method=hm_interp_method, fill_value=fill_value)
-        mask = np.full(z_grid.shape, None)
+        mask = np.full(z_grid.shape, 1., dtype=float)
 
     heightmap = {'x': np.asarray(x_grid, dtype=float),
                  'y': np.asarray(y_grid, dtype=float),

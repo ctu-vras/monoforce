@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
         'lidar_check': lss.explore.lidar_check,
         'cumsum_check': lss.explore.cumsum_check,
-        'train_lss': lss.train_nusc.train,
+        'train_lss_nusc': lss.train.train,
         'eval_lss_iou': lss.explore.eval_model_iou,
         'viz_lss_preds': lss.explore.viz_model_preds,
     })

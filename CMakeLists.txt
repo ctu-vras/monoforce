@@ -157,7 +157,7 @@ include_directories(
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   #nodes/terrain_learner_node
-  nodes/data_vis
+  #nodes/data_vis
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

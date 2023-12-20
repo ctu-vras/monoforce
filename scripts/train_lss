@@ -6,10 +6,10 @@ import numpy as np
 from torch.utils.data import ConcatDataset
 from monoforce.imgproc import destandardize_img
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDemData, explore_data
+from monoforce.datasets.data import OmniDEMData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths, sim_seq_paths
-from monoforce.losses import MSE
+from monoforce.losses import RMSE
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -17,14 +17,13 @@ import matplotlib.pyplot as plt
 
 torch.set_default_dtype(torch.float32)
 
-
 def create_datasets(paths, data_aug_conf, grid_conf, cfg, val_fraction=0.1, debug=False, vis=False):
     # create dataset for LSS model training
     datasets = []
     print('Data paths:', paths)
     for path in paths:
         assert os.path.exists(path)
-        ds = OmniDemData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+        ds = OmniDEMData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
         # print(f'Train dataset from path {path} size is {len(ds)}')
         if vis:
             explore_data(path, grid_conf, data_aug_conf, cfg, save=False)
@@ -192,7 +191,7 @@ def main():
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    loss_fn = MSE()
+    loss_fn = RMSE()
 
     log_dir = f'../config/tb_runs/lss_{datetime.now()}/'
     writer = SummaryWriter(log_dir=log_dir)

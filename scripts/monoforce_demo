@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import MonoDemData, seq_paths
+from monoforce.datasets import MonoDEMData, seq_paths
 from monoforce.models.monolayout import load_monodem
 from monoforce.vis import setup_visualization, animate_trajectory
 from mayavi import mlab
@@ -122,7 +122,7 @@ def main():
     # data_path = seq_paths[0]
     data_path = np.random.choice(seq_paths)
 
-    ds = MonoDemData(path=data_path,
+    ds = MonoDEMData(path=data_path,
                      cameras=['camera_fisheye_front'],
                      cfg=cfg)
     # i = 20

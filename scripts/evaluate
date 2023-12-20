@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from monoforce.config import Config
 from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.datasets import MonoDemData, seq_paths
+from monoforce.datasets import MonoDEMData, seq_paths
 from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference, traj_dist
@@ -166,7 +166,7 @@ class Evaluator:
         plt.imshow(height, cmap='jet')
         plt.colorbar()
 
-    def get_data(self, i: int, ds: MonoDemData):
+    def get_data(self, i: int, ds: MonoDEMData):
         """
         Get ground truth data sample from the RobinGas dataset
         :param i: index of the sample
@@ -176,9 +176,6 @@ class Evaluator:
         img, height_trav, height_reg, mask_traversed, mask_reg = ds[i]
         traj = ds.get_traj(i)
         poses = traj['poses']
-        # move poses, points to robot frame
-        Tr = np.linalg.inv(poses[0])
-        poses = np.asarray([np.matmul(Tr, p) for p in poses])
 
         # if some poses are behind the robot starting pose, mark the data as invalid
         if not self.are_valid(poses):
@@ -411,7 +408,7 @@ def main():
 
     datasets = []
     for path in seq_paths:
-        ds = MonoDemData(path=path,
+        ds = MonoDEMData(path=path,
                          cameras=['camera_fisheye_front'],
                          cfg=cfg)
         datasets.append(ds)

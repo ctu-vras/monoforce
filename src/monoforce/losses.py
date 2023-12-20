@@ -18,11 +18,11 @@ __all__ = [
     'find_dist_correspondences',
     'find_time_correspondences',
     'total_variation',
-    'MSE',
+    'RMSE',
 ]
 
 
-class MSE:
+class RMSE:
     def __init__(self, reduction='mean', eps=1e-6):
         assert reduction in ['mean', 'sum', 'none']
         assert isinstance(eps, float) and eps > 0
