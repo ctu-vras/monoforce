@@ -117,15 +117,19 @@ def debug():
         'resize_lim': (0.193, 0.225),
         'final_dim': (128, 352),
         'rot_lim': (-5.4, 5.4),
-        'H': 480, 'W': 680,
+        # 'H': 480, 'W': 680,
+        'H': 1200, 'W': 1920,
         'rand_flip': False,
         'bot_pct_lim': (0.0, 0.0),
         'cams': sorted(['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT']),
         'Ncams': 4,
     }
 
-    for path in sim_seq_paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg)
+    # paths = sim_seq_paths
+    paths = seq_paths[:3]
+
+    for path in paths:
+        explore_data(path, grid_conf, data_aug_conf, cfg, opt_terrain=False)
 
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, save_data,

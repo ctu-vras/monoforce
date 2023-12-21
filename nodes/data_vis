@@ -2,22 +2,16 @@
 
 import os
 import numpy as np
-import torch
 import rospy
-from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured
-from monoforce.datasets import DEMTrajData, seq_paths
+from numpy.lib.recfunctions import unstructured_to_structured
+from monoforce.datasets import DEMTrajData, OptDEMTrajData, seq_paths
 from monoforce.cloudproc import position
-from monoforce.vis import set_axes_equal
-from monoforce.models import make_dphysics_model
 from monoforce.config import Config
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.ros import height_map_to_gridmap_msg, to_path
+from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2
 from grid_map_msgs.msg import GridMap
 from ros_numpy import numpify, msgify
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-torch.set_default_dtype(torch.float64)
 
 
 def main():
@@ -25,54 +19,28 @@ def main():
     cfg = Config()
     cfg.from_rosparams(node_name='data_vis')
     rate = rospy.get_param('~rate', 1)
+    opt_terrain = rospy.get_param('~opt_terrain', False)
 
     # Load traversability data
-    path = seq_paths[0]
+    path = np.random.choice(seq_paths)
     assert os.path.exists(path)
-    ds = DEMTrajData(path, cfg=cfg)
-    rospy.loginfo('Loaded dataset with %d samples' % len(ds))
+    Data = OptDEMTrajData if opt_terrain else DEMTrajData
+    ds = Data(path, cfg=cfg)
+    rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), path))
 
     # Choose data sample
-    # i = np.random.choice(range(len(ds)))
-    i = 0
+    i = np.random.choice(range(len(ds)))
     rospy.loginfo('Using sample %d' % i)
     cloud, traj, height = ds[i]
     poses = traj['poses']
     points = position(cloud)
 
-    with torch.no_grad():
-        system_true = make_dphysics_model(height['z'], cfg)
-
-        t0, state = 0., system_true.state
-        tt = torch.linspace(float(t0), cfg.total_sim_time, cfg.n_samples)
-        x_true = system_true.sim(state, tt)
-
-        pos_x, pos_R, vel_x, vel_omega, forces = x_true
-        poses_sim = torch.cat([pos_R, pos_x], dim=-1)  # (n_samples, 3, 4)
-
-    # Visualization of the data
-    fig = plt.figure(figsize=(24, 12))
-    ax = fig.add_subplot(121, projection='3d')
-    ax.plot_surface(height['x'], height['y'], height['z'], alpha=0.7)
-    ax.plot(points[:, 0], points[:, 1], points[:, 2], '.', color='k', markersize=1.)
-    ax.plot(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], 'ro', markersize=2)
-    ax.plot(poses_sim[:, 0, 3], poses_sim[:, 1, 3], poses_sim[:, 2, 3], 'go', markersize=2)
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    set_axes_equal(ax)
-
-    ax = fig.add_subplot(122)
-    CS = plt.contour(height['x'], height['y'], height['z'], 15, linewidths=0.11, colors='k')
-    CS = plt.contourf(height['x'], height['y'], height['z'], 15, cmap=plt.cm.jet)
-    plt.colorbar(CS)
-    ax.axis('equal')
-    plt.show()
-
     # publishing of the data
     gm_pub = rospy.Publisher('grid_map', GridMap, queue_size=1)
     cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
-    frame = 'sensor_frame'
+    path_pub = rospy.Publisher('path', Path, queue_size=1)
+
+    frame = 'base_link'
     rate = rospy.Rate(rate)
     while not rospy.is_shutdown():
         stamp = rospy.Time.now()
@@ -89,8 +57,12 @@ def main():
         grid_msg.info.header.frame_id = frame
         grid_msg.info.header.stamp = stamp
 
+        # path
+        path_msg = to_path(poses, frame_id=frame, stamp=stamp)
+
         cloud_pub.publish(cloud_msg)
         gm_pub.publish(grid_msg)
+        path_pub.publish(path_msg)
 
         rospy.logdebug('Published data')
         rate.sleep()

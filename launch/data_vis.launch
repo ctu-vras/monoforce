@@ -2,17 +2,14 @@
 <launch>
     <arg name="rviz" default="true"/>
     <arg name="device" default="cpu"/>
-    <arg name="robot_init_xyz" default="[0., 0., 1.]"/>
-    <arg name="robot_init_q" default="[0., 0., 0., 1.]"/>
+    <arg name="opt_terrain" default="false"/>
 
     <node pkg="monoforce" type="data_vis" name="data_vis" output="screen">
         <rosparam subst_value="true">
-            robot_init_xyz: $(arg robot_init_xyz)
-            robot_init_q: $(arg robot_init_q)
             grid_res: 0.1
             d_min: 0.6
             d_max: 6.4
-            vel_tracks: [2., 2.]
+            opt_terrain: $(arg opt_terrain)
         </rosparam>
     </node>
 

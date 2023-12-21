@@ -22,13 +22,14 @@ import albumentations as A
 from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
-# import matplotlib
-# matplotlib.use('QtAgg')
+import matplotlib
+matplotlib.use('QtAgg')
 
 
 __all__ = [
     'SegmentationDataset',
     'DEMTrajData',
+    'OptDEMTrajData',
     'MonoDEMData',
     'seq_paths',
     'sim_seq_paths',
@@ -280,10 +281,6 @@ class DEMTrajData(Dataset):
             # 'vels': np.zeros_like(poses), 'omegas': np.zeros_like(poses),
             # 'accs': np.zeros_like(poses), 'betas': np.zeros_like(poses)
         }
-        # transform to base footprint frame
-        Tr = self.calib['transformations']['T_base_link__base_footprint']
-        Tr = np.asarray(Tr['data'], dtype=float).reshape((Tr['rows'], Tr['cols']))
-        traj['poses'] = np.asarray([Tr @ pose for pose in traj['poses']])
 
         # transform to robot frame
         Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
@@ -393,15 +390,44 @@ class DEMTrajData(Dataset):
             show_cloud(points, min=trav[valid].min(), max=trav[valid].max() + 1, colormap=cm.jet)
 
         traj = self.get_traj(i)
-        poses = traj['poses']
-
-        h_min = poses[:, 2, 3].min()
-        height = self.estimate_heightmap(points, fill_value=h_min)
+        height = self.estimate_heightmap(points, fill_value=0.)
 
         return cloud, traj, height
 
     def __len__(self):
         return len(self.ids)
+
+
+class OptDEMTrajData(DEMTrajData):
+    def __init__(self, path, cfg=Config()):
+        super(OptDEMTrajData, self).__init__(path, cfg)
+
+    def __getitem__(self, i, visualize=False):
+        cloud = self.get_cloud(i)
+        color = self.get_cloud_color(i)
+
+        # merge cloud and colors
+        cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
+
+        traj = self.get_traj(i)
+        height = self.get_optimized_terrain(i)['height']
+        H, W = height.shape
+        h, w = 2 * self.cfg.d_max // self.cfg.grid_res, 2 * self.cfg.d_max // self.cfg.grid_res
+        # select only the h x w area from the center of the height map
+        height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
+                        int(W // 2 - w // 2):int(W // 2 + w // 2)]
+
+        n = int(2 * self.cfg.d_max / self.cfg.grid_res)
+        xi = np.linspace(-self.cfg.d_max, self.cfg.d_max, n)
+        yi = np.linspace(-self.cfg.d_max, self.cfg.d_max, n)
+        x_grid, y_grid = np.meshgrid(xi, yi)
+        terrain = {
+            'x': x_grid,
+            'y': y_grid,
+            'z': height
+        }
+
+        return cloud, traj, terrain
 
 
 class MonoDEMData(DEMTrajData):
@@ -898,7 +924,7 @@ class OmniOptDEMData(OmniDEMData):
                 ):
         super(OmniOptDEMData, self).__init__(path, data_aug_conf, is_train=True, cfg=cfg)
 
-    def get_height_map_data(self, i, cached=False):
+    def get_height_map_data(self, i, cached=False, h_diff=0.1):
         terrain = self.get_optimized_terrain(i)
         height = torch.as_tensor(terrain['height'])
         height0 = torch.as_tensor(terrain['height_init'])
@@ -910,7 +936,7 @@ class OmniOptDEMData(OmniDEMData):
         height0 = height0[int(H // 2 - h // 2):int(H // 2 + h // 2),
                           int(W // 2 - w // 2):int(W // 2 + w // 2)]
         # mask = torch.ones_like(height)
-        mask = (height - height0).abs() > 0.1
+        mask = (height - height0).abs() > h_diff
         height = torch.stack([height, mask])
         return height
 
@@ -950,11 +976,7 @@ def heightmap_demo():
     assert os.path.exists(path)
 
     cfg = Config()
-    cfg.d_min = 1.
-    cfg.d_max = 12.8
-    cfg.grid_res = 0.1
-    cfg.h_max = 1.
-
+    # ds = OptDEMTrajData(path, cfg=cfg)
     ds = DEMTrajData(path, cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
@@ -1017,68 +1039,68 @@ def vis_rgb_cloud():
     from ..vis import show_cloud
     from ..utils import normalize
 
-    path = np.random.choice(seq_paths)
-    assert os.path.exists(path)
+    for path in seq_paths:
+        assert os.path.exists(path)
 
-    cfg = Config()
-    ds = DEMTrajData(path, cfg=cfg)
+        cfg = Config()
+        ds = DEMTrajData(path, cfg=cfg)
 
-    i = np.random.choice(range(len(ds)))
-    # i = 10
-    cloud = ds.get_cloud(i)
-    colors = ds.get_cloud_color(i)
+        i = np.random.choice(range(len(ds)))
+        # i = 10
+        cloud = ds.get_cloud(i)
+        colors = ds.get_cloud_color(i)
 
-    # poses
-    traj = ds.get_traj(i)
-    poses = traj['poses']
+        # poses
+        traj = ds.get_traj(i)
+        poses = traj['poses']
 
-    # images
-    img_front = ds.get_image(i, 'front')
-    img_rear = ds.get_image(i, 'rear')
-    img_left = ds.get_image(i, 'left')
-    img_right = ds.get_image(i, 'right')
+        # images
+        img_front = ds.get_image(i, 'front')
+        img_rear = ds.get_image(i, 'rear')
+        img_left = ds.get_image(i, 'left')
+        img_right = ds.get_image(i, 'right')
 
-    # colored point cloud
-    points = position(cloud)
-    rgb = color(colors)
-    rgb = normalize(rgb)
+        # colored point cloud
+        points = position(cloud)
+        rgb = color(colors)
+        rgb = normalize(rgb)
 
-    # show images
-    plt.figure(figsize=(12, 12))
+        # show images
+        plt.figure(figsize=(12, 12))
 
-    plt.subplot(332)
-    plt.title('Front camera')
-    plt.imshow(img_front)
-    plt.axis('off')
+        plt.subplot(332)
+        plt.title('Front camera')
+        plt.imshow(img_front)
+        plt.axis('off')
 
-    plt.subplot(338)
-    plt.title('Rear camera')
-    plt.imshow(img_rear)
-    plt.axis('off')
+        plt.subplot(338)
+        plt.title('Rear camera')
+        plt.imshow(img_rear)
+        plt.axis('off')
 
-    plt.subplot(334)
-    plt.title('Left camera')
-    plt.imshow(img_left)
-    plt.axis('off')
+        plt.subplot(334)
+        plt.title('Left camera')
+        plt.imshow(img_left)
+        plt.axis('off')
 
-    plt.subplot(336)
-    plt.title('Right camera')
-    plt.imshow(img_right)
-    plt.axis('off')
+        plt.subplot(336)
+        plt.title('Right camera')
+        plt.imshow(img_right)
+        plt.axis('off')
 
-    # show point cloud
-    plt.subplot(335)
-    points_vis = filter_range(points, cfg.d_min, cfg.d_max)
-    points_vis = filter_grid(points_vis, 0.2)
-    plt.plot(points_vis[:, 0], points_vis[:, 1], 'k.', markersize=0.5)
-    # plot poses
-    plt.plot(poses[:, 0, 3], poses[:, 1, 3], 'ro', markersize=4)
-    plt.axis('equal')
-    plt.grid()
+        # show point cloud
+        plt.subplot(335)
+        points_vis = filter_range(points, cfg.d_min, cfg.d_max)
+        points_vis = filter_grid(points_vis, 0.2)
+        plt.plot(points_vis[:, 0], points_vis[:, 1], 'k.', markersize=0.5)
+        # plot poses
+        plt.plot(poses[:, 0, 3], poses[:, 1, 3], 'ro', markersize=4)
+        plt.axis('equal')
+        plt.grid()
 
-    plt.show()
+        plt.show()
 
-    show_cloud(points, rgb)
+        show_cloud(points, rgb)
 
 
 def traversed_height_map():
@@ -1345,7 +1367,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None
             showimg = ds.destandardize_img(img.permute(1, 2, 0))
 
             plt.imshow(showimg)
-            plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=5, alpha=0.1, cmap='jet')
+            plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.1, cmap='jet')
             plt.axis('off')
             # camera name as text on image
             plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
@@ -1361,14 +1383,15 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None
         plt.ylim((-cfg.d_max, cfg.d_max))
 
         ax = plt.subplot(gs[:, 2:3])
-        plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=5, cmap='Greys')
+        plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=2, cmap='Greys')
         plt.xlim((-cfg.d_max, cfg.d_max))
         plt.ylim((-cfg.d_max, cfg.d_max))
         ax.set_aspect('equal')
 
         ax = plt.subplot(gs[:, 3:4])
         plt.imshow(bev_map[si][0], origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
-        plt.colorbar()
+        # plt.imshow(bev_map[si][1], origin='lower', cmap='Greys', vmin=0., vmax=1.)
+        # plt.colorbar()
 
         if save:
             imname = f'lcheck_{sample_i:05}_{si:02}.jpg'
