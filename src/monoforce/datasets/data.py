@@ -31,6 +31,10 @@ __all__ = [
     'DEMTrajData',
     'OptDEMTrajData',
     'MonoDEMData',
+    'OmniDEMData',
+    'OmniDEMDataVis',
+    'OmniOptDEMData',
+    'OmniOptDEMDataVis',
     'seq_paths',
     'sim_seq_paths',
 ]
@@ -451,6 +455,7 @@ class MonoDEMData(DEMTrajData):
         super(MonoDEMData, self).__init__(path, cfg)
         self.img_size = cfg.img_size
         self.random_camera_selection_prob = random_camera_selection_prob
+        self.is_train = is_train
 
         if cameras is None:
             cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -488,8 +493,7 @@ class MonoDEMData(DEMTrajData):
             A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
             # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
             A.RandomToneCurve(scale=0.1, p=0.5),
-        ]) if is_train else None
-        self.is_train = is_train
+        ]) if self.is_train else None
 
     def get_undistorted_image(self, i, cam):
         img = self.get_image(i, cam)
@@ -900,13 +904,13 @@ class OmniDEMData(MonoDEMData):
 
 
 class OmniDEMDataVis(OmniDEMData):
-    def __int__(self,
-                path,
-                data_aug_conf,
-                is_train=True,
-                cfg=Config()
-                ):
-        super(OmniDEMDataVis, self).__init__(path, data_aug_conf, is_train=True, cfg=cfg)
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config()
+                 ):
+        super(OmniDEMDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
     def __getitem__(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
@@ -916,13 +920,13 @@ class OmniDEMDataVis(OmniDEMData):
 
 
 class OmniOptDEMData(OmniDEMData):
-    def __int__(self,
-                path,
-                data_aug_conf,
-                is_train=True,
-                cfg=Config()
-                ):
-        super(OmniOptDEMData, self).__init__(path, data_aug_conf, is_train=True, cfg=cfg)
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config()
+                 ):
+        super(OmniOptDEMData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
     def get_height_map_data(self, i, cached=False, h_diff=0.1):
         terrain = self.get_optimized_terrain(i)
@@ -942,13 +946,13 @@ class OmniOptDEMData(OmniDEMData):
 
 
 class OmniOptDEMDataVis(OmniOptDEMData):
-    def __int__(self,
-                path,
-                data_aug_conf,
-                is_train=True,
-                cfg=Config()
-                ):
-        super(OmniOptDEMDataVis, self).__init__(path, data_aug_conf, is_train=True, cfg=cfg)
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config()
+                 ):
+        super(OmniOptDEMDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
     def __getitem__(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)

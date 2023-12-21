@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import ConcatDataset
 from monoforce.imgproc import destandardize_img
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDEMData, explore_data
+from monoforce.datasets.data import OmniDEMData, OmniOptDEMData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import seq_paths, sim_seq_paths
 from monoforce.losses import RMSE
@@ -17,133 +17,225 @@ import matplotlib.pyplot as plt
 
 torch.set_default_dtype(torch.float32)
 
-def create_datasets(paths, data_aug_conf, grid_conf, cfg, val_fraction=0.1, debug=False, vis=False):
-    # create dataset for LSS model training
-    datasets = []
-    print('Data paths:', paths)
-    for path in paths:
-        assert os.path.exists(path)
-        ds = OmniDEMData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
-        # print(f'Train dataset from path {path} size is {len(ds)}')
-        if vis:
-            explore_data(path, grid_conf, data_aug_conf, cfg, save=False)
-        datasets.append(ds)
-    ds = ConcatDataset(datasets)
 
-    # random split to get train and validation datasets
-    val_ds_size = int(val_fraction * len(ds))
-    train_ds_size = len(ds) - val_ds_size
-    train_ds, val_ds = torch.utils.data.random_split(ds, [train_ds_size, val_ds_size])
+class Trainer:
+    def __init__(self,
+                 data_paths,
+                 cfg,
+                 data_aug_conf,
+                 grid_conf,
+                 bsz=1,
+                 nworkers=10,
+                 lr=1e-3,
+                 weight_decay=1e-7,
+                 nepochs=500,
+                 save_model=True,
+                 pretrained_model_path=None,
+                 opt_terrain=False,
+                 log_dir='./runs',
+                 debug=False,
+                 vis=False):
 
-    if debug:
-        print('Debug mode: using small datasets')
-        train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
-        val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 8, replace=False))
-    print('Training dataset size:', len(train_ds))
-    print('Validation dataset size:', len(val_ds))
+            self.cfg = cfg
+            self.data_aug_conf = data_aug_conf
+            self.grid_conf = grid_conf
+            self.data_paths = data_paths
+            self.bsz = bsz
+            self.nworkers = nworkers
+            self.lr = lr
+            self.weight_decay = weight_decay
+            self.nepochs = nepochs
+            self.save_model = save_model
+            self.log_dir = log_dir
 
-    return train_ds, val_ds
+            self.train_ds, self.val_ds = self.create_datasets(debug=debug, vis=vis, opt_terrain=opt_terrain)
+            self.trainloader = torch.utils.data.DataLoader(self.train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
+            self.valloader = torch.utils.data.DataLoader(self.val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
+            self.model = self.load_model(modelf=pretrained_model_path)
 
-def epoch(model, loss_fn, loader, device, writer, counter, optimizer=None, train=True):
-    if train:
-        assert optimizer is not None
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+            self.loss_fn = RMSE()
+
+            self.writer = SummaryWriter(log_dir=log_dir)
+
+            self.min_loss = np.inf
+            self.min_train_loss = np.inf
+            self.train_counter = 0
+            self.val_counter = 0
+
+    def load_model(self, modelf=None):
+        model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
+        if modelf is not None:
+            print('Loading pretrained LSS model from', modelf)
+            model.load_state_dict(torch.load(modelf))
+        model.to(self.cfg.device)
         model.train()
+        return model
 
-    epoch_loss = 0.0
-    max_grad_norm = 5.0
+    def create_datasets(self, val_fraction=0.1, opt_terrain=False, debug=False, vis=False):
+        # create dataset for LSS model training
+        datasets = []
+        print('Data paths:', self.data_paths)
+        for path in self.data_paths:
+            assert os.path.exists(path)
+            Data = OmniOptDEMData if opt_terrain else OmniDEMData
+            ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            # print(f'Train dataset from path {path} size is {len(ds)}')
+            if vis:
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, opt_terrain=opt_terrain)
+            datasets.append(ds)
+        ds = ConcatDataset(datasets)
 
-    for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) \
-            in tqdm(enumerate(loader), total=len(loader)):
+        # random split to get train and validation datasets
+        val_ds_size = int(val_fraction * len(ds))
+        train_ds_size = len(ds) - val_ds_size
+        train_ds, val_ds = torch.utils.data.random_split(ds, [train_ds_size, val_ds_size])
+        val_ds.is_train = False
 
-        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-        inputs = [i.to(device) for i in inputs]
-        height_pred = model(*inputs)
+        if debug:
+            print('Debug mode: using small datasets')
+            train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
+            val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 8, replace=False))
+        print('Training dataset size:', len(train_ds))
+        print('Validation dataset size:', len(val_ds))
 
-        heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
-        heightmap = heightmap.to(device)
-        B, D, H, W = heightmap.shape
-        height_gt, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
+        return train_ds, val_ds
 
-        loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+    def epoch(self, train=True):
+        loader = self.trainloader if train else self.valloader
+        counter = self.train_counter if train else self.val_counter
 
-        if train:
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            optimizer.step()
-        epoch_loss += loss.item()
+        epoch_loss = 0.0
+        max_grad_norm = 5.0
 
-        counter += 1
-        writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) \
+                in tqdm(enumerate(loader), total=len(loader)):
 
-    epoch_loss /= len(loader)
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+            inputs = [i.to(self.cfg.device) for i in inputs]
+            height_pred = self.model(*inputs)
 
-    return epoch_loss, counter
+            heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
+            heightmap = heightmap.to(self.cfg.device)
+            B, D, H, W = heightmap.shape
+            height_gt, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
 
+            loss = self.loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
 
-def vis_pred(loader, model, grid_conf, device):
-    fig = plt.figure(figsize=(20, 10))
-    ax1 = fig.add_subplot(231)
-    ax2 = fig.add_subplot(232, projection='3d')
-    ax3 = fig.add_subplot(233, projection='3d')
-    ax4 = fig.add_subplot(234)
-    ax5 = fig.add_subplot(235)
-    ax6 = fig.add_subplot(236)
+            if train:
+                self.optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
+                self.optimizer.step()
+            epoch_loss += loss.item()
 
-    # visualize training predictions
-    with torch.no_grad():
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_gt = next(iter(loader))
-        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-        inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
-        hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
-        height_pred = model(*inputs)
+            counter += 1
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
-        for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
-            ax.clear()
+        epoch_loss /= len(loader)
 
-        # plot image
-        img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
-        # use ImageNet mean and std
-        img = destandardize_img(img, img_mean=np.array([0.485, 0.456, 0.406]), img_std=np.array([0.229, 0.224, 0.225]))
-        ax1.imshow(img)
+        return epoch_loss, counter
 
-        # plot prediction as surface
-        ax2.set_title('Pred Surface')
-        height = height_pred[0][0].cpu().numpy()
-        height_gt = hm_gt[0][0].cpu().numpy()
-        mask = hm_gt[0][1].bool().cpu().numpy()
-        x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
-        y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
-        x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-        ax2.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
-        ax2.set_zlim(-1.0, 1.0)
-        ax2.set_xlabel('x [m]')
-        ax2.set_ylabel('y [m]')
-        ax2.set_zlabel('z [m]')
+    def train(self):
+        for e in range(self.nepochs):
+            # training epoch
+            train_loss, self.train_counter = self.epoch(train=True)
+            print('Epoch:', e, 'Train loss:', train_loss)
+            self.writer.add_scalar('train/epoch_loss', train_loss, e)
 
-        # plot ground truth as surface
-        ax3.set_title('GT Surface')
-        ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
-        ax3.set_zlim(-1.0, 1.0)
-        ax3.set_xlabel('x [m]')
-        ax3.set_ylabel('y [m]')
-        ax3.set_zlabel('z [m]')
+            if self.save_model and train_loss < self.min_train_loss:
+                self.min_train_loss = train_loss
+                print('Saving train model...')
+                torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
 
-        # plot prediction as image
-        ax4.set_title('Prediction')
-        ax4.imshow(height, cmap='jet', vmin=-1.0, vmax=1.0)
+                # visualize training predictions
+                fig = self.vis_pred(self.trainloader)
+                self.writer.add_figure('train/prediction', fig, e)
 
-        ax5.set_title('Masked Prediction')
-        height_vis = height_gt.copy()
-        height_vis[mask] = height[mask]
-        ax5.imshow(height_vis, cmap='jet', vmin=-1.0, vmax=1.0)
+            # validation epoch
+            with torch.no_grad():
+                val_loss, self.val_counter = self.epoch(train=False)
+                print('Epoch:', e, 'Validation loss:', val_loss)
+                self.writer.add_scalar('val/epoch_loss', val_loss, e)
+                if self.save_model and val_loss < self.min_loss:
+                    self.min_loss = val_loss
+                    self.model.eval()
+                    print('Saving model...')
+                    torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
+                    self.model.train()
 
-        ax6.set_title('Ground truth')
-        ax6.imshow(height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+                    # visualize validation predictions
+                    fig = self.vis_pred(self.valloader)
+                    self.writer.add_figure('val/prediction', fig, e)
 
-        return fig
+    def vis_pred(self, loader):
+        model = self.model
+        grid_conf = self.grid_conf
+        device = self.cfg.device
+
+        fig = plt.figure(figsize=(20, 10))
+        ax1 = fig.add_subplot(231)
+        ax2 = fig.add_subplot(232, projection='3d')
+        ax3 = fig.add_subplot(233, projection='3d')
+        ax4 = fig.add_subplot(234)
+        ax5 = fig.add_subplot(235)
+        ax6 = fig.add_subplot(236)
+
+        # visualize training predictions
+        with torch.no_grad():
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_gt = next(iter(loader))
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
+            hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
+            height_pred = model(*inputs)
+
+            for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+                ax.clear()
+
+            # plot image
+            img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
+            # use ImageNet mean and std
+            img = destandardize_img(img, img_mean=np.array([0.485, 0.456, 0.406]), img_std=np.array([0.229, 0.224, 0.225]))
+            ax1.imshow(img)
+
+            # plot prediction as surface
+            ax2.set_title('Pred Surface')
+            height = height_pred[0][0].cpu().numpy()
+            height_gt = hm_gt[0][0].cpu().numpy()
+            mask = hm_gt[0][1].bool().cpu().numpy()
+            x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
+            y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
+            x_grid, y_grid = np.meshgrid(x_grid, y_grid)
+            ax2.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax2.set_zlim(-1.0, 1.0)
+            ax2.set_xlabel('x [m]')
+            ax2.set_ylabel('y [m]')
+            ax2.set_zlabel('z [m]')
+
+            # plot ground truth as surface
+            ax3.set_title('GT Surface')
+            ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax3.set_zlim(-1.0, 1.0)
+            ax3.set_xlabel('x [m]')
+            ax3.set_ylabel('y [m]')
+            ax3.set_zlabel('z [m]')
+
+            # plot prediction as image
+            ax4.set_title('Prediction')
+            ax4.imshow(height, cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax5.set_title('Masked Prediction')
+            height_vis = height_gt.copy()
+            height_vis[mask] = height[mask]
+            ax5.imshow(height_vis, cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax6.set_title('Ground truth')
+            ax6.imshow(height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+
+            return fig
+
 
 def main():
     cfg = Config()
@@ -156,7 +248,7 @@ def main():
     cfg.weight_decay = 1e-7
     cfg.hm_interp_method = None
 
-    bsz = 4
+    bsz = 8
     nworkers = 12
     nepochs = 500
     save_model = True
@@ -173,67 +265,28 @@ def main():
                     'final_dim': (128, 352),
                     'rot_lim': (-5.4, 5.4),
                     'H': 1200, 'W': 1920,
+                    # 'H': 480, 'W': 680,
                     'rand_flip': False,
                     'bot_pct_lim': (0.0, 0.0),
-                    'cams': ['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT'],
+                    'cams': sorted(['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT']),
                     'Ncams': 4,
                 }
 
-    ds_paths = seq_paths[:3]
-    train_ds, val_ds = create_datasets(ds_paths, data_aug_conf=data_aug_conf,
-                                       grid_conf=grid_conf, cfg=cfg,
-                                       vis=False, debug=False)
-    trainloader = torch.utils.data.DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
-    valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+    ds_paths = seq_paths[:3]  # only Husky sequences
+    # ds_paths = sim_seq_paths
+    log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d-%H:%M:%S"))
+    # pretrained_model_path = '../config/weights/lss/train_lss.pt'
+    pretrained_model_path = None
+    opt_terrain = False
+    debug = False
+    vis = False
 
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    model.to(cfg.device)
-    model.train()
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    loss_fn = RMSE()
-
-    log_dir = f'../config/tb_runs/lss_{datetime.now()}/'
-    writer = SummaryWriter(log_dir=log_dir)
-
-    min_loss = np.inf
-    min_train_loss = np.inf
-    train_counter = 0
-    val_counter = 0
-
-    for e in range(nepochs):
-        # training epoch
-        train_loss, train_counter = epoch(model=model, loss_fn=loss_fn, loader=trainloader,
-                                          device=cfg.device, writer=writer, counter=train_counter,
-                                          optimizer=optimizer, train=True)
-        print('Epoch:', e, 'Train loss:', train_loss)
-        writer.add_scalar('train/epoch_loss', train_loss, e)
-
-        if save_model and train_loss < min_train_loss:
-            min_train_loss = train_loss
-            print('Saving train model...')
-            torch.save(model.state_dict(), os.path.join(log_dir, 'train_lss.pt'))
-
-            # visualize training predictions
-            fig = vis_pred(trainloader, model, grid_conf, device=cfg.device)
-            writer.add_figure('train/prediction', fig, e)
-
-        # validation epoch
-        with torch.no_grad():
-            val_loss, val_counter = epoch(model=model, loss_fn=loss_fn, loader=valloader,
-                                          device=cfg.device, writer=writer, counter=val_counter, train=False)
-            print('Epoch:', e, 'Validation loss:', val_loss)
-            writer.add_scalar('val/epoch_loss', val_loss, e)
-            if save_model and val_loss < min_loss:
-                min_loss = val_loss
-                model.eval()
-                print('Saving model...')
-                torch.save(model.state_dict(), os.path.join(log_dir, 'lss.pt'))
-                model.train()
-
-                # visualize validation predictions
-                fig = vis_pred(valloader, model, grid_conf, device=cfg.device)
-                writer.add_figure('val/prediction', fig, e)
+    trainer = Trainer(data_paths=ds_paths,
+                      cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
+                      bsz=bsz, nworkers=nworkers, nepochs=nepochs,
+                      save_model=save_model, pretrained_model_path=pretrained_model_path, opt_terrain=opt_terrain,
+                      log_dir=log_dir, debug=debug, vis=vis)
+    trainer.train()
 
 
 if __name__ == '__main__':
