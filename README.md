@@ -119,7 +119,7 @@ cd ./scripts/
 
 ## Terrain shape Prediction
 
-<video src="docs/imgs/husky_lss.mp4" controls preload></video>
+![](./docs/imgs/husky_lss.gif)
 
 1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is optimized in order to match the ground-truth trajectory as closely as possible.
 2. The optimized terrain shape is used as a label to train the terrain shape predictor. This model takes as input an RGB-image and predicts the shape of the supporting terrain in front of a robot.
