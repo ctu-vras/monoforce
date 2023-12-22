@@ -4,7 +4,6 @@ Self-supervised learning of physics-aware grey-box model for predicting robot-te
 [![Arxiv](http://img.shields.io/badge/paper-arxiv.2303.01123-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
 
 <img src="docs/imgs/overview_from_img.png" height="280"/> <img src="docs/imgs/overview.png" height="300"/>
-![](./docs/imgs/demo.gif)
 
 ## Installation
 Prerequisites:
@@ -103,6 +102,8 @@ python -m monoforce.datasets.data
 
 ## Differentiable Physics
 
+![](./docs/imgs/demo.gif)
+
 Run the differentiable physics simulation with a tracked robot using the collected dataset:
 ```commandline
 cd ./scripts/
@@ -118,15 +119,21 @@ cd ./scripts/
 
 ## Terrain shape Prediction
 
+<video src="docs/imgs/husky_lss.mp4" controls preload></video>
+
 1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is optimized in order to match the ground-truth trajectory as closely as possible.
 2. The optimized terrain shape is used as a label to train the terrain shape predictor. This model takes as input an RGB-image and predicts the shape of the supporting terrain in front of a robot.
-In our experiments, we utilize the [Monolayout](https://github.com/manila95/monolayout) model.
+In our experiments, we utilize
+[Monolayout](https://github.com/manila95/monolayout)
+and [Lift-Splat-Shoot (LSS)](https://github.com/nv-tlabs/lift-splat-shoot) models.
 3. Lidar scans are used in order to provide height map estimates serving as a regularization factor during training.
 
-An example of a trained model output is given bellow.
+The LSS model training data example:
+- input RGB images,
+- terrain shape estimated from lidar,
+- point cloud generated from camera frustums.
 
-![](./docs/imgs/monodem_pred.png)
-![](./docs/imgs/prediction.png)
+![](./docs/imgs/lss_data.png)
 
 
 ## Citation

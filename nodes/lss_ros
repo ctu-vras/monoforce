@@ -344,7 +344,7 @@ class LSSVis(LSS):
         rat = H / W
         val = 10.1
         fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
-        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
+        gs = mpl.gridspec.GridSpec(2, 4, width_ratios=(1, 1, 2 * rat, 2 * rat))
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
         img_pts = self.model.get_geometry(rots.to(self.cfg.device),
                                           trans.to(self.cfg.device),
@@ -356,7 +356,7 @@ class LSSVis(LSS):
 
         for si in range(imgs.shape[0]):
             plt.clf()
-            final_ax = plt.subplot(gs[:, 4:5])
+            final_ax = plt.subplot(gs[:, 3:4])
             for imgi, img in enumerate(imgs[si]):
                 ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
                 mask = get_only_in_img_mask(ego_pts, H, W)
@@ -382,15 +382,15 @@ class LSSVis(LSS):
             plt.xlim((-self.cfg.d_max, self.cfg.d_max))
             plt.ylim((-self.cfg.d_max, self.cfg.d_max))
 
-            ax = plt.subplot(gs[:, 2:3])
-            plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], s=5, cmap='Greys', vmin=-0.5, vmax=0.5)
-            plt.xlim((-self.cfg.d_max, self.cfg.d_max))
-            plt.ylim((-self.cfg.d_max, self.cfg.d_max))
-            ax.set_aspect('equal')
+            # ax = plt.subplot(gs[:, 2:3])
+            # plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], s=5, cmap='Greys', vmin=-0.5, vmax=0.5)
+            # plt.xlim((-self.cfg.d_max, self.cfg.d_max))
+            # plt.ylim((-self.cfg.d_max, self.cfg.d_max))
+            # ax.set_aspect('equal')
 
-            ax = plt.subplot(gs[:, 3:4])
+            ax = plt.subplot(gs[:, 2:3])
             plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
-            # plt.colorbar()
+            plt.colorbar()
 
             if fname is None:
                 plt.show()
@@ -454,7 +454,7 @@ class LSSVis(LSS):
         imgs, rots, trans, intrins, post_rots, post_trans = lss_inputs
         vis_inputs = [imgs, rots, trans, intrins, post_rots, post_trans, points, height]
 
-        self.vis(*vis_inputs, fname='lss_data.png')
+        self.vis(*vis_inputs, fname=f'lss_data_{time()}.png')
 
 
 def main():

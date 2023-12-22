@@ -7,9 +7,9 @@ data_aug_conf:
   Ncams: 4
   cams:
   - CAM_FRONT
-  - CAM_REAR
-  - CAM_RIGHT
   - CAM_LEFT
+  - CAM_RIGHT
+  - CAM_REAR
   final_dim:
   - 128
   - 352
