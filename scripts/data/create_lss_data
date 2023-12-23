@@ -99,37 +99,23 @@ def save_clouds_and_images(bag_path, cam_topics, lidar_topic, time_diff=5.0, lid
 def debug():
     from monoforce.datasets.data import explore_data, seq_paths, sim_seq_paths
     from monoforce.config import Config
+    from monoforce.utils import read_yaml
 
     cfg = Config()
-    cfg.d_min = 0.6
-    cfg.d_max = 6.4
-    cfg.grid_res = 0.1
-    cfg.h_max = 1.0
+    config_path = '../../config/cfg.yaml'
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
 
-    grid_conf = {
-        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'zbound': [-10.0, 10.0, 20.0],
-        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
-    }
+    # load LSS config
+    lss_config_path = '../../config/lss.yaml'
+    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+    lss_config = read_yaml(lss_config_path)
+    grid_conf = lss_config['grid_conf']
+    data_aug_conf = lss_config['data_aug_conf']
 
-    data_aug_conf = {
-        'resize_lim': (0.193, 0.225),
-        'final_dim': (128, 352),
-        'rot_lim': (-5.4, 5.4),
-        # 'H': 480, 'W': 680,
-        'H': 1200, 'W': 1920,
-        'rand_flip': False,
-        'bot_pct_lim': (0.0, 0.0),
-        'cams': sorted(['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT']),
-        'Ncams': 4,
-    }
-
-    # paths = sim_seq_paths
-    paths = seq_paths[:3]
-
+    paths = seq_paths
     for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg, opt_terrain=False)
+        explore_data(path, grid_conf, data_aug_conf, cfg, opt_terrain=False, save=True)
 
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, save_data,

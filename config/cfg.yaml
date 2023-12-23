@@ -4,11 +4,11 @@ d_max: 6.4
 d_min: 0.6
 damping: 0.0
 dataset_path: ''
-device: cpu
+device: cuda
 elasticity: 0.0
 friction: 0.9
 grid_res: 0.1
-h_max: 1.0
+h_max: 1.5
 hm_interp_method: null
 img_size:
 - 512
@@ -48,4 +48,4 @@ use_terrain_cnn: false
 vel_tracks:
 - 0.0
 - 0.0
-weight_decay: 0.0
+weight_decay: 1e-7

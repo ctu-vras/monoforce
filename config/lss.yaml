@@ -3,13 +3,13 @@ data_aug_conf:
   W: 1920
   bot_pct_lim:
   - 0.0
-  - 0.0
+  - 0.22
   Ncams: 4
   cams:
   - CAM_FRONT
   - CAM_LEFT
-  - CAM_RIGHT
   - CAM_REAR
+  - CAM_RIGHT
   final_dim:
   - 128
   - 352

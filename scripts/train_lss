@@ -8,6 +8,7 @@ from monoforce.imgproc import destandardize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDEMData, OmniOptDEMData, explore_data
 from monoforce.config import Config
+from monoforce.utils import read_yaml
 from monoforce.datasets import seq_paths, sim_seq_paths
 from monoforce.losses import RMSE
 from tqdm import tqdm
@@ -80,10 +81,12 @@ class Trainer:
         for path in self.data_paths:
             assert os.path.exists(path)
             Data = OmniOptDEMData if opt_terrain else OmniDEMData
-            ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            is_train = True
+            ds = Data(path, is_train=is_train, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             # print(f'Train dataset from path {path} size is {len(ds)}')
             if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, opt_terrain=opt_terrain)
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
+                             save=False, opt_terrain=opt_terrain, is_train=is_train)
             datasets.append(ds)
         ds = ConcatDataset(datasets)
 
@@ -238,48 +241,31 @@ class Trainer:
 
 
 def main():
-    cfg = Config()
-    cfg.d_min = 0.6
-    cfg.d_max = 6.4
-    cfg.grid_res = 0.1
-    cfg.h_max = 1.5
-    cfg.device = torch.device('cuda:0')
-    cfg.lr = 1e-3
-    cfg.weight_decay = 1e-7
-    cfg.hm_interp_method = None
-
     bsz = 8
     nworkers = 12
     nepochs = 500
     save_model = True
 
-    grid_conf = {
-        'xbound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'ybound': [-cfg.d_max, cfg.d_max, cfg.grid_res],
-        'zbound': [-10.0, 10.0, 20.0],
-        'dbound': [cfg.d_min, cfg.d_max, cfg.grid_res],
-    }
+    cfg = Config()
+    config_path = '../config/cfg.yaml'
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
 
-    data_aug_conf = {
-                    'resize_lim': (0.193, 0.225),
-                    'final_dim': (128, 352),
-                    'rot_lim': (-5.4, 5.4),
-                    'H': 1200, 'W': 1920,
-                    # 'H': 480, 'W': 680,
-                    'rand_flip': False,
-                    'bot_pct_lim': (0.0, 0.0),
-                    'cams': sorted(['CAM_FRONT', 'CAM_REAR', 'CAM_RIGHT', 'CAM_LEFT']),
-                    'Ncams': 4,
-                }
+    # load LSS config
+    lss_config_path = '../config/lss.yaml'
+    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+    lss_config = read_yaml(lss_config_path)
+    grid_conf = lss_config['grid_conf']
+    data_aug_conf = lss_config['data_aug_conf']
 
-    ds_paths = seq_paths[:3]  # only Husky sequences
-    # ds_paths = sim_seq_paths
     log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d-%H:%M:%S"))
-    # pretrained_model_path = '../config/weights/lss/train_lss.pt'
-    pretrained_model_path = None
+    pretrained_model_path = '../config/weights/lss/train_lss.pt'
+    # pretrained_model_path = None
     opt_terrain = False
     debug = False
     vis = False
+
+    ds_paths = seq_paths[:3]
 
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,

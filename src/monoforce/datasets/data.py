@@ -41,7 +41,6 @@ __all__ = [
 
 IGNORE_LABEL = 255
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
-vis_dir = os.path.realpath(os.path.join(data_dir, 'robingas', 'visuals'))
 
 seq_paths = [
         os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
@@ -1325,8 +1324,10 @@ def global_cloud_demo():
         ds.global_cloud(vis=True, step_size=100)
 
 
-def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None, save=False, opt_terrain=False):
+def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
+                 sample_range='random', save=False, opt_terrain=False, is_train=False):
     assert os.path.exists(path)
+    assert sample_range in ['random', 'all']
 
     Data = OmniOptDEMDataVis if opt_terrain else OmniDEMDataVis
 
@@ -1336,73 +1337,82 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None, sample_i=None
         print('Loaded LSS model from', modelf)
         model.eval()
 
-    ds = Data(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = Data(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
 
     H, W = data_aug_conf['H'], data_aug_conf['W']
     cams = data_aug_conf['cams']
     rat = H / W
     val = 10.1
-    fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
-    gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
-    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    if sample_i is None:
-        sample_i = np.random.choice(range(len(ds)))
-    sample = ds[sample_i]
-    sample = [s[None] for s in sample]
-    imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map = sample
-    if modelf is not None:
-        with torch.no_grad():
-            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-            bev_map = model(*inputs)
+    if sample_range == 'random':
+        sample_range = [np.random.choice(range(len(ds)))]
+    else:
+        sample_range = tqdm(range(len(ds)), total=len(ds))
 
-    img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+    for sample_i in sample_range:
+        fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
+        gs = mpl.gridspec.GridSpec(2, 4, width_ratios=(1, 1, 2 * rat, 2 * rat))
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    for si in range(imgs.shape[0]):
-        plt.clf()
-        final_ax = plt.subplot(gs[:, 4:5])
-        for imgi, img in enumerate(imgs[si]):
-            ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-            mask = get_only_in_img_mask(ego_pts, H, W)
-            plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+        sample = ds[sample_i]
+        sample = [s[np.newaxis] for s in sample]
+        imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map = sample
+        if modelf is not None:
+            with torch.no_grad():
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+                bev_map = model(*inputs)
 
-            ax = plt.subplot(gs[imgi // 2, imgi % 2])
-            showimg = ds.destandardize_img(img.permute(1, 2, 0))
+        img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
-            plt.imshow(showimg)
-            plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.1, cmap='jet')
-            plt.axis('off')
-            # camera name as text on image
-            plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
-                     transform=ax.transAxes, fontsize=10)
+        for si in range(imgs.shape[0]):
+            plt.clf()
+            final_ax = plt.subplot(gs[:, 3:4])
+            for imgi, img in enumerate(imgs[si]):
+                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                mask = get_only_in_img_mask(ego_pts, H, W)
+                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
 
-            plt.sca(final_ax)
-            plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
-                     label=cams[imgi].replace('_', ' '))
+                ax = plt.subplot(gs[imgi // 2, imgi % 2])
+                showimg = ds.destandardize_img(img.permute(1, 2, 0))
 
-        plt.legend(loc='upper right')
-        final_ax.set_aspect('equal')
-        plt.xlim((-cfg.d_max, cfg.d_max))
-        plt.ylim((-cfg.d_max, cfg.d_max))
+                plt.imshow(showimg)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.5, cmap='jet')
+                plt.axis('off')
+                # camera name as text on image
+                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
+                         transform=ax.transAxes, fontsize=10)
 
-        ax = plt.subplot(gs[:, 2:3])
-        plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=2, cmap='Greys')
-        plt.xlim((-cfg.d_max, cfg.d_max))
-        plt.ylim((-cfg.d_max, cfg.d_max))
-        ax.set_aspect('equal')
+                plt.sca(final_ax)
+                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                         label=cams[imgi].replace('_', ' '))
 
-        ax = plt.subplot(gs[:, 3:4])
-        plt.imshow(bev_map[si][0], origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
-        # plt.imshow(bev_map[si][1], origin='lower', cmap='Greys', vmin=0., vmax=1.)
-        # plt.colorbar()
+            plt.legend(loc='upper right')
+            final_ax.set_aspect('equal')
+            plt.xlim((-cfg.d_max, cfg.d_max))
+            plt.ylim((-cfg.d_max, cfg.d_max))
 
-        if save:
-            imname = f'lcheck_{sample_i:05}_{si:02}.jpg'
-            print('saving', imname)
-            plt.savefig(imname)
-        else:
-            plt.show()
+            # ax = plt.subplot(gs[:, 2:3])
+            # plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=2, cmap='Greys')
+            # plt.xlim((-cfg.d_max, cfg.d_max))
+            # plt.ylim((-cfg.d_max, cfg.d_max))
+            # ax.set_aspect('equal')
+
+            ax = plt.subplot(gs[:, 2:3])
+            plt.imshow(bev_map[si][0], origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+            # plt.imshow(bev_map[si][1], origin='lower', cmap='Greys', vmin=0., vmax=1.)
+            plt.colorbar()
+
+            if save:
+                save_dir = os.path.join(path, 'terrain', 'visuals')
+                os.makedirs(save_dir, exist_ok=True)
+                imname = f'{ds.ids[sample_i]}.jpg'
+                imname = os.path.join(save_dir, imname)
+                # print('saving', imname)
+                plt.savefig(imname)
+                plt.close(fig)
+            else:
+                plt.show()
 
 
 def main():
