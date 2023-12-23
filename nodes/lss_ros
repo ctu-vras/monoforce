@@ -97,8 +97,7 @@ class LSS:
         rospy.loginfo('Loading LSS model from %s' % modelf)
         model.load_state_dict(torch.load(modelf))
         model.to(self.cfg.device)
-        # model.eval()
-        # model.train()
+        model.eval()
         return model
 
     def preprocess_params(self, img=None):

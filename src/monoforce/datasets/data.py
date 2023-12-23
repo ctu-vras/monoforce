@@ -1377,7 +1377,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 showimg = ds.destandardize_img(img.permute(1, 2, 0))
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.5, cmap='jet')
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.2, cmap='jet')
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',
