@@ -8,7 +8,7 @@ from torch.utils.data import ConcatDataset
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data
 from monoforce.config import Config
-from monoforce.datasets import seq_paths
+from monoforce.datasets import seq_paths, sim_seq_paths
 from monoforce.losses import RMSE
 from monoforce.utils import read_yaml
 from tqdm import tqdm
@@ -153,11 +153,15 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     modelf = '../config/weights/lss/lss.pt'
+    # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
-    explore_data(seq_paths[0], grid_conf, data_aug_conf, cfg, modelf, save=False)
-    # eval(seq_paths, data_aug_conf, grid_conf, cfg, modelf)
-    test(seq_paths[0], data_aug_conf, grid_conf, cfg, modelf)
+    paths = seq_paths
+    # paths = sim_seq_paths
+
+    explore_data(np.random.choice(paths), grid_conf, data_aug_conf, cfg, modelf, save=False)
+    # eval(paths, data_aug_conf, grid_conf, cfg, modelf)
+    test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
 
 
 if __name__ == '__main__':

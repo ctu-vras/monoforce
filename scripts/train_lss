@@ -41,10 +41,6 @@ class Trainer:
             self.data_aug_conf = data_aug_conf
             self.grid_conf = grid_conf
             self.data_paths = data_paths
-            self.bsz = bsz
-            self.nworkers = nworkers
-            self.lr = lr
-            self.weight_decay = weight_decay
             self.nepochs = nepochs
             self.save_model = save_model
             self.log_dir = log_dir

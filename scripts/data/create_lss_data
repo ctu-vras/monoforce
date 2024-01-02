@@ -108,14 +108,17 @@ def debug():
 
     # load LSS config
     lss_config_path = '../../config/lss.yaml'
+    # lss_config_path = '../../config/lss_sim.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
     paths = seq_paths
+    # paths = sim_seq_paths
     for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg, opt_terrain=False, save=True)
+        explore_data(path, grid_conf, data_aug_conf, cfg,
+                     opt_terrain=False, save=True, is_train=False, sample_range='all')
 
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, save_data,
