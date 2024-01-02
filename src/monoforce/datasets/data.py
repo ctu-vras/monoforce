@@ -22,8 +22,12 @@ import albumentations as A
 from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
-# import matplotlib
-# matplotlib.use('QtAgg')
+try:
+    import matplotlib
+    matplotlib.use('QtAgg')
+except:
+    print('Could not set matplotlib backend to QtAgg')
+    pass
 
 
 __all__ = [

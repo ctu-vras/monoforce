@@ -72,24 +72,36 @@ class Trainer:
 
     def create_datasets(self, val_fraction=0.1, opt_terrain=False, debug=False, vis=False):
         # create dataset for LSS model training
-        datasets = []
+        train_datasets = []
+        val_datasets = []
         print('Data paths:', self.data_paths)
         for path in self.data_paths:
             assert os.path.exists(path)
             Data = OmniOptDEMData if opt_terrain else OmniDEMData
-            is_train = True
-            ds = Data(path, is_train=is_train, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+
+            # randomly select a subset of the dataset
+            val_ds_size = int(val_fraction * len(train_ds))
+            train_ds_size = len(train_ds) - val_ds_size
+            train_ids = np.random.choice(len(train_ds), train_ds_size, replace=False)
+            val_ids = np.setdiff1d(np.arange(len(train_ds)), train_ids)
+            assert len(train_ids) + len(val_ids) == len(train_ds)
+            # check that there is no overlap between train and val ids
+            assert len(np.intersect1d(train_ids, val_ids)) == 0
+
+            train_ds = torch.utils.data.Subset(train_ds, train_ids)
+            val_ds = torch.utils.data.Subset(val_ds, val_ids)
+
             # print(f'Train dataset from path {path} size is {len(ds)}')
             if vis:
                 explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
-                             save=False, opt_terrain=opt_terrain, is_train=is_train)
-            datasets.append(ds)
-        ds = ConcatDataset(datasets)
+                             save=False, opt_terrain=opt_terrain, is_train=True)
+            train_datasets.append(train_ds)
+            val_datasets.append(val_ds)
 
-        # random split to get train and validation datasets
-        val_ds_size = int(val_fraction * len(ds))
-        train_ds_size = len(ds) - val_ds_size
-        train_ds, val_ds = torch.utils.data.random_split(ds, [train_ds_size, val_ds_size])
+        train_ds = ConcatDataset(train_datasets)
+        val_ds = ConcatDataset(val_datasets)
 
         if debug:
             print('Debug mode: using small datasets')
@@ -247,8 +259,8 @@ def main():
     cfg.from_yaml(config_path)
 
     # load LSS config
-    # lss_config_path = '../config/lss.yaml'
-    lss_config_path = '../config/lss_sim.yaml'
+    lss_config_path = '../config/lss.yaml'
+    # lss_config_path = '../config/lss_sim.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
@@ -261,8 +273,8 @@ def main():
     debug = False
     vis = False
 
-    # ds_paths = seq_paths[:3]
-    ds_paths = sim_seq_paths
+    ds_paths = seq_paths[:3]
+    # ds_paths = sim_seq_paths
 
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
