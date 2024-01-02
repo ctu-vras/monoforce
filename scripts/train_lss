@@ -81,7 +81,7 @@ class Trainer:
         for path in self.data_paths:
             assert os.path.exists(path)
             Data = OmniOptDEMData if opt_terrain else OmniDEMData
-            is_train = False
+            is_train = True
             ds = Data(path, is_train=is_train, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             # print(f'Train dataset from path {path} size is {len(ds)}')
             if vis:
@@ -251,22 +251,22 @@ def main():
     cfg.from_yaml(config_path)
 
     # load LSS config
-    lss_config_path = '../config/lss.yaml'
-    # lss_config_path = '../config/lss_sim.yaml'
+    # lss_config_path = '../config/lss.yaml'
+    lss_config_path = '../config/lss_sim.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d-%H:%M:%S"))
-    pretrained_model_path = '../config/weights/lss/train_lss.pt'
+    log_dir = os.path.join('../config/tb_runs', 'lss_sim_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
+    pretrained_model_path = '../config/weights/lss/lss.pt'
     # pretrained_model_path = None
     opt_terrain = False
     debug = False
     vis = False
 
-    ds_paths = seq_paths[:3]
-    # ds_paths = sim_seq_paths
+    # ds_paths = seq_paths[:3]
+    ds_paths = sim_seq_paths
 
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,

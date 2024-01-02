@@ -15,8 +15,8 @@ data_aug_conf:
   - 352
   rand_flip: false
   resize_lim:
-  - 0.5
-  - 1.0
+  - 0.3
+  - 0.4
   rot_lim:
   - -5.4
   - 5.4

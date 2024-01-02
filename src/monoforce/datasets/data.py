@@ -52,8 +52,8 @@ seq_paths = [
 seq_paths = [os.path.normpath(path) for path in seq_paths]
 
 sim_seq_paths = [
-        # os.path.join(data_dir, 'lss_input/husky_emptyfarm_2023-12-11-17-27-51_trav'),
-        # os.path.join(data_dir, 'lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'),
+        os.path.join(data_dir, 'lss_input/husky_emptyfarm_2023-12-11-17-27-51_trav'),
+        os.path.join(data_dir, 'lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'),
         os.path.join(data_dir, 'lss_input/husky_emptyfarm_2023-12-13-13-39-29_trav'),
         os.path.join(data_dir, 'lss_input/husky_farmWith1CropRow_2023-12-13-14-14-14_trav'),
         os.path.join(data_dir, 'lss_input/husky_inspection_2023-12-13-14-40-40_trav'),
