@@ -240,7 +240,7 @@ class Trainer:
 
 
 def main():
-    bsz = 8
+    bsz = 32
     nworkers = 12
     nepochs = 500
     save_model = True
