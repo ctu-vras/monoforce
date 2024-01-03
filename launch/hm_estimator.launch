@@ -6,6 +6,8 @@
     <node name="hm_estimator" pkg="monoforce" type="hm_estimator">
         <rosparam subst_value="true">
             pts_topic: $(arg pts_topic)
+            robot_frame: base_link
+            config_path: $(dirname)/../config/cfg.yaml
         </rosparam>
     </node>
 </launch>

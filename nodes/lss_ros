@@ -198,9 +198,11 @@ class LSS:
         for cam_i, (img_msg, info_msg) in enumerate(zip(img_msgs, info_msgs)):
             img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
             if self.calib is not None:
+                rospy.logdebug('Using calibration from yaml file')
                 cam_name = self.camera_info_topics[cam_i].split('/')[1]
                 E, K, D = self.get_cam_calib_from_yaml(cam_name)
             else:
+                rospy.logdebug('Using calibration from CameraInfo message')
                 E, K, D = self.get_cam_calib_from_info_msg(info_msg)
             # img, K = undistort_image(img, K, D)
             img = img[..., (2, 1, 0)]  # BGR -> RGB
@@ -230,7 +232,7 @@ class LSS:
         rospy.logdebug('Received %d messages' % len(msgs))
         # if message is stale do not process it
         dt = rospy.Time.now() - msgs[0].header.stamp
-        if dt > rospy.Duration(self.max_stale_msg_delay):
+        if dt.to_sec() > self.max_stale_msg_delay:
             rospy.logdebug(f'Stale image messages received ({dt.to_sec():.3f} > {self.max_stale_msg_delay} [sec]), skipping')
             return
 

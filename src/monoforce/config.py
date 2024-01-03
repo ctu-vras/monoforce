@@ -8,7 +8,7 @@ class Config:
     def __init__(self):
         # height map parameters
         self.grid_res = 0.1
-        self.d_min = 0.6
+        self.d_min = 1.0
         self.d_max = 6.4
         self.h_max = 1.0  # above robot frame (base_link)
         self.damping = 0.

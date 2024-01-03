@@ -96,31 +96,6 @@ def save_clouds_and_images(bag_path, cam_topics, lidar_topic, time_diff=5.0, lid
                     cv2.imwrite(os.path.join(data_path, 'images', '%s_%s.png' % (ids[i], camera)), img_raw)
                     i += 1
 
-def debug():
-    from monoforce.datasets.data import explore_data, seq_paths, sim_seq_paths
-    from monoforce.config import Config
-    from monoforce.utils import read_yaml
-
-    cfg = Config()
-    config_path = '../../config/cfg.yaml'
-    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    cfg.from_yaml(config_path)
-
-    # load LSS config
-    lss_config_path = '../../config/lss.yaml'
-    # lss_config_path = '../../config/lss_sim.yaml'
-    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
-    lss_config = read_yaml(lss_config_path)
-    grid_conf = lss_config['grid_conf']
-    data_aug_conf = lss_config['data_aug_conf']
-
-    paths = seq_paths
-    # paths = sim_seq_paths
-    for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg,
-                     opt_terrain=False, save=True, is_train=False, sample_range='all')
-
-
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, save_data,
             robot_frame='base_link', lidar_frame='ouster_link'):
     assert os.path.exists(bag_path), 'Bag file does not exist: %s' % bag_path
@@ -143,7 +118,6 @@ def main():
     args = arg_parser().parse_args()
     print(args)
     process(**vars(args))
-    # debug()
 
 
 if __name__ == '__main__':

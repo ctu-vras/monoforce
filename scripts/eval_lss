@@ -97,26 +97,27 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
             plt.draw()
 
 
-def eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
+def eval(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
     model = compile_model(grid_conf, data_aug_conf, outC=1)
-    print('loading', modelf)
-    model.load_state_dict(torch.load(modelf))
+    if modelf is not None:
+        print('loading', modelf)
+        model.load_state_dict(torch.load(modelf))
     model.to(cfg.device)
     model.eval()
 
     loss_fn = RMSE()
 
     all_seqs_mean_loss = 0.0
-    for val_ds_path in paths:
-        print(f'Evaluation on {os.path.basename(val_ds_path)}...')
-        # explore_data(val_ds_path, grid_conf, data_aug_conf, cfg, modelf, save=False)
+    for path in paths:
+        print(f'Evaluation on {os.path.basename(path)}...')
+        # explore_data(path, grid_conf, data_aug_conf, cfg, modelf, save=False)
 
-        val_ds = OmniDEMData(val_ds_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+        val_ds = OmniDEMData(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
         valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
         # validation epoch
         with torch.no_grad():
-            val_loss = 0.0
+            eval_loss = 0.0
             for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_gt)\
                     in tqdm(enumerate(valloader), total=len(valloader)):
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -129,13 +130,13 @@ def eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=2, nworkers=10):
                 height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
                 loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
 
-                val_loss += loss.item()
-            val_loss /= len(valloader)
+                eval_loss += loss.item()
+            eval_loss /= len(valloader)
 
-        print(f'For seq {os.path.basename(val_ds_path)} Validation loss: {val_loss:.3f}')
-        all_seqs_mean_loss += val_loss
-    all_seqs_mean_loss /= len(seq_paths)
-    print(f'Average validation loss: {all_seqs_mean_loss:.3f}')
+        print(f'For seq {os.path.basename(path)} mean loss: {eval_loss:.3f}')
+        all_seqs_mean_loss += eval_loss
+    all_seqs_mean_loss /= len(paths)
+    print(f'Average evaluation loss: {all_seqs_mean_loss:.3f}')
 
 
 def main():
@@ -145,22 +146,25 @@ def main():
     cfg.from_yaml(config_path)
 
     # load LSS config
-    lss_config_path = '../config/lss.yaml'
-    # lss_config_path = '../config/lss_sim.yaml'
+    # lss_config_path = '../config/lss.yaml'
+    lss_config_path = '../config/lss_sim.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    modelf = '../config/weights/lss/lss.pt'
+    # modelf = '../config/weights/lss/lss.pt'
+    modelf = '../config/weights/lss/train_lss_sim.pt'
     # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
-    paths = seq_paths
-    # paths = sim_seq_paths
+    # paths = seq_paths[:3]
+    paths = sim_seq_paths
 
-    explore_data(np.random.choice(paths), grid_conf, data_aug_conf, cfg, modelf, save=False)
-    # eval(paths, data_aug_conf, grid_conf, cfg, modelf)
+    for path in paths:
+        explore_data(path, grid_conf, data_aug_conf, cfg,
+                     opt_terrain=False, save=False, is_train=False, sample_range='random')
+    # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=32)
     test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
 
 

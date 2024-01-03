@@ -36,7 +36,7 @@ def color(cloud):
     return rgb
 
 
-def filter_range(cloud, min, max, log=False, return_mask=False):
+def filter_range(cloud, min, max, log=False, only_mask=False):
     """Keep points within range interval."""
     assert isinstance(cloud, np.ndarray), type(cloud)
     assert isinstance(min, (float, int)), min
@@ -56,10 +56,10 @@ def filter_range(cloud, min, max, log=False, return_mask=False):
         print('%.3f = %i / %i points kept (range min %s, max %s).'
               % (mask.sum() / len(cloud), mask.sum(), len(cloud), min, max))
 
-    filtered = cloud[mask]
-    if return_mask:
-        return filtered, mask
+    if only_mask:
+        return mask
 
+    filtered = cloud[mask]
     return filtered
 
 
@@ -173,7 +173,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     points = points[mask]
 
     # robot points
-    robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., return_mask=True)[1]
+    robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., only_mask=True)
 
     if robot_mask.sum() > 0:
         # if fill_value is None:

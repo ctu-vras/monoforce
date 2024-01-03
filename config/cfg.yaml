@@ -1,15 +1,15 @@
 convergence_n_samples: 10
 convergence_std: 0.001
 d_max: 6.4
-d_min: 0.6
+d_min: 1.0
 damping: 0.0
 dataset_path: ''
 device: cuda
 elasticity: 0.0
 friction: 0.9
 grid_res: 0.1
-h_max: 1.5
-hm_interp_method: null
+h_max: 1.0
+hm_interp_method: nearest
 img_size:
 - 512
 - 512

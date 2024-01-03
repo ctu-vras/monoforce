@@ -1,28 +1,36 @@
 #!/usr/bin/env python
 
+import os
 import numpy as np
 import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.config import Config
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
-from monoforce.utils import normalize
+from monoforce.utils import normalize, read_yaml
 from monoforce.cloudproc import estimate_heightmap, position
 from ros_numpy import numpify, msgify
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 import rospkg
+import tf2_ros
 from time import time
-
 
 pkg_path = rospkg.RosPack().get_path('monoforce')
 
+
 class HeightMapEstimator:
     def __init__(self, cfg: Config,
-                 pts_topic='points'):
+                 pts_topic='points',
+                 robot_frame='base_link'):
         self.cfg = cfg
+        self.robot_frame = robot_frame
 
         # cv bridge
         self.cv_bridge = CvBridge()
+        # tf buffer
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
         # height map publisher
         self.hm_img_pub = rospy.Publisher('/height_map/image', Image, queue_size=1)
         # point cloud publisher
@@ -37,7 +45,7 @@ class HeightMapEstimator:
         # if message is stale do not process it
         dt = rospy.Time.now() - msg.header.stamp
         max_stale_msg_delay = 0.5
-        if dt > rospy.Duration(max_stale_msg_delay):
+        if dt.to_sec() > max_stale_msg_delay:
             rospy.logdebug(
                 f'Stale image messages received ({dt.to_sec():.3f} > {max_stale_msg_delay} [sec]), skipping')
             return
@@ -47,6 +55,19 @@ class HeightMapEstimator:
         if cloud.ndim > 1:
             cloud = cloud.reshape(-1)
         points = position(cloud)
+
+        # transform points to robot frame
+        try:
+            tf = self.tf_buffer.lookup_transform(target_frame=self.robot_frame,
+                                                 source_frame=msg.header.frame_id,
+                                                 time=msg.header.stamp,
+                                                 timeout=rospy.Duration(0.5))
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            rospy.logwarn('Could not get transform from %s to %s' % (msg.header.frame_id, self.cfg.robot_frame))
+            return
+        Tr = numpify(tf.transform).reshape((4, 4))
+        points = np.matmul(Tr[:3, :3], points.T).T + Tr[:3, 3]
+
         hm = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
                                 grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
                                 hm_interp_method=self.cfg.hm_interp_method)
@@ -70,14 +91,14 @@ class HeightMapEstimator:
         cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
                                                   xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         cloud_msg.header.stamp = msg.header.stamp
-        cloud_msg.header.frame_id = msg.header.frame_id
+        cloud_msg.header.frame_id = self.robot_frame
         self.hm_cloud_pub.publish(cloud_msg)
 
         # publish grid map
         grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
                                              xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = msg.header.stamp
-        grid_msg.info.header.frame_id = msg.header.frame_id
+        grid_msg.info.header.frame_id = self.robot_frame
         self.hm_grid_pub.publish(grid_msg)
         rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
 
@@ -86,14 +107,14 @@ def main():
     rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.DEBUG)
 
     cfg = Config()
-    cfg.grid_res = 0.1
-    cfg.d_max = 6.4
-    cfg.d_min = 0.6
-    cfg.h_max = 1.0
-    cfg.hm_interp_method = 'nearest'
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
+    cfg.to_rosparam()
 
     pts_topic = rospy.get_param('~pts_topic')
-    node = HeightMapEstimator(cfg=cfg, pts_topic=pts_topic)
+    robot_frame = rospy.get_param('~robot_frame', 'base_link')
+    node = HeightMapEstimator(cfg=cfg, pts_topic=pts_topic, robot_frame=robot_frame)
     rospy.spin()
 
 
