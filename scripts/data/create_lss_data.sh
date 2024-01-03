@@ -27,6 +27,10 @@ CAMERA_INFO_TOPICS='/realsense_front/color/camera_info
                     /realsense_left/color/camera_info
                     /realsense_rear/color/camera_info
                     /realsense_right/color/camera_info'
+DEPTH_TOPICS='/realsense_front/depth/image_rect_raw
+              /realsense_left/depth/image_rect_raw
+              /realsense_rear/depth/image_rect_raw
+              /realsense_right/depth/image_rect_raw'
 
 # loop through bag files
 for BAG in "${BAGS[@]}"
@@ -36,5 +40,6 @@ do
     ./create_lss_data --bag-path ${BAG} \
                       --lidar-topic ${CLOUD_TOPIC} \
                       --camera-topics ${CAMERA_TOPICS} \
-                      --camera-info-topics ${CAMERA_INFO_TOPICS}
+                      --camera-info-topics ${CAMERA_INFO_TOPICS} \
+                      --depth-topics ${DEPTH_TOPICS}
 done

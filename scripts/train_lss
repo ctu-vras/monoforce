@@ -71,6 +71,9 @@ class Trainer:
         return model
 
     def create_datasets(self, val_fraction=0.1, opt_terrain=False, debug=False, vis=False):
+        # random seed to have consistent train/val split
+        np.random.seed(0)
+
         # create dataset for LSS model training
         train_datasets = []
         val_datasets = []
