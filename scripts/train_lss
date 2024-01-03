@@ -260,7 +260,6 @@ def main():
 
     # load LSS config
     lss_config_path = '../config/lss.yaml'
-    # lss_config_path = '../config/lss_sim.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']

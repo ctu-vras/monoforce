@@ -146,15 +146,14 @@ def main():
     cfg.from_yaml(config_path)
 
     # load LSS config
-    # lss_config_path = '../config/lss.yaml'
-    lss_config_path = '../config/lss_sim.yaml'
+    lss_config_path = '../config/lss.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    # modelf = '../config/weights/lss/lss.pt'
-    modelf = '../config/weights/lss/train_lss_sim.pt'
+    modelf = '../config/weights/lss/lss.pt'
+    # modelf = '../config/weights/lss/train_lss_sim.pt'
     # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 

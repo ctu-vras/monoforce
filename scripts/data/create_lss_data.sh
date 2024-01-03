@@ -3,15 +3,16 @@
 # This script creates a LSS data from a bag file
 # It saves point clouds and images from a bag file
 
-DATA_PATH=/media/ruslan/SSD/data/bags/lss_input
+DATA_PATH=/home/ruslan/data/bags/lss_input/
+#DATA_PATH=/media/ruslan/SSD/data/bags/lss_input
 
 # list of sequences to process
 BAGS=(
-      ${DATA_PATH}/'husky_emptyfarm_2023-12-13-13-39-29.bag'
-      ${DATA_PATH}/'husky_farmWith1CropRow_2023-12-13-14-14-14.bag'
-      ${DATA_PATH}/'husky_inspection_2023-12-13-14-40-40.bag'
-      ${DATA_PATH}/'husky_simcity_2023-12-13-14-18-26.bag'
-      ${DATA_PATH}/'husky_simcity_dynamic_2023-12-13-14-30-09.bag'
+      ${DATA_PATH}/'husky_emptyfarm_2024-01-03-13-36-25.bag'
+      ${DATA_PATH}/'husky_farmWith1CropRow_2024-01-03-13-52-36.bag'
+      ${DATA_PATH}/'husky_inspection_2024-01-03-14-06-53.bag'
+      ${DATA_PATH}/'husky_simcity_2024-01-03-13-55-37.bag'
+      ${DATA_PATH}/'husky_simcity_dynamic_2024-01-03-13-59-08.bag'
 )
 
 # source ROS workspace

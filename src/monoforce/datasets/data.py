@@ -56,13 +56,11 @@ seq_paths = [
 seq_paths = [os.path.normpath(path) for path in seq_paths]
 
 sim_seq_paths = [
-        os.path.join(data_dir, 'lss_input/husky_emptyfarm_2023-12-11-17-27-51_trav'),
-        os.path.join(data_dir, 'lss_input/husky_inspection_world_2023-12-11-13-21-58_trav'),
-        os.path.join(data_dir, 'lss_input/husky_emptyfarm_2023-12-13-13-39-29_trav'),
-        os.path.join(data_dir, 'lss_input/husky_farmWith1CropRow_2023-12-13-14-14-14_trav'),
-        os.path.join(data_dir, 'lss_input/husky_inspection_2023-12-13-14-40-40_trav'),
-        os.path.join(data_dir, 'lss_input/husky_simcity_2023-12-13-14-18-26_trav'),
-        os.path.join(data_dir, 'lss_input/husky_simcity_dynamic_2023-12-13-14-30-09_trav'),
+        os.path.join(data_dir, 'lss_input/husky_emptyfarm_2024-01-03-13-36-25_trav'),
+        os.path.join(data_dir, 'lss_input/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
+        os.path.join(data_dir, 'lss_input/husky_inspection_2024-01-03-14-06-53_trav'),
+        os.path.join(data_dir, 'lss_input/husky_simcity_2024-01-03-13-55-37_trav'),
+        os.path.join(data_dir, 'lss_input/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
 ]
 sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 
