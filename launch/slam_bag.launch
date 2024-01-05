@@ -3,7 +3,7 @@
     <arg name="config" default="''"/>
     <arg name="rviz" default="true"/>
     <arg name="record" default="false"/>
-    <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/>
+    <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
     <arg name="params" default="$(eval bag.split()[0] + '.params')"/>
     <!-- Cloud filter -->
     <arg name="min_depth" default="1.0"/>

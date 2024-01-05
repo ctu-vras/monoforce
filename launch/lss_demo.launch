@@ -2,6 +2,7 @@
 <launch>
     <arg name="rviz" default="true"/>
     <arg name="diffphys" default="false" doc="Whether to run the diff physics node or not"/>
+    <arg name="slam" default="false" doc="Whether to run the SLAM node or not"/>
     <arg name="lss_debug" default="false"/>
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
 
@@ -60,6 +61,22 @@
             total_sim_time: 5.
         </rosparam>
     </node>
+
+    <group if="$(arg slam)">
+        <!-- Cloud filterring -->
+        <include file="$(dirname)/cloud_filter.launch">
+            <arg name="input" value="points"/>
+            <arg name="output" value="filtered_cloud"/>
+            <arg name="min_depth" value="1.0"/>
+            <arg name="max_depth" value="25.0"/>
+            <arg name="grid_res" value="0.1"/>
+        </include>
+        <!-- SLAM -->
+        <include file="$(dirname)/slam.launch">
+            <arg name="cloud" value="filtered_cloud"/>
+            <arg name="odom_frame" value="odom"/>
+        </include>
+    </group>
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
