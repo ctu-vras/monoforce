@@ -152,6 +152,10 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     assert hm_interp_method in ['linear', 'nearest', 'cubic', None]
     assert fill_value is None or isinstance(fill_value, (float, int))
 
+    # remove invalid points
+    mask = np.isfinite(points).all(axis=1)
+    points = points[mask]
+
     # filter height outliers points
     z = points[:, 2]
     h_min_out = z[z > np.percentile(z, 2)].min()
