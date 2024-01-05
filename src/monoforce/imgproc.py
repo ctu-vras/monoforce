@@ -66,14 +66,24 @@ def project_cloud_to_image(points, img, K, return_mask=False, debug=False):
     return points[fov_mask], colors
 
 
-def destandardize_img(img_norm, img_mean, img_std):
+def destandardize_img(img_norm, img_mean=None, img_std=None):
+    # use imagenet mean and std by default
+    if img_mean is None:
+        img_mean = np.array([0.485, 0.456, 0.406])
+    if img_std is None:
+        img_std = np.array([0.229, 0.224, 0.225])
     H, W, C = img_norm.shape
     img_01 = img_norm * img_std.reshape((1, 1, C)) + img_mean.reshape((1, 1, C))
     img_01 = normalize(img_01)
     return img_01
 
 
-def standardize_img(img, img_mean, img_std):
+def standardize_img(img, img_mean=None, img_std=None):
+    # use imagenet mean and std by default
+    if img_mean is None:
+        img_mean = np.array([0.485, 0.456, 0.406])
+    if img_std is None:
+        img_std = np.array([0.229, 0.224, 0.225])
     H, W, C = img.shape
     img_01 = normalize(img)
     img_norm = (img_01 - img_mean.reshape((1, 1, C))) / img_std.reshape((1, 1, C))

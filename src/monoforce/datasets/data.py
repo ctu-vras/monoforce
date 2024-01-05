@@ -16,7 +16,6 @@ from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
 from ..utils import normalize
 from .utils import load_cam_calib
-import yaml
 import cv2
 import albumentations as A
 from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
@@ -468,21 +467,6 @@ class MonoDEMData(DEMTrajData):
         else:
             self.cameras = cameras
 
-        img_statistics_path = os.path.join(self.path, 'calibration', 'img_statistics.yaml')
-        if not os.path.exists(img_statistics_path):
-            self.img_mean, self.img_std = self.calculate_img_statistics()
-            # save to yaml file
-            with open(img_statistics_path, 'w') as f:
-                yaml.dump({'mean': self.img_mean.tolist(), 'std': self.img_std.tolist()}, f)
-        else:
-            # load from yaml file
-            with open(img_statistics_path, 'r') as f:
-                img_statistics = yaml.load(f, Loader=yaml.FullLoader)
-                img_mean = img_statistics['mean']
-                img_std = img_statistics['std']
-            self.img_mean = np.asarray(img_mean)
-            self.img_std = np.asarray(img_std)
-
         self.img_augs = A.Compose([
             A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
             A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
@@ -521,19 +505,11 @@ class MonoDEMData(DEMTrajData):
         img = img[H - h:H, W // 2 - w // 2: W // 2 + w // 2]
         return img
 
-    def standardize_img(self, img):
-        img_norm = standardize_img(img, self.img_mean, self.img_std)
-        return img_norm
-
-    def destandardize_img(self, img_norm):
-        img = destandardize_img(img_norm, self.img_mean, self.img_std)
-        return img
-
     def preprocess_img(self, img_raw):
         img = self.resize_crop_img(img_raw)
         if self.is_train:
             img = self.img_augs(image=img)['image']
-        # img = self.standardize_img(img)
+        # img = standardize_img(img)
         return img
 
     def calculate_img_statistics(self):
@@ -840,7 +816,7 @@ class OmniDEMData(MonoDEMData):
             post_rot[:2, :2] = post_rot2
 
             # rgb and intrinsics
-            img = self.standardize_img(np.asarray(img))
+            img = standardize_img(np.asarray(img))
             img = torch.as_tensor(img).permute((2, 0, 1))
             K = torch.as_tensor(K)
 
@@ -1377,7 +1353,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
 
                 ax = plt.subplot(gs[imgi // 2, imgi % 2])
-                showimg = ds.destandardize_img(img.permute(1, 2, 0))
+                showimg = destandardize_img(img.permute(1, 2, 0))
 
                 plt.imshow(showimg)
                 plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.2, cmap='jet')

@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
+from monoforce.imgproc import destandardize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data
 from monoforce.config import Config
@@ -59,7 +60,7 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
 
             # plot image
             img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
-            img = ds.destandardize_img(img)
+            img = destandardize_img(img)
             ax1.imshow(img)
 
             # plot prediction as surface
@@ -152,17 +153,17 @@ def main():
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    modelf = '../config/weights/lss/lss.pt'
+    # modelf = '../config/weights/lss/lss.pt'
     # modelf = '../config/weights/lss/train_lss_sim.pt'
-    # modelf = '../config/weights/lss/lss_sim.pt'
+    modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
     # paths = seq_paths[:3]
     paths = sim_seq_paths
 
-    for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg,
-                     opt_terrain=False, save=False, is_train=False, sample_range='random')
+    # for path in paths:
+    #     explore_data(path, grid_conf, data_aug_conf, cfg,
+    #                  opt_terrain=False, save=False, is_train=False, sample_range='random')
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=32)
     test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
 

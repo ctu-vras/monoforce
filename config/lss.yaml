@@ -39,6 +39,7 @@ grid_conf:
   - 10.0
   - 20.0
 
+# use ImageNet mean and std
 img_mean:
 - 0.485
 - 0.456
