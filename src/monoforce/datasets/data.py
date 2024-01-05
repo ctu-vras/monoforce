@@ -324,6 +324,7 @@ class DEMTrajData(Dataset):
             camera = prefix + camera
         ind = self.ids[i]
         img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
+        assert os.path.exists(img_path), f'Image path {img_path} does not exist'
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         # image = image[..., ::-1]

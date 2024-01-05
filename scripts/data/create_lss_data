@@ -30,13 +30,14 @@ def arg_parser():
     parser.add_argument('--depth-topics', type=str, nargs='+')
     parser.add_argument('--save-data', type=str2bool, default=True)
     parser.add_argument('--bag-path', type=str)
+    parser.add_argument('--time-period', type=float, default=1.0)
     return parser
 
 
 def str2bool(v):
     return v.lower() in ('1', 'yes', 'true', 't', 'y')
 
-def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time_prediod=5.0, lidar='os_sensor', save=True):
+def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time_period=1.0, lidar='os_sensor', save=True):
     data_path = bag_path.replace('.bag', '_trav')
     clouds_path = os.path.join(data_path, 'clouds')
     os.makedirs(clouds_path, exist_ok=True)
@@ -48,13 +49,14 @@ def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time
         # save clouds and get timestamps
         timestamps = []
         ids = []
+        print('Saving clouds from topic "%s"' % lidar_topic)
         for topic, msg, t in tqdm(bag.read_messages(topics=[lidar_topic]),
                                   total=bag.get_message_count(topic_filters=[lidar_topic])):
-            # skip messages which are too close to each other (time difference < 5 s)
-            if last_time is not None and (t.to_sec() - last_time) < time_prediod:
+            # skip messages which are too close to each other (time difference < time_prediod seconds)
+            if last_time is not None and (t.to_sec() - last_time) < time_period:
                 continue
             last_time = t.to_sec()
-            print('Got lidar msg from topic "%s" at %.3f s' % (topic, t.to_sec()))
+            # print('Got lidar msg from topic "%s" at %.3f s' % (topic, t.to_sec()))
 
             msg = PointCloud2(*slots(msg))
             cloud_struct = numpify(msg)
@@ -89,24 +91,24 @@ def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time
                     os.makedirs(os.path.join(data_path, 'images'), exist_ok=True)
                     cv2.imwrite(os.path.join(data_path, 'images', '%s_%s.png' % (ids[i], camera)), img_raw)
 
-        # save depth images at cloud timestamps
-        for depth_topic in depth_topics:
-            print('Saving depth images from topic "%s"' % depth_topic)
-            for i in tqdm(range(len(timestamps))):
-                # get the closest image at points time
-                msg = get_closest_msg(bag=bag, topic=depth_topic, time=timestamps[i])
-                if msg is None:
-                    print('No depth image found for cloud at %.3f s' % timestamps[i])
-                    continue
-                img_raw = img_msg_to_cv2(msg, cv_bridge)
-                camera = depth_topic.split('/')[1]
-                if save:
-                    # save images
-                    os.makedirs(os.path.join(data_path, 'depth_images'), exist_ok=True)
-                    cv2.imwrite(os.path.join(data_path, 'depth_images', '%s_%s.png' % (ids[i], camera)), img_raw)
+        # # save depth images at cloud timestamps
+        # for depth_topic in depth_topics:
+        #     print('Saving depth images from topic "%s"' % depth_topic)
+        #     for i in tqdm(range(len(timestamps))):
+        #         # get the closest image at points time
+        #         msg = get_closest_msg(bag=bag, topic=depth_topic, time=timestamps[i])
+        #         if msg is None:
+        #             print('No depth image found for cloud at %.3f s' % timestamps[i])
+        #             continue
+        #         img_raw = img_msg_to_cv2(msg, cv_bridge)
+        #         camera = depth_topic.split('/')[1]
+        #         if save:
+        #             # save images
+        #             os.makedirs(os.path.join(data_path, 'depth_images'), exist_ok=True)
+        #             cv2.imwrite(os.path.join(data_path, 'depth_images', '%s_%s.png' % (ids[i], camera)), img_raw)
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, depth_topics, save_data,
-            robot_frame='base_link', lidar_frame='ouster_link'):
+            robot_frame='base_link', lidar_frame='ouster_link', time_period=1.0):
     assert os.path.exists(bag_path), 'Bag file does not exist: %s' % bag_path
 
     tf_buffer = load_tf_buffer([bag_path])
@@ -120,7 +122,7 @@ def process(bag_path, lidar_topic, camera_topics, camera_info_topics, depth_topi
     append_transformation(bag_path, source_frame=robot_frame, target_frame=lidar_frame, save=save_data, tf_buffer=tf_buffer,
                           matrix_name=f'T_{robot_frame}__os_sensor')
     print('Saving clouds and images...')
-    save_clouds_and_images(bag_path, camera_topics, lidar_topic, depth_topics, save=save_data)
+    save_clouds_and_images(bag_path, camera_topics, lidar_topic, depth_topics, time_period=time_period, save=save_data)
 
 
 def main():

@@ -114,9 +114,12 @@ class LSS:
         crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
         return resize, resize_dims, crop
 
-    def preprocess_img(self, img):
+    def preprocess_img(self, img, K, D):
         post_rot = torch.eye(2)
         post_tran = torch.zeros(2)
+
+        img, K = undistort_image(img, K, D)
+        img = img[..., (2, 1, 0)]  # BGR -> RGB
 
         # preprocessing parameters (resize, crop)
         resize, resize_dims, crop = self.preprocess_params(img)
@@ -204,10 +207,8 @@ class LSS:
             else:
                 rospy.logdebug('Using calibration from CameraInfo message')
                 E, K, D = self.get_cam_calib_from_info_msg(info_msg)
-            # img, K = undistort_image(img, K, D)
-            img = img[..., (2, 1, 0)]  # BGR -> RGB
 
-            img, post_rot, post_tran = self.preprocess_img(img)
+            img, post_rot, post_tran = self.preprocess_img(img, K, D)
             imgs.append(img)
             post_rots.append(post_rot)
             post_trans.append(post_tran)

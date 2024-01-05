@@ -268,15 +268,15 @@ def main():
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    log_dir = os.path.join('../config/tb_runs', 'lss_sim_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
+    log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     pretrained_model_path = '../config/weights/lss/lss.pt'
     # pretrained_model_path = None
     opt_terrain = False
     debug = False
     vis = False
 
-    ds_paths = seq_paths[:3]
-    # ds_paths = sim_seq_paths
+    # ds_paths = seq_paths[:3]
+    ds_paths = sim_seq_paths
 
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,

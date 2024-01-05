@@ -3,7 +3,7 @@
 # This script creates a LSS data from a bag file
 # It saves point clouds and images from a bag file
 
-DATA_PATH=/home/ruslan/data/bags/lss_input/
+DATA_PATH=/home/ruslan/data/bags/lss_input
 #DATA_PATH=/media/ruslan/SSD/data/bags/lss_input
 
 # list of sequences to process
@@ -41,5 +41,6 @@ do
                       --lidar-topic ${CLOUD_TOPIC} \
                       --camera-topics ${CAMERA_TOPICS} \
                       --camera-info-topics ${CAMERA_INFO_TOPICS} \
-                      --depth-topics ${DEPTH_TOPICS}
+                      --depth-topics ${DEPTH_TOPICS} \
+                      --time-period 1.0
 done
