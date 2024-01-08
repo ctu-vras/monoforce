@@ -858,10 +858,13 @@ class OmniDEMData(MonoDEMData):
         # otherwise - estimate it
         else:
             # print('Estimating and saving height map...')
+            robot_z = np.asarray(self.calib['transformations']['T_base_link__base_footprint']['data'],
+                                 dtype=float).reshape(4, 4)[2, 3]
             xyz_mask = estimate_heightmap(points,
                                           d_min=self.cfg.d_min, d_max=self.cfg.d_max,
                                           grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
-                                          hm_interp_method=self.hm_interp_method)
+                                          hm_interp_method=self.hm_interp_method,
+                                          robot_z=robot_z)
             # save height map as numpy array
             result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
                               dtype=[(key, np.float32) for key in xyz_mask.keys()])

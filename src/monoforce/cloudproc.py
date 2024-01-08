@@ -141,7 +141,7 @@ def compute_rigid_support(arr, transform=None, range=None, grid=None, scale=1.0,
 
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_interp_method='nearest',
-                       fill_value=0., return_filtered_points=False):
+                       fill_value=0., return_filtered_points=False, robot_z=None):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
     assert len(points) > 0
@@ -179,11 +179,23 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     # robot points
     robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., only_mask=True)
 
+    # set robot points to the minimum height
+    if robot_z is None:
+        robot_z = points[robot_mask, 2].min()
+
+    # remove robot points
     if robot_mask.sum() > 0:
-        # if fill_value is None:
-        #     fill_value = points[robot_mask, 2].min()
         points = points[~robot_mask]
-        # points[robot_mask, 2] = fill_value
+
+    # add a point cloud under the robot with robot_z height
+    d_robot = d_min if d_min > 0. else 0.6
+    n_robot = int(2 * d_robot / grid_res)
+    x_robot = np.linspace(-d_robot, d_robot, n_robot)
+    y_robot = np.linspace(-d_robot, d_robot, n_robot)
+    x_robot, y_robot = np.meshgrid(x_robot, y_robot)
+    z_robot = np.full(x_robot.shape, fill_value=robot_z)
+    robot_points = np.stack([x_robot.ravel(), y_robot.ravel(), z_robot.ravel()], axis=1)
+    points = np.concatenate([points, robot_points], axis=0)
 
     # create a grid
     n = int(2 * d_max / grid_res)
