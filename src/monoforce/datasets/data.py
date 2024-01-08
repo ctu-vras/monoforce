@@ -794,7 +794,13 @@ class OmniDEMData(MonoDEMData):
         post_rots = []
         post_trans = []
         intrins = []
-        for cam in self.cameras:
+
+        # permute cameras
+        cameras = self.cameras.copy()
+        if self.is_train:
+            np.random.shuffle(cameras)
+
+        for cam in cameras:
             img, K = self.get_undistorted_image(i, cam)
 
             post_rot = torch.eye(2)
