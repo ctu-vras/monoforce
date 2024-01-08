@@ -1,7 +1,7 @@
 convergence_n_samples: 10
 convergence_std: 0.001
 d_max: 6.4
-d_min: 1.0
+d_min: 0.6
 damping: 0.0
 dataset_path: ''
 device: cuda

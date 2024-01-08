@@ -244,16 +244,15 @@ class LSS:
         rospy.logdebug('Processing time: %.3f [sec]' % (time() - t0))
 
     def proc(self, *msgs):
-        # for msg in msgs:
-        #     print(msg.header.frame_id)
-        # print('---')
-        assert len(msgs) == 8
-        for i in range(4):
-            assert isinstance(msgs[i], CompressedImage)
-            assert isinstance(msgs[i+4], CameraInfo)
-            assert msgs[i].header.frame_id == msgs[i+4].header.frame_id
-        img_msgs = msgs[:4]
-        info_msgs = msgs[4:]
+        n = len(msgs)
+        assert n % 2 == 0
+        for i in range(n//2):
+            assert isinstance(msgs[i], CompressedImage), 'First %d messages must be CompressedImage' % (n//2)
+            assert isinstance(msgs[i+n//2], CameraInfo), 'Last %d messages must be CameraInfo' % (n//2)
+            assert msgs[i].header.frame_id == msgs[i+n//2].header.frame_id, \
+                'Image and CameraInfo messages must have the same frame_id'
+        img_msgs = msgs[:n//2]
+        info_msgs = msgs[n//2:]
 
         inputs = self.get_lss_inputs(img_msgs, info_msgs)
         inputs = [i.to(self.cfg.device) for i in inputs]

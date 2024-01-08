@@ -40,13 +40,13 @@ class HeightMapEstimator:
         self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
 
         # max message delay
-        self.max_stale_msg_delay = 0.5
+        self.max_stale_msg_delay = 1.0
 
         # point cloud subscribers
         self.pts_subs = []
         for topic in pts_topics:
             self.pts_subs.append(Subscriber(topic, PointCloud2))
-        self.pts_sync = ApproximateTimeSynchronizer(self.pts_subs, queue_size=1, slop=0.2)
+        self.pts_sync = ApproximateTimeSynchronizer(self.pts_subs, queue_size=1, slop=1.0)
         self.pts_sync.registerCallback(self.pts_callback)
 
     def pts_callback(self, *msgs):
