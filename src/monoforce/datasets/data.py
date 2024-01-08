@@ -850,7 +850,7 @@ class OmniDEMData(MonoDEMData):
 
         return outputs
 
-    def get_height_map_data(self, i, cached=False):
+    def get_height_map_data(self, i, cached=True):
         cloud = self.get_cloud(i)
         points = position(cloud)
 
@@ -915,7 +915,7 @@ class OmniOptDEMData(OmniDEMData):
                  ):
         super(OmniOptDEMData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
-    def get_height_map_data(self, i, cached=False, h_diff=0.1):
+    def get_height_map_data(self, i, h_diff=0.1):
         terrain = self.get_optimized_terrain(i)
         height = torch.as_tensor(terrain['height'])
         height0 = torch.as_tensor(terrain['height_init'])
