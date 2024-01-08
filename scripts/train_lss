@@ -52,7 +52,7 @@ class Trainer:
             self.model = self.load_model(modelf=pretrained_model_path)
 
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-            self.loss_fn = RMSE()
+            self.loss_fn = RMSE(reduction='none')
 
             self.writer = SummaryWriter(log_dir=log_dir)
 
@@ -115,6 +115,28 @@ class Trainer:
 
         return train_ds, val_ds
 
+    def compute_loss(self, height_pred, heightmap, sigma=None):
+        # heightmap is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
+        # height_pred is a tensor of size Bx1xHxW
+        B, D, H, W = heightmap.shape
+        assert D == 2
+        assert height_pred.shape == (B, 1, H, W)
+        # get height and mask from heightmap
+        height_gt, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
+        if sigma is not None:
+            assert isinstance(sigma, (float, int))
+            assert sigma > 0.0
+            # create 2D gaussian weights with the size of the height map and center at (0, 0)
+            x_grid = torch.linspace(-1.0, 1.0, W, device=self.cfg.device)
+            y_grid = torch.linspace(-1.0, 1.0, H, device=self.cfg.device)
+            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+            weights_gaus = torch.exp(-((x_grid ** 2 + y_grid ** 2) / (2 * sigma ** 2)))
+            weights_gaus = weights_gaus.view(1, 1, H, W).repeat(B, 1, 1, 1)
+            # apply weights
+            weights = weights * weights_gaus
+        loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
+        return loss
+
     def epoch(self, train=True):
         loader = self.trainloader if train else self.valloader
         counter = self.train_counter if train else self.val_counter
@@ -126,16 +148,11 @@ class Trainer:
                 in tqdm(enumerate(loader), total=len(loader)):
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-            inputs = [i.to(self.cfg.device) for i in inputs]
+            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.cfg.device) for i in inputs]
             height_pred = self.model(*inputs)
 
-            heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
-            heightmap = heightmap.to(self.cfg.device)
-            B, D, H, W = heightmap.shape
-            height_gt, weights = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
-
-            loss = self.loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+            heightmap = torch.as_tensor(heightmap, dtype=torch.float32, device=self.cfg.device)
+            loss = self.compute_loss(height_pred, heightmap, sigma=0.5)
 
             if train:
                 self.optimizer.zero_grad()
