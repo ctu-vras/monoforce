@@ -41,7 +41,8 @@ def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time
     data_path = bag_path.replace('.bag', '_trav')
     clouds_path = os.path.join(data_path, 'clouds')
     os.makedirs(clouds_path, exist_ok=True)
-    last_time = None
+    images_path = os.path.join(data_path, 'images')
+    os.makedirs(images_path, exist_ok=True)
     cv_bridge = CvBridge()
     # calib = load_cam_calib(os.path.join(data_path, 'calibration'))
 
@@ -49,6 +50,7 @@ def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time
         # save clouds and get timestamps
         timestamps = []
         ids = []
+        last_time = None
         print('Saving clouds from topic "%s"' % lidar_topic)
         for topic, msg, t in tqdm(bag.read_messages(topics=[lidar_topic]),
                                   total=bag.get_message_count(topic_filters=[lidar_topic])):
@@ -80,7 +82,7 @@ def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time
             print('Saving images from topic "%s"' % rgb_topic)
             for i in tqdm(range(len(timestamps))):
                 # get the closest image at points time
-                msg = get_closest_msg(bag=bag, topic=rgb_topic, time=timestamps[i])
+                msg = get_closest_msg(bag=bag, topic=rgb_topic, time=timestamps[i], time_window=5.0, max_time_diff=1.0)
                 if msg is None:
                     print('No image found for cloud at %.3f s' % timestamps[i])
                     continue
@@ -88,24 +90,7 @@ def save_clouds_and_images(bag_path, rgb_topics, lidar_topic, depth_topics, time
                 camera = rgb_topic.split('/')[1]
                 if save:
                     # save images
-                    os.makedirs(os.path.join(data_path, 'images'), exist_ok=True)
-                    cv2.imwrite(os.path.join(data_path, 'images', '%s_%s.png' % (ids[i], camera)), img_raw)
-
-        # # save depth images at cloud timestamps
-        # for depth_topic in depth_topics:
-        #     print('Saving depth images from topic "%s"' % depth_topic)
-        #     for i in tqdm(range(len(timestamps))):
-        #         # get the closest image at points time
-        #         msg = get_closest_msg(bag=bag, topic=depth_topic, time=timestamps[i])
-        #         if msg is None:
-        #             print('No depth image found for cloud at %.3f s' % timestamps[i])
-        #             continue
-        #         img_raw = img_msg_to_cv2(msg, cv_bridge)
-        #         camera = depth_topic.split('/')[1]
-        #         if save:
-        #             # save images
-        #             os.makedirs(os.path.join(data_path, 'depth_images'), exist_ok=True)
-        #             cv2.imwrite(os.path.join(data_path, 'depth_images', '%s_%s.png' % (ids[i], camera)), img_raw)
+                    cv2.imwrite(os.path.join(images_path, '%s_%s.png' % (ids[i], camera)), img_raw)
 
 def process(bag_path, lidar_topic, camera_topics, camera_info_topics, depth_topics, save_data,
             robot_frame='base_link', lidar_frame='ouster_link', time_period=1.0):

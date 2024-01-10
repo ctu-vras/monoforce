@@ -13,6 +13,9 @@ BAGS=(
       ${DATA_PATH}/'husky_inspection_2024-01-03-14-06-53.bag'
       ${DATA_PATH}/'husky_simcity_2024-01-03-13-55-37.bag'
       ${DATA_PATH}/'husky_simcity_dynamic_2024-01-03-13-59-08.bag'
+      ${DATA_PATH}/'husky_simcity_2024-01-09-17-56-34.bag'
+      ${DATA_PATH}/'husky_simcity_2024-01-09-17-50-23.bag'
+      ${DATA_PATH}/'husky_emptyfarm_vegetation_2024-01-09-17-18-46.bag'
 )
 
 # source ROS workspace
