@@ -18,6 +18,8 @@ __all__ = [
     'read_points_labels',
     'normalize',
     'skew_symmetric',
+    'read_yaml',
+    'write_to_yaml',
 ]
 
 color_palette = {
@@ -256,3 +258,8 @@ def read_yaml(path):
     with open(path, 'r') as f:
         data = yaml.load(f, Loader=yaml.Loader)
     return data
+
+
+def write_to_yaml(cfg: dict, path):
+    with open(path, 'w') as f:
+        yaml.dump(cfg, f, default_flow_style=False)

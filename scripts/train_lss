@@ -8,7 +8,7 @@ from monoforce.imgproc import destandardize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDEMData, OmniOptDEMData, explore_data
 from monoforce.config import Config
-from monoforce.utils import read_yaml, normalize
+from monoforce.utils import read_yaml, write_to_yaml, normalize
 from monoforce.datasets import seq_paths, sim_seq_paths
 from monoforce.losses import RMSE
 from tqdm import tqdm
@@ -55,6 +55,10 @@ class Trainer:
             self.loss_fn = RMSE(reduction='none')
 
             self.writer = SummaryWriter(log_dir=log_dir)
+            # save configs to log dir
+            write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'cfg.yaml'))
+            write_to_yaml(data_aug_conf, os.path.join(log_dir, 'data_aug_conf.yaml'))
+            write_to_yaml(grid_conf, os.path.join(log_dir, 'grid_conf.yaml'))
 
             self.min_loss = np.inf
             self.min_train_loss = np.inf
@@ -277,7 +281,7 @@ class Trainer:
 
 
 def main():
-    bsz = 32
+    bsz = 24
     nworkers = 12
     nepochs = 500
     save_model = True
@@ -296,8 +300,8 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
-    pretrained_model_path = '../config/weights/lss/lss_sim.pt'
-    # pretrained_model_path = None
+    # pretrained_model_path = '../config/weights/lss/lss_sim.pt'
+    pretrained_model_path = None
     opt_terrain = False
     debug = False
     vis = False

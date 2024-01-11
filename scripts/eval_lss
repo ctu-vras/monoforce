@@ -159,12 +159,12 @@ def main():
     modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
-    # paths = seq_paths[:3]
-    paths = sim_seq_paths
+    paths = seq_paths[:3]
+    # paths = sim_seq_paths
 
-    # for path in paths:
-    #     explore_data(path, grid_conf, data_aug_conf, cfg,
-    #                  opt_terrain=False, save=False, is_train=False, sample_range='random')
+    for path in paths:
+        explore_data(path, grid_conf, data_aug_conf, cfg,
+                     opt_terrain=False, save=False, is_train=False, sample_range='random')
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=32)
     test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
 

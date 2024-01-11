@@ -3,7 +3,7 @@ data_aug_conf:
   W: 1920
   bot_pct_lim:
   - 0.0
-  - 0.22
+  - 0.0
   Ncams: 4
   cams:
   - CAM_FRONT
@@ -11,8 +11,8 @@ data_aug_conf:
   - CAM_REAR
   - CAM_RIGHT
   final_dim:
-  - 128
-  - 352
+  - 256
+  - 416
   rand_flip: false
   resize_lim:
   - 0.193
