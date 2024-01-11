@@ -7,11 +7,12 @@ from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_s
 from matplotlib import cm, pyplot as plt
 from mayavi import mlab
 from ..models.lss.model import compile_model
+from ..models.lss.tools import normalize_img, denormalize_img
 from ..config import Config
 from ..transformations import transform_cloud
 from ..cloudproc import position, estimate_heightmap, color
 from ..cloudproc import filter_grid, filter_range
-from ..imgproc import undistort_image, project_cloud_to_image, standardize_img, destandardize_img
+from ..imgproc import undistort_image, project_cloud_to_image, destandardize_img
 from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
 from ..utils import normalize
@@ -22,8 +23,7 @@ from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
 try:
-    import matplotlib
-    matplotlib.use('QtAgg')
+    mpl.use('QtAgg')
 except:
     print('Could not set matplotlib backend to QtAgg')
     pass
@@ -320,17 +320,16 @@ class DEMTrajData(Dataset):
         color = unstructured_to_structured(rgb, names=['r', 'g', 'b'])
         return color
 
-    def get_image(self, i, camera='front'):
+    def get_raw_image(self, i, camera='front'):
         if camera in ['front', 'rear', 'left', 'right', 'up']:
             prefix = 'camera_fisheye_' if 'marv' in self.path and camera in ['front', 'rear'] else 'camera_'
             camera = prefix + camera
         ind = self.ids[i]
         img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
         assert os.path.exists(img_path), f'Image path {img_path} does not exist'
-        image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        # image = image[..., ::-1]
-        return image
+        img = Image.open(img_path)
+        img = np.asarray(img)
+        return img
 
     def get_optimized_terrain(self, i):
         ind = self.ids[i]
@@ -484,8 +483,8 @@ class MonoDEMData(DEMTrajData):
             A.RandomToneCurve(scale=0.1, p=0.5),
         ]) if self.is_train else None
 
-    def get_undistorted_image(self, i, cam):
-        img = self.get_image(i, cam)
+    def get_image(self, i, cam, undistort=False):
+        img = self.get_raw_image(i, cam)
         for key in self.calib.keys():
             if cam in key:
                 cam = key
@@ -493,10 +492,11 @@ class MonoDEMData(DEMTrajData):
         K = self.calib[cam]['camera_matrix']['data']
         r, c = self.calib[cam]['camera_matrix']['rows'], self.calib[cam]['camera_matrix']['cols']
         K = np.array(K).reshape((r, c))
-        D = self.calib[cam]['distortion_coefficients']['data']
-        D = np.array(D)
-        img_undist, K = undistort_image(img, K, D)
-        return img_undist, K
+        if undistort:
+            D = self.calib[cam]['distortion_coefficients']['data']
+            D = np.array(D)
+            img, K = undistort_image(img, K, D)
+        return img, K
 
     def resize_crop_img(self, img_raw):
         # resize image
@@ -520,7 +520,7 @@ class MonoDEMData(DEMTrajData):
         means, stds = [], []
         print('Calculating images mean and std from the entire dataset...')
         for i in tqdm(range(len(self))):
-            img = self.get_image(i, camera=self.cameras[0])
+            img = self.get_raw_image(i, camera=self.cameras[0])
             img_01 = normalize(img)
 
             mean = img_01.reshape([-1, 3]).mean(axis=0)
@@ -551,7 +551,7 @@ class MonoDEMData(DEMTrajData):
         points = position(self.get_cloud(i))
         poses = traj['poses']
 
-        img_front, K = self.get_undistorted_image(i, camera.split('_')[-1])
+        img_front, K = self.get_image(i, camera.split('_')[-1])
 
         if visualize:
             # find transformation between camera and lidar
@@ -804,7 +804,7 @@ class OmniDEMData(MonoDEMData):
             np.random.shuffle(cameras)
 
         for cam in cameras:
-            img, K = self.get_undistorted_image(i, cam)
+            img, K = self.get_image(i, cam, undistort=False)
 
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
@@ -825,8 +825,7 @@ class OmniDEMData(MonoDEMData):
             post_rot[:2, :2] = post_rot2
 
             # rgb and intrinsics
-            img = standardize_img(np.asarray(img))
-            img = torch.as_tensor(img).permute((2, 0, 1))
+            img = normalize_img(img)
             K = torch.as_tensor(K)
 
             # extrinsics
@@ -854,9 +853,6 @@ class OmniDEMData(MonoDEMData):
         return outputs
 
     def get_height_map_data(self, i, cached=True):
-        cloud = self.get_cloud(i)
-        points = position(cloud)
-
         # height map from point cloud (!!! assumes points are in robot frame)
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
         dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
@@ -867,6 +863,8 @@ class OmniDEMData(MonoDEMData):
         # otherwise - estimate it
         else:
             # print('Estimating and saving height map...')
+            cloud = self.get_cloud(i)
+            points = position(cloud)
             robot_z = np.asarray(self.calib['transformations']['T_base_link__base_footprint']['data'],
                                  dtype=float).reshape(4, 4)[2, 3]
             xyz_mask = estimate_heightmap(points,
@@ -882,8 +880,8 @@ class OmniDEMData(MonoDEMData):
             os.makedirs(dir_path, exist_ok=True)
             np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
 
-        heightmap = torch.stack([torch.as_tensor(xyz_mask[i], dtype=torch.float32) for i in ['z', 'mask']])
-        # heightmap = torch.as_tensor(xyz_mask['z'])[None]
+        heightmap = torch.stack([torch.as_tensor(xyz_mask[i]) for i in ['z', 'mask']])
+        heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
 
         return heightmap
 
@@ -1049,10 +1047,10 @@ def vis_rgb_cloud():
         poses = traj['poses']
 
         # images
-        img_front = ds.get_image(i, 'front')
-        img_rear = ds.get_image(i, 'rear')
-        img_left = ds.get_image(i, 'left')
-        img_right = ds.get_image(i, 'right')
+        img_front = ds.get_raw_image(i, 'front')
+        img_rear = ds.get_raw_image(i, 'rear')
+        img_left = ds.get_raw_image(i, 'left')
+        img_right = ds.get_raw_image(i, 'right')
 
         # colored point cloud
         points = position(cloud)
@@ -1117,7 +1115,7 @@ def traversed_height_map():
     cloud = ds.get_cloud(i)
     points = position(cloud)
 
-    img = ds.get_image(i)
+    img = ds.get_raw_image(i)
 
     # height map: estimated from point cloud
     heightmap = ds.estimate_heightmap(points)
@@ -1282,7 +1280,7 @@ def vis_img_augs():
                      cfg=cfg)
     i = 0
     # img_raw = ds.get_image(i, 'front')
-    img_raw, _ = ds.get_undistorted_image(i, 'front')
+    img_raw, _ = ds.get_image(i, 'front')
     # ds.img_augs = A.Compose([
     #     # A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=True),
     #     # A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, always_apply=True),

@@ -52,7 +52,7 @@ def get_data(i: int = None, vis=True, path=seq_paths[0]):
     height = heightmap['z']
 
     if vis:
-        img = ds.get_image(i)
+        img = ds.get_raw_image(i)
         # mayavi show image, img is a numpy array
         mlab.figure(size=(img.shape[1], img.shape[0]), bgcolor=(1, 1, 1))
         mlab_imshow(np.rot90(img[..., (2, 1, 0)], axes=(1, 0)))

@@ -27,7 +27,7 @@ def demo():
 
     ds = DEMTrajData('/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/')
     # test augmentation
-    img = ds.get_image(0, 'front')
+    img = ds.get_raw_image(0, 'front')
     img = pil.fromarray(img)
 
     color_aug = transforms.ColorJitter(brightness=(0.5, 1.5), contrast=(0.5, 1.5), saturation=(0.5, 1.5), hue=(-0.1, 0.1))

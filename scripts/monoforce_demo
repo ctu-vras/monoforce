@@ -139,7 +139,7 @@ def main():
     }
 
     # show image and controls
-    img_vis = ds.get_image(i, 'front')
+    img_vis = ds.get_raw_image(i, 'front')
     plt.figure(figsize=(20, 10))
     plt.subplot(121)
     plt.title('Input image')
