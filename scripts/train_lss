@@ -157,10 +157,10 @@ class Trainer:
                 in tqdm(enumerate(loader), total=len(loader)):
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.cfg.device) for i in inputs]
+            inputs = [torch.as_tensor(i, device=self.cfg.device) for i in inputs]
             height_pred = self.model(*inputs)
 
-            heightmap = torch.as_tensor(heightmap, dtype=torch.float32, device=self.cfg.device)
+            heightmap = torch.as_tensor(heightmap, device=self.cfg.device)
             loss = self.compute_loss(height_pred, heightmap, sigma=None)
 
             if train:
@@ -296,7 +296,7 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
-    pretrained_model_path = '../config/weights/lss/lss.pt'
+    pretrained_model_path = '../config/weights/lss/lss_sim.pt'
     # pretrained_model_path = None
     opt_terrain = False
     debug = False
