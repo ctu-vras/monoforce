@@ -165,17 +165,25 @@ class NormalizeInverse(torchvision.transforms.Normalize):
         return super().__call__(tensor.clone())
 
 
+# load image mean and std from config
+config_path = os.path.join(os.path.dirname(__file__), '../../../../', 'config/lss.yaml')
+if os.path.isfile(config_path):
+    lss_config = load_config(config_path)
+    mean = lss_config['img_mean']
+    std = lss_config['img_std']
+else:
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+
 denormalize_img = torchvision.transforms.Compose((
-            NormalizeInverse(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
+            NormalizeInverse(mean=mean, std=std),
             torchvision.transforms.ToPILImage(),
         ))
 
 
 normalize_img = torchvision.transforms.Compose((
                 torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                 std=[0.229, 0.224, 0.225]),
+                torchvision.transforms.Normalize(mean=mean, std=std),
 ))
 
 

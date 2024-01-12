@@ -9,9 +9,8 @@ from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.cloudproc import position, estimate_heightmap
 from monoforce.config import Config
-from monoforce.imgproc import standardize_img, undistort_image
 from monoforce.models.lss.model import compile_model
-from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
+from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask, normalize_img
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.utils import normalize, read_yaml
 from monoforce.datasets.utils import load_cam_calib
@@ -37,8 +36,6 @@ class LSS:
                  hm_frame='base_link',
                  img_topics=[],
                  camera_info_topics=[],
-                 img_mean=None,
-                 img_std=None,
                  calib_path='',
                  max_msgs_delay=0.1,
                  max_stale_msg_delay=0.2):
@@ -52,8 +49,6 @@ class LSS:
 
         self.img_topics = img_topics
         self.camera_info_topics = camera_info_topics
-        self.img_mean = img_mean
-        self.img_std = img_std
 
         self.calib = load_cam_calib(calib_path)
         if self.calib is not None:
@@ -114,12 +109,9 @@ class LSS:
         crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
         return resize, resize_dims, crop
 
-    def preprocess_img(self, img, K, D):
+    def preprocess_img(self, img):
         post_rot = torch.eye(2)
         post_tran = torch.zeros(2)
-
-        img, K = undistort_image(img, K, D)
-        img = img[..., (2, 1, 0)]  # BGR -> RGB
 
         # preprocessing parameters (resize, crop)
         resize, resize_dims, crop = self.preprocess_params(img)
@@ -129,15 +121,14 @@ class LSS:
                                                    crop=crop,
                                                    flip=False,
                                                    rotate=0)
+        # normalize image (substraction of mean and division by std)
+        img = normalize_img(img)
 
         # for convenience, make augmentation matrices 3x3
         post_tran = torch.zeros(3, dtype=torch.float32)
         post_rot = torch.eye(3, dtype=torch.float32)
         post_tran[:2] = post_tran2
         post_rot[:2, :2] = post_rot2
-
-        img = standardize_img(np.asarray(img), self.img_mean, self.img_std)
-        img = torch.as_tensor(img, dtype=torch.float32).permute((2, 0, 1))
 
         return img, post_rot, post_tran
 
@@ -200,6 +191,8 @@ class LSS:
         cams_to_robot = []
         for cam_i, (img_msg, info_msg) in enumerate(zip(img_msgs, info_msgs)):
             img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+            # BGR to RGB
+            img = img[:, :, ::-1]
             if self.calib is not None:
                 rospy.logdebug('Using calibration from yaml file')
                 cam_name = self.camera_info_topics[cam_i].split('/')[1]
@@ -208,7 +201,7 @@ class LSS:
                 rospy.logdebug('Using calibration from CameraInfo message')
                 E, K, D = self.get_cam_calib_from_info_msg(info_msg)
 
-            img, post_rot, post_tran = self.preprocess_img(img, K, D)
+            img, post_rot, post_tran = self.preprocess_img(img)
             imgs.append(img)
             post_rots.append(post_rot)
             post_trans.append(post_tran)
@@ -474,8 +467,6 @@ def main():
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    img_mean = np.asarray(lss_config['img_mean'])
-    img_std = np.asarray(lss_config['img_std'])
     img_topics = rospy.get_param('~img_topics', [])
     camera_info_topics = rospy.get_param('~camera_info_topics', [])
     hm_frame = rospy.get_param('~hm_frame', 'base_link')
@@ -486,7 +477,6 @@ def main():
 
     Node = LSSVis if rospy.get_param('~debug', False) else LSS
     node = Node(cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
-                img_mean=img_mean, img_std=img_std,
                 model_weights=model_weights,
                 img_topics=img_topics, camera_info_topics=camera_info_topics,
                 hm_frame=hm_frame,

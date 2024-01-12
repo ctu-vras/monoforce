@@ -141,7 +141,7 @@ def compute_rigid_support(arr, transform=None, range=None, grid=None, scale=1.0,
 
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_interp_method='nearest',
-                       fill_value=0., return_filtered_points=False, robot_z=None):
+                       fill_value=0., robot_z=0., return_filtered_points=False):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
     assert len(points) > 0
@@ -176,11 +176,16 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     mask = np.logical_and(mask_x, mask_y)
     points = points[mask]
 
+    if len(points) == 0:
+        if return_filtered_points:
+            return None, None
+        return None
+
     # robot points
     robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., only_mask=True)
 
     # set robot points to the minimum height
-    if robot_z is None:
+    if robot_z is None and robot_mask.sum() > 0:
         robot_z = points[robot_mask, 2].min()
 
     # remove robot points
