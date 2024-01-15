@@ -265,15 +265,15 @@ class Trainer:
 
             # plot prediction as image
             ax4.set_title('Prediction')
-            ax4.imshow(height, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax4.imshow(height.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax5.set_title('Masked Prediction')
-            height_vis = height_gt.copy()
+            height_vis = np.zeros_like(height)
             height_vis[mask] = height[mask]
-            ax5.imshow(height_vis, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax5.imshow(height_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax6.set_title('Ground truth')
-            ax6.imshow(height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.imshow(height_gt.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 
