@@ -12,7 +12,7 @@ from ..config import Config
 from ..transformations import transform_cloud
 from ..cloudproc import position, estimate_heightmap, color
 from ..cloudproc import filter_grid, filter_range
-from ..imgproc import undistort_image, project_cloud_to_image, destandardize_img
+from ..imgproc import undistort_image, project_cloud_to_image
 from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
 from ..utils import normalize
@@ -800,8 +800,8 @@ class OmniDEMData(MonoDEMData):
 
         # permute cameras
         cameras = self.cameras.copy()
-        if self.is_train:
-            np.random.shuffle(cameras)
+        # if self.is_train:
+        #     np.random.shuffle(cameras)
 
         for cam in cameras:
             img, K = self.get_image(i, cam, undistort=False)
@@ -1363,7 +1363,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
 
                 ax = plt.subplot(gs[imgi // 2, imgi % 2])
-                showimg = destandardize_img(img.permute(1, 2, 0))
+                showimg = denormalize_img(img)
 
                 plt.imshow(showimg)
                 plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.2, cmap='jet')
@@ -1388,8 +1388,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
             # ax.set_aspect('equal')
 
             ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(bev_map[si][0], origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
-            # plt.imshow(bev_map[si][1], origin='lower', cmap='Greys', vmin=0., vmax=1.)
+            plt.imshow(bev_map[si][0].T, origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
             plt.colorbar()
 
             if save:

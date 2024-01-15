@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 import os
-from time import time
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
-from monoforce.imgproc import destandardize_img
+from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data
 from monoforce.config import Config
@@ -27,21 +27,16 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
     model.to(cfg.device)
     model.eval()
 
-    ds = OmniDEMData(seq_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = OmniDEMDataVis(seq_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
     loader = torch.utils.data.DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
     loss_fn = RMSE()
 
-    fig = plt.figure(figsize=(20, 7))
-    ax1 = fig.add_subplot(231)
-    ax2 = fig.add_subplot(232, projection='3d')
-    ax3 = fig.add_subplot(233, projection='3d')
-    ax4 = fig.add_subplot(234)
-    ax5 = fig.add_subplot(235)
-    ax6 = fig.add_subplot(236)
+    fig = plt.figure(figsize=(20, 10))
+    gs = mpl.gridspec.GridSpec(3, 6)
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_gt)\
-                in tqdm(enumerate(loader), total=len(loader)):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, points, hm_gt) in tqdm(enumerate(loader), total=len(loader)):
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=cfg.device) for i in inputs]
             height_pred = model(*inputs)
@@ -50,50 +45,56 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
             hm_gt = hm_gt.to(cfg.device)
             B, D, H, W = hm_gt.shape
             height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-            loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+            mask_measured = weights.bool()
+            loss = loss_fn(height_pred[mask_measured], height_gt[mask_measured])
 
             # figure title
             fig.suptitle(f'Loss: {loss.item():.3f}')
 
-            # clear axes
-            for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
-                ax.clear()
+            # clear grid axes
+            plt.clf()
 
-            # plot image
-            img = imgs[0][0].permute(1, 2, 0).cpu().numpy()
-            img = destandardize_img(img)
-            ax1.imshow(img)
+            # create height map grid
+            # z_grid = height_pred[0, 0].cpu().T
+            z_grid = height_gt[0, 0].cpu()
+            x_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+            y_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+            hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+            # filter out height map points that are not measured by lidar
+            hm_points = hm_points[mask_measured[0, 0].cpu()]
+            hm_points = hm_points.view(-1, 3).T
+            # hm_points = points[0].cpu()[:, ::2]
 
-            # plot prediction as surface
-            height = height_pred[0].squeeze().cpu().numpy()
-            x_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-            y_grid = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-            x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-            ax2.plot_surface(x_grid, y_grid, height, cmap='jet')
-            ax2.set_zlim(-1.0, 1.0)
-            ax2.set_xlabel('x [m]')
-            ax2.set_ylabel('y [m]')
-            ax2.set_zlabel('z [m]')
-            
-            # plot ground truth as surface
-            height_gt = hm_gt[0][0].cpu().numpy()
-            ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet')
-            ax3.set_zlim(-1.0, 1.0)
-            ax3.set_xlabel('x [m]')
-            ax3.set_ylabel('y [m]')
-            ax3.set_zlabel('z [m]')
+            # plot images and height map points
+            for img_gs_ids, imgi in zip([(1, 2), (0, 1), (1, 0), (2, 1)], range(imgs.shape[1])):
+                i, j = img_gs_ids
+                ax = plt.subplot(gs[i, j])
+                si = 0
+                img = imgs[si, imgi]
+                img = denormalize_img(img)
+                # project height map points to image
+                ego_pts = ego_to_cam(hm_points, rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                img_H, img_W = data_aug_conf['H'], data_aug_conf['W']
+                mask = get_only_in_img_mask(ego_pts, img_H, img_W)
+                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+                ax.imshow(img)
+                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.2, c=plot_pts[2, mask], cmap='jet')
+                ax.axis('off')
             
             # plot prediction as image
-            ax4.imshow(height, cmap='jet', vmin=-1.0, vmax=1.0)
-            
-            # plot masked prediction as image
-            mask = hm_gt[0][1].bool().cpu().numpy()
-            height_vis = height_gt.copy()
-            height_vis[mask] = height[mask]
-            ax5.imshow(height_vis, cmap='jet', vmin=-1.0, vmax=1.0)
-            
-            # plot ground truth as image
-            ax6.imshow(height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax = plt.subplot(gs[1, 1])
+            ax.imshow(z_grid.T, cmap='jet', vmin=-1.0, vmax=1.0, origin='lower')
+
+            # plot prediction as surface
+            ax = plt.subplot(gs[:, 3:6], projection='3d')
+            ax.plot_surface(x_grid, y_grid, z_grid, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax.set_zlim(-2.0, 2.0)
+            # set up view
+            ax.view_init(elev=60., azim=-80.)
+            ax.set_xlabel('x [m]')
+            ax.set_ylabel('y [m]')
+            ax.set_zlabel('z [m]')
             
             plt.pause(1.)
             plt.draw()

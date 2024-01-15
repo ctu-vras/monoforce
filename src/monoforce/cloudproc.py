@@ -231,6 +231,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
                           method=hm_interp_method, fill_value=fill_value)
         mask = np.full(z_grid.shape, 1., dtype=float)
 
+    z_grid = z_grid.T
     heightmap = {'x': np.asarray(x_grid, dtype=float),
                  'y': np.asarray(y_grid, dtype=float),
                  'z': np.asarray(z_grid, dtype=float),

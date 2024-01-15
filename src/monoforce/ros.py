@@ -28,7 +28,8 @@ def height_map_to_gridmap_msg(height, grid_res,
     assert height.ndim == 2
 
     H, W = height.shape
-    # rotate height map by 180 degrees
+    # rotate height map
+    height = height.T
     height = rotate(height, 180)
 
     map = GridMap()
@@ -62,7 +63,7 @@ def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.])
     x, y = np.meshgrid(np.arange(-H//2, H//2), np.arange(-W//2, W//2))
     x = x.ravel() * grid_res
     y = y.ravel() * grid_res
-    z = height.ravel()
+    z = height.T.ravel()
     pts = np.concatenate([x[None], y[None], z[None]], axis=0).T
     # transform points using xyz and q
     if not np.allclose(xyz, 0) or not np.allclose(q, np.array([0., 0., 0., 1.])):
