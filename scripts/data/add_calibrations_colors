@@ -16,7 +16,7 @@ from monoforce.cloudproc import position
 from monoforce.utils import normalize, timing
 from monoforce.vis import show_cloud, set_axes_equal
 from monoforce.transformations import transform_cloud
-from monoforce.ros import load_tf_buffer, img_msg_to_cv2, get_closest_msg, get_cams_lidar_transformations, \
+from monoforce.ros import load_tf_buffer, rgb_msg_to_cv2, get_closest_msg, get_cams_lidar_transformations, \
     get_camera_infos, append_transformation
 from monoforce.imgproc import project_cloud_to_image, undistort_image
 from monoforce.config import Config
@@ -163,7 +163,7 @@ def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=Fal
             for cam_topic in cam_topics:
                 # get the closest image at points time
                 msg = get_closest_msg(bag=bag, topic=cam_topic, time=cloud_times[i])
-                img_raw = img_msg_to_cv2(msg, cv_bridge)
+                img_raw = rgb_msg_to_cv2(msg, cv_bridge)
                 # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), cam_topic, msg.header.stamp.to_sec()))
 
                 # undistort image
@@ -373,7 +373,7 @@ def debug_colorize_clouds():
                 # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), cam_topic, t))
                 img_times[cam_topic].append(t)
 
-                img = img_msg_to_cv2(msg, cv_bridge)
+                img = rgb_msg_to_cv2(msg, cv_bridge)
                 if cam_topic == '/camera_fisheye_front/image_color/compressed':
                     front_imgs_array.append(img)
 

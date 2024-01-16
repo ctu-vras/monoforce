@@ -279,7 +279,7 @@ class Trainer:
 
 
 def main():
-    bsz = 24
+    bsz = 6
     nworkers = 12
     nepochs = 500
     save_model = True
@@ -301,11 +301,11 @@ def main():
     # pretrained_model_path = '../config/weights/lss/lss_sim.pt'
     pretrained_model_path = None
     opt_terrain = False
-    debug = False
+    debug = True
     vis = False
 
-    # ds_paths = seq_paths[:3]
-    ds_paths = sim_seq_paths
+    ds_paths = seq_paths[:3]
+    # ds_paths = sim_seq_paths
 
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,

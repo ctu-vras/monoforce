@@ -13,7 +13,7 @@ from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray, T
 from tf.transformations import quaternion_from_matrix, euler_from_quaternion, quaternion_matrix
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from grid_map_msgs.msg import GridMap
-from sensor_msgs.msg import PointCloud2, CompressedImage
+from sensor_msgs.msg import PointCloud2, CompressedImage, Image
 from ros_numpy import msgify, numpify
 from numpy.lib.recfunctions import unstructured_to_structured
 from tf2_ros import BufferCore, TransformException
@@ -203,11 +203,19 @@ def to_marker(poses, color=None):
     return marker
 
 
-def img_msg_to_cv2(msg, cv_bridge=CvBridge()):
+def rgb_msg_to_cv2(msg, cv_bridge=CvBridge()):
     img_msg = CompressedImage(*slots(msg))
     # convert compressed image message to numpy array
-    img_raw = cv_bridge.compressed_imgmsg_to_cv2(img_msg)
-    return img_raw
+    img = cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+    return img
+
+
+def depth_msg_to_cv2(msg, cv_bridge=CvBridge()):
+    img_msg = Image(*slots(msg))
+    # convert compressed image message to numpy array
+    img = cv_bridge.imgmsg_to_cv2(img_msg)
+    img = np.asarray(img, dtype=np.float32)
+    return img
 
 
 def get_topic_types(bag):
@@ -215,12 +223,20 @@ def get_topic_types(bag):
 
 
 @timing
-def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5):
+def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5, verbose=False):
+    assert isinstance(bag, Bag)
+    assert isinstance(topic, str)
+    assert isinstance(time, float) and time > 0
+    assert isinstance(time_window, float) and time_window > 0
+    assert isinstance(max_time_diff, float) and max_time_diff > 0
+
     stamps_in_window = []
     msgs = []
+    tl = max(time - time_window / 2., 0)
+    tr = time + time_window / 2.
     for topic, msg, stamp in bag.read_messages(topics=[topic],
-                                               start_time=rospy.Time.from_seconds(time - time_window / 2.),
-                                               end_time=rospy.Time.from_seconds(time + time_window / 2.)):
+                                               start_time=rospy.Time.from_seconds(tl),
+                                               end_time=rospy.Time.from_seconds(tr)):
         # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), topic, stamp.to_sec()))
         # break
         stamps_in_window.append(stamp.to_sec())
@@ -228,17 +244,76 @@ def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5):
 
     if len(stamps_in_window) == 0:
         # raise Exception('No image messages in window')
-        print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time, topic))
+        if verbose:
+            print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time, topic))
         return None
 
     time_diffs = np.abs(np.array(stamps_in_window) - time)
     msg = msgs[np.argmin(time_diffs)]
 
     time_diff = np.min(time_diffs)
-    # print('Got the closest message with time difference: %.3f [sec]' % time_diff)
+    if verbose:
+        print('Got the closest message with time difference: %.3f [sec]' % time_diff)
     assert time_diff < max_time_diff, 'Time difference is too large: %.3f [sec]' % time_diff
 
     return msg
+
+
+def get_cams_robot_transformations(bag_path, camera_topics, robot_frame, tf_buffer, save=True, output_path=None):
+    dir = os.path.dirname(bag_path)
+    if output_path is None:
+        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    Trs = []
+    with open(output_path, 'w') as f:
+        try:
+            with Bag(bag_path, 'r') as bag:
+                for cam_topic in camera_topics:
+                    img_msg = None
+                    for topic, msg, stamp in bag.read_messages(topics=[cam_topic]):
+                        if topic == cam_topic:
+                            img_msg = msg
+                            # print('Got image msg at %.3f s' % img_msg.header.stamp.to_sec())
+
+                        if img_msg is None:
+                            # print('No image msg read from %s' % bag_path)
+                            continue
+
+                        print('Got image msg at %.3f s' % img_msg.header.stamp.to_sec())
+
+                        # find transformation between camera and lidar
+                        try:
+                            robot_to_camera = tf_buffer.lookup_transform_core(img_msg.header.frame_id,
+                                                                              robot_frame,
+                                                                              img_msg.header.stamp)
+                        except TransformException as ex:
+                            print('Could not transform from %s to %s at %.3f s.' %
+                                  (robot_frame, img_msg.header.frame_id, img_msg.header.stamp.to_sec()))
+                            continue
+                        print('Got transformation from %s to %s at %.3f s' % (robot_frame,
+                                                                              img_msg.header.frame_id,
+                                                                              img_msg.header.stamp.to_sec()))
+                        Tr = numpify(robot_to_camera.transform)
+                        print('Tr:\n', Tr)
+                        Trs.append(Tr)
+
+                        # save transformation to output_path_patern yaml file
+                        if save:
+                            camera = cam_topic.split('/')[1]
+                            print('Saving to %s' % output_path)
+
+                            f.write('T_{robot_frame}__{camera}:\n'.format(robot_frame=robot_frame, camera=camera))
+                            f.write('  rows: 4\n')
+                            f.write('  cols: 4\n')
+                            f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
+                        break
+        except ROSBagException as ex:
+            print('Could not read %s: %s' % (bag_path, ex))
+
+        f.close()
+    return Trs
 
 
 def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=True, output_path=None):
@@ -314,6 +389,7 @@ def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
         dir = os.path.dirname(bag_path)
         output_path_pattern = '{dir}/{name}_trav/calibration/cameras/'
         output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
+    os.makedirs(output_path, exist_ok=True)
 
     Ks = []
     Ds = []

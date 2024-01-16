@@ -1,0 +1,158 @@
+#!/usr/bin/env python
+"""
+"""
+from __future__ import absolute_import, division, print_function
+import numpy as np
+import os
+import cv2
+from monoforce.utils import slots, str2bool
+from monoforce.cloudproc import position
+from monoforce.vis import show_cloud
+from monoforce.transformations import transform_cloud
+from ros_numpy import msgify, numpify
+from rosbag import Bag, Compression
+from sensor_msgs.msg import PointCloud2
+from cv_bridge import CvBridge
+from monoforce.ros import (load_tf_buffer, depth_msg_to_cv2, get_closest_msg,
+                           get_camera_infos, append_transformation, get_cams_robot_transformations)
+from tqdm import tqdm
+from argparse import ArgumentParser
+
+
+def arg_parser():
+    parser = ArgumentParser()
+    parser.add_argument('--depth-topics', type=str, nargs='+')
+    parser.add_argument('--depth-cloud-topics', type=str, nargs='+')
+    parser.add_argument('--depth-camera-info-topics', type=str, nargs='+')
+    parser.add_argument('--save-data', type=str2bool, default=True)
+    parser.add_argument('--bag-path', type=str)
+    parser.add_argument('--time-period', type=float, default=1.0)
+    return parser
+
+def save_rgbd(bag_path, depth_cloud_topics, depth_topics, Tr_robot_cams, time_period=1.0, start=None, save=True):
+    assert len(depth_cloud_topics) == len(depth_topics)
+    assert len(depth_cloud_topics) == len(Tr_robot_cams)
+
+    data_path = bag_path.replace('.bag', '_trav')
+    depths_path = os.path.join(data_path, 'depths')
+    depths_vis_path = os.path.join(data_path, 'depths/visuals')
+    clouds_path = os.path.join(data_path, 'clouds')
+    os.makedirs(depths_path, exist_ok=True)
+    os.makedirs(depths_vis_path, exist_ok=True)
+    os.makedirs(clouds_path, exist_ok=True)
+    cv_bridge = CvBridge()
+
+    # find total duration of the bag file
+    with Bag(bag_path, 'r') as bag:
+        duration = bag.get_end_time() - bag.get_start_time()
+        print('Bag duration: %.3f s' % duration)
+
+    # create timestamps
+    if start is None:
+        start = bag.get_start_time()
+    timestamps = np.arange(start, duration, time_period)
+    ids = []
+    for t in timestamps:
+        id = '{secs}_{nsecs:09d}'.format(secs=int(t), nsecs=int((t - int(t)) * 1e9))
+        ids.append(id)
+
+    # save clouds and images at timestamps
+    with Bag(bag_path, 'r') as bag:
+        print('Saving images from topics "%s"' % depth_topics)
+        for i in tqdm(range(len(timestamps))):
+
+            # save images at cloud timestamps
+            for depth_topic in depth_topics:
+                # get the closest image at points time
+                msg = get_closest_msg(bag=bag, topic=depth_topic, time=timestamps[i], time_window=time_period,
+                                      max_time_diff=time_period / 2.)
+                if msg is None:
+                    # print('No depth image found at %.3f s' % timestamps[i])
+                    continue
+                # print('Got depth msg from topic "%s" at %.3f s' % (depth_topic, timestamps[i]))
+                depth_raw = depth_msg_to_cv2(msg, cv_bridge)
+                camera = depth_topic.split('/')[1]
+                if save:
+                    # interpolate depth image to uint16 values
+                    nan_mask = np.isnan(depth_raw)
+                    depth_uint16 = depth_raw.copy()
+                    depth_uint16[~nan_mask] = np.interp(depth_uint16[~nan_mask],
+                                                        (depth_uint16[~nan_mask].min(), depth_uint16[~nan_mask].max()),
+                                                        (0, 65535)).astype(np.uint16)
+                    # interpolate depth image to uint8 values
+                    depth_uint8 = depth_raw.copy()
+                    depth_uint8[~nan_mask] = np.interp(depth_uint8[~nan_mask],
+                                                       (depth_uint8[~nan_mask].min(), depth_uint8[~nan_mask].max()),
+                                                       (0, 255)).astype(np.uint8)
+                    # save images
+                    cv2.imwrite(os.path.join(depths_path, '%s_%s.png' % (ids[i], camera)), depth_uint16)
+                    # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
+                    depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_uint8, alpha=0.9), cv2.COLORMAP_JET)
+                    cv2.imwrite(os.path.join(depths_vis_path, '%s_%s.png' % (ids[i], camera)), depth_colormap)
+
+        print('Saving clouds from topics "%s"' % depth_cloud_topics)
+        for i in tqdm(range(len(timestamps))):
+            # save clouds at cloud timestamps
+            clouds = []
+            for cam_i, depth_cloud_topic in enumerate(depth_cloud_topics):
+                # get the closest image at points time
+                msg = get_closest_msg(bag=bag, topic=depth_cloud_topic, time=timestamps[i], time_window=time_period, max_time_diff=time_period / 2.)
+                if msg is None:
+                    # print('No depth found at %.3f s' % timestamps[i])
+                    continue
+                # print('Got depth msg from topic "%s" at %.3f s' % (depth_cloud_topic, timestamps[i]))
+
+                msg = PointCloud2(*slots(msg))
+                cloud = numpify(msg)
+                # print('Cloud struct:', cloud.shape)
+                if cloud.ndim == 2:
+                    cloud = cloud.reshape((-1,))
+
+                # remove invalid points
+                mask = np.isfinite(position(cloud)).all(axis=1)
+                cloud = cloud[mask]
+                # transform cloud to robot frame
+                Tr = np.linalg.inv(Tr_robot_cams[cam_i])
+                cloud = transform_cloud(cloud, Tr)
+                clouds.append(cloud)
+
+            if len(clouds) == 0:
+                continue
+
+            cloud = np.concatenate(clouds)
+            # visualize cloud
+            # show_cloud(position(cloud))
+
+            if save:
+                # save cloud
+                p = os.path.join(clouds_path, f'{ids[i]}.npz')
+                np.savez_compressed(p, cloud=cloud)
+    # number of saved clouds
+    print('Number of saved clouds: %d' % len(os.listdir(clouds_path)))
+    print('Number of saved images: %d' % len(os.listdir(depths_vis_path)))
+    # assert len(os.listdir(clouds_path)) == len(os.listdir(depths_vis_path)) / len(depth_cloud_topics)
+
+
+def process(bag_path, depth_topics, depth_camera_info_topics, depth_cloud_topics, save_data,
+            robot_frame='base_link', time_period=1.0, **kwargs):
+    assert os.path.exists(bag_path), 'Bag file does not exist: %s' % bag_path
+
+    tf_buffer = load_tf_buffer([bag_path])
+    print('Obtaining camera infos from bag file...')
+    get_camera_infos(bag_path, depth_camera_info_topics, save=save_data)
+    print('Obtaining robot to camera transformations from bag file...')
+    Tr_robot_cams = get_cams_robot_transformations(bag_path, depth_topics, robot_frame, tf_buffer, save=save_data)
+    print(f'Obtaining {robot_frame} to base_footprint transformations from bag file...')
+    append_transformation(bag_path, source_frame=robot_frame, target_frame='base_footprint', save=save_data, tf_buffer=tf_buffer)
+    print('Saving rgbd...')
+    save_rgbd(bag_path, depth_cloud_topics, depth_topics, Tr_robot_cams, time_period=time_period, start=6.0, save=save_data)
+
+
+def main():
+    args = arg_parser().parse_args()
+    print(args)
+    process(**vars(args))
+
+
+if __name__ == '__main__':
+    main()

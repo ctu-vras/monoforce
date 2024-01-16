@@ -20,6 +20,7 @@ __all__ = [
     'skew_symmetric',
     'read_yaml',
     'write_to_yaml',
+    'str2bool',
 ]
 
 color_palette = {
@@ -263,3 +264,7 @@ def read_yaml(path):
 def write_to_yaml(cfg: dict, path):
     with open(path, 'w') as f:
         yaml.dump(cfg, f, default_flow_style=False)
+
+
+def str2bool(v):
+    return v.lower() in ('1', 'yes', 'true', 't', 'y')
