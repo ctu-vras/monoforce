@@ -127,7 +127,7 @@ class Trainer:
         assert height_pred.shape == (B, 1, H, W)
         # get height and mask from heightmap: weights_m is measurement mask
         height_gt, weights_m = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
-        weights = weights_m
+        weights = weights_m.clone()
 
         # handle imbalanced height distribution
         h_mean = height_gt[weights_m.bool()].mean()
