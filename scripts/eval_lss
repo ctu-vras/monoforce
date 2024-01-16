@@ -55,8 +55,8 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
             plt.clf()
 
             # create height map grid
-            # z_grid = height_pred[0, 0].cpu().T
-            z_grid = height_gt[0, 0].cpu()
+            z_grid = height_pred[0, 0].cpu()
+            # z_grid = height_gt[0, 0].cpu()
             x_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
             y_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
@@ -156,16 +156,16 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     # modelf = '../config/weights/lss/lss.pt'
-    # modelf = '../config/weights/lss/train_lss_sim.pt'
-    modelf = '../config/weights/lss/lss_sim.pt'
+    modelf = '../config/weights/lss/train_lss.pt'
+    # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
     paths = seq_paths[:3]
     # paths = sim_seq_paths
 
-    for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg,
-                     opt_terrain=False, save=False, is_train=False, sample_range='random')
+    # for path in paths:
+    #     explore_data(path, grid_conf, data_aug_conf, cfg,
+    #                  opt_terrain=False, save=False, is_train=False, sample_range='random')
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=32)
     test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
 
