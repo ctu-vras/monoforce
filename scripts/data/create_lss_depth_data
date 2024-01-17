@@ -64,7 +64,7 @@ def save_rgbd(bag_path, depth_cloud_topics, depth_topics, Tr_robot_cams, time_pe
             # save images at cloud timestamps
             for depth_topic in depth_topics:
                 # get the closest image at points time
-                msg = get_closest_msg(bag=bag, topic=depth_topic, time=timestamps[i], time_window=time_period,
+                msg = get_closest_msg(bag=bag, topic=depth_topic, time_moment=timestamps[i], time_window=time_period,
                                       max_time_diff=time_period / 2.)
                 if msg is None:
                     # print('No depth image found at %.3f s' % timestamps[i])
@@ -96,7 +96,7 @@ def save_rgbd(bag_path, depth_cloud_topics, depth_topics, Tr_robot_cams, time_pe
             clouds = []
             for cam_i, depth_cloud_topic in enumerate(depth_cloud_topics):
                 # get the closest image at points time
-                msg = get_closest_msg(bag=bag, topic=depth_cloud_topic, time=timestamps[i], time_window=time_period, max_time_diff=time_period / 2.)
+                msg = get_closest_msg(bag=bag, topic=depth_cloud_topic, time_moment=timestamps[i], time_window=time_period, max_time_diff=time_period / 2.)
                 if msg is None:
                     # print('No depth found at %.3f s' % timestamps[i])
                     continue

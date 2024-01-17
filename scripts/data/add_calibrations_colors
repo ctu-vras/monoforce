@@ -13,7 +13,7 @@ from rosbag import Bag, Compression
 from sensor_msgs.msg import PointCloud2
 from cv_bridge import CvBridge
 from monoforce.cloudproc import position
-from monoforce.utils import normalize, timing
+from monoforce.utils import normalize, timing, str2bool
 from monoforce.vis import show_cloud, set_axes_equal
 from monoforce.transformations import transform_cloud
 from monoforce.ros import load_tf_buffer, rgb_msg_to_cv2, get_closest_msg, get_cams_lidar_transformations, \
@@ -43,10 +43,6 @@ def arg_parser():
     parser.add_argument('--save-data', type=str2bool, default=True)
     parser.add_argument('--bag-path', type=str)
     return parser
-
-
-def str2bool(v):
-    return v.lower() in ('1', 'yes', 'true', 't', 'y')
 
 
 def str2time(s):
@@ -162,7 +158,7 @@ def colorize_clouds(data_path, cam_topics, lidar='os_sensor', vis=True, save=Fal
 
             for cam_topic in cam_topics:
                 # get the closest image at points time
-                msg = get_closest_msg(bag=bag, topic=cam_topic, time=cloud_times[i])
+                msg = get_closest_msg(bag=bag, topic=cam_topic, time_moment=cloud_times[i])
                 img_raw = rgb_msg_to_cv2(msg, cv_bridge)
                 # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), cam_topic, msg.header.stamp.to_sec()))
 
@@ -250,7 +246,7 @@ def estimate_velocities(data_path, tf_buffer, imu_topic='/imu/data', robot_frame
             vel = np.zeros(3)
             for t in stamps:
                 # get the closest imu at points time
-                imu_msg = get_closest_msg(bag=bag, topic=imu_topic, time=t, time_window=0.1)
+                imu_msg = get_closest_msg(bag=bag, topic=imu_topic, time_moment=t, time_window=0.1)
 
                 # lookup tf transformation between imu and robot base
                 if robot_to_imu is None:
@@ -368,7 +364,7 @@ def debug_colorize_clouds():
 
             for cam_topic in cam_topics:
                 # get the closest image at points time
-                msg = get_closest_msg(bag=bag, topic=cam_topic, time=cloud_times[i])
+                msg = get_closest_msg(bag=bag, topic=cam_topic, time_moment=cloud_times[i])
                 t = msg.header.stamp.to_sec()
                 # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), cam_topic, t))
                 img_times[cam_topic].append(t)

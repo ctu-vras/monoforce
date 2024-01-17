@@ -40,5 +40,6 @@ do
                       --lidar-topic ${CLOUD_TOPIC} \
                       --camera-topics ${CAMERA_TOPICS} \
                       --camera-info-topics ${CAMERA_INFO_TOPICS} \
+                      --start-time 5.0 \
                       --time-period 1.0
 done

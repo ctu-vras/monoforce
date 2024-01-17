@@ -1,17 +1,23 @@
 #!/usr/bin/env python
 
-import rosbag
+from rosbag import Compression, Bag
 from tqdm import tqdm
+from monoforce.datasets import seq_paths, sim_seq_paths
 
+paths = seq_paths + sim_seq_paths
 
-input_bag = '/home/ruslan/data/bags/husky_sim/depth/husky_simcity_2024-01-16-11-23-56_depth.bag'
-output_bag = input_bag[:-4] + '_synch.bag'
+for path in paths:
+    input_bag_path = path.replace('_trav', '.bag')
+    print('Processing', input_bag_path)
+    output_bag_path = input_bag_path[:-4] + '_synch.bag'
+    print('Saving to', output_bag_path)
 
-with rosbag.Bag(output_bag, 'w') as outbag:
-    for topic, msg, t in tqdm(rosbag.Bag(input_bag).read_messages(), total=rosbag.Bag(input_bag).get_message_count()):
-        # This also replaces tf timestamps under the assumption 
-        # that all transforms in the message share the same timestamp
-        if topic == "/tf" and msg.transforms:
-            outbag.write(topic, msg, msg.transforms[0].header.stamp)
-        else:
-            outbag.write(topic, msg, msg.header.stamp if msg._has_header else t)
+    input_bag = Bag(input_bag_path)
+    with Bag(output_bag_path, 'w', compression=Compression.LZ4) as output_bag:
+        for topic, msg, t in tqdm(input_bag.read_messages(), total=input_bag.get_message_count()):
+            # This also replaces tf timestamps under the assumption
+            # that all transforms in the message share the same timestamp
+            if topic == "/tf" and msg.transforms:
+                output_bag.write(topic, msg, msg.transforms[0].header.stamp)
+            else:
+                output_bag.write(topic, msg, msg.header.stamp if msg._has_header else t)

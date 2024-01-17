@@ -223,38 +223,46 @@ def get_topic_types(bag):
 
 
 @timing
-def get_closest_msg(bag, topic, time, time_window=1.0, max_time_diff=0.5, verbose=False):
+def get_closest_msg(bag, topic, time_moment, time_window=1.0,
+                    max_time_diff=0.5, max_time_window=10.0,
+                    verbose=False, return_time_diff=False):
     assert isinstance(bag, Bag)
     assert isinstance(topic, str)
-    assert isinstance(time, float) and time > 0
+    assert isinstance(time_moment, float) and time_moment > 0
     assert isinstance(time_window, float) and time_window > 0
     assert isinstance(max_time_diff, float) and max_time_diff > 0
 
+    if time_window > max_time_window:
+        raise Exception('Time window is too large: %.3f [sec]' % time_window)
+
     stamps_in_window = []
     msgs = []
-    tl = max(time - time_window / 2., 0)
-    tr = time + time_window / 2.
+    tl = max(time_moment - time_window / 2., 0)
+    tr = time_moment + time_window / 2.
     for topic, msg, stamp in bag.read_messages(topics=[topic],
                                                start_time=rospy.Time.from_seconds(tl),
                                                end_time=rospy.Time.from_seconds(tr)):
-        # print('Got image msg %i/%i from topic "%s" at %.3f s' % (i+1, len(ds), topic, stamp.to_sec()))
-        # break
         stamps_in_window.append(stamp.to_sec())
         msgs.append(msg)
 
     if len(stamps_in_window) == 0:
         # raise Exception('No image messages in window')
-        if verbose:
-            print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time, topic))
-        return None
+        print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time_moment, topic))
+        print('Trying to increase time_window twice (%f [sec])' % (2*time_window))
+        return get_closest_msg(bag=bag, topic=topic, time_moment=time_moment, time_window=time_window * 2.0,
+                               max_time_diff=max_time_diff, max_time_window=max_time_window,
+                               verbose=verbose, return_time_diff=return_time_diff)
 
-    time_diffs = np.abs(np.array(stamps_in_window) - time)
+    time_diffs = np.abs(np.array(stamps_in_window) - time_moment)
     msg = msgs[np.argmin(time_diffs)]
 
     time_diff = np.min(time_diffs)
     if verbose:
         print('Got the closest message with time difference: %.3f [sec]' % time_diff)
     assert time_diff < max_time_diff, 'Time difference is too large: %.3f [sec]' % time_diff
+
+    if return_time_diff:
+        return msg, time_diff
 
     return msg
 

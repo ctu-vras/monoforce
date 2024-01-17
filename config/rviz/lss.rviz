@@ -4,6 +4,7 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Global Options1
         - /Status1
         - /Sensors1
         - /Traversability1
@@ -49,7 +50,7 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 10
+      Plane Cell Count: 100
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 1
@@ -326,8 +327,6 @@ Visualization Manager:
           Value: true
         lidar:
           Value: true
-        map:
-          Value: true
         mount_base:
           Value: true
         odom:
@@ -389,85 +388,84 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Tree:
-        map:
-          odom:
-            base_link:
-              base_footprint:
+        odom:
+          base_link:
+            base_footprint:
+              {}
+            bullet:
+              bullet_antenna:
                 {}
-              bullet:
-                bullet_antenna:
+            front_bumper_link:
+              {}
+            front_left_wheel_link:
+              {}
+            front_right_wheel_link:
+              {}
+            gps:
+              {}
+            gps_odom:
+              utm_local:
+                utm:
                   {}
-              front_bumper_link:
+            imu_link:
+              {}
+            inertial_link:
+              {}
+            mount_base:
+              cam1_base:
                 {}
-              front_left_wheel_link:
+              cam2_base:
                 {}
-              front_right_wheel_link:
-                {}
-              gps:
-                {}
-              gps_odom:
-                utm_local:
-                  utm:
-                    {}
-              imu_link:
-                {}
-              inertial_link:
-                {}
-              mount_base:
-                cam1_base:
+              rs_lidar:
+                lidar:
                   {}
-                cam2_base:
+                rslidar:
                   {}
-                rs_lidar:
-                  lidar:
-                    {}
-                  rslidar:
-                    {}
-              payload_frame:
+            payload_frame:
+              {}
+            rear_bumper_link:
+              {}
+            rear_left_wheel_link:
+              {}
+            rear_right_corner:
+              tower_rear_right_corner:
+                tower:
+                  tower_camera_floor:
+                    camera_0:
+                      {}
+                    camera_1:
+                      {}
+                    camera_2:
+                      {}
+                    camera_3:
+                      {}
+                  tower_cap:
+                    tower_cap_top:
+                      ouster_mount:
+                        ouster_mount_top:
+                          os_sensor:
+                            crystal:
+                              {}
+                            os_imu:
+                              {}
+                            os_lidar:
+                              {}
+                  tower_lower_floor:
+                    imu:
+                      {}
+                    jetson:
+                      {}
+            rear_right_wheel_link:
+              {}
+            top_chassis_link:
+              {}
+            top_plate_link:
+              top_plate_front_link:
                 {}
-              rear_bumper_link:
+              top_plate_rear_link:
                 {}
-              rear_left_wheel_link:
-                {}
-              rear_right_corner:
-                tower_rear_right_corner:
-                  tower:
-                    tower_camera_floor:
-                      camera_0:
-                        {}
-                      camera_1:
-                        {}
-                      camera_2:
-                        {}
-                      camera_3:
-                        {}
-                    tower_cap:
-                      tower_cap_top:
-                        ouster_mount:
-                          ouster_mount_top:
-                            os_sensor:
-                              crystal:
-                                {}
-                              os_imu:
-                                {}
-                              os_lidar:
-                                {}
-                    tower_lower_floor:
-                      imu:
-                        {}
-                      jetson:
-                        {}
-              rear_right_wheel_link:
-                {}
-              top_chassis_link:
-                {}
-              top_plate_link:
-                top_plate_front_link:
-                  {}
-                top_plate_rear_link:
-                  {}
-              user_rail_link:
-                {}
+            user_rail_link:
+              {}
       Update Interval: 0
       Value: true
     - Class: rviz/Group
@@ -678,7 +676,7 @@ Visualization Manager:
   Global Options:
     Background Color: 255; 255; 255
     Default Light: true
-    Fixed Frame: base_link
+    Fixed Frame: odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -719,7 +717,7 @@ Visualization Manager:
       Name: Current View
       Near Clip Distance: 0.009999999776482582
       Pitch: 0.7853981852531433
-      Target Frame: <Fixed Frame>
+      Target Frame: base_link
       Yaw: 0.7853981852531433
     Saved: ~
 Window Geometry:

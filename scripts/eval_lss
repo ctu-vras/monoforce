@@ -79,7 +79,7 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
                 mask = get_only_in_img_mask(ego_pts, img_H, img_W)
                 plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
                 ax.imshow(img)
-                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.2, c=plot_pts[2, mask], cmap='jet')
+                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=-plot_pts[1, mask], cmap='jet')
                 ax.axis('off')
             
             # plot prediction as image

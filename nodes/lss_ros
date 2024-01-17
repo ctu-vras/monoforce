@@ -259,11 +259,11 @@ class LSS:
 
         # publish height map as image
         stamp = rospy.Time.now()
-        height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
-        img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
-        img_msg.header.stamp = stamp
-        img_msg.header.frame_id = self.hm_frame
-        self.hm_img_pub.publish(img_msg)
+        # height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
+        # img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
+        # img_msg.header.stamp = stamp
+        # img_msg.header.frame_id = self.hm_frame
+        # self.hm_img_pub.publish(img_msg)
 
         # publish height map as point cloud
         cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
@@ -296,8 +296,6 @@ class LSSVis(LSS):
                  img_topics=[],
                  camera_info_topics=[],
                  points_topic='/points',
-                 img_mean=None,
-                 img_std=None,
                  calib_path='',
                  max_msgs_delay=0.1,
                  max_stale_msg_delay=0.2,
@@ -310,8 +308,6 @@ class LSSVis(LSS):
             hm_frame=hm_frame,
             img_topics=img_topics,
             camera_info_topics=camera_info_topics,
-            img_mean=img_mean,
-            img_std=img_std,
             calib_path=calib_path,
             max_msgs_delay=max_msgs_delay,
             max_stale_msg_delay=max_stale_msg_delay,
@@ -383,7 +379,7 @@ class LSSVis(LSS):
             # ax.set_aspect('equal')
 
             ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(bev_map[si].squeeze(0), origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+            plt.imshow(bev_map[si].squeeze(0).T, origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
             plt.colorbar()
 
             if fname is None:

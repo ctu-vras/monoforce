@@ -49,6 +49,7 @@ seq_paths = [
         os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
         os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/'),
         os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
+        os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31_trav/'),
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
         os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
 ]
@@ -1316,7 +1317,6 @@ def global_cloud_demo():
 def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                  sample_range='random', save=False, opt_terrain=False, is_train=False):
     assert os.path.exists(path)
-    assert sample_range in ['random', 'all']
 
     Data = OmniOptDEMDataVis if opt_terrain else OmniDEMDataVis
 
@@ -1335,8 +1335,10 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
 
     if sample_range == 'random':
         sample_range = [np.random.choice(range(len(ds)))]
-    else:
+    elif sample_range == 'all':
         sample_range = tqdm(range(len(ds)), total=len(ds))
+    else:
+        assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
 
     for sample_i in sample_range:
         fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
