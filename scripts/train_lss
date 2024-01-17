@@ -150,6 +150,14 @@ class Trainer:
             weights_gaus = weights_gaus.view(1, 1, H, W).repeat(B, 1, 1, 1)
             # apply weights
             weights = weights * weights_gaus
+         
+        # mask of valid labels
+        weights_valid = ~torch.isnan(height_gt)
+        mask_valid = weights_valid.bool()
+        # apply mask
+        height_gt = height_gt[mask_valid]
+        height_pred = height_pred[mask_valid]
+        weights = weights[mask_valid]
 
         # compute weighted loss
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
@@ -284,7 +292,7 @@ class Trainer:
 
 
 def main():
-    bsz = 6
+    bsz = 24
     nworkers = 12
     nepochs = 500
     save_model = True
@@ -303,10 +311,10 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
-    # pretrained_model_path = '../config/weights/lss/lss_sim.pt'
-    pretrained_model_path = None
-    opt_terrain = False
-    debug = True
+    pretrained_model_path = '../config/weights/lss/train_lss.pt'
+    # pretrained_model_path = None
+    opt_terrain = True
+    debug = False
     vis = False
 
     ds_paths = seq_paths[:3]
