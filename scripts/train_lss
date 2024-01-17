@@ -44,6 +44,7 @@ class Trainer:
             self.nepochs = nepochs
             self.save_model = save_model
             self.log_dir = log_dir
+            self.opt_terrain = opt_terrain
 
             self.train_ds, self.val_ds = self.create_datasets(debug=debug, vis=vis, opt_terrain=opt_terrain)
             self.trainloader = torch.utils.data.DataLoader(self.train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
@@ -129,14 +130,16 @@ class Trainer:
         height_gt, weights_m = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
         weights = weights_m.clone()
 
-        # handle imbalanced height distribution
-        h_mean = height_gt[weights_m.bool()].mean()
-        # the higher the difference from mean the higher the weight
-        weights_h = 1.0 + torch.abs(height_gt - h_mean)
-        # apply height difference weights
-        weights = weights * weights_h
+        if not self.opt_terrain:
+            # handle imbalanced height distribution (increase weights for higher heights / obstacles)
+            h_mean = height_gt[weights_m.bool()].mean()
+            # the higher the difference from mean the higher the weight
+            weights_h = 1.0 + torch.abs(height_gt - h_mean)
+            # apply height difference weights
+            weights = weights * weights_h
 
         if sigma is not None:
+            # apply gaussian weights based on distance from the center of the height map
             assert isinstance(sigma, (float, int))
             assert sigma > 0.0
             # create 2D gaussian weights with the size of the height map and center at (0, 0)
@@ -147,6 +150,8 @@ class Trainer:
             weights_gaus = weights_gaus.view(1, 1, H, W).repeat(B, 1, 1, 1)
             # apply weights
             weights = weights * weights_gaus
+
+        # compute weighted loss
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
         return loss
 

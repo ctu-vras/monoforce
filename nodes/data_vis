@@ -4,36 +4,53 @@ import os
 import numpy as np
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import DEMTrajData, OptDEMTrajData, seq_paths
-from monoforce.cloudproc import position
+from monoforce.datasets import OmniDEMDataVis, OmniOptDEMDataVis, seq_paths
 from monoforce.config import Config
 from monoforce.ros import height_map_to_gridmap_msg, to_path
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2
 from grid_map_msgs.msg import GridMap
 from ros_numpy import numpify, msgify
+from monoforce.utils import read_yaml
+import rospkg
 
 
 def main():
     rospy.init_node('data_vis', anonymous=True, log_level=rospy.DEBUG)
     cfg = Config()
+    pkg_path = rospkg.RosPack().get_path('monoforce')
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
     cfg.from_rosparams(node_name='data_vis')
+
+    # load LSS config
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss.yaml'))
+    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+    lss_config = read_yaml(lss_config_path)
+    grid_conf = lss_config['grid_conf']
+    data_aug_conf = lss_config['data_aug_conf']
+
     rate = rospy.get_param('~rate', 1)
     opt_terrain = rospy.get_param('~opt_terrain', False)
 
     # Load traversability data
-    path = np.random.choice(seq_paths)
+    path = seq_paths[rospy.get_param('~seq_i', 0)]
     assert os.path.exists(path)
-    Data = OptDEMTrajData if opt_terrain else DEMTrajData
-    ds = Data(path, cfg=cfg)
+    # Data = OptDEMTrajData if opt_terrain else DEMTrajData
+    Data = OmniOptDEMDataVis if opt_terrain else OmniDEMDataVis
+    ds = Data(path, cfg=cfg, data_aug_conf=data_aug_conf)
     rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), path))
 
     # Choose data sample
-    i = np.random.choice(range(len(ds)))
+    i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
     rospy.loginfo('Using sample %d' % i)
-    cloud, traj, height = ds[i]
+    imgs, rots, trans, intrins, post_rots, post_trans, lidar_pts, heightmap = ds[i]
+    traj = ds.get_traj(i)
     poses = traj['poses']
-    points = position(cloud)
+    points = lidar_pts.numpy().T
+    height = heightmap[0].numpy()
+    height_mask = heightmap[1].numpy()
 
     # publishing of the data
     gm_pub = rospy.Publisher('grid_map', GridMap, queue_size=1)
@@ -53,7 +70,7 @@ def main():
         cloud_msg.header.stamp = stamp
 
         # grid map
-        grid_msg = height_map_to_gridmap_msg(height['z'], grid_res=cfg.grid_res)
+        grid_msg = height_map_to_gridmap_msg(height, grid_res=cfg.grid_res, mask=height_mask)
         grid_msg.info.header.frame_id = frame
         grid_msg.info.header.stamp = stamp
 

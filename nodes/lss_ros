@@ -444,7 +444,7 @@ class LSSVis(LSS):
         imgs, rots, trans, intrins, post_rots, post_trans = lss_inputs
         vis_inputs = [imgs, rots, trans, intrins, post_rots, post_trans, points, height]
 
-        self.vis(*vis_inputs, fname=f'lss_data_{time()}.png')
+        self.vis(*vis_inputs, fname=f'/home/ruslan/Desktop/lss_data_{time()}.png')
 
 
 def main():

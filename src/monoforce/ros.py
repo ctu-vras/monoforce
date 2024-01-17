@@ -23,9 +23,14 @@ from visualization_msgs.msg import Marker
 
 
 def height_map_to_gridmap_msg(height, grid_res,
-                              xyz=np.array([0, 0, 0]), q=np.array([0., 0., 0., 1.])):
+                              xyz=np.array([0, 0, 0]), q=np.array([0., 0., 0., 1.]),
+                              mask=None):
     assert isinstance(height, np.ndarray)
     assert height.ndim == 2
+    if mask is not None:
+        assert isinstance(mask, np.ndarray)
+        assert mask.ndim == 2
+        assert mask.shape == height.shape
 
     H, W = height.shape
     # rotate height map
@@ -52,6 +57,22 @@ def height_map_to_gridmap_msg(height, grid_res,
     height_array.layout.dim[1].stride = W
     height_array.data = height.ravel().tolist()
     map.data.append(height_array)
+
+    if mask is not None:
+        mask = mask.T
+        mask = rotate(mask, 180)
+        map.layers.append('mask')
+        mask_array = Float32MultiArray()
+        mask_array.layout.dim.append(MultiArrayDimension())
+        mask_array.layout.dim.append(MultiArrayDimension())
+        mask_array.layout.dim[0].label = 'column_index'
+        mask_array.layout.dim[0].size = H
+        mask_array.layout.dim[0].stride = H * W
+        mask_array.layout.dim[1].label = 'row_index'
+        mask_array.layout.dim[1].size = W
+        mask_array.layout.dim[1].stride = W
+        mask_array.data = mask.ravel().tolist()
+        map.data.append(mask_array)
 
     return map
 

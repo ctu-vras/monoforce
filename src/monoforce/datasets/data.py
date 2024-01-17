@@ -335,8 +335,13 @@ class DEMTrajData(Dataset):
     def get_optimized_terrain(self, i):
         ind = self.ids[i]
         terrain = np.load(os.path.join(self.path, 'terrain', '%s.npy' % ind))
-        # TODO: transformation issue (need to add a transposition hack)
-        return terrain.T
+        # get transformation from base_link to base_footprint
+        T = self.calib['transformations']['T_base_link__base_footprint']['data']
+        T = np.asarray(T, dtype=float).reshape((4, 4))
+        # transform terrain to base_footprint frame
+        dz = T[2, 3]
+        terrain['height'] += dz
+        return terrain
 
     def global_cloud(self, colorize=False, vis=False, step_size=1):
         poses = self.get_poses()
@@ -515,26 +520,6 @@ class MonoDEMData(DEMTrajData):
             img = self.img_augs(image=img)['image']
         # img = standardize_img(img)
         return img
-
-    def calculate_img_statistics(self):
-        # calculate mean and std from the entire dataset
-        means, stds = [], []
-        print('Calculating images mean and std from the entire dataset...')
-        for i in tqdm(range(len(self))):
-            img = self.get_raw_image(i, camera=self.cameras[0])
-            img_01 = normalize(img)
-
-            mean = img_01.reshape([-1, 3]).mean(axis=0)
-            std = img_01.reshape([-1, 3]).std(axis=0)
-
-            means.append(mean)
-            stds.append(std)
-
-        mean = np.asarray(means).mean(axis=0)
-        std = np.asarray(stds).mean(axis=0)
-
-        print(f'Estimated mean: {mean} \n and std: {std}')
-        return mean, std
 
     def __getitem__(self, i, visualize=False):
         camera = 'camera_fisheye_front' if 'marv' in self.path else 'camera_front'
@@ -917,21 +902,32 @@ class OmniOptDEMData(OmniDEMData):
                  ):
         super(OmniOptDEMData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
-    def get_height_map_data(self, i, h_diff=0.1):
+    def get_height_map_data(self, i, h_diff=None):
         terrain = self.get_optimized_terrain(i)
         height = torch.as_tensor(terrain['height'])
-        height0 = torch.as_tensor(terrain['height_init'])
         H, W = height.shape
-        h, w = 2 * self.cfg.d_max // self.cfg.grid_res, 2 * self.cfg.d_max // self.cfg.grid_res
+        h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
         # select only the h x w area from the center of the height map
         height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
                         int(W // 2 - w // 2):int(W // 2 + w // 2)]
-        height0 = height0[int(H // 2 - h // 2):int(H // 2 + h // 2),
-                          int(W // 2 - w // 2):int(W // 2 + w // 2)]
-        # mask = torch.ones_like(height)
-        mask = (height - height0).abs() > h_diff
-        height = torch.stack([height, mask])
-        return height
+
+        # poses in grid coordinates
+        poses = self.get_traj(i)['poses']
+        poses_grid = poses[:, :2, 3] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
+        poses_grid = poses_grid.astype(int)
+        # crop poses to observation area defined by square grid
+        poses_grid = poses_grid[(poses_grid[:, 0] > 0) & (poses_grid[:, 0] < w) &
+                                (poses_grid[:, 1] > 0) & (poses_grid[:, 1] < h)]
+
+        # visited by poses dilated height map area mask
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        mask = np.zeros((h, w), dtype=np.uint8)
+        mask[poses_grid[:, 0], poses_grid[:, 1]] = 1
+        mask = cv2.dilate(mask, kernel, iterations=2)
+        mask = torch.as_tensor(mask, dtype=height.dtype)
+
+        heightmap = torch.stack([height, mask])
+        return heightmap
 
 
 class OmniOptDEMDataVis(OmniOptDEMData):
