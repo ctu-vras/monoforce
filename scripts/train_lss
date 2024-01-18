@@ -313,7 +313,6 @@ def main():
     log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     pretrained_model_path = '../config/weights/lss/train_lss.pt'
     # pretrained_model_path = None
-    opt_terrain = True
     debug = False
     vis = False
 

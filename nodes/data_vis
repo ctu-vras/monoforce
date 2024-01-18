@@ -50,7 +50,7 @@ def main():
     if modelf is not None:
         model = compile_model(grid_conf, data_aug_conf, outC=1)
         print('loading', modelf)
-        model.load_state_dict(torch.load(modelf))
+        model.load_state_dict(torch.load(modelf, map_location=cfg.device))
         model.eval()
 
     # Choose data sample

@@ -157,11 +157,11 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     points = points[mask]
 
     # filter height outliers points
-    z = points[:, 2]
-    h_min_out = z[z > np.percentile(z, 2)].min()
-    h_max_out = z[z < np.percentile(z, 98)].max()
-    points = points[points[:, 2] > h_min_out]
-    points = points[points[:, 2] < h_max_out]
+    # z = points[:, 2]
+    # h_min_out = z[z > np.percentile(z, 2)].min()
+    # h_max_out = z[z < np.percentile(z, 98)].max()
+    # points = points[points[:, 2] > h_min_out]
+    # points = points[points[:, 2] < h_max_out]
 
     # height above ground
     points = points[points[:, 2] < h_max]
