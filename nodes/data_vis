@@ -2,13 +2,17 @@
 
 import os
 import numpy as np
+import torch
+
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import OmniDEMDataVis, OmniOptDEMDataVis, seq_paths
 from monoforce.config import Config
 from monoforce.ros import height_map_to_gridmap_msg, to_path
+from monoforce.models.lss.tools import denormalize_img
+from monoforce.models.lss.model import compile_model
 from nav_msgs.msg import Path
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, Image
 from grid_map_msgs.msg import GridMap
 from ros_numpy import numpify, msgify
 from monoforce.utils import read_yaml
@@ -33,14 +37,21 @@ def main():
 
     rate = rospy.get_param('~rate', 1)
     opt_terrain = rospy.get_param('~opt_terrain', False)
+    modelf = rospy.get_param('~lss_weights', None)
 
     # Load traversability data
     path = seq_paths[rospy.get_param('~seq_i', 0)]
     assert os.path.exists(path)
-    # Data = OptDEMTrajData if opt_terrain else DEMTrajData
     Data = OmniOptDEMDataVis if opt_terrain else OmniDEMDataVis
-    ds = Data(path, cfg=cfg, data_aug_conf=data_aug_conf)
+    ds = Data(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
     rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), path))
+
+    # Load model
+    if modelf is not None:
+        model = compile_model(grid_conf, data_aug_conf, outC=1)
+        print('loading', modelf)
+        model.load_state_dict(torch.load(modelf))
+        model.eval()
 
     # Choose data sample
     i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
@@ -49,13 +60,23 @@ def main():
     traj = ds.get_traj(i)
     poses = traj['poses']
     points = lidar_pts.numpy().T
-    height = heightmap[0].numpy()
+    if modelf is not None:
+        # get heightmap prediction
+        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        inputs = [torch.as_tensor(i[None], dtype=torch.float64) for i in inputs]
+        height = model(*inputs)
+        height = height.squeeze().detach().cpu().numpy()
+    else:
+        height = heightmap[0].numpy()
     height_mask = heightmap[1].numpy()
 
     # publishing of the data
     gm_pub = rospy.Publisher('grid_map', GridMap, queue_size=1)
     cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
     path_pub = rospy.Publisher('path', Path, queue_size=1)
+    # image publishers
+    img_pubs = [rospy.Publisher('%s/image' % cam.lower(), Image, queue_size=1) for cam in data_aug_conf['cams']]
+    assert len(img_pubs) == len(imgs), f'Number of image publishers {len(img_pubs)} does not match number of images {len(imgs)}'
 
     frame = 'base_link'
     rate = rospy.Rate(rate)
@@ -77,6 +98,15 @@ def main():
         # path
         path_msg = to_path(poses, frame_id=frame, stamp=stamp)
 
+        # images
+        for img, pub in zip(imgs, img_pubs):
+            img = denormalize_img(img)
+            img = np.asarray(img, dtype='uint8')
+            img_msg = msgify(Image, img, encoding='rgb8')
+            img_msg.header.stamp = stamp
+            pub.publish(img_msg)
+
+        # cloud, grid map, and path
         cloud_pub.publish(cloud_msg)
         gm_pub.publish(grid_msg)
         path_pub.publish(path_msg)

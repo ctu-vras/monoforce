@@ -1,19 +1,44 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="rviz" default="true"/>
-    <arg name="opt_terrain" default="false"/>
+    <arg name="grid_res" default="0.1"/>
+    <arg name="d_min" default="0.6"/>
+    <arg name="d_max" default="6.4"/>
+    <arg name="rate" default="1"/>
+    <arg name="seq_i" default="0"/>
+    <arg name="sample_i" default="90"/>
 
     <node pkg="monoforce" type="data_vis" name="data_vis" output="screen">
         <rosparam subst_value="true">
-            grid_res: 0.1
-            d_min: 0.6
-            d_max: 6.4
-<!--             hm_interp_method: nearest -->
-            opt_terrain: $(arg opt_terrain)
-            rate: 1
-            seq_i: 0
-            sample_i: 113
+            grid_res: $(arg grid_res)
+            d_min: $(arg d_min)
+            d_max: $(arg d_max)
+            hm_interp_method: nearest
+            opt_terrain: false
+            rate: $(arg rate)
+            seq_i: $(arg seq_i)
+            sample_i: $(arg sample_i)
+<!--             lss_weights: $(dirname)/../config/weights/lss/train_lss.pt -->
         </rosparam>
+        <remap from="grid_map" to="grid_map"/>
+        <remap from="cloud" to="cloud"/>
+        <remap from="path" to="path"/>
+    </node>
+
+    <node pkg="monoforce" type="data_vis" name="data_vis_opt" output="screen">
+        <rosparam subst_value="true">
+            grid_res: $(arg grid_res)
+            d_min: $(arg d_min)
+            d_max: $(arg d_max)
+            opt_terrain: true
+            rate: $(arg rate)
+            seq_i: $(arg seq_i)
+            sample_i: $(arg sample_i)
+<!--             lss_weights: $(dirname)/../config/tb_runs/lss_2024_01_17_19_08_25/lss.pt -->
+        </rosparam>
+        <remap from="grid_map" to="grid_map_opt"/>
+        <remap from="cloud" to="cloud_opt"/>
+        <remap from="path" to="path_opt"/>
     </node>
 
     <node if="$(arg rviz)"
