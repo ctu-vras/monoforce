@@ -3,7 +3,7 @@ import matplotlib as mpl
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured, merge_arrays
+from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
 from matplotlib import cm, pyplot as plt
 from mayavi import mlab
 from ..models.lss.model import compile_model
@@ -30,7 +30,7 @@ except:
 
 
 __all__ = [
-    'SegmentationDataset',
+    'SegmentationData',
     'DEMTrajData',
     'OptDEMTrajData',
     'MonoDEMData',
@@ -38,6 +38,8 @@ __all__ = [
     'OmniDEMDataVis',
     'OmniOptDEMData',
     'OmniOptDEMDataVis',
+    'TravData',
+    'TravDataVis',
     'seq_paths',
     'sim_seq_paths',
 ]
@@ -68,7 +70,7 @@ sim_seq_paths = [
 sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 
 
-class SegmentationDataset(Dataset):
+class SegmentationData(Dataset):
     """
     Class to wrap semi-supervised traversability data generated using lidar odometry and IMU.
     Please, have a look at the `save_clouds_and_trajectories_from_bag` script for data generation from bag file.
@@ -902,9 +904,10 @@ class OmniOptDEMData(OmniDEMData):
                  ):
         super(OmniOptDEMData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
-    def get_height_map_data(self, i, h_diff=None):
+    def get_height_map_data_opt(self, i):
         terrain = self.get_optimized_terrain(i)
         height = torch.as_tensor(terrain['height'])
+        # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
         H, W = height.shape
         h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
         # select only the h x w area from the center of the height map
@@ -929,6 +932,11 @@ class OmniOptDEMData(OmniDEMData):
         heightmap = torch.stack([height, mask])
         return heightmap
 
+    def __getitem__(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
+        height = self.get_height_map_data_opt(i)
+        return imgs, rots, trans, intrins, post_rots, post_trans, height
+
 
 class OmniOptDEMDataVis(OmniOptDEMData):
     def __init__(self,
@@ -941,15 +949,47 @@ class OmniOptDEMDataVis(OmniOptDEMData):
 
     def __getitem__(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
-        height = self.get_height_map_data(i)
+        height = self.get_height_map_data_opt(i)
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
         return imgs, rots, trans, intrins, post_rots, post_trans, lidar_pts, height
+
+
+class TravData(OmniOptDEMData):
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config()
+                 ):
+        super(TravData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+
+    def __getitem__(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
+        height = self.get_height_map_data(i)
+        height_opt = self.get_height_map_data_opt(i)
+        return imgs, rots, trans, intrins, post_rots, post_trans, height, height_opt
+
+class TravDataVis(TravData):
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config()
+                 ):
+          super(TravDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+
+    def __getitem__(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
+        height = self.get_height_map_data(i)
+        height_opt = self.get_height_map_data_opt(i)
+        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
+        return imgs, rots, trans, intrins, post_rots, post_trans, height, height_opt, lidar_pts
 
 
 def segm_demo():
     path = seq_paths[0]
     assert os.path.exists(path)
-    ds = SegmentationDataset(path)
+    ds = SegmentationData(path)
 
     # visualize a sample from the data set
     for i in np.random.choice(range(len(ds)), 1):
@@ -1311,10 +1351,8 @@ def global_cloud_demo():
 
 
 def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
-                 sample_range='random', save=False, opt_terrain=False, is_train=False):
+                 sample_range='random', save=False, is_train=False):
     assert os.path.exists(path)
-
-    Data = OmniOptDEMDataVis if opt_terrain else OmniDEMDataVis
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     if modelf is not None:
@@ -1322,7 +1360,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
         print('Loaded LSS model from', modelf)
         model.eval()
 
-    ds = Data(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravDataVis(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
 
     H, W = data_aug_conf['H'], data_aug_conf['W']
     cams = data_aug_conf['cams']
@@ -1337,24 +1375,24 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
         assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
 
     for sample_i in sample_range:
-        fig = plt.figure(figsize=(val + val / 2 * 2 * rat * 2, val / 2 * 2 * rat))
-        gs = mpl.gridspec.GridSpec(2, 4, width_ratios=(1, 1, 2 * rat, 2 * rat))
+        fig = plt.figure(figsize=(val + val/3*2*rat*3, val/3*2*rat))
+        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
-        imgs, rots, trans, intrins, post_rots, post_trans, pts, bev_map = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm, hm_opt, pts = sample
         if modelf is not None:
             with torch.no_grad():
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
                 inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                bev_map = model(*inputs)
+                hm = model(*inputs)
 
         img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
         for si in range(imgs.shape[0]):
             plt.clf()
-            final_ax = plt.subplot(gs[:, 3:4])
+            final_ax = plt.subplot(gs[:, 4:5])
             for imgi, img in enumerate(imgs[si]):
                 ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
                 mask = get_only_in_img_mask(ego_pts, H, W)
@@ -1379,14 +1417,12 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
             plt.xlim((-cfg.d_max, cfg.d_max))
             plt.ylim((-cfg.d_max, cfg.d_max))
 
-            # ax = plt.subplot(gs[:, 2:3])
-            # plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-0.5, vmax=0.5, s=2, cmap='Greys')
-            # plt.xlim((-cfg.d_max, cfg.d_max))
-            # plt.ylim((-cfg.d_max, cfg.d_max))
-            # ax.set_aspect('equal')
-
             ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(bev_map[si][0].T, origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+            plt.imshow(hm[si][0].T, origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
+            plt.colorbar()
+
+            ax = plt.subplot(gs[:, 3:4])
+            plt.imshow(hm_opt[si][0].T, origin='lower', cmap='jet', vmin=-0.5, vmax=0.5)
             plt.colorbar()
 
             if save:

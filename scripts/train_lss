@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.tools import denormalize_img
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDEMData, OmniOptDEMData, explore_data
+from monoforce.datasets.data import TravData, explore_data
 from monoforce.config import Config
 from monoforce.utils import read_yaml, write_to_yaml, normalize
 from monoforce.datasets import seq_paths, sim_seq_paths
@@ -32,7 +32,6 @@ class Trainer:
                  nepochs=500,
                  save_model=True,
                  pretrained_model_path=None,
-                 opt_terrain=False,
                  log_dir='./runs',
                  debug=False,
                  vis=False):
@@ -44,9 +43,8 @@ class Trainer:
             self.nepochs = nepochs
             self.save_model = save_model
             self.log_dir = log_dir
-            self.opt_terrain = opt_terrain
 
-            self.train_ds, self.val_ds = self.create_datasets(debug=debug, vis=vis, opt_terrain=opt_terrain)
+            self.train_ds, self.val_ds = self.create_datasets(debug=debug, vis=vis)
             self.trainloader = torch.utils.data.DataLoader(self.train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
             self.valloader = torch.utils.data.DataLoader(self.val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
@@ -75,7 +73,7 @@ class Trainer:
         model.train()
         return model
 
-    def create_datasets(self, val_fraction=0.1, opt_terrain=False, debug=False, vis=False):
+    def create_datasets(self, val_fraction=0.1, debug=False, vis=False):
         # random seed to have consistent train/val split
         np.random.seed(0)
 
@@ -85,9 +83,8 @@ class Trainer:
         print('Data paths:', self.data_paths)
         for path in self.data_paths:
             assert os.path.exists(path)
-            Data = OmniOptDEMData if opt_terrain else OmniDEMData
-            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            train_ds = TravData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
             # randomly select a subset of the dataset
             val_ds_size = int(val_fraction * len(train_ds))
@@ -103,8 +100,7 @@ class Trainer:
 
             # print(f'Train dataset from path {path} size is {len(ds)}')
             if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
-                             save=False, opt_terrain=opt_terrain, is_train=True)
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
             train_datasets.append(train_ds)
             val_datasets.append(val_ds)
 
@@ -120,23 +116,15 @@ class Trainer:
 
         return train_ds, val_ds
 
-    def compute_loss(self, height_pred, heightmap, sigma=None):
-        # heightmap is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
+    def compute_loss(self, height_pred, hm_gt, sigma=None, optimized_hm=False,):
+        # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
         # height_pred is a tensor of size Bx1xHxW
-        B, D, H, W = heightmap.shape
+        B, D, H, W = hm_gt.shape
         assert D == 2
         assert height_pred.shape == (B, 1, H, W)
         # get height and mask from heightmap: weights_m is measurement mask
-        height_gt, weights_m = heightmap[:, 0].view(B, 1, H, W), heightmap[:, 1].view(B, 1, H, W)
+        height_gt, weights_m = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
         weights = weights_m.clone()
-
-        if not self.opt_terrain:
-            # handle imbalanced height distribution (increase weights for higher heights / obstacles)
-            h_mean = height_gt[weights_m.bool()].mean()
-            # the higher the difference from mean the higher the weight
-            weights_h = 1.0 + torch.abs(height_gt - h_mean)
-            # apply height difference weights
-            weights = weights * weights_h
 
         if sigma is not None:
             # apply gaussian weights based on distance from the center of the height map
@@ -150,14 +138,21 @@ class Trainer:
             weights_gaus = weights_gaus.view(1, 1, H, W).repeat(B, 1, 1, 1)
             # apply weights
             weights = weights * weights_gaus
-         
-        # mask of valid labels
-        weights_valid = ~torch.isnan(height_gt)
-        mask_valid = weights_valid.bool()
-        # apply mask
-        height_gt = height_gt[mask_valid]
-        height_pred = height_pred[mask_valid]
-        weights = weights[mask_valid]
+
+        if optimized_hm:
+            # mask of valid labels
+            mask_valid = ~torch.isnan(height_gt)
+            # apply mask
+            height_gt = height_gt[mask_valid]
+            height_pred = height_pred[mask_valid]
+            weights = weights[mask_valid]
+        else:
+            # handle imbalanced height distribution (increase weights for higher heights / obstacles)
+            h_mean = height_gt[weights_m.bool()].mean()
+            # the higher the difference from mean the higher the weight
+            weights_h = 1.0 + torch.abs(height_gt - h_mean)
+            # apply height difference weights
+            weights = weights * weights_h
 
         # compute weighted loss
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
@@ -170,15 +165,18 @@ class Trainer:
         epoch_loss = 0.0
         max_grad_norm = 5.0
 
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, heightmap) \
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm, hm_opt) \
                 in tqdm(enumerate(loader), total=len(loader)):
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, device=self.cfg.device) for i in inputs]
             height_pred = self.model(*inputs)
 
-            heightmap = torch.as_tensor(heightmap, device=self.cfg.device)
-            loss = self.compute_loss(height_pred, heightmap, sigma=None)
+            hm = torch.as_tensor(hm, device=self.cfg.device)
+            hm_opt = torch.as_tensor(hm_opt, device=self.cfg.device)
+            loss_geom = self.compute_loss(height_pred, hm, optimized_hm=False)
+            loss_rigid = self.compute_loss(height_pred, hm_opt, optimized_hm=True)
+            loss = loss_geom + 100. * loss_rigid
 
             if train:
                 self.optimizer.zero_grad()
@@ -188,6 +186,8 @@ class Trainer:
             epoch_loss += loss.item()
 
             counter += 1
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_rigid, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
         epoch_loss /= len(loader)
@@ -241,7 +241,7 @@ class Trainer:
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_gt = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_gt, hm_opt_gt = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
             hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
@@ -269,7 +269,7 @@ class Trainer:
             ax2.set_zlabel('z [m]')
 
             # plot ground truth as surface
-            ax3.set_title('GT Surface')
+            ax3.set_title('Lidar Surface')
             ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
             ax3.set_zlim(-1.0, 1.0)
             ax3.set_xlabel('x [m]')
@@ -323,7 +323,7 @@ def main():
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
                       bsz=bsz, nworkers=nworkers, nepochs=nepochs,
-                      save_model=save_model, pretrained_model_path=pretrained_model_path, opt_terrain=opt_terrain,
+                      save_model=save_model, pretrained_model_path=pretrained_model_path,
                       log_dir=log_dir, debug=debug, vis=vis)
     trainer.train()
 

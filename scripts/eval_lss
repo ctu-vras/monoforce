@@ -163,9 +163,9 @@ def main():
     paths = seq_paths[:3]
     # paths = sim_seq_paths
 
-    # for path in paths:
-    #     explore_data(path, grid_conf, data_aug_conf, cfg,
-    #                  opt_terrain=False, save=False, is_train=False, sample_range='random')
+    for path in paths:
+        sample_range = [10]
+        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range=sample_range)
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=32)
     test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
 
