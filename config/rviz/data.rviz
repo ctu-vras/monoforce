@@ -23,7 +23,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: Camera Front
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -87,7 +87,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.019999999552965164
       Shaft Length: 0.10000000149011612
-      Topic: /path_opt
+      Topic: /path
       Unreliable: false
       Value: true
     - Alpha: 0.30000001192092896
@@ -105,9 +105,9 @@ Visualization Manager:
       Max Intensity: 1
       Min Color: 138; 226; 52
       Min Intensity: -1
-      Name: GridMap
+      Name: GridMap Lidar
       Show Grid Lines: true
-      Topic: /grid_map
+      Topic: /grid_map_lidar
       Unreliable: false
       Use Rainbow: true
       Value: false
@@ -126,9 +126,9 @@ Visualization Manager:
       Max Intensity: 10
       Min Color: 138; 226; 52
       Min Intensity: 0
-      Name: GridMapOpt
+      Name: GridMap Traj
       Show Grid Lines: true
-      Topic: /grid_map_opt
+      Topic: /grid_map_traj
       Unreliable: false
       Use Rainbow: false
       Value: true
@@ -155,7 +155,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.019999999552965164
       Style: Spheres
-      Topic: /cloud_opt
+      Topic: /cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true

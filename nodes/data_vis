@@ -78,25 +78,33 @@ def main():
     img_pubs = [rospy.Publisher('%s/image' % cam.lower(), Image, queue_size=1) for cam in data_aug_conf['cams']]
     assert len(img_pubs) == len(imgs), f'Number of image publishers {len(img_pubs)} does not match number of images {len(imgs)}'
 
+    pub_cloud = rospy.get_param('~pub_cloud', False)
+    pub_path = rospy.get_param('~pub_path', False)
+
     frame = 'base_link'
     rate = rospy.Rate(rate)
     while not rospy.is_shutdown():
         stamp = rospy.Time.now()
 
         # point cloud
-        points = np.asarray(points, dtype='float32')
-        cloud_struct = unstructured_to_structured(points, names=['x', 'y', 'z'])
-        cloud_msg = msgify(PointCloud2, cloud_struct)
-        cloud_msg.header.frame_id = frame
-        cloud_msg.header.stamp = stamp
+        if pub_cloud:
+            points = np.asarray(points, dtype='float32')
+            cloud_struct = unstructured_to_structured(points, names=['x', 'y', 'z'])
+            cloud_msg = msgify(PointCloud2, cloud_struct)
+            cloud_msg.header.frame_id = frame
+            cloud_msg.header.stamp = stamp
+            cloud_pub.publish(cloud_msg)
 
         # grid map
         grid_msg = height_map_to_gridmap_msg(height, grid_res=cfg.grid_res, mask=height_mask)
         grid_msg.info.header.frame_id = frame
         grid_msg.info.header.stamp = stamp
+        gm_pub.publish(grid_msg)
 
         # path
-        path_msg = to_path(poses, frame_id=frame, stamp=stamp)
+        if pub_path:
+            path_msg = to_path(poses, frame_id=frame, stamp=stamp)
+            path_pub.publish(path_msg)
 
         # images
         for img, pub in zip(imgs, img_pubs):
@@ -105,11 +113,6 @@ def main():
             img_msg = msgify(Image, img, encoding='rgb8')
             img_msg.header.stamp = stamp
             pub.publish(img_msg)
-
-        # cloud, grid map, and path
-        cloud_pub.publish(cloud_msg)
-        gm_pub.publish(grid_msg)
-        path_pub.publish(path_msg)
 
         rospy.logdebug('Published data')
         rate.sleep()

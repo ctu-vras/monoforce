@@ -56,8 +56,8 @@ class Trainer:
             self.writer = SummaryWriter(log_dir=log_dir)
             # save configs to log dir
             write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'cfg.yaml'))
-            write_to_yaml(data_aug_conf, os.path.join(log_dir, 'data_aug_conf.yaml'))
-            write_to_yaml(grid_conf, os.path.join(log_dir, 'grid_conf.yaml'))
+            lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
+            write_to_yaml(lss_cfg, os.path.join(log_dir, 'lss.yaml'))
 
             self.min_loss = np.inf
             self.min_train_loss = np.inf
@@ -83,6 +83,10 @@ class Trainer:
         print('Data paths:', self.data_paths)
         for path in self.data_paths:
             assert os.path.exists(path)
+            # print(f'Train dataset from path {path} size is {len(ds)}')
+            if vis:
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
+
             train_ds = TravData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
@@ -98,9 +102,6 @@ class Trainer:
             train_ds = torch.utils.data.Subset(train_ds, train_ids)
             val_ds = torch.utils.data.Subset(val_ds, val_ids)
 
-            # print(f'Train dataset from path {path} size is {len(ds)}')
-            if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
             train_datasets.append(train_ds)
             val_datasets.append(val_ds)
 
@@ -235,13 +236,15 @@ class Trainer:
         grid_conf = self.grid_conf
         device = self.cfg.device
 
-        fig = plt.figure(figsize=(20, 10))
-        ax1 = fig.add_subplot(231)
-        ax2 = fig.add_subplot(232, projection='3d')
-        ax3 = fig.add_subplot(233, projection='3d')
-        ax4 = fig.add_subplot(234)
-        ax5 = fig.add_subplot(235)
-        ax6 = fig.add_subplot(236)
+        fig = plt.figure(figsize=(20, 5))
+        ax1 = fig.add_subplot(241)
+        ax2 = fig.add_subplot(242, projection='3d')
+        ax3 = fig.add_subplot(243, projection='3d')
+        ax4 = fig.add_subplot(244, projection='3d')
+        ax5 = fig.add_subplot(245)
+        ax6 = fig.add_subplot(246)
+        ax7 = fig.add_subplot(247)
+        ax8 = fig.add_subplot(248)
 
         # visualize training predictions
         with torch.no_grad():
@@ -251,7 +254,7 @@ class Trainer:
             hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32, device=device)
             height_pred = model(*inputs)
 
-            for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+            for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
                 ax.clear()
 
             # plot image
@@ -260,9 +263,10 @@ class Trainer:
 
             # plot prediction as surface
             ax2.set_title('Pred Surface')
-            height = height_pred[0][0].cpu().numpy()
-            height_gt = hm_lidar[0][0].cpu().numpy()
-            mask = hm_lidar[0][1].bool().cpu().numpy()
+            height = height_pred[0][0].cpu().numpy().T
+            height_lidar = hm_lidar[0][0].cpu().numpy().T
+            height_traj = hm_traj[0][0].cpu().numpy().T
+            mask = hm_lidar[0][1].bool().cpu().numpy().T
             x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
             y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
             x_grid, y_grid = np.meshgrid(x_grid, y_grid)
