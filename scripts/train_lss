@@ -116,7 +116,7 @@ class Trainer:
 
         return train_ds, val_ds
 
-    def compute_loss(self, height_pred, hm_gt, sigma=None, optimized_hm=False,):
+    def compute_loss(self, height_pred, hm_gt, sigma=0.5, optimized_hm=False,):
         # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
         # height_pred is a tensor of size Bx1xHxW
         B, D, H, W = hm_gt.shape
@@ -170,12 +170,15 @@ class Trainer:
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, device=self.cfg.device) for i in inputs]
-            height_pred = self.model(*inputs)
+            voxels = self.model.get_voxels(*inputs)
+            height_pred = self.model.bevencode(voxels)
+            # height_pred = self.model(*inputs)
 
             hm = torch.as_tensor(hm, device=self.cfg.device)
             hm_opt = torch.as_tensor(hm_opt, device=self.cfg.device)
-            loss_geom = self.compute_loss(height_pred, hm, optimized_hm=False)
-            loss_rigid = self.compute_loss(height_pred, hm_opt, optimized_hm=True)
+            # loss_geom = self.compute_loss(height_pred, hm, optimized_hm=False, sigma=0.5)
+            loss_geom = self.compute_loss(voxels[:, 0:1], hm, optimized_hm=False, sigma=0.5)  # assume 0-th channel in voxels is height
+            loss_rigid = self.compute_loss(height_pred, hm_opt, optimized_hm=True, sigma=0.5)
             loss = loss_geom + 100. * loss_rigid
 
             if train:

@@ -490,7 +490,7 @@ Visualization Manager:
           Position Transformer: XYZ
           Queue Size: 10
           Selectable: true
-          Size (Pixels): 3
+          Size (Pixels): 2
           Size (m): 0.029999999329447746
           Style: Points
           Topic: /points
@@ -665,9 +665,9 @@ Visualization Manager:
       Queue Size: 100
       Value: true
     - Class: jsk_rviz_plugin/TFTrajectory
-      Enabled: false
+      Enabled: true
       Name: TFTrajectory
-      Value: false
+      Value: true
       color: 25; 255; 240
       duration: 1000
       frame: base_link
