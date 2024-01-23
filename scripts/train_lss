@@ -116,7 +116,7 @@ class Trainer:
 
         return train_ds, val_ds
 
-    def compute_loss(self, height_pred, hm_gt, sigma=0.5, optimized_hm=False,):
+    def compute_loss(self, height_pred, hm_gt, sigma=None, optimized_hm=False,):
         # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
         # height_pred is a tensor of size Bx1xHxW
         B, D, H, W = hm_gt.shape
@@ -165,7 +165,7 @@ class Trainer:
         epoch_loss = 0.0
         max_grad_norm = 5.0
 
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm, hm_opt) \
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj) \
                 in tqdm(enumerate(loader), total=len(loader)):
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -174,11 +174,12 @@ class Trainer:
             height_pred = self.model.bevencode(voxels)
             # height_pred = self.model(*inputs)
 
-            hm = torch.as_tensor(hm, device=self.cfg.device)
-            hm_opt = torch.as_tensor(hm_opt, device=self.cfg.device)
-            # loss_geom = self.compute_loss(height_pred, hm, optimized_hm=False, sigma=0.5)
-            loss_geom = self.compute_loss(voxels[:, 0:1], hm, optimized_hm=False, sigma=0.5)  # assume 0-th channel in voxels is height
-            loss_rigid = self.compute_loss(height_pred, hm_opt, optimized_hm=True, sigma=0.5)
+            hm_lidar = torch.as_tensor(hm_lidar, device=self.cfg.device)
+            hm_traj = torch.as_tensor(hm_traj, device=self.cfg.device)
+            # loss_geom = self.compute_loss(height_pred, hm_lidar, optimized_hm=False, sigma=0.5)
+            # loss_geom = self.compute_loss(voxels[:, 0:1], hm_lidar, optimized_hm=False, sigma=0.5)  # assume 0-th channel in voxels is height
+            loss_geom = self.compute_loss(voxels.mean(dim=1, keepdims=True), hm_lidar, optimized_hm=False)
+            loss_rigid = self.compute_loss(height_pred, hm_traj, optimized_hm=True)
             loss = loss_geom + 100. * loss_rigid
 
             if train:
@@ -244,10 +245,10 @@ class Trainer:
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_gt, hm_opt_gt = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
-            hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
+            hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32, device=device)
             height_pred = model(*inputs)
 
             for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
@@ -260,8 +261,8 @@ class Trainer:
             # plot prediction as surface
             ax2.set_title('Pred Surface')
             height = height_pred[0][0].cpu().numpy()
-            height_gt = hm_gt[0][0].cpu().numpy()
-            mask = hm_gt[0][1].bool().cpu().numpy()
+            height_gt = hm_lidar[0][0].cpu().numpy()
+            mask = hm_lidar[0][1].bool().cpu().numpy()
             x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
             y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
             x_grid, y_grid = np.meshgrid(x_grid, y_grid)
