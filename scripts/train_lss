@@ -117,7 +117,7 @@ class Trainer:
 
         return train_ds, val_ds
 
-    def compute_loss(self, height_pred, hm_gt, sigma=None, optimized_hm=False,):
+    def compute_loss(self, height_pred, hm_gt, sigma=None, traj_hm=False, ):
         # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
         # height_pred is a tensor of size Bx1xHxW
         B, D, H, W = hm_gt.shape
@@ -140,7 +140,7 @@ class Trainer:
             # apply weights
             weights = weights * weights_gaus
 
-        if optimized_hm:
+        if traj_hm:
             # mask of valid labels
             mask_valid = ~torch.isnan(height_gt)
             # apply mask
@@ -278,23 +278,30 @@ class Trainer:
 
             # plot ground truth as surface
             ax3.set_title('Lidar Surface')
-            ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax3.plot_surface(x_grid, y_grid, height_lidar, cmap='jet', vmin=-1.0, vmax=1.0)
             ax3.set_zlim(-1.0, 1.0)
             ax3.set_xlabel('x [m]')
             ax3.set_ylabel('y [m]')
             ax3.set_zlabel('z [m]')
 
-            # plot prediction as image
-            ax4.set_title('Prediction')
-            ax4.imshow(height.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            # plot traj heightmap as surface
+            ax4.set_title('Traj Surface')
+            ax4.plot_surface(x_grid, y_grid, height_traj, cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax5.set_title('Masked Prediction')
+            # plot prediction as image
+            ax5.set_title('Prediction')
+            ax5.imshow(height, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax6.set_title('Masked Prediction')
             height_vis = np.zeros_like(height)
             height_vis[mask] = height[mask]
-            ax5.imshow(height_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.imshow(height_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax6.set_title('Ground truth')
-            ax6.imshow(height_gt.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax7.set_title('Lidar')
+            ax7.imshow(height_lidar, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax8.set_title('Traj')
+            ax8.imshow(height_traj, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 

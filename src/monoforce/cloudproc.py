@@ -156,13 +156,6 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     mask = np.isfinite(points).all(axis=1)
     points = points[mask]
 
-    # filter height outliers points
-    # z = points[:, 2]
-    # h_min_out = z[z > np.percentile(z, 2)].min()
-    # h_max_out = z[z < np.percentile(z, 98)].max()
-    # points = points[points[:, 2] > h_min_out]
-    # points = points[points[:, 2] < h_max_out]
-
     # height above ground
     points = points[points[:, 2] < h_max]
     if len(points) == 0:
@@ -171,9 +164,8 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
         return None
 
     # filter point cloud in a square
-    mask_x = np.logical_and(points[:, 0] >= -d_max, points[:, 0] <= d_max)
-    mask_y = np.logical_and(points[:, 1] >= -d_max, points[:, 1] <= d_max)
-    mask = np.logical_and(mask_x, mask_y)
+    mask = np.logical_and(np.abs(points[:, 0]) <= d_max,
+                          np.abs(points[:, 1]) <= d_max)
     points = points[mask]
 
     if len(points) == 0:
