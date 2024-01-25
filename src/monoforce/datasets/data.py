@@ -893,7 +893,7 @@ class OmniDEMData(MonoDEMData):
         for i in tqdm(range(len(self))):
             hm = self.get_height_map_data(i)
             hm_cloud = hm_to_cloud(hm[0], self.cfg, mask=hm[1])
-            hm_cloud = transform_cloud(hm_cloud, poses[i])
+            hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), poses[i])
             global_hm_cloud.append(hm_cloud)
         global_hm_cloud = np.concatenate(global_hm_cloud, axis=0)
 
@@ -1047,12 +1047,14 @@ class TravData(OmniRigidDEMData):
                  cfg=Config()
                  ):
         super(TravData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+        self.poses = self.get_poses()
 
     def __getitem__(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
         height_lidar = self.get_height_map_data(i)
         height_traj = self.get_height_map_data_traj(i)
-        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj
+        map_pose = torch.as_tensor(self.poses[i])
+        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose
 
 class TravDataVis(TravData):
     def __init__(self,
@@ -1067,8 +1069,9 @@ class TravDataVis(TravData):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
         height_lidar = self.get_height_map_data(i)
         height_traj = self.get_height_map_data_traj(i)
+        map_pose = torch.as_tensor(self.poses[i])
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, lidar_pts
+        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
 
 
 def segm_demo():
@@ -1466,7 +1469,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
 
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, pts = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
         if modelf is not None:
             with torch.no_grad():
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]

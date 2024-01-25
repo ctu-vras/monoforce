@@ -4,6 +4,10 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import ConcatDataset
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.structures import Pointclouds
+from monoforce.cloudproc import hm_to_cloud
+from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import TravData, explore_data
@@ -30,6 +34,7 @@ class Trainer:
                  lr=1e-3,
                  weight_decay=1e-7,
                  nepochs=500,
+                 map_consistency=True,
                  save_model=True,
                  pretrained_model_path=None,
                  log_dir='./runs',
@@ -41,11 +46,14 @@ class Trainer:
             self.grid_conf = grid_conf
             self.data_paths = data_paths
             self.nepochs = nepochs
+            self.map_consistency = map_consistency
             self.save_model = save_model
             self.log_dir = log_dir
 
             self.train_ds, self.val_ds = self.create_datasets(debug=debug, vis=vis)
-            self.trainloader = torch.utils.data.DataLoader(self.train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
+            self.trainloader = torch.utils.data.DataLoader(self.train_ds, batch_size=bsz,
+                                                           shuffle=False if self.map_consistency else True,
+                                                           num_workers=nworkers)
             self.valloader = torch.utils.data.DataLoader(self.val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
             self.model = self.load_model(modelf=pretrained_model_path)
@@ -117,7 +125,7 @@ class Trainer:
 
         return train_ds, val_ds
 
-    def compute_loss(self, height_pred, hm_gt, sigma=None, traj_hm=False, ):
+    def hm_loss(self, height_pred, hm_gt, sigma=None, traj_hm=False, ):
         # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
         # height_pred is a tensor of size Bx1xHxW
         B, D, H, W = hm_gt.shape
@@ -159,6 +167,30 @@ class Trainer:
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
         return loss
 
+    def map_consistency_loss(self, height, map_pose, vis=False):
+        clouds = []
+        for p, h in zip(map_pose, height):
+            hm_cloud = hm_to_cloud(h.squeeze(), self.cfg)
+            hm_cloud = transform_cloud(hm_cloud, p)
+            clouds.append(hm_cloud)
+
+        # pytorch3d pointcloud
+        src_cloud = Pointclouds(points=[torch.cat(clouds[::2])])
+        tgt_cloud = Pointclouds(points=[torch.cat(clouds[1::2])])
+        # chamfer distance
+        chamfer_dist, _ = chamfer_distance(src_cloud, tgt_cloud)
+
+        if vis:
+            import open3d as o3d
+            with torch.no_grad():
+                global_hm_cloud = torch.cat(clouds, dim=0)
+                # plot global cloud with open3d
+                hm_pcd = o3d.geometry.PointCloud()
+                hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud.cpu().numpy())
+                o3d.visualization.draw_geometries([hm_pcd])
+
+        return chamfer_dist
+
     def epoch(self, train=True):
         loader = self.trainloader if train else self.valloader
         counter = self.train_counter if train else self.val_counter
@@ -166,22 +198,19 @@ class Trainer:
         epoch_loss = 0.0
         max_grad_norm = 5.0
 
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj) \
-                in tqdm(enumerate(loader), total=len(loader)):
+        for batch in tqdm(loader, total=len(loader)):
+            batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, device=self.cfg.device) for i in inputs]
-            voxels = self.model.get_voxels(*inputs)
-            height_pred = self.model.bevencode(voxels)
-            # height_pred = self.model(*inputs)
+            height_pred = self.model(*inputs)
 
-            hm_lidar = torch.as_tensor(hm_lidar, device=self.cfg.device)
-            hm_traj = torch.as_tensor(hm_traj, device=self.cfg.device)
-            # loss_geom = self.compute_loss(height_pred, hm_lidar, optimized_hm=False, sigma=0.5)
-            # loss_geom = self.compute_loss(voxels[:, 0:1], hm_lidar, optimized_hm=False, sigma=0.5)  # assume 0-th channel in voxels is height
-            loss_geom = self.compute_loss(voxels.mean(dim=1, keepdims=True), hm_lidar, optimized_hm=False)
-            loss_rigid = self.compute_loss(height_pred, hm_traj, optimized_hm=True)
-            loss = loss_geom + 100. * loss_rigid
+            loss_rigid = self.hm_loss(height_pred, hm_traj, traj_hm=True, sigma=0.5)
+            loss_geom = self.hm_loss(height_pred, hm_lidar, traj_hm=False, sigma=0.5)
+            loss_map = self.map_consistency_loss(height_pred, map_pose, vis=True) if self.map_consistency else 0.0
+            print('loss_rigid:', loss_rigid.item(), 'loss_geom:', loss_geom.item(), 'loss_map:', loss_map.item())
+
+            loss = loss_geom + 100*loss_rigid + loss_map
 
             if train:
                 self.optimizer.zero_grad()
@@ -193,6 +222,7 @@ class Trainer:
             counter += 1
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_rigid, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
         epoch_loss /= len(loader)
@@ -248,7 +278,7 @@ class Trainer:
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
             hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32, device=device)

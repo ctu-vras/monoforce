@@ -1,3 +1,5 @@
+import torch
+
 from .geometry import affine
 from .utils import timing
 import numpy as np
@@ -237,16 +239,24 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
 
 
 def hm_to_cloud(height, cfg, mask=None):
+    assert isinstance(height, np.ndarray) or isinstance(height, torch.Tensor)
     assert height.ndim == 2
     if mask is not None:
+        assert isinstance(mask, np.ndarray) or isinstance(mask, torch.Tensor)
         assert mask.ndim == 2
         assert height.shape == mask.shape
-        mask = mask.bool().T
-    z_grid = height.T
-    x_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[0])
-    y_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[1])
-    x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-    hm_cloud = np.stack([x_grid, y_grid, z_grid], axis=2)
+        mask = mask.bool()
+    z_grid = height
+    if isinstance(height, np.ndarray):
+        x_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[0])
+        y_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[1])
+        x_grid, y_grid = np.meshgrid(x_grid, y_grid)
+        hm_cloud = np.stack([x_grid, y_grid, z_grid], axis=2)
+    else:
+        x_grid = torch.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[0]).to(z_grid.device)
+        y_grid = torch.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[1]).to(z_grid.device)
+        x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+        hm_cloud = torch.stack([x_grid, y_grid, z_grid], dim=2)
     if mask is not None:
         hm_cloud = hm_cloud[mask]
     hm_cloud = hm_cloud.reshape([-1, 3])

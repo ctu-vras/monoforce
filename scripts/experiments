@@ -1,11 +1,18 @@
 #! /usr/bin/env python3
 import os
 import torch
+from pytorch3d.loss import (
+        chamfer_distance,
+        mesh_edge_loss,
+        mesh_laplacian_smoothing,
+        mesh_normal_consistency,
+    )
+from pytorch3d.structures import Meshes, Pointclouds
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from monoforce.cloudproc import hm_to_cloud
-from monoforce.datasets.data import DepthDEMDataVis, DepthDEMData, TravDataVis
+from monoforce.datasets.data import DepthDEMDataVis, DepthDEMData, TravData, TravDataVis
 from monoforce.datasets.data import seq_paths
 from monoforce.config import Config
 from monoforce.models.lss.tools import ego_to_cam, get_only_in_img_mask
@@ -14,7 +21,7 @@ from monoforce.utils import read_yaml
 from monoforce.models.lss.model import compile_model
 import matplotlib as mpl
 import open3d as o3d
-mpl.use('Qt5Agg')
+# mpl.use('Qt5Agg')
 
 
 torch.set_default_dtype(torch.float32)
@@ -191,25 +198,20 @@ def feed_depth():
 
 
 def map_consistency():
-    from pytorch3d.loss import (
-        chamfer_distance,
-        mesh_edge_loss,
-        mesh_laplacian_smoothing,
-        mesh_normal_consistency,
-    )
-    from pytorch3d.structures import Meshes, Pointclouds
-
     cfg = Config()
     cfg.from_yaml('../config/cfg.yaml')
     cfg.hm_interp_method = None
+    cfg.device = 'cuda'
 
     predicted_map = True
+    vis = True
 
     lss_cfg = read_yaml('../config/lss.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = TravDataVis(seq_paths[0], is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravData(seq_paths[0], is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+    loader = torch.utils.data.DataLoader(ds, batch_size=6, shuffle=False)
     # ds.global_cloud(vis=True)
     # ds.global_hm_cloud(vis=True)
 
@@ -219,37 +221,41 @@ def map_consistency():
     model.eval()
     model.to(cfg.device)
 
-    poses = ds.get_poses()
-    # create global heightmap cloud
-    global_hm_clouds = []
-    # for i in tqdm(range(len(ds))):
-    for i in tqdm(range(10)):
-        if predicted_map:
-            inputs = ds.get_image_data(i)
-            with torch.no_grad():
-                inputs = [torch.as_tensor(i[None], dtype=torch.float32, device=cfg.device) for i in inputs]
+    # create global heightmap
+    for batch in tqdm(loader):
+        with torch.no_grad():
+            batch = [torch.as_tensor(b, dtype=torch.float32, device=cfg.device) for b in batch]
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+
+            if predicted_map:
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
                 height_pred = model(*inputs)
-            height_pred = height_pred.squeeze().cpu().numpy()
-            hm_cloud = hm_to_cloud(height_pred, cfg)
-            # hm_cloud = hm_to_cloud(height_pred, cfg, mask=hm[1])
-        else:
-            hm = ds.get_height_map_data(i)
-            hm_cloud = hm_to_cloud(hm[0], cfg, mask=hm[1])
-        hm_cloud = transform_cloud(hm_cloud, poses[i])
-        global_hm_clouds.append(hm_cloud)
-    global_hm_cloud = np.concatenate(global_hm_clouds, axis=0)
+                height = height_pred
+                # mask = torch.ones_like(height)
+                mask = hm_lidar[:, 1:2]
+            else:
+                height = hm_lidar[:, 0:1]
+                mask = hm_lidar[:, 1:2]
 
-    # plot global cloud with open3d
-    hm_pcd = o3d.geometry.PointCloud()
-    hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud)
-    o3d.visualization.draw_geometries([hm_pcd])
+            global_hm_clouds = []
+            for p, h, m in zip(map_pose, height, mask):
+                hm_cloud = hm_to_cloud(h.squeeze(), cfg, mask=m.squeeze())
+                hm_cloud = transform_cloud(hm_cloud, p)
+                global_hm_clouds.append(hm_cloud)
 
-    # pytorch3d pointcloud
-    src_cloud = Pointclouds(points=[torch.as_tensor(global_hm_cloud[::2], dtype=torch.float32, device='cuda')])
-    tgt_cloud = Pointclouds(points=[torch.as_tensor(global_hm_cloud[1::2], dtype=torch.float32, device='cuda')])
-    # chamfer distance
-    chamfer_dist, _ = chamfer_distance(src_cloud, tgt_cloud)
-    print(chamfer_dist)
+            # pytorch3d pointcloud
+            src_cloud = Pointclouds(points=[torch.cat(global_hm_clouds[::2])])
+            tgt_cloud = Pointclouds(points=[torch.cat(global_hm_clouds[1::2])])
+            # chamfer distance
+            chamfer_dist, _ = chamfer_distance(src_cloud, tgt_cloud)
+            print('Chamfer distance:', chamfer_dist)
+
+            if vis:
+                global_hm_cloud = torch.cat(global_hm_clouds, dim=0)
+                # plot global cloud with open3d
+                hm_pcd = o3d.geometry.PointCloud()
+                hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud.cpu().numpy())
+                o3d.visualization.draw_geometries([hm_pcd])
 
 
 def main():

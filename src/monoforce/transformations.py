@@ -13,7 +13,9 @@ __all__ = [
 ]
 
 def transform_cloud(cloud, Tr):
-    if cloud.dtype.names is not None:
+    assert isinstance(cloud, np.ndarray) or isinstance(cloud, torch.Tensor), type(cloud)
+    assert isinstance(Tr, np.ndarray) or isinstance(Tr, torch.Tensor), type(Tr)
+    if isinstance(cloud, np.ndarray) and cloud.dtype.names is not None:
         points = position(cloud)
         points = transform_cloud(points, Tr)
         cloud = cloud.copy()
@@ -23,7 +25,7 @@ def transform_cloud(cloud, Tr):
         return cloud
     assert cloud.ndim == 2
     assert cloud.shape[1] == 3  # (N, 3)
-    cloud_tr = np.matmul(Tr[:3, :3], cloud.T) + Tr[:3, 3:]
+    cloud_tr = Tr[:3, :3] @ cloud.T + Tr[:3, 3:]
     return cloud_tr.T
 
 def xyz_rpy_to_matrix(xyz_rpy):
