@@ -21,10 +21,10 @@ __all__ = [
 def get_robingas_data(cfg: Config(),
                       path='/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
                       i=None):
-    from monoforce.datasets.data import DEMTrajData
+    from monoforce.datasets.data import DEMPathData
     # Load traversability data
     assert os.path.exists(path)
-    ds = DEMTrajData(path, cfg=cfg)
+    ds = DEMPathData(path, cfg=cfg)
     i = np.random.choice(range(len(ds))) if i is None else i
     print('Selected data sample #{}'.format(i))
     sample = ds[i]
