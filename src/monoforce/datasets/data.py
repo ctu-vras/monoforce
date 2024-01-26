@@ -253,10 +253,16 @@ class DEMPathData(Dataset):
         # assert os.path.exists(self.traj_path)
         self.calib_path = os.path.join(path, 'calibration')
         # assert os.path.exists(self.calib_path)
-        self.ids = np.sort([f[:-4] for f in os.listdir(self.cloud_path)])
         self.cfg = cfg
         self.calib = load_cam_calib(calib_path=self.calib_path)
+        self.ids = self.get_ids()
+        self.poses = self.get_poses()
         self.hm_interp_method = self.cfg.hm_interp_method
+
+    def get_ids(self):
+        ids = [f[:-4] for f in os.listdir(self.cloud_path)]
+        ids = np.sort(ids)
+        return ids
 
     @staticmethod
     def pose2mat(pose):
@@ -273,6 +279,9 @@ class DEMPathData(Dataset):
         Tr = np.asarray(Tr, dtype=np.float32).reshape((4, 4))
         poses = np.asarray([pose @ np.linalg.inv(Tr) for pose in poses])
         return poses
+
+    def get_pose(self, i):
+        return self.poses[i]
 
     def get_traj(self, i):
         ind = self.ids[i]
@@ -403,6 +412,10 @@ class DEMPathData(Dataset):
         height = self.estimate_heightmap(points, fill_value=0.)
 
         return cloud, traj, height
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
 
     def __len__(self):
         return len(self.ids)
@@ -887,7 +900,7 @@ class OmniDEMData(MonoDEMData):
         return heightmap
 
     def global_hm_cloud(self, vis=False):
-        poses = self.get_poses()
+        poses = self.poses
         # create global heightmap cloud
         global_hm_cloud = []
         for i in tqdm(range(len(self))):
@@ -1047,14 +1060,29 @@ class TravData(OmniRigidDEMData):
                  cfg=Config()
                  ):
         super(TravData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
-        self.poses = self.get_poses()
 
-    def __getitem__(self, i):
+    def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
         height_lidar = self.get_height_map_data(i)
         height_traj = self.get_height_map_data_traj(i)
-        map_pose = torch.as_tensor(self.poses[i])
-        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose
+        map_pose = torch.as_tensor(self.get_pose(i))
+        sample = (imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose)
+        return sample
+
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = TravData(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
 
 class TravDataVis(TravData):
     def __init__(self,
@@ -1065,13 +1093,29 @@ class TravDataVis(TravData):
                  ):
           super(TravDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
-    def __getitem__(self, i):
+    def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
         height_lidar = self.get_height_map_data(i)
         height_traj = self.get_height_map_data_traj(i)
-        map_pose = torch.as_tensor(self.poses[i])
+        map_pose = torch.as_tensor(self.get_pose(i))
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
+        sample = (imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts)
+        return sample
+
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = TravDataVis(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
 
 
 def segm_demo():
