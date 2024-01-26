@@ -1,41 +1,16 @@
-import torch
+import os.path
 
+import torch
 from .geometry import affine
-from .utils import timing
+from .transformations import rot2rpy, rpy2rot
+from .utils import timing, position
+from .vis import show_cloud
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
 from scipy.spatial import cKDTree
 from scipy.interpolate import griddata
 
 default_rng = np.random.default_rng(135)
-
-
-def keep_mask(n, indices):
-    mask = np.zeros(n, dtype=bool)
-    mask[indices] = 1
-    return mask
-
-
-def remove_mask(n, indices):
-    mask = np.ones(n, dtype=bool)
-    mask[indices] = 0
-    return mask
-
-def position(cloud):
-    """Cloud to point positions (xyz)."""
-    if cloud.dtype.names:
-        x = structured_to_unstructured(cloud[['x', 'y', 'z']])
-    else:
-        x = cloud
-    return x
-
-def color(cloud):
-    """Color to rgb."""
-    if cloud.dtype.names:
-        rgb = structured_to_unstructured(cloud[['r', 'g', 'b']])
-    else:
-        rgb = cloud
-    return rgb
 
 
 def filter_range(cloud, min, max, log=False, only_mask=False):
@@ -65,7 +40,7 @@ def filter_range(cloud, min, max, log=False, only_mask=False):
     return filtered
 
 
-def filter_grid(cloud, grid_res, keep='first', log=False, rng=default_rng, return_mask=False):
+def filter_grid(cloud, grid_res, keep='first', log=False, rng=default_rng, only_mask=False):
     """Keep single point within each cell. Order is not preserved."""
     assert isinstance(cloud, np.ndarray), type(cloud)
     # assert cloud.dtype.names
@@ -90,12 +65,40 @@ def filter_grid(cloud, grid_res, keep='first', log=False, rng=default_rng, retur
         print('%.3f = %i / %i points kept (grid res. %.3f m).'
               % (len(ind) / len(keys), len(ind), len(keys), grid_res))
 
-    filtered = cloud[ind]
-    if return_mask:
-        return filtered, ind
+    if only_mask:
+        return ind
 
+    filtered = cloud[ind]
     return filtered
 
+
+def filter_cylinder(cloud, radius, axis='z', log=False, only_mask=False):
+    """Keep points within cylinder."""
+    assert isinstance(cloud, np.ndarray), type(cloud)
+    assert isinstance(radius, (float, int)) and radius > 0.0
+    assert axis in ('x', 'y', 'z')
+
+    if cloud.dtype.names:
+        cloud = cloud.ravel()
+    x = position(cloud)
+    if axis == 'x':
+        mask = np.abs(x[:, 0]) <= radius
+    elif axis == 'y':
+        mask = np.abs(x[:, 1]) <= radius
+    elif axis == 'z':
+        mask = np.abs(x[:, 2]) <= radius
+    else:
+        raise ValueError(axis)
+
+    if log:
+        print('%.3f = %i / %i points kept (radius %.3f m).'
+              % (mask.sum() / len(cloud), mask.sum(), len(cloud), radius))
+
+    if only_mask:
+        return mask
+
+    filtered = cloud[mask]
+    return filtered
 
 def valid_point_mask(arr, discard_tf=None, discard_model=None):
     assert isinstance(arr, np.ndarray)
@@ -142,8 +145,9 @@ def compute_rigid_support(arr, transform=None, range=None, grid=None, scale=1.0,
     return support, rigid
 
 
-def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_interp_method='nearest',
-                       fill_value=0., robot_z=0., return_filtered_points=False):
+def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_interp_method='nearest',
+                       fill_value=0., robot_z=0., return_filtered_points=False,
+                       map_pose=np.eye(4), ground_range=(0., 0.5)):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
     assert len(points) > 0
@@ -153,48 +157,61 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
     assert isinstance(h_max, (float, int)) and h_max >= 0.
     assert hm_interp_method in ['linear', 'nearest', 'cubic', None]
     assert fill_value is None or isinstance(fill_value, (float, int))
+    assert robot_z is None or isinstance(robot_z, (float, int))
+    assert isinstance(return_filtered_points, bool)
+    assert map_pose.shape == (4, 4)
+    assert ground_range is None or isinstance(ground_range, tuple) and len(ground_range) == 2
 
     # remove invalid points
-    mask = np.isfinite(points).all(axis=1)
-    points = points[mask]
+    mask_meas = np.isfinite(points).all(axis=1)
+    points = points[mask_meas]
+
+    # gravity aligned points
+    roll, pitch, yaw = rot2rpy(map_pose[:3, :3])
+    R = rpy2rot(roll, pitch, 0.).cpu().numpy()
+    points_grav = points @ R.T
+
+    # filter ground (points in a height range from 0 to 0.5 m)
+    if ground_range is not None:
+        mask_ground = np.logical_or(points_grav[:, 2] <= ground_range[0], points_grav[:, 2] >= ground_range[1])
+        # show_cloud(points)
+        # show_cloud(points[mask_ground])
+        # show_cloud(points[~mask_ground])
+    else:
+        mask_ground = np.ones(len(points), dtype=bool)
 
     # height above ground
-    points = points[points[:, 2] < h_max]
-    if len(points) == 0:
-        if return_filtered_points:
-            return None, None
-        return None
+    mask_h = points_grav[:, 2] <= h_max
 
     # filter point cloud in a square
-    mask = np.logical_and(np.abs(points[:, 0]) <= d_max,
-                          np.abs(points[:, 1]) <= d_max)
-    points = points[mask]
+    mask_sq = np.logical_and(np.abs(points[:, 0]) <= d_max, np.abs(points[:, 1]) <= d_max)
 
+    # robot points
+    mask_robot = filter_range(points_grav, min=0., max=d_min if d_min > 0. else 0., only_mask=True)
+
+    # set robot points to the minimum height
+    if robot_z is None and mask_robot.sum() > 0:
+        robot_z = points_grav[mask_robot, 2].min()
+
+    # combine and apply masks
+    mask = np.logical_and(mask_ground, mask_h)
+    mask = np.logical_and(mask, mask_sq)
+    mask = np.logical_and(mask, ~mask_robot)
+    points = points[mask]
     if len(points) == 0:
         if return_filtered_points:
             return None, None
         return None
 
-    # robot points
-    robot_mask = filter_range(points, min=0., max=d_min if d_min > 0. else 0., only_mask=True)
-
-    # set robot points to the minimum height
-    if robot_z is None and robot_mask.sum() > 0:
-        robot_z = points[robot_mask, 2].min()
-
-    # remove robot points
-    if robot_mask.sum() > 0:
-        points = points[~robot_mask]
-
-    # add a point cloud under the robot with robot_z height
-    d_robot = d_min if d_min > 0. else 0.6
-    n_robot = int(2 * d_robot / grid_res)
-    x_robot = np.linspace(-d_robot, d_robot, n_robot)
-    y_robot = np.linspace(-d_robot, d_robot, n_robot)
-    x_robot, y_robot = np.meshgrid(x_robot, y_robot)
-    z_robot = np.full(x_robot.shape, fill_value=robot_z)
-    robot_points = np.stack([x_robot.ravel(), y_robot.ravel(), z_robot.ravel()], axis=1)
-    points = np.concatenate([points, robot_points], axis=0)
+    # # add a point cloud under the robot with robot_z height
+    # d_robot = d_min if d_min > 0. else 0.6
+    # n_robot = int(2 * d_robot / grid_res)
+    # x_robot = np.linspace(-d_robot, d_robot, n_robot)
+    # y_robot = np.linspace(-d_robot, d_robot, n_robot)
+    # x_robot, y_robot = np.meshgrid(x_robot, y_robot)
+    # z_robot = np.full(x_robot.shape, fill_value=robot_z)
+    # robot_points = np.stack([x_robot.ravel(), y_robot.ravel(), z_robot.ravel()], axis=1)
+    # points = np.concatenate([points, robot_points], axis=0)
 
     # create a grid
     n = int(2 * d_max / grid_res)
@@ -218,19 +235,19 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=0., hm_
             else:
                 # print('Point is lower than the current heightmap value, skipping...')
                 pass
-        mask = np.asarray(z_grid != fill_value, dtype=float)
+        mask_meas = np.asarray(z_grid != fill_value, dtype=float)
     else:
         x, y, z = points[:, 0], points[:, 1], points[:, 2]
         z_grid = griddata((x, y), z, (xi[None, :], yi[:, None]),
                           method=hm_interp_method, fill_value=fill_value)
-        mask = np.full(z_grid.shape, 1., dtype=float)
+        mask_meas = np.full(z_grid.shape, 1., dtype=float)
 
     z_grid = z_grid.T
-    mask = mask.T
+    mask_meas = mask_meas.T
     heightmap = {'x': np.asarray(x_grid, dtype=float),
                  'y': np.asarray(y_grid, dtype=float),
                  'z': np.asarray(z_grid, dtype=float),
-                 'mask': mask}
+                 'mask': mask_meas}
 
     if return_filtered_points:
         return heightmap, points
@@ -242,10 +259,10 @@ def hm_to_cloud(height, cfg, mask=None):
     assert isinstance(height, np.ndarray) or isinstance(height, torch.Tensor)
     assert height.ndim == 2
     if mask is not None:
-        assert isinstance(mask, np.ndarray) or isinstance(mask, torch.Tensor)
+        assert isinstance(mask, (np.ndarray, torch.Tensor))
         assert mask.ndim == 2
         assert height.shape == mask.shape
-        mask = mask.bool()
+        mask = mask.bool() if isinstance(mask, torch.Tensor) else mask.astype(bool)
     z_grid = height
     if isinstance(height, np.ndarray):
         x_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[0])
@@ -261,3 +278,49 @@ def hm_to_cloud(height, cfg, mask=None):
         hm_cloud = hm_cloud[mask]
     hm_cloud = hm_cloud.reshape([-1, 3])
     return hm_cloud
+
+
+def demo():
+    from .datasets import TravData, seq_paths
+    from .utils import read_yaml
+    from .config import Config
+    import open3d as o3d
+
+    cfg = Config()
+    path = '/home/ruslan/workspaces/traversability_ws/src/monoforce'
+    cfg.from_yaml(os.path.join(path, 'config/cfg.yaml'))
+    cfg.hm_interp_method = None
+
+    lss_cfg = read_yaml(os.path.join(path, 'config/lss.yaml'))
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+
+    i = 50
+    cloud = ds.get_cloud(i)
+    points = position(cloud)
+    # map_pose = ds.get_pose(i)
+    map_pose = np.eye(4)
+    # ground_range = (-0.2, 0.2)
+    ground_range = None
+
+    hm = estimate_heightmap(points, d_min=cfg.d_min, d_max=cfg.d_max, grid_res=cfg.grid_res,
+                            h_max=cfg.h_max, hm_interp_method=cfg.hm_interp_method,
+                            fill_value=0., robot_z=0., return_filtered_points=False,
+                            map_pose=map_pose, ground_range=ground_range)
+
+    hm_cloud = np.stack([hm['x'], hm['y'], hm['z'].T], axis=2)[hm['mask'].astype(bool)]
+
+    # visualize
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.paint_uniform_color([1.0, 0.0, 0.0])
+
+    hm_pcd = o3d.geometry.PointCloud()
+    hm_pcd.points = o3d.utility.Vector3dVector(hm_cloud)
+    hm_pcd.paint_uniform_color([0.0, 0.0, 1.0])
+    o3d.visualization.draw_geometries([pcd, hm_pcd])
+
+
+if __name__ == '__main__':
+    demo()

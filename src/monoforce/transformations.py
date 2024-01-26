@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
-from .cloudproc import position
+from .utils import position
 
 
 __all__ = [
@@ -52,15 +52,15 @@ def rpy2rot(roll, pitch, yaw):
     yaw = torch.as_tensor(yaw)
     RX = torch.tensor([[1, 0, 0],
                        [0, torch.cos(roll), -torch.sin(roll)],
-                       [0, torch.sin(roll), torch.cos(roll)]])
+                       [0, torch.sin(roll), torch.cos(roll)]], dtype=torch.float32)
 
     RY = torch.tensor([[torch.cos(pitch), 0, torch.sin(pitch)],
                        [0, 1, 0],
-                       [-torch.sin(pitch), 0, torch.cos(pitch)]])
+                       [-torch.sin(pitch), 0, torch.cos(pitch)]], dtype=torch.float32)
 
     RZ = torch.tensor([[torch.cos(yaw), -torch.sin(yaw), 0],
                        [torch.sin(yaw), torch.cos(yaw), 0],
-                       [0, 0, 1]])
+                       [0, 0, 1]], dtype=torch.float32)
     return RZ @ RY @ RX
 
 def test_rpy():

@@ -11,7 +11,8 @@ from ..models.lss.model import compile_model
 from ..models.lss.tools import normalize_img, denormalize_img
 from ..config import Config
 from ..transformations import transform_cloud, rot2rpy, rpy2rot
-from ..cloudproc import position, estimate_heightmap, color, hm_to_cloud
+from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..utils import position, color
 from ..cloudproc import filter_grid, filter_range
 from ..imgproc import undistort_image, project_cloud_to_image
 from .augmentations import horizontal_shift
@@ -24,7 +25,7 @@ from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
 try:
-    mpl.use('QtAgg')
+    mpl.use('TkAgg')
 except:
     print('Could not set matplotlib backend to QtAgg')
     pass
@@ -372,7 +373,7 @@ class DEMPathData(Dataset):
             cloud = transform_cloud(cloud, T)
             points = position(cloud)
             if i == 0:
-                mask = filter_grid(points, self.cfg.grid_res, keep='first', log=False, return_mask=True)[1]
+                mask = filter_grid(points, self.cfg.grid_res, keep='first', log=False, only_mask=True)
                 global_cloud = points[mask]
                 global_cloud_rgb = rgb[mask] if colorize else None
             else:
@@ -857,7 +858,7 @@ class OmniDEMData(MonoDEMData):
 
         return outputs
 
-    def get_height_map_data(self, i, cached=True, gravity_aligned=False):
+    def get_height_map_data(self, i, cached=True):
         # height map from point cloud (!!! assumes points are in robot frame)
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
         dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
@@ -869,15 +870,6 @@ class OmniDEMData(MonoDEMData):
         else:
             # print('Estimating and saving height map...')
             cloud = self.get_cloud(i)
-            if gravity_aligned:
-                map_pose = self.get_poses()[i]
-                # gravity aligned point cloud
-                Tr = np.eye(4)
-                R = map_pose[:3, :3]
-                roll, pitch, yaw = rot2rpy(R)
-                R = rpy2rot(roll, pitch, 0)
-                Tr[:3, :3] = R
-                cloud = transform_cloud(cloud, Tr)
             points = position(cloud)
             robot_z = np.asarray(self.calib['transformations']['T_base_link__base_footprint']['data'],
                                  dtype=float).reshape(4, 4)[2, 3]

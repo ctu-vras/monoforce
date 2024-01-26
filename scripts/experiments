@@ -10,6 +10,7 @@ from pytorch3d.loss import (
 from pytorch3d.structures import Meshes, Pointclouds
 import numpy as np
 import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from monoforce.cloudproc import hm_to_cloud
 from monoforce.datasets.data import DepthDEMDataVis, DepthDEMData, TravData, TravDataVis
@@ -210,10 +211,10 @@ def map_consistency():
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = TravData(seq_paths[0], is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
-    loader = torch.utils.data.DataLoader(ds, batch_size=6, shuffle=False)
+    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    loader = DataLoader(ds, batch_size=6, shuffle=False)
     # ds.global_cloud(vis=True)
-    # ds.global_hm_cloud(vis=True)
+    ds.global_hm_cloud(vis=True)
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     modelf = '../config/weights/lss/train_lss.pt'
@@ -258,9 +259,27 @@ def map_consistency():
                 o3d.visualization.draw_geometries([hm_pcd])
 
 
+def data_slicing():
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+    grid_conf = lss_cfg['grid_conf']
+
+    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds_slice = ds[150:200]
+    print("Full dataset contains samples", ds.ids)
+    print("Sliced dataset contains samples", ds_slice.ids)
+    # check if sliced dataset indixes is a subset of full dataset indixes
+    assert set(ds_slice.ids).issubset(set(ds.ids))
+    ds_slice.global_hm_cloud(vis=True)
+
+
 def main():
     # feed_depth()
     map_consistency()
+    # data_slicing()
 
 
 if __name__ == '__main__':
