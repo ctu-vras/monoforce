@@ -59,8 +59,8 @@ class Trainer:
             self.writer = SummaryWriter(log_dir=log_dir)
             # save configs to log dir
             write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'cfg.yaml'))
-            write_to_yaml(data_aug_conf, os.path.join(log_dir, 'data_aug_conf.yaml'))
-            write_to_yaml(grid_conf, os.path.join(log_dir, 'grid_conf.yaml'))
+            lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
+            write_to_yaml(lss_cfg, os.path.join(log_dir, 'lss.yaml'))
 
             self.min_loss = np.inf
             self.min_train_loss = np.inf
@@ -86,6 +86,10 @@ class Trainer:
         print('Data paths:', self.data_paths)
         for path in self.data_paths:
             assert os.path.exists(path)
+            # print(f'Train dataset from path {path} size is {len(ds)}')
+            if vis:
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
+
             train_ds = TravData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
@@ -101,9 +105,6 @@ class Trainer:
             train_ds = torch.utils.data.Subset(train_ds, train_ids)
             val_ds = torch.utils.data.Subset(val_ds, val_ids)
 
-            # print(f'Train dataset from path {path} size is {len(ds)}')
-            if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
             train_datasets.append(train_ds)
             val_datasets.append(val_ds)
 
@@ -119,7 +120,7 @@ class Trainer:
 
         return train_ds, val_ds
 
-    def compute_loss(self, height_pred, hm_gt, sigma=None, optimized_hm=False,):
+    def compute_loss(self, height_pred, hm_gt, sigma=None, traj_hm=False, ):
         # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
         # height_pred is a tensor of size Bx1xHxW
         B, D, H, W = hm_gt.shape
@@ -142,7 +143,7 @@ class Trainer:
             # apply weights
             weights = weights * weights_gaus
 
-        if optimized_hm:
+        if traj_hm:
             # mask of valid labels
             mask_valid = ~torch.isnan(height_gt)
             # apply mask
@@ -168,17 +169,21 @@ class Trainer:
         epoch_loss = 0.0
         max_grad_norm = 5.0
 
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm, hm_opt) \
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj) \
                 in tqdm(enumerate(loader), total=len(loader)):
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, device=self.cfg.device) for i in inputs]
-            height_pred = self.model(*inputs)
+            voxels = self.model.get_voxels(*inputs)
+            height_pred = self.model.bevencode(voxels)
+            # height_pred = self.model(*inputs)
 
-            hm = torch.as_tensor(hm, device=self.cfg.device)
-            hm_opt = torch.as_tensor(hm_opt, device=self.cfg.device)
-            loss_geom = self.compute_loss(height_pred, hm, optimized_hm=False)
-            loss_rigid = self.compute_loss(height_pred, hm_opt, optimized_hm=True)
+            hm_lidar = torch.as_tensor(hm_lidar, device=self.cfg.device)
+            hm_traj = torch.as_tensor(hm_traj, device=self.cfg.device)
+            # loss_geom = self.compute_loss(height_pred, hm_lidar, optimized_hm=False, sigma=0.5)
+            # loss_geom = self.compute_loss(voxels[:, 0:1], hm_lidar, optimized_hm=False, sigma=0.5)  # assume 0-th channel in voxels is height
+            loss_geom = self.compute_loss(voxels.mean(dim=1, keepdims=True), hm_lidar, optimized_hm=False)
+            loss_rigid = self.compute_loss(height_pred, hm_traj, optimized_hm=True)
             loss = loss_geom + 100. * loss_rigid
 
             if train:
@@ -234,23 +239,25 @@ class Trainer:
         grid_conf = self.grid_conf
         device = self.cfg.device
 
-        fig = plt.figure(figsize=(20, 10))
-        ax1 = fig.add_subplot(231)
-        ax2 = fig.add_subplot(232, projection='3d')
-        ax3 = fig.add_subplot(233, projection='3d')
-        ax4 = fig.add_subplot(234)
-        ax5 = fig.add_subplot(235)
-        ax6 = fig.add_subplot(236)
+        fig = plt.figure(figsize=(20, 5))
+        ax1 = fig.add_subplot(241)
+        ax2 = fig.add_subplot(242, projection='3d')
+        ax3 = fig.add_subplot(243, projection='3d')
+        ax4 = fig.add_subplot(244, projection='3d')
+        ax5 = fig.add_subplot(245)
+        ax6 = fig.add_subplot(246)
+        ax7 = fig.add_subplot(247)
+        ax8 = fig.add_subplot(248)
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_gt, hm_opt_gt = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
-            hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
+            hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32, device=device)
             height_pred = model(*inputs)
 
-            for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+            for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
                 ax.clear()
 
             # plot image
@@ -259,9 +266,10 @@ class Trainer:
 
             # plot prediction as surface
             ax2.set_title('Pred Surface')
-            height = height_pred[0][0].cpu().numpy()
-            height_gt = hm_gt[0][0].cpu().numpy()
-            mask = hm_gt[0][1].bool().cpu().numpy()
+            height = height_pred[0][0].cpu().numpy().T
+            height_lidar = hm_lidar[0][0].cpu().numpy().T
+            height_traj = hm_traj[0][0].cpu().numpy().T
+            mask = hm_lidar[0][1].bool().cpu().numpy().T
             x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
             y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
             x_grid, y_grid = np.meshgrid(x_grid, y_grid)
@@ -273,23 +281,30 @@ class Trainer:
 
             # plot ground truth as surface
             ax3.set_title('Lidar Surface')
-            ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax3.plot_surface(x_grid, y_grid, height_lidar, cmap='jet', vmin=-1.0, vmax=1.0)
             ax3.set_zlim(-1.0, 1.0)
             ax3.set_xlabel('x [m]')
             ax3.set_ylabel('y [m]')
             ax3.set_zlabel('z [m]')
 
-            # plot prediction as image
-            ax4.set_title('Prediction')
-            ax4.imshow(height.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            # plot traj heightmap as surface
+            ax4.set_title('Traj Surface')
+            ax4.plot_surface(x_grid, y_grid, height_traj, cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax5.set_title('Masked Prediction')
+            # plot prediction as image
+            ax5.set_title('Prediction')
+            ax5.imshow(height, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax6.set_title('Masked Prediction')
             height_vis = np.zeros_like(height)
             height_vis[mask] = height[mask]
-            ax5.imshow(height_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.imshow(height_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax6.set_title('Ground truth')
-            ax6.imshow(height_gt.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax7.set_title('Lidar')
+            ax7.imshow(height_lidar, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax8.set_title('Traj')
+            ax8.imshow(height_traj, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 

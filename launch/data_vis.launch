@@ -19,8 +19,10 @@
             seq_i: $(arg seq_i)
             sample_i: $(arg sample_i)
 <!--             lss_weights: $(dirname)/../config/weights/lss/train_lss.pt -->
+            pub_cloud: true
+            pub_path: true
         </rosparam>
-        <remap from="grid_map" to="grid_map"/>
+        <remap from="grid_map" to="grid_map_lidar"/>
         <remap from="cloud" to="cloud"/>
         <remap from="path" to="path"/>
     </node>
@@ -34,11 +36,11 @@
             rate: $(arg rate)
             seq_i: $(arg seq_i)
             sample_i: $(arg sample_i)
-<!--             lss_weights: $(dirname)/../config/tb_runs/lss_2024_01_17_19_08_25/lss.pt -->
+<!--             lss_weights: $(dirname)/../config/tb_runs/lss_2024_01_23_14_16_12/train_lss.pt -->
+            pub_cloud: false
+            pub_path: false
         </rosparam>
-        <remap from="grid_map" to="grid_map_opt"/>
-        <remap from="cloud" to="cloud_opt"/>
-        <remap from="path" to="path_opt"/>
+        <remap from="grid_map" to="grid_map_traj"/>
     </node>
 
     <node if="$(arg rviz)"

@@ -202,7 +202,7 @@ def read_semseg(path, label_size=None):
     return np.array(semseg, dtype=np.uint8)
 
 
-def normalize(x, qlow=0.02, qhigh=0.98, eps=1e-6, ):
+def normalize(x, qlow=0., qhigh=1., eps=1e-6, ):
     assert qlow < qhigh
     assert qlow >= 0 and qhigh <= 1
     assert eps > 0
@@ -213,8 +213,8 @@ def normalize(x, qlow=0.02, qhigh=0.98, eps=1e-6, ):
         x = (x - x_min) / np.max([(x_max - x_min), eps])
         x = x.clamp(0, 1)
     else:
-        x_max = np.percentile(x, 100*qhigh)
-        x_min = np.percentile(x, 100*qlow)
+        x_max = np.percentile(x, 100 * qhigh)
+        x_min = np.percentile(x, 100 * qlow)
         x = (x - x_min) / np.max([(x_max - x_min), eps])
         x = x.clip(0, 1)
     return x

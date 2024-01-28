@@ -4,10 +4,10 @@
     <arg name="diffphys" default="false" doc="Whether to run the diff physics node or not"/>
     <arg name="slam" default="false" doc="Whether to run the SLAM node or not"/>
     <arg name="lss_debug" default="false"/>
-    <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
+    <arg name="weights" default="$(dirname)/../config/weights/lss/train_lss.pt"/>
 
-<!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag"/> -->
-    <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
+    <arg name="bag" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag"/>
+<!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/> -->
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
                                      '/camera_left/image_color/compressed',
                                      '/camera_right/image_color/compressed',
