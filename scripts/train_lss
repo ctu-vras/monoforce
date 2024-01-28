@@ -19,6 +19,9 @@ import matplotlib.pyplot as plt
 torch.set_default_dtype(torch.float32)
 
 
+torch.random.manual_seed(0)
+np.random.seed(0)
+
 class Trainer:
     def __init__(self,
                  data_paths,
