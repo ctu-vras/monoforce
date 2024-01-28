@@ -382,6 +382,7 @@ def main():
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
                       bsz=bsz, nworkers=nworkers, nepochs=nepochs,
                       pretrained_model_path=pretrained_model_path,
+                      map_consistency=False,
                       log_dir=log_dir, debug=debug, vis=vis)
     trainer.train()
 

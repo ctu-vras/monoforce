@@ -25,7 +25,7 @@ from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
 try:
-    mpl.use('TkAgg')
+    mpl.use('QtAgg')
 except:
     print('Could not set matplotlib backend to QtAgg')
     pass

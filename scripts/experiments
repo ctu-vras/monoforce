@@ -199,26 +199,29 @@ def feed_depth():
 
 
 def map_consistency():
+    cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/cfg.yaml'
+    lss_cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/lss.yaml'
+    model_path = '../config/tb_runs/lss_2024_01_26_15_07_31/train_lss.pt'
+
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml(cfg_path)
     cfg.hm_interp_method = None
     cfg.device = 'cuda'
 
     predicted_map = True
     vis = True
 
-    lss_cfg = read_yaml('../config/lss.yaml')
+    lss_cfg = read_yaml(lss_cfg_path)
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
     ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
-    loader = DataLoader(ds, batch_size=6, shuffle=False)
+    loader = DataLoader(ds, batch_size=16, shuffle=False)
     # ds.global_cloud(vis=True)
     ds.global_hm_cloud(vis=True)
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
-    modelf = '../config/weights/lss/train_lss.pt'
-    model.load_state_dict(torch.load(modelf))
+    model.load_state_dict(torch.load(model_path))
     model.eval()
     model.to(cfg.device)
 

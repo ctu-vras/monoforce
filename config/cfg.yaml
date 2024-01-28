@@ -9,6 +9,9 @@ elasticity: 0.0
 friction: 0.9
 grid_res: 0.1
 h_max: 2.0
+grass_range:
+- 0.1
+- 1.0
 hm_interp_method: null
 img_size:
 - 512
