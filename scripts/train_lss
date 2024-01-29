@@ -132,43 +132,35 @@ class Trainer:
 
         return train_loaders, val_loaders
 
-    def hm_loss(self, height_pred, hm_gt, sigma=None, traj_hm=False, ):
-        # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
-        # height_pred is a tensor of size Bx1xHxW
-        B, D, H, W = hm_gt.shape
-        assert D == 2
-        assert height_pred.shape == (B, 1, H, W)
-        # get height and mask from heightmap: weights_m is measurement mask
-        height_gt, weights_m = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-        weights = weights_m.clone()
+    def lidar_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
 
-        if sigma is not None:
-            # apply gaussian weights based on distance from the center of the height map
-            assert isinstance(sigma, (float, int))
-            assert sigma > 0.0
-            # create 2D gaussian weights with the size of the height map and center at (0, 0)
-            x_grid = torch.linspace(-1.0, 1.0, W, device=self.cfg.device)
-            y_grid = torch.linspace(-1.0, 1.0, H, device=self.cfg.device)
-            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-            weights_gaus = torch.exp(-((x_grid ** 2 + y_grid ** 2) / (2 * sigma ** 2)))
-            weights_gaus = weights_gaus.view(1, 1, H, W).repeat(B, 1, 1, 1)
-            # apply weights
-            weights = weights * weights_gaus
+        # handle imbalanced height distribution (increase weights for higher heights / obstacles)
+        h_mean = height_gt[weights.bool()].mean()
+        # the higher the difference from mean the higher the weight
+        weights_h = 1.0 + torch.abs(height_gt - h_mean)
+        # apply height difference weights
+        weights = weights * weights_h
 
-        if traj_hm:
-            # mask of valid labels
-            mask_valid = ~torch.isnan(height_gt)
-            # apply mask
-            height_gt = height_gt[mask_valid]
-            height_pred = height_pred[mask_valid]
-            weights = weights[mask_valid]
-        else:
-            # handle imbalanced height distribution (increase weights for higher heights / obstacles)
-            h_mean = height_gt[weights_m.bool()].mean()
-            # the higher the difference from mean the higher the weight
-            weights_h = 1.0 + torch.abs(height_gt - h_mean)
-            # apply height difference weights
-            weights = weights * weights_h
+        # compute weighted loss
+        loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
+        return loss
+
+    def traj_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+
+        # mask of valid labels
+        mask_valid = ~torch.isnan(height_gt)
+        # apply mask
+        height_gt = height_gt[mask_valid]
+        height_pred = height_pred[mask_valid]
+        weights = weights[mask_valid]
 
         # compute weighted loss
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
@@ -214,17 +206,21 @@ class Trainer:
             for batch in tqdm(loader, total=len(loader)):
                 batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
                 imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+                height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+                height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
 
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                height_pred = self.model(*inputs)
+                voxel_feats = self.model.get_voxels(*inputs)
+                height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+                height_pred_rigid = height_pred_geom - height_pred_diff
 
-                loss_rigid = self.hm_loss(height_pred, hm_traj, traj_hm=True, sigma=0.5)
-                loss_geom = self.hm_loss(height_pred, hm_lidar, traj_hm=False, sigma=0.5)
+                loss_geom = self.lidar_hm_loss(height_pred_geom, height_lidar, weights_lidar)
+                loss_rigid = self.traj_hm_loss(height_pred_rigid, height_traj, weights_traj)
 
-                loss = loss_geom + 100*loss_rigid
-                if self.map_consistency and len(height_pred) > 1:
-                    loss_map = self.map_consistency_loss(height_pred, map_pose)
-                    loss += loss_map
+                loss = loss_geom + 100.*loss_rigid
+                if self.map_consistency and len(height_pred_rigid) > 1:
+                    loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
+                    loss += 0.1*loss_map
                 else:
                     loss_map = torch.tensor(np.nan, device=self.cfg.device)
 
@@ -300,7 +296,9 @@ class Trainer:
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
             hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32, device=device)
-            height_pred = model(*inputs)
+            voxel_feats = model.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
+            height_pred = height_pred_geom - height_pred_diff
 
             for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
                 ax.clear()

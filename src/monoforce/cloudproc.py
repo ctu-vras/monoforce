@@ -175,7 +175,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     if grass_range is not None:
         mask_grass = np.logical_and(points[:, 2] >= grass_range[0], points[:, 2] <= grass_range[1])
     else:
-        mask_grass = np.ones(len(points), dtype=bool)
+        mask_grass = np.zeros(len(points), dtype=bool)
 
     # height above ground
     mask_h = points_grav[:, 2] <= h_max
