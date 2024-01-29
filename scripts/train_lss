@@ -118,6 +118,11 @@ class Trainer:
             train_datasets.append(train_ds)
             val_datasets.append(val_ds)
 
+        # concatenate datasets if map consistency is disabled
+        if not self.map_consistency:
+            train_datasets = [ConcatDataset(train_datasets)]
+            val_datasets = [ConcatDataset(val_datasets)]
+
         # create dataloaders
         train_loaders = []
         for ds in train_datasets:
@@ -280,15 +285,21 @@ class Trainer:
         grid_conf = self.grid_conf
         device = self.cfg.device
 
-        fig = plt.figure(figsize=(20, 5))
-        ax1 = fig.add_subplot(241)
-        ax2 = fig.add_subplot(242, projection='3d')
-        ax3 = fig.add_subplot(243, projection='3d')
-        ax4 = fig.add_subplot(244, projection='3d')
-        ax5 = fig.add_subplot(245)
-        ax6 = fig.add_subplot(246)
-        ax7 = fig.add_subplot(247)
-        ax8 = fig.add_subplot(248)
+        fig = plt.figure(figsize=(20, 12))
+        ax1 = fig.add_subplot(341)
+        ax2 = fig.add_subplot(342, projection='3d')
+        ax3 = fig.add_subplot(343, projection='3d')
+        ax4 = fig.add_subplot(344, projection='3d')
+        ax5 = fig.add_subplot(345)
+        ax6 = fig.add_subplot(346)
+        ax7 = fig.add_subplot(347)
+        ax8 = fig.add_subplot(348)
+        ax9 = fig.add_subplot(349)
+        ax10 = fig.add_subplot(3, 4, 10)
+        ax11 = fig.add_subplot(3, 4, 11)
+        ax12 = fig.add_subplot(3, 4, 12)
+
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
 
         # visualize training predictions
         with torch.no_grad():
@@ -300,7 +311,7 @@ class Trainer:
             height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
             height_pred = height_pred_geom - height_pred_diff
 
-            for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
+            for ax in axes:
                 ax.clear()
 
             # plot image
@@ -309,14 +320,16 @@ class Trainer:
 
             # plot prediction as surface
             ax2.set_title('Pred Surface')
-            height = height_pred[0][0].cpu().numpy().T
+            height_pred = height_pred[0][0].cpu().numpy().T
+            height_pred_geom = height_pred_geom[0][0].cpu().numpy().T
+            height_pred_diff = height_pred_diff[0][0].cpu().numpy().T
             height_lidar = hm_lidar[0][0].cpu().numpy().T
             height_traj = hm_traj[0][0].cpu().numpy().T
             mask = hm_lidar[0][1].bool().cpu().numpy().T
             x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
             y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
             x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-            ax2.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
+            ax2.plot_surface(x_grid, y_grid, height_pred, cmap='jet', vmin=-1.0, vmax=1.0)
             ax2.set_zlim(-1.0, 1.0)
             ax2.set_xlabel('x [m]')
             ax2.set_ylabel('y [m]')
@@ -336,18 +349,38 @@ class Trainer:
 
             # plot prediction as image
             ax5.set_title('Prediction')
-            ax5.imshow(height, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax5.imshow(height_pred, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax6.set_title('Masked Prediction')
-            height_vis = np.zeros_like(height)
-            height_vis[mask] = height[mask]
-            ax6.imshow(height_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            height_pred_vis = np.zeros_like(height_pred)
+            height_pred_vis[mask] = height_pred[mask]
+            ax6.imshow(height_pred_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax7.set_title('Lidar')
             ax7.imshow(height_lidar, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax8.set_title('Traj')
             ax8.imshow(height_traj, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # predicted geometric height
+            ax9.set_title('Geom Pred')
+            ax9.imshow(height_pred_geom, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # masked predicted geometric height
+            ax10.set_title('Masked Geom Pred')
+            height_pred_geom_vis = np.zeros_like(height_pred)
+            height_pred_geom_vis[mask] = height_pred_geom[mask]
+            ax10.imshow(height_pred_geom_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # predicted diff height
+            ax11.set_title('Diff Pred')
+            ax11.imshow(height_pred_diff, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # masked predicted diff height
+            ax12.set_title('Masked Diff Pred')
+            height_pred_diff_vis = np.zeros_like(height_pred)
+            height_pred_diff_vis[mask] = height_pred_diff[mask]
+            ax12.imshow(height_pred_diff_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 
