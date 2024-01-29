@@ -18,7 +18,7 @@ torch.set_default_dtype(torch.float64)
 cfg = Config()
 cfg.grid_res = 0.1
 cfg.device = 'cpu'
-cfg.d_max = 12.8
+cfg.d_max = 6.4
 cfg.d_min = 1.
 cfg.max_vel = np.inf
 cfg.max_omega = np.inf
@@ -222,6 +222,7 @@ def p_control_diffdrive():
 
     # states_true, tt_true, height = get_test_data()
     states_true, tt_true, height = get_data()
+    height = np.asarray(height, dtype=np.float64)
     xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
     n_true_states = len(xyz_true)
     # height = np.zeros_like(height) + xyz_true[:, 2].numpy().min()

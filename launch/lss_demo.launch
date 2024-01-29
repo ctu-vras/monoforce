@@ -59,6 +59,7 @@
             linear_vels: [1.]
             angular_vels: [0.]
             total_sim_time: 5.
+            max_stale_msg_delay: 0.5
         </rosparam>
     </node>
 
