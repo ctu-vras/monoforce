@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import torch
 import numpy as np
 import rospy
@@ -21,11 +22,13 @@ class DiffPhysics:
                  hm_topic='/height_map',
                  hm_frame='base_link',
                  linear_vels=[1.],
-                 angular_vels=[0.]):
+                 angular_vels=[0.],
+                 max_stale_msg_delay=0.5):
         self.cfg = cfg
         self.hm_frame = hm_frame
         self.linear_vels = linear_vels
         self.angular_vels = angular_vels
+        self.max_stale_msg_delay = max_stale_msg_delay
 
         # paths publisher
         self.paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
@@ -39,12 +42,12 @@ class DiffPhysics:
         assert isinstance(msg, PointCloud2)
         # if message is stale do not process it
         dt = rospy.Time.now() - msg.header.stamp
-        if dt > rospy.Duration(2.):
-            rospy.logdebug(f'Stale height map message received ({dt.to_sec():.1f} [sec]), skipping')
+        if dt.to_sec() > self.max_stale_msg_delay:
+            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_stale_msg_delay} [sec]), skipping')
             return
 
         height = numpify(msg)['z']
-        h = w = int(self.cfg.d_max / self.cfg.grid_res)
+        h = w = int(2 * self.cfg.d_max / self.cfg.grid_res)
         height = height.reshape((h, w))
         height = np.asarray(height, dtype=np.float64)
         height = height.T
@@ -62,13 +65,11 @@ class DiffPhysics:
         assert 'linear_v' in controls.keys()
         assert 'angular_w' in controls.keys()
 
-        h, w = np.asarray(height.shape) * self.cfg.grid_res
         state = State(xyz=torch.tensor([0, 0., 0.], device=self.cfg.device).view(3, 1),
-                   rot=torch.eye(3, device=self.cfg.device),
-                   vel=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
-                   omega=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
-                   device=self.cfg.device)
-        state[0][0] = -h / 2.  # move robot to the edge of the height map
+                      rot=torch.eye(3, device=self.cfg.device),
+                      vel=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                      omega=torch.tensor([0., 0., 0.], device=self.cfg.device).view(3, 1),
+                      device=self.cfg.device)
 
         """ Create robot-terrain interaction models """
         system = RigidBodySoftTerrain(height=height,
@@ -104,8 +105,7 @@ class DiffPhysics:
             angular_w.append(state[3])
             forces.append(state[4])
 
-        # height map origin is at the edge of the map
-        xyz = torch.stack(xyz) + torch.tensor([h / 2., 0., 0.], device=self.cfg.device).view(3, 1)
+        xyz = torch.stack(xyz)
         Rs = torch.stack(Rs)
         linear_v = torch.stack(linear_v)
         angular_w = torch.stack(angular_w)
@@ -133,6 +133,10 @@ class DiffPhysics:
         if linear_vels is None:
             linear_vels = [1.]
         assert isinstance(height, np.ndarray)
+        assert height.shape[0] == height.shape[1]
+        assert isinstance(linear_vels, list)
+        assert isinstance(angular_vels, list)
+        assert len(linear_vels) == len(angular_vels)
 
         tt = torch.linspace(0., self.cfg.total_sim_time, self.cfg.n_samples)
         # paths marker array
@@ -141,51 +145,50 @@ class DiffPhysics:
         lower_cost_poses = None
         max_path_cost = torch.tensor(-np.inf, device=self.cfg.device)
         min_path_cost = torch.tensor(np.inf, device=self.cfg.device)
-        for v in linear_vels:
-            for w in angular_vels:
-                # controls
-                controls = {
-                    'stamps': tt,
-                    'linear_v': v * torch.ones(self.cfg.n_samples),
-                    'angular_w': w * torch.ones(self.cfg.n_samples)
-                }
+        for v, w in zip(linear_vels, angular_vels):
+            # controls
+            controls = {
+                'stamps': tt,
+                'linear_v': v * torch.ones(self.cfg.n_samples),
+                'angular_w': w * torch.ones(self.cfg.n_samples)
+            }
 
-                # predict states
-                t0 = time()
-                states = self.sim(height, controls)
-                t1 = time()
-                rospy.logdebug('Path of %d samples simulation took %.3f' % (self.cfg.n_samples, t1 - t0))
+            # predict states
+            t0 = time()
+            states = self.sim(height, controls)
+            t1 = time()
+            rospy.logdebug('Path of %d samples simulation took %.3f' % (self.cfg.n_samples, t1 - t0))
 
-                # create path message (Marker)
-                xyz = states[0].cpu().numpy()[::100]
-                Rs = states[1].cpu().numpy()[::100]
-                Ts = np.zeros((len(xyz), 4, 4))
-                Ts[:, :3, :3] = Rs
-                Ts[:, :3, 3:4] = xyz
-                Ts[:, 3, 3] = 1.
+            # create path message (Marker)
+            xyz = states[0].cpu().numpy()[::50]
+            Rs = states[1].cpu().numpy()[::50]
+            Ts = np.zeros((len(xyz), 4, 4))
+            Ts[:, :3, :3] = Rs
+            Ts[:, :3, 3:4] = xyz
+            Ts[:, 3, 3] = 1.
 
-                # compute path cost
-                path_cost = self.path_cost(states)
-                # rospy.logdebug('Path cost: %.3f' % path_cost.item())
-                if path_cost > max_path_cost:
-                    max_path_cost = path_cost.clone()
-                if path_cost < min_path_cost:
-                    min_path_cost = path_cost.clone()
-                    lower_cost_poses = Ts
-                # normalize path cost
-                path_cost = (path_cost - min_path_cost) / (max_path_cost - min_path_cost) if max_path_cost > min_path_cost else path_cost
-                # rospy.logdebug('Path cost normalized: %.3f' % path_cost.item())
+            # compute path cost
+            path_cost = self.path_cost(states)
+            # rospy.logdebug('Path cost: %.3f' % path_cost.item())
+            if path_cost > max_path_cost:
+                max_path_cost = path_cost.clone()
+            if path_cost < min_path_cost:
+                min_path_cost = path_cost.clone()
+                lower_cost_poses = Ts
+            # normalize path cost
+            path_cost = (path_cost - min_path_cost) / (max_path_cost - min_path_cost) if max_path_cost > min_path_cost else path_cost
+            # rospy.logdebug('Path cost normalized: %.3f' % path_cost.item())
 
-                # map path cost to color (lower cost -> greener, higher cost -> redder)
-                color = np.array([0., 1., 0.]) + (np.array([1., 0., 0.]) - np.array([0., 1., 0.])) * path_cost.item()
-                marker_msg = to_marker(Ts, color=color)
-                marker_msg.header.stamp = rospy.Time.now()
-                marker_msg.header.frame_id = self.hm_frame
-                marker_msg.ns = 'paths'
-                marker_msg.id = path_id
-                path_id += 1
-                marker_array.markers.append(marker_msg)
-                rospy.logdebug('Path to marker array conversion took %.3f' % (time() - t1))
+            # map path cost to color (lower cost -> greener, higher cost -> redder)
+            color = np.array([0., 1., 0.]) + (np.array([1., 0., 0.]) - np.array([0., 1., 0.])) * path_cost.item()
+            marker_msg = to_marker(Ts, color=color)
+            marker_msg.header.stamp = rospy.Time.now()
+            marker_msg.header.frame_id = self.hm_frame
+            marker_msg.ns = 'paths'
+            marker_msg.id = path_id
+            path_id += 1
+            marker_array.markers.append(marker_msg)
+            rospy.logdebug('Path to marker array conversion took %.3f' % (time() - t1))
 
         # publish all sampled paths
         self.paths_pub.publish(marker_array)
@@ -199,12 +202,12 @@ class DiffPhysics:
 
 def main():
     rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
+    pkg_path = rospkg.RosPack().get_path('monoforce')
 
     cfg = Config()
-    cfg.grid_res = 0.1
-    cfg.device = 'cuda'
-    cfg.d_max = 12.8
-    cfg.d_min = 1.
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
     cfg.total_sim_time = rospy.get_param('~total_sim_time', 5.)
     cfg.n_samples = 100 * int(cfg.total_sim_time)
 
@@ -213,9 +216,12 @@ def main():
     # control parameters
     linear_vels = rospy.get_param('~linear_vels', [1.])
     angular_vels = rospy.get_param('~angular_vels', [0.])
+    # max time to wait for a message before it is considered stale
+    max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
     try:
         node = DiffPhysics(cfg=cfg, hm_topic=hm_topic, hm_frame=hm_frame,
-                           linear_vels=linear_vels, angular_vels=angular_vels)
+                           linear_vels=linear_vels, angular_vels=angular_vels,
+                           max_stale_msg_delay=max_stale_msg_delay)
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
