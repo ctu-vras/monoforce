@@ -8,8 +8,7 @@ from monoforce.datasets import MonoDEMData, seq_paths
 from monoforce.config import Config
 from monoforce.models import monolayout, Geom2Trav
 from monoforce.vis import set_axes_equal
-from monoforce.cloudproc import filter_grid, position
-from monoforce.transformations import transform_cloud
+from monoforce.cloudproc import filter_grid
 from tqdm import tqdm
 from argparse import ArgumentParser
 

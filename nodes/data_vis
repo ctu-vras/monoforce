@@ -6,7 +6,7 @@ import torch
 
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import OmniDEMDataVis, OmniOptDEMDataVis, seq_paths
+from monoforce.datasets import OmniDEMDataVis, OmniRigidDEMDataVis, seq_paths
 from monoforce.config import Config
 from monoforce.ros import height_map_to_gridmap_msg, to_path
 from monoforce.models.lss.tools import denormalize_img
@@ -42,7 +42,7 @@ def main():
     # Load traversability data
     path = seq_paths[rospy.get_param('~seq_i', 0)]
     assert os.path.exists(path)
-    Data = OmniOptDEMDataVis if opt_terrain else OmniDEMDataVis
+    Data = OmniRigidDEMDataVis if opt_terrain else OmniDEMDataVis
     ds = Data(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
     rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), path))
 
@@ -56,7 +56,7 @@ def main():
     # Choose data sample
     i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
     rospy.loginfo('Using sample %d' % i)
-    imgs, rots, trans, intrins, post_rots, post_trans, lidar_pts, heightmap = ds[i]
+    imgs, rots, trans, intrins, post_rots, post_trans, heightmap, lidar_pts = ds[i]
     traj = ds.get_traj(i)
     poses = traj['poses']
     points = lidar_pts.numpy().T

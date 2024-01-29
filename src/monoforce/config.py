@@ -11,6 +11,7 @@ class Config:
         self.d_min = 1.0
         self.d_max = 6.4
         self.h_max = 1.0  # above robot frame (base_link)
+        self.grass_range = [0.1, 0.5]  # [m], [min, max] possible grass height
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9

@@ -35,8 +35,7 @@ From: ros:noetic-perception
     apt install -y ${packages}
 
     # Pytorch
-    # pip install torch==1.10.0+cu113 torchvision==0.11.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
-    pip install torch torchvision torchaudio torchmetrics tensorboard --extra-index-url https://download.pytorch.org/whl/cu113
+    pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 tensorboard --index-url https://download.pytorch.org/whl/cu118
     # Install python packages
     pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
     pip install -r ${SINGULARITY_ROOTFS}/requirements.txt

@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
-from .cloudproc import position
+from .utils import position
 
 
 __all__ = [
@@ -13,7 +13,9 @@ __all__ = [
 ]
 
 def transform_cloud(cloud, Tr):
-    if cloud.dtype.names is not None:
+    assert isinstance(cloud, np.ndarray) or isinstance(cloud, torch.Tensor), type(cloud)
+    assert isinstance(Tr, np.ndarray) or isinstance(Tr, torch.Tensor), type(Tr)
+    if isinstance(cloud, np.ndarray) and cloud.dtype.names is not None:
         points = position(cloud)
         points = transform_cloud(points, Tr)
         cloud = cloud.copy()
@@ -23,7 +25,7 @@ def transform_cloud(cloud, Tr):
         return cloud
     assert cloud.ndim == 2
     assert cloud.shape[1] == 3  # (N, 3)
-    cloud_tr = np.matmul(Tr[:3, :3], cloud.T) + Tr[:3, 3:]
+    cloud_tr = Tr[:3, :3] @ cloud.T + Tr[:3, 3:]
     return cloud_tr.T
 
 def xyz_rpy_to_matrix(xyz_rpy):
@@ -35,6 +37,10 @@ def xyz_rpy_to_matrix(xyz_rpy):
     return T
 
 def rot2rpy(R):
+    assert isinstance(R, torch.Tensor) or isinstance(R, np.ndarray)
+    assert R.shape == (3, 3)
+    if isinstance(R, np.ndarray):
+        R = torch.as_tensor(R)
     roll = torch.atan2(R[2, 1], R[2, 2])
     pitch = torch.atan2(-R[2, 0], torch.sqrt(R[2, 1] ** 2 + R[2, 2] ** 2))
     yaw = torch.atan2(R[1, 0], R[0, 0])
@@ -46,15 +52,15 @@ def rpy2rot(roll, pitch, yaw):
     yaw = torch.as_tensor(yaw)
     RX = torch.tensor([[1, 0, 0],
                        [0, torch.cos(roll), -torch.sin(roll)],
-                       [0, torch.sin(roll), torch.cos(roll)]])
+                       [0, torch.sin(roll), torch.cos(roll)]], dtype=torch.float32)
 
     RY = torch.tensor([[torch.cos(pitch), 0, torch.sin(pitch)],
                        [0, 1, 0],
-                       [-torch.sin(pitch), 0, torch.cos(pitch)]])
+                       [-torch.sin(pitch), 0, torch.cos(pitch)]], dtype=torch.float32)
 
     RZ = torch.tensor([[torch.cos(yaw), -torch.sin(yaw), 0],
                        [torch.sin(yaw), torch.cos(yaw), 0],
-                       [0, 0, 1]])
+                       [0, 0, 1]], dtype=torch.float32)
     return RZ @ RY @ RX
 
 def test_rpy():
@@ -74,12 +80,12 @@ def test_rpy():
 
 def test_transform_cloud():
     import open3d as o3d
-    from .datasets.data import DEMTrajData
+    from .datasets.data import DEMPathData
     from numpy.lib.recfunctions import structured_to_unstructured as stu
 
     # Load traversability data
     path = '/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    ds = DEMTrajData(path)
+    ds = DEMPathData(path)
     print('Dataset contains %i samples' % len(ds))
     # Choose data sample
     # i = np.random.choice(range(len(ds)))

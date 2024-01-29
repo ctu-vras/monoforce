@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.lib.recfunctions import unstructured_to_structured
+from numpy.lib.recfunctions import unstructured_to_structured, structured_to_unstructured
 from PIL import Image, ImageFile
 import rospy
 from timeit import default_timer as timer
@@ -271,3 +271,19 @@ def write_to_yaml(cfg: dict, path):
 
 def str2bool(v):
     return v.lower() in ('1', 'yes', 'true', 't', 'y')
+
+def position(cloud):
+    """Cloud to point positions (xyz)."""
+    if cloud.dtype.names:
+        x = structured_to_unstructured(cloud[['x', 'y', 'z']])
+    else:
+        x = cloud
+    return x
+
+def color(cloud):
+    """Color to rgb."""
+    if cloud.dtype.names:
+        rgb = structured_to_unstructured(cloud[['r', 'g', 'b']])
+    else:
+        rgb = cloud
+    return rgb

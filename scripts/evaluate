@@ -12,7 +12,7 @@ from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference, traj_dist
 from monoforce.models import monolayout, Geom2Trav
 from monoforce.transformations import rot2rpy, transform_cloud
-from monoforce.cloudproc import position
+from monoforce.utils import position
 from mayavi import mlab
 from tqdm import tqdm
 import pandas as pd
