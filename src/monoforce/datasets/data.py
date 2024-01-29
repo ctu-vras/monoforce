@@ -272,6 +272,9 @@ class DEMPathData(Dataset):
         return T
 
     def get_poses(self):
+        if not os.path.exists(self.poses_path):
+            print(f'Trajectory poses file {self.poses_path} does not exist')
+            return None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
         stamps, Ts = data[:, 0], data[:, 1:13]
         poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)

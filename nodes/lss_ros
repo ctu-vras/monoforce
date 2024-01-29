@@ -90,7 +90,7 @@ class LSS:
             rospy.logerr('No LSS model weights provided, using random weights')
             return model
         rospy.loginfo('Loading LSS model from %s' % modelf)
-        model.load_state_dict(torch.load(modelf))
+        model.load_state_dict(torch.load(modelf, map_location=self.cfg.device))
         model.to(self.cfg.device)
         model.eval()
         return model
