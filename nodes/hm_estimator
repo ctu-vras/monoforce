@@ -118,7 +118,7 @@ class HeightMapEstimator:
                                                      time=msg.header.stamp,
                                                      timeout=rospy.Duration(0.5))
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-                rospy.logwarn('Could not get transform from %s to %s' % (msg.header.frame_id, self.cfg.robot_frame))
+                rospy.logwarn('Could not get transform from %s to %s' % (msg.header.frame_id, self.robot_frame))
                 return
             Tr = numpify(tf.transform).reshape((4, 4))
             points = np.matmul(Tr[:3, :3], points.T).T + Tr[:3, 3]
