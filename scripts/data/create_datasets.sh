@@ -5,6 +5,10 @@
 # It also adds calibrations, colors and velocities to the point clouds
 
 DATA_PATH=/home/$USER/data/robingas/data
+if [ ! -d "$DATA_PATH" ]; then
+    echo "Data path does not exist: $DATA_PATH"
+    exit 1
+fi
 INPUT_DATA_STEP=20
 IMU_TOPIC='/imu/data'
 CONTROL_MODEL='diffdrive'
@@ -22,11 +26,19 @@ SEQUENCES=(
 )
 
 # source ROS workspace
+if [ ! -d "/home/$USER/workspaces/traversability_ws" ]; then
+    echo "ROS workspace does not exist: /home/$USER/workspaces/traversability_ws"
+    exit 1
+fi
 source /home/$USER/workspaces/traversability_ws/devel/setup.bash
 
 # loop through bag files
 for SEQ in "${SEQUENCES[@]}"
 do
+    if [ ! -f "${SEQ}.bag" ]; then
+        echo "Bag file does not exist: ${SEQ}.bag"
+        continue
+    fi
     echo "Processing bag file: ${SEQ}.bag"
     # if husky in bag file name, use cloud topic /points
     if [[ $SEQ == *"husky"* ]]; then
