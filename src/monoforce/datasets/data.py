@@ -8,7 +8,7 @@ from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
 from matplotlib import cm, pyplot as plt
 from mayavi import mlab
 from ..config import Config
-from ..transformations import transform_cloud, rot2rpy, rpy2rot
+from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, color
 from ..cloudproc import filter_grid, filter_range
@@ -1130,9 +1130,6 @@ def vis_rgb_cloud():
 
 
 def traversed_height_map():
-    from mayavi import mlab
-    from ..vis import draw_coord_frames
-
     path = np.random.choice(seq_paths)
     assert os.path.exists(path)
 
@@ -1171,33 +1168,6 @@ def traversed_height_map():
     plt.subplot(133)
     plt.imshow(img)
     plt.show()
-
-    # # draw height map as a surface
-    # mlab.figure(size=(800, 800))
-    # # mlab.mesh(x_grid, y_grid, height_est, color=(0, 0, 1), opacity=0.3)
-    # mlab.mesh(x_grid, y_grid, height, color=(0, 1, 0), opacity=0.4)
-    # # add wireframe
-    # mlab.mesh(x_grid, y_grid, height, color=(0, 0, 0), representation='wireframe', opacity=0.2)
-    # # draw trajectory
-    # mlab.plot3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(1, 0, 0), tube_radius=0.02)
-    # draw_coord_frames(poses, scale=0.1)
-
-    # # draw point cloud with colors denoting height (from blue to red)
-    # # https://stackoverflow.com/questions/54263312/plotting-3d-points-with-different-colors-in-mayavi-python
-    # s = points[:, 2]
-    # s = (s - s.min()) / (s.max() - s.min())
-    # # Create and populate lookup table (the integer index in s corresponding
-    # #   to the point will be used as the row in the lookup table
-    # lut = np.zeros((len(s), 4))
-    # # A simple lookup table that transitions from red (at index 0) to
-    # #   blue (at index len(data)-1)
-    # for row, f in enumerate(s):
-    #     lut[row, :] = [255 * (1 - f), 0, 255 * f, 255]
-    #
-    # p3d = mlab.points3d(points[:, 0], points[:, 1], points[:, 2], s, scale_mode='none', scale_factor=0.01)
-    # p3d.module_manager.scalar_lut_manager.lut.number_of_colors = len(s)
-    # p3d.module_manager.scalar_lut_manager.lut.table = lut
-    # mlab.show()
 
 
 def vis_train_sample():
@@ -1249,22 +1219,7 @@ def vis_hm_weights():
     set_axes_equal(ax)
     plt.show()
 
-    # path = 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # # path = 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    # path = os.path.join(os.path.join(data_dir, path))
-    # cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
-    #
-    # ds = MonoDemDataset(path=path,
-    #                     cfg=cfg)
-    # i = np.random.choice(range(len(ds)))
-    # # i = 0
-    # print(f'Visualizing sample {i}...')
-    # ds.__getitem__(i, visualize=True)
-
-
 def vis_estimated_height_map():
-    from time import time
-
     cfg = Config()
     cfg.grid_res = 0.1
     cfg.d_max = 12.8
@@ -1275,17 +1230,6 @@ def vis_estimated_height_map():
 
     path = np.random.choice(seq_paths)
     ds = DEMPathData(path=path, cfg=cfg)
-
-    # # check performance
-    # for interp_method in ['nearest', 'linear', 'cubic', None]:
-    #     print(f'Interpolation method: {interp_method}')
-    #     t = time()
-    #     for i in tqdm(range(len(ds))):
-    #         cloud = ds.get_cloud(i)
-    #         points = position(cloud)
-    #         ds.cfg.hm_interp_method = interp_method
-    #         ds.estimate_heightmap(points)
-    #     print(f'Average time per sample: {(time() - t) / len(ds)} s')
 
     i = np.random.choice(range(len(ds)))
     # i = 0

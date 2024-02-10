@@ -153,6 +153,7 @@ def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, ro
 
     dir = os.path.dirname(bag_paths[0])
     name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
+    fmt_kwargs = {'dir': dir, 'name': name}
 
     n = [int(np.floor(h / time_step)) for h in time_horizon]
 
@@ -194,7 +195,6 @@ def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, ro
                     continue
                 # print('Processing %s at %.3f s.' % (topic, stamp.to_sec()))
 
-                fmt_kwargs = {'dir': dir, 'name': name}
                 if hasattr(msg, 'header'):
                     secs, nsecs = msg.header.stamp.secs, msg.header.stamp.nsecs
                     start = msg.header.stamp.to_sec()
@@ -373,10 +373,10 @@ def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1
                     if save:
                         print('Saving image from topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
                         # save images
-                        os.makedirs(os.path.dirname(output_img_path), exist_ok=True)
                         path = output_img_path.format(dir=dir, name=name,
                                                       secs=time_stamps[i].secs, nsecs=time_stamps[i].nsecs,
                                                       camera=camera)
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
                         cv2.imwrite(path, img_raw)
 
 
