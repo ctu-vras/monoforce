@@ -62,14 +62,15 @@ seq_paths = [
 seq_paths = [os.path.normpath(path) for path in seq_paths]
 
 sim_seq_paths = [
-        os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_emptyfarm_2024-01-03-13-36-25_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_inspection_2024-01-03-14-06-53_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_2024-01-03-13-55-37_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_2024-01-09-17-56-34_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_2024-01-09-17-50-23_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
+        os.path.join(data_dir, 'husky_sim/rgb/husky_terrain_vegetation_2024-02-07-09-24-06_trav'),
 ]
 sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 
