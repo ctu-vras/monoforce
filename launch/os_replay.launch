@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<launch>
+    <arg name="rate" default="1.0"/>
+    <arg name="start" default="0.0"/>
+    <arg name="rviz" default="false"/>
+
+    <param name="use_sim_time" value="true"/>
+    <include file="$(find ouster_ros)/launch/replay.launch">
+            <arg name="ouster_ns" value="ouster"/>
+	    <arg name="sensor_frame" value="os_sensor"/>
+	    <arg name="metadata" value="$(dirname)/../config/ouster/os1-122047000415-metadata.json"/>
+	    <arg name="viz" value="false"/>
+    </include>
+
+    <!-- Rviz -->
+    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/radarize.rviz"/>
+</launch>

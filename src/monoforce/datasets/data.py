@@ -7,32 +7,25 @@ from torch.utils.data import Dataset
 from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
 from matplotlib import cm, pyplot as plt
 from mayavi import mlab
-from ..models.lss.model import compile_model
-from ..models.lss.tools import normalize_img, denormalize_img
 from ..config import Config
 from ..transformations import transform_cloud, rot2rpy, rpy2rot
 from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, color
 from ..cloudproc import filter_grid, filter_range
 from ..imgproc import undistort_image, project_cloud_to_image
-from .augmentations import horizontal_shift
 from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
 from ..utils import normalize
 from .utils import load_cam_calib
 import cv2
 import albumentations as A
-from ..models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask
 from PIL import Image
 from tqdm import tqdm
 try:
-    mpl.use('QtAgg')
+    mpl.use('Qt5Agg')
 except:
-    print('Could not set matplotlib backend to QtAgg')
-    pass
-
+    print('Failed to set matplotlib backend to Qt5Agg')
 
 __all__ = [
-    'SegmentationData',
     'DEMPathData',
     'RigidDEMPathData',
     'MonoDEMData',
@@ -62,147 +55,16 @@ seq_paths = [
 seq_paths = [os.path.normpath(path) for path in seq_paths]
 
 sim_seq_paths = [
-        os.path.join(data_dir, 'husky_sim/rgb/husky_emptyfarm_2024-01-03-13-36-25_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_inspection_2024-01-03-14-06-53_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_2024-01-03-13-55-37_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_2024-01-09-17-56-34_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_simcity_2024-01-09-17-50-23_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
-        os.path.join(data_dir, 'husky_sim/rgb/husky_terrain_vegetation_2024-02-07-09-24-06_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23_trav'),
+        os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
 ]
 sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
-
-
-class SegmentationData(Dataset):
-    """
-    Class to wrap semi-supervised traversability data generated using lidar odometry and IMU.
-    Please, have a look at the `save_clouds_and_trajectories_from_bag` script for data generation from bag file.
-
-    A sample of the dataset contains:
-    - depth projection of a point cloud (H x W)
-    - semantic label projection of a point cloud (H x W)
-    """
-
-    def __init__(self, path, split='val'):
-        super(Dataset, self).__init__()
-        assert split in ['train', 'val']
-        self.split = split
-        self.path = path
-        self.cloud_path = os.path.join(path, 'clouds')
-        assert os.path.exists(self.cloud_path)
-        self.traj_path = os.path.join(path, 'trajectories')
-        assert os.path.exists(self.traj_path)
-        self.ids = [f[:-4] for f in os.listdir(self.cloud_path)]
-        self.proj_fov_up = 45
-        self.proj_fov_down = -45
-        self.proj_H = 128
-        self.proj_W = 1024
-        self.ignore_label = IGNORE_LABEL
-
-    def range_projection(self, points, labels):
-        """ Project a point cloud into a sphere.
-        """
-        # laser parameters
-        fov_up = self.proj_fov_up / 180.0 * np.pi  # field of view up in rad
-        fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
-        fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad
-
-        # get depth of all points
-        depth = np.linalg.norm(points, 2, axis=1)
-
-        # get scan components
-        scan_x = points[:, 0]
-        scan_y = points[:, 1]
-        scan_z = points[:, 2]
-
-        # get angles of all points
-        yaw = -np.arctan2(scan_y, scan_x)
-        pitch = np.arcsin(scan_z / (depth + 1e-8))
-
-        # get projections in image coords
-        proj_x = 0.5 * (yaw / np.pi + 1.0)  # in [0.0, 1.0]
-        proj_y = 1.0 - (pitch + abs(fov_down)) / fov  # in [0.0, 1.0]
-
-        # scale to image size using angular resolution
-        proj_x *= self.proj_W  # in [0.0, W]
-        proj_y *= self.proj_H  # in [0.0, H]
-
-        # round and clamp for use as index
-        proj_x = np.floor(proj_x)
-        proj_x = np.minimum(self.proj_W - 1, proj_x)
-        proj_x = np.maximum(0, proj_x).astype(np.int32)  # in [0,W-1]
-
-        proj_y = np.floor(proj_y)
-        proj_y = np.minimum(self.proj_H - 1, proj_y)
-        proj_y = np.maximum(0, proj_y).astype(np.int32)  # in [0,H-1]
-
-        # order in decreasing depth
-        indices = np.arange(depth.shape[0])
-        order = np.argsort(depth)[::-1]
-        depth = depth[order]
-        proj_y = proj_y[order]
-        proj_x = proj_x[order]
-        indices = indices[order]
-
-        # assing to image
-        proj_range = np.full((self.proj_H, self.proj_W), -1, dtype=np.float32)
-        proj_range[proj_y, proj_x] = depth
-
-        # projected index (for each pixel, what I am in the pointcloud)
-        # [H,W] index (-1 is no data)
-        proj_idx = np.full((self.proj_H, self.proj_W), -1, dtype=np.int32)
-        proj_idx[proj_y, proj_x] = indices
-        # only map colors to labels that exist
-        mask = proj_idx >= 0
-
-        # projection color with semantic labels
-        proj_sem_label = np.full((self.proj_H, self.proj_W), self.ignore_label, dtype=np.float32)  # [H,W]  label
-        proj_sem_label[mask] = labels[proj_idx[mask]]
-
-        # projected point cloud xyz - [H,W,3] xyz coord (-1 is no data)
-        proj_xyz = np.full((self.proj_H, self.proj_W, 3), -1, dtype=np.float32)
-        proj_xyz[proj_y, proj_x] = points[order]
-
-        return proj_range, proj_sem_label, proj_xyz
-
-    def __getitem__(self, i, visualize=False):
-        ind = self.ids[i]
-        cloud = np.load(os.path.join(self.cloud_path, '%s.npz' % ind))['cloud']
-
-        if cloud.ndim == 2:
-            cloud = cloud.reshape((-1,))
-
-        points = position(cloud)
-        trav = np.asarray(cloud['traversability'], dtype=points.dtype)
-
-        depth_proj, label_proj, points_proj = self.range_projection(points, trav)
-
-        if self.split == 'train':
-            # data augmentation: add rotation around vertical axis (Z)
-            H, W = depth_proj.shape
-            shift = np.random.choice(range(1, W))
-            depth_proj = horizontal_shift(depth_proj, shift=shift)
-            label_proj = horizontal_shift(label_proj, shift=shift)
-            # point projected have shape (H, W, 3)
-            points_proj_shifted = np.zeros_like(points_proj)
-            points_proj_shifted[:, :shift, :] = points_proj[:, -shift:, :]
-            points_proj_shifted[:, shift:, :] = points_proj[:, :-shift, :]
-            points_proj = points_proj_shifted
-
-        points_proj = points_proj.reshape((-1, 3))
-
-        if visualize:
-            valid = trav != self.ignore_label
-            show_cloud(points_proj, label_proj.reshape(-1, ),
-                       min=trav[valid].min(), max=trav[valid].max() + 1, colormap=cm.jet)
-
-        return depth_proj[None], label_proj[None]
-
-    def __len__(self):
-        return len(self.ids)
-
 
 class DEMPathData(Dataset):
     """
@@ -336,15 +198,22 @@ class DEMPathData(Dataset):
 
     def get_cloud_color(self, i):
         ind = self.ids[i]
+        if not os.path.exists(self.cloud_color_path):
+            return None
         rgb = np.load(os.path.join(self.cloud_color_path, '%s.npz' % ind))['rgb']
         # convert to structured numpy array with 'r', 'g', 'b' fields
         color = unstructured_to_structured(rgb, names=['r', 'g', 'b'])
         return color
 
     def get_raw_image(self, i, camera='front'):
-        if camera in ['front', 'rear', 'left', 'right', 'up']:
-            prefix = 'camera_fisheye_' if 'marv' in self.path and camera in ['front', 'rear'] else 'camera_'
-            camera = prefix + camera
+        if 'robingas' in self.path:
+            if camera in ['front', 'rear', 'left', 'right', 'up']:
+                prefix = 'camera_fisheye_' if 'marv' in self.path and camera in ['front', 'rear'] else 'camera_'
+                camera = prefix + camera
+            else:
+                raise ValueError(f'Unknown camera name {camera}')
+        else:
+            camera = 'ids_camera'
         ind = self.ids[i]
         img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
         assert os.path.exists(img_path), f'Image path {img_path} does not exist'
@@ -403,15 +272,15 @@ class DEMPathData(Dataset):
 
     def __getitem__(self, i, visualize=False):
         cloud = self.get_cloud(i)
+        if os.path.exists(self.cloud_color_path):
+            color = self.get_cloud_color(i)
+            cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
         points = position(cloud)
-        color = self.get_cloud_color(i)
-        # merge cloud and colors
-        cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
 
         if visualize:
             trav = np.asarray(cloud['traversability'], dtype=points.dtype)
             valid = trav != IGNORE_LABEL
-            show_cloud(points, min=trav[valid].min(), max=trav[valid].max() + 1, colormap=cm.jet)
+            show_cloud(points, min=trav[valid].min(), max=trav[valid].max() + 1)
 
         traj = self.get_traj(i)
         height = self.estimate_heightmap(points, fill_value=0.)
@@ -1114,16 +983,6 @@ class TravDataVis(TravData):
         return ds
 
 
-def segm_demo():
-    path = seq_paths[0]
-    assert os.path.exists(path)
-    ds = SegmentationData(path)
-
-    # visualize a sample from the data set
-    for i in np.random.choice(range(len(ds)), 1):
-        _ = ds.__getitem__(i, visualize=True)
-
-
 def heightmap_demo():
     from ..vis import show_cloud_plt
     from ..cloudproc import filter_grid, filter_range
@@ -1172,8 +1031,16 @@ def extrinsics_demo():
 
         Tr_robot_lidar = ds.calib['transformations'][f'T_{robot_frame}__{lidar_frame}']['data']
         Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
-        camera_frames = ['camera_left', 'camera_right', 'camera_up', 'camera_fisheye_front', 'camera_fisheye_rear'] \
-        if 'marv' in path else ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
+
+        if 'robingas' in path:
+            if 'marv' in path:
+                camera_frames = ['camera_left', 'camera_right', 'camera_up', 'camera_fisheye_front', 'camera_fisheye_rear']
+            else:
+                camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
+        elif 'sim' in path:
+            camera_frames = ['realsense_left', 'realsense_right', 'realsense_front', 'realsense_rear']
+        else:
+            camera_frames = ['ids_camera']
 
         cam_poses = []
         for frame in camera_frames:
@@ -1206,6 +1073,8 @@ def vis_rgb_cloud():
         # i = 10
         cloud = ds.get_cloud(i)
         colors = ds.get_cloud_color(i)
+        if colors is None:
+            colors = np.zeros_like(cloud)
 
         # poses
         traj = ds.get_traj(i)
@@ -1475,7 +1344,7 @@ def vis_img_augs():
 def global_cloud_demo():
     for path in seq_paths:
         ds = DEMPathData(path=path)
-        ds.global_cloud(vis=True, step_size=100)
+        ds.global_cloud(vis=True)
 
 
 def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
@@ -1567,10 +1436,9 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
 
 
 def main():
-    segm_demo()
     heightmap_demo()
     extrinsics_demo()
-    vis_rgb_cloud()
+    # vis_rgb_cloud()
     traversed_height_map()
     vis_train_sample()
     vis_hm_weights()

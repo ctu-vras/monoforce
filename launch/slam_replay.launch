@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="rviz" default="true"/>
+    <arg name="record" default="false"/>
+    <arg name="record_folder" default="$(dirname)"/>
+
+    <!-- Robot data: from bag file -->
+    <include file="$(dirname)/replay.launch">
+        <arg name="rviz" value="false"/>
+    </include>
+
+    <!-- SLAM -->
+    <include file="$(dirname)/slam.launch">
+        <arg name="cloud" value="ouster/points"/>
+        <arg name="odom_frame" value="odom"/>
+        <arg name="robot_frame" value="base_link"/>
+    </include>
+
+    <!-- RVIZ -->
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(dirname)/../config/rviz/radarize.rviz"/>
+
+    <!-- Record new bag files -->
+    <node if="$(arg record)" pkg="rosbag" type="record" name="rosbag_record_tf"
+          args="/tf -O $(arg record_folder)/map2odom.bag"/>
+    <node if="$(arg record)" pkg="rosbag" type="record" name="rosbag_record_points"
+          args="/point_cloud_deskewed -O $(arg record_folder)/points.bag"/>
+</launch>

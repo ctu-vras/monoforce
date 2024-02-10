@@ -10,7 +10,6 @@ import torch
 import open3d as o3d
 from mayavi import mlab
 from .config import Config
-import pylab as pl
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
@@ -24,37 +23,7 @@ __all__ = [
     'plot_grad_flow',
     'draw_coord_frames',
     'draw_coord_frame',
-    'mlab_imshow',
 ]
-
-
-# https://stackoverflow.com/questions/24471210/how-to-draw-a-color-image-in-mayavi-imshow
-def mlab_imshow(img, alpha=255, **kwargs):
-    """
-    Plot a color image with mayavi.mlab.imshow.
-    im is a ndarray with dim (n, m, 3) and scale (0->255]
-    alpha is a single number or a ndarray with dim (n*m) and scale (0->255]
-    **kwargs is passed onto mayavi.mlab.imshow(..., **kwargs)
-    """
-    try:
-        alpha[0]
-    except:
-        alpha = pl.ones(img.shape[0] * img.shape[1]) * alpha
-    if len(alpha.shape) != 1:
-        alpha = alpha.flatten()
-
-    # The lut is a Nx4 array, with the columns representing RGBA
-    # (red, green, blue, alpha) coded with integers going from 0 to 255,
-    # we create it by stacking all the pixles (r,g,b,alpha) as rows.
-    myLut = pl.c_[img.reshape(-1, 3), alpha]
-    myLutLookupArray = pl.arange(img.shape[0] * img.shape[1]).reshape(img.shape[0], img.shape[1])
-
-    # We can display an color image by using mlab.imshow, a lut color list and a lut lookup table.
-    theImshow = mlab.imshow(myLutLookupArray, colormap='binary', **kwargs)  # temporary colormap
-    theImshow.module_manager.scalar_lut_manager.lut.table = myLut
-    mlab.draw()
-
-    return theImshow
 
 def draw_points_on_image(points, color, image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)

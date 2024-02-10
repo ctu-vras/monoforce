@@ -1,7 +1,7 @@
 import os.path
 
 import torch
-from .geometry import affine
+from .segmentation import affine
 from .transformations import rot2rpy, rpy2rot, transform_cloud
 from .utils import timing, position
 from .vis import show_cloud
@@ -114,36 +114,6 @@ def valid_point_mask(arr, discard_tf=None, discard_model=None):
         y = affine(discard_tf, x)
         valid = np.logical_and(valid, ~discard_model.contains_point(y))
     return valid.reshape(arr.shape)
-
-@timing
-def compute_rigid_support(arr, transform=None, range=None, grid=None, scale=1.0, radius=0.1, min_support=30):
-    xyz = position(arr)
-    xyz = xyz.reshape((-1, 3))
-
-    if transform is not None:
-        # xyz = affine(transform, xyz.T).T
-        # Only rotate so that range is applied in sensor frame.
-        xyz = np.matmul(xyz, transform[:3, :3].T)
-
-    filtered = xyz.copy()
-    if range is not None:
-        filtered = filter_range(xyz, *range)
-    if grid is not None:
-        filtered = filter_grid(xyz, grid)
-
-    xyz = scale * xyz
-    filtered = scale * filtered
-
-    tree = cKDTree(filtered, compact_nodes=False, balanced_tree=False)
-    ind = tree.query_ball_point(xyz, radius, workers=-1)
-
-    support = np.array([len(i) for i in ind]).astype(np.uint32)
-    support = support.reshape(arr.shape)
-
-    rigid = support >= min_support
-
-    return support, rigid
-
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_interp_method='nearest',
                        fill_value=0., robot_z=0., return_filtered_points=False,

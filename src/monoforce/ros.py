@@ -249,7 +249,7 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
                     verbose=False, return_time_diff=False):
     assert isinstance(bag, Bag)
     assert isinstance(topic, str)
-    assert isinstance(time_moment, float) and time_moment > 0
+    assert isinstance(time_moment, float)
     assert isinstance(time_window, float) and time_window > 0
     assert isinstance(max_time_diff, float) and max_time_diff > 0
 
@@ -267,12 +267,13 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
         msgs.append(msg)
 
     if len(stamps_in_window) == 0:
-        # raise Exception('No image messages in window')
+        # # raise Exception('No image messages in window')
         print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time_moment, topic))
-        print('Trying to increase time_window twice (%f [sec])' % (2*time_window))
-        return get_closest_msg(bag=bag, topic=topic, time_moment=time_moment, time_window=time_window * 2.0,
-                               max_time_diff=max_time_diff, max_time_window=max_time_window,
-                               verbose=verbose, return_time_diff=return_time_diff)
+        # print('Trying to increase time_window twice (%f [sec])' % (2*time_window))
+        # return get_closest_msg(bag=bag, topic=topic, time_moment=time_moment, time_window=time_window * 2.0,
+        #                        max_time_diff=max_time_diff, max_time_window=max_time_window,
+        #                        verbose=verbose, return_time_diff=return_time_diff)
+        return None
 
     time_diffs = np.abs(np.array(stamps_in_window) - time_moment)
     msg = msgs[np.argmin(time_diffs)]
@@ -291,7 +292,7 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
 def get_cams_robot_transformations(bag_path, camera_topics, robot_frame, tf_buffer, save=True, output_path=None):
     dir = os.path.dirname(bag_path)
     if output_path is None:
-        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        output_path_pattern = '{dir}/{name}/calibration/transformations.yaml'
         output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -345,10 +346,15 @@ def get_cams_robot_transformations(bag_path, camera_topics, robot_frame, tf_buff
     return Trs
 
 
-def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buffer, save=True, output_path=None):
+def get_cams_lidar_transformations(bag_path, camera_topics, lidar_frame, tf_buffer, save=True, output_path=None):
+    if isinstance(bag_path, list):
+        assert len(bag_path) > 0, 'No bag files provided'
+        bag_path = bag_path[0]
+        print('Using the first bag file from:', bag_path)
+
     dir = os.path.dirname(bag_path)
     if output_path is None:
-        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        output_path_pattern = '{dir}/{name}/calibration/transformations.yaml'
         output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -356,50 +362,28 @@ def get_cams_lidar_transformations(bag_path, camera_topics, lidar_topic, tf_buff
         try:
             with Bag(bag_path, 'r') as bag:
                 for cam_topic in camera_topics:
-                    img_msg = None
-                    cloud_msg = None
-                    for topic, msg, stamp in bag.read_messages(topics=[cam_topic] + [lidar_topic]):
-                        if topic == lidar_topic:
-                            cloud_msg = msg
-                            # print('Got cloud msg at %.3f s' % cloud_msg.header.stamp.to_sec())
-                        if topic == cam_topic:
-                            img_msg = msg
-                            # print('Got image msg at %.3f s' % img_msg.header.stamp.to_sec())
-
-                        if img_msg is None:
-                            # print('No image msg read from %s' % bag_path)
-                            continue
-
-                        if cloud_msg is None:
-                            # print('No lidar msg read from %s' % bag_path)
-                            continue
-
-                        print('Got both image and lidar msgs at %.3f s and %.3f' %
-                              (img_msg.header.stamp.to_sec(), cloud_msg.header.stamp.to_sec()))
-
+                    for topic, img_msg, stamp in bag.read_messages(topics=[cam_topic]):
                         # find transformation between camera and lidar
                         try:
                             lidar_to_camera = tf_buffer.lookup_transform_core(img_msg.header.frame_id,
-                                                                              cloud_msg.header.frame_id,
-                                                                              cloud_msg.header.stamp)
+                                                                              lidar_frame,
+                                                                              img_msg.header.stamp)
                         except TransformException as ex:
                             print('Could not transform from %s to %s at %.3f s.' %
-                                  (cloud_msg.header.frame_id, img_msg.header.frame_id, cloud_msg.header.stamp.to_sec()))
+                                  (lidar_frame, img_msg.header.frame_id, img_msg.header.stamp.to_sec()))
                             continue
-                        print('Got transformation from %s to %s at %.3f s' % (cloud_msg.header.frame_id,
+                        print('Got transformation from %s to %s at %.3f s' % (lidar_frame,
                                                                               img_msg.header.frame_id,
-                                                                              cloud_msg.header.stamp.to_sec()))
+                                                                              img_msg.header.stamp.to_sec()))
                         Tr = numpify(lidar_to_camera.transform)
                         print('Tr:\n', Tr)
 
-                        # save transformation to output_path_patern yaml file
+                        # save transformation to yaml file
                         if save:
                             camera = cam_topic.split('/')[1]
                             print('Saving to %s' % output_path)
 
-                            # lidar = cloud_msg.header.frame_id
-                            lidar = 'os_sensor'
-                            f.write('T_{lidar}__{camera}:\n'.format(lidar=lidar, camera=camera))
+                            f.write(f'T_{lidar_frame}__{camera}:\n')
                             f.write('  rows: 4\n')
                             f.write('  cols: 4\n')
                             f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
@@ -414,9 +398,14 @@ def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
     """
     Read camera intrinsics and distortion coefficients from bag file
     """
+    if isinstance(bag_path, list):
+        assert len(bag_path) > 0, 'No bag files provided'
+        bag_path = bag_path[0]
+        print('Using the first bag file from:', bag_path)
+
     if output_path is None:
         dir = os.path.dirname(bag_path)
-        output_path_pattern = '{dir}/{name}_trav/calibration/cameras/'
+        output_path_pattern = '{dir}/{name}/calibration/cameras/'
         output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
     os.makedirs(output_path, exist_ok=True)
 
@@ -460,13 +449,16 @@ def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
     return Ks, Ds
 
 
-def append_transformation(bag_path, source_frame='base_link', target_frame='base_footprint', save=True, tf_buffer=None,
+def append_transformation(bag_paths, source_frame='base_link', target_frame='base_footprint', save=True, tf_buffer=None,
                           matrix_name=None):
     """
     Append transformation from source_frame to target_frame to the yaml file
     """
+    assert isinstance(bag_paths, list)
+    assert len(bag_paths) > 0, 'No bag files provided'
+
     if tf_buffer is None:
-        tf_buffer = load_tf_buffer([bag_path], tf_topics=['/tf_static'])
+        tf_buffer = load_tf_buffer(bag_paths, tf_topics=['/tf_static'])
     try:
         transform = tf_buffer.lookup_transform_core(source_frame, target_frame, rospy.Time())
         Tr = numpify(transform.transform)
@@ -477,7 +469,8 @@ def append_transformation(bag_path, source_frame='base_link', target_frame='base
     print(Tr)
 
     if save:
-        output_path_pattern = '{dir}/{name}_trav/calibration/transformations.yaml'
+        bag_path = bag_paths[0]
+        output_path_pattern = '{dir}/{name}/calibration/transformations.yaml'
         output_path = output_path_pattern.format(dir=os.path.dirname(bag_path),
                                                  name=os.path.basename(bag_path).replace('.bag', ''))
 
