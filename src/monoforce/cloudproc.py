@@ -116,7 +116,7 @@ def valid_point_mask(arr, discard_tf=None, discard_model=None):
     return valid.reshape(arr.shape)
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_interp_method='nearest',
-                       fill_value=0., robot_z=0., return_filtered_points=False,
+                       fill_value=0., robot_size=1.0, return_filtered_points=False,
                        map_pose=np.eye(4), grass_range=(0.1, 1.0)):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
@@ -127,7 +127,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     assert isinstance(h_max, (float, int)) and h_max >= 0.
     assert hm_interp_method in ['linear', 'nearest', 'cubic', None]
     assert fill_value is None or isinstance(fill_value, (float, int))
-    assert robot_z is None or isinstance(robot_z, (float, int))
+    assert robot_size is None or isinstance(robot_size, (float, int)) and robot_size > 0.
     assert isinstance(return_filtered_points, bool)
     assert map_pose.shape == (4, 4)
     assert grass_range is None or isinstance(grass_range, (tuple, list)) and len(grass_range) == 2
@@ -153,27 +153,21 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     # filter point cloud in a square
     mask_sq = np.logical_and(np.abs(points[:, 0]) <= d_max, np.abs(points[:, 1]) <= d_max)
 
+    # points around robot
+    if robot_size is not None:
+        mask_cyl = np.sqrt(points[:, 0] ** 2 + points[:, 1] ** 2) <= robot_size / 2.
+    else:
+        mask_cyl = np.zeros(len(points), dtype=bool)
+
     # combine and apply masks
     mask = np.logical_and(~mask_grass, mask_h)
     mask = np.logical_and(mask, mask_sq)
+    mask = np.logical_and(mask, ~mask_cyl)
     points = points[mask]
     if len(points) == 0:
         if return_filtered_points:
             return None, None
         return None
-
-    # add a point cloud under the robot with robot_z height
-    d_robot = d_min if d_min > 0. else 0.6
-    n_robot = int(2 * d_robot / grid_res)
-    x_robot = np.linspace(-d_robot, d_robot, n_robot)
-    y_robot = np.linspace(-d_robot, d_robot, n_robot)
-    x_robot, y_robot = np.meshgrid(x_robot, y_robot)
-    z_robot = np.full(x_robot.shape, fill_value=robot_z)
-    robot_points = np.stack([x_robot, y_robot, z_robot], axis=2)
-    robot_points = robot_points.reshape((-1, 3))
-    # robot robot points to robot frame
-    robot_points = robot_points @ map_pose[:3, :3].T
-    points = np.concatenate([points, robot_points], axis=0)
 
     # create a grid
     n = int(2 * d_max / grid_res)
@@ -184,20 +178,17 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     if hm_interp_method is None:
         # estimate heightmap
         z_grid = np.full(x_grid.shape, fill_value=fill_value)
+        mask_meas = np.zeros_like(z_grid)
         for i in range(len(points)):
-            xp = points[i, 0]
-            yp = points[i, 1]
-            zp = points[i, 2]
+            xp, yp, zp = points[i]
             # find the closest grid point
-            idx_x = np.argmin(np.abs(x_grid[0, :] - xp))
-            idx_y = np.argmin(np.abs(y_grid[:, 0] - yp))
+            idx_x = np.argmin(np.abs(xi - xp))
+            idx_y = np.argmin(np.abs(yi - yp))
             # update heightmap
             if z_grid[idx_y, idx_x] == fill_value or zp > z_grid[idx_y, idx_x]:
                 z_grid[idx_y, idx_x] = zp
-            else:
-                # print('Point is lower than the current heightmap value, skipping...')
-                pass
-        mask_meas = np.asarray(z_grid != fill_value, dtype=np.float32)
+                mask_meas[idx_y, idx_x] = 1.
+        mask_meas = mask_meas.astype(np.float32)
     else:
         X, Y, Z = points[:, 0], points[:, 1], points[:, 2]
         z_grid = griddata((X, Y), Z, (xi[None, :], yi[:, None]),
@@ -282,7 +273,7 @@ def demo():
 
     hm = estimate_heightmap(points, d_min=cfg.d_min, d_max=cfg.d_max, grid_res=cfg.grid_res,
                             h_max=cfg.h_max, hm_interp_method=cfg.hm_interp_method,
-                            fill_value=0., robot_z=-0.1, return_filtered_points=False,
+                            fill_value=0., return_filtered_points=False,
                             map_pose=map_pose, grass_range=cfg.grass_range)
 
     hm_cloud = np.stack([hm['x'], hm['y'], hm['z'].T], axis=2)[hm['mask'].astype(bool).T]

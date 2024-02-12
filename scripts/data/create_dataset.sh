@@ -4,9 +4,9 @@
 # It saves point clouds and trajectories from a bag file
 # It also adds calibrations: camera info and transforms
 
-TIME_STEP=1.0
-VIS=True
-SAVE=False
+TIME_STEP=5.0
+VIS=False
+SAVE=True
 
 # list of bag files in a directory
 #BAG_PATHS='/media/ruslan/SSD/data/bags/ORU/2024_02_07_Husky_campus_forest_bushes/bags/radarize__2024-02-07-10-47-13_0.bag
@@ -40,5 +40,4 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
                    --camera-topics ${CAMERA_TOPICS} \
                    --camera-info-topics ${CAMERA_INFO_TOPICS} \
                    --robot-model 'Box()' --discard-model 'Box()' \
-                   --time-step ${TIME_STEP} --visualize $VIS --save-data $SAVE \
-                   --input-step 200
+                   --time-step ${TIME_STEP} --visualize $VIS --save-data $SAVE
