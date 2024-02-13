@@ -288,8 +288,8 @@ def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, ro
                         show_cloud(points, label)
 
                     if save_data:
-                        print('Storing cloud with %.2f valid labels and %.2f traversed points.' %
-                              (valid_labels_ratio, traversed_pts_ratio))
+                        # print('Storing cloud with %.2f valid labels and %.2f traversed points.' %
+                        #       (valid_labels_ratio, traversed_pts_ratio))
                         # write np arrays
                         if output_path is not None:
                             p = output_path.format(**fmt_kwargs)
@@ -341,7 +341,7 @@ def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, ro
     return cloud_stamps
 
 
-def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1.0, save=True):
+def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1.0, save=True, log=False):
     for path in bag_paths:
         assert os.path.exists(path), 'Bag file does not exist: %s' % path
     for topic in img_topics:
@@ -360,8 +360,7 @@ def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1
             # save images at cloud timestamps
             for rgb_topic in img_topics:
                 camera = rgb_topic.split('/')[1]
-                print('Saving images from topic "%s"' % rgb_topic)
-                for i in tqdm(range(len(time_stamps))):
+                for i in tqdm(range(len(time_stamps)), desc='Saving images from topic "%s"' % rgb_topic):
                     # get the closest image at points time
                     msg = get_closest_msg(bag=bag, topic=rgb_topic, time_moment=time_stamps[i].to_sec(),
                                           time_window=2*time_step, max_time_diff=time_step)
@@ -371,7 +370,8 @@ def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1
                     # convert msg to cv2 image
                     img_raw = rgb_msg_to_cv2(msg, cv_bridge)
                     if save:
-                        print('Saving image from topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
+                        if log:
+                            print('Saving image from topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
                         # save images
                         path = output_img_path.format(dir=dir, name=name,
                                                       secs=time_stamps[i].secs, nsecs=time_stamps[i].nsecs,

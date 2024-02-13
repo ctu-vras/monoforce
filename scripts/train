@@ -224,9 +224,9 @@ class Trainer:
 
                 # add height difference loss
                 # loss_hdiff = height_pred_diff.abs().mean()
-                loss_hdiff = total_variation(height_pred_diff)
+                # loss_hdiff = total_variation(height_pred_diff)
 
-                loss = loss_geom + 100.*loss_rigid + 0.1*loss_hdiff
+                loss = loss_geom + 100.*loss_rigid  #+ 0.1*loss_hdiff
                 if self.map_consistency and len(height_pred_rigid) > 1:
                     loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
                     loss += 0.1*loss_map
@@ -243,7 +243,7 @@ class Trainer:
                 counter += 1
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_rigid, counter)
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
+                # self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 

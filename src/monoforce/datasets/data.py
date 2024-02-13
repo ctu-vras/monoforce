@@ -1378,11 +1378,13 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
             plt.ylim((-cfg.d_max, cfg.d_max))
 
             ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(hm_lidar[si][0].T, origin='lower', cmap='jet')
+            plt.imshow(hm_lidar[si][0].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
             plt.colorbar()
 
             ax = plt.subplot(gs[:, 3:4])
-            plt.imshow(hm_traj[si][0].T, origin='lower', cmap='jet')
+            plt.imshow(hm_traj[si][0].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
             plt.colorbar()
 
             if save:

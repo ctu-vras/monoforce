@@ -117,7 +117,7 @@ def valid_point_mask(arr, discard_tf=None, discard_model=None):
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_interp_method='nearest',
                        fill_value=0., robot_size=1.0, return_filtered_points=False,
-                       map_pose=np.eye(4), grass_range=(0.1, 1.0)):
+                       map_pose=np.eye(4), grass_range=None):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
     assert len(points) > 0
