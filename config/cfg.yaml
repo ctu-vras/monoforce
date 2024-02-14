@@ -9,15 +9,10 @@ elasticity: 0.0
 friction: 0.9
 grid_res: 0.1
 h_max: 1.5
-#grass_range:
-#- 0.1
-#- 1.0
 grass_range: null
 hm_interp_method: null
-img_size:
-- 512
-- 512
 lr: 0.001
+weight_decay: 1e-7
 max_omega: 2.0
 max_vel: 2.0
 n_samples: 1000
@@ -52,4 +47,3 @@ use_terrain_cnn: false
 vel_tracks:
 - 0.0
 - 0.0
-weight_decay: 1e-7

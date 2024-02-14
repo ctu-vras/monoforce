@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """Generate self-supervised data from ROS bag files with robot trajectories.
 Assign traversability values to points travelled by a robot.
-Traversability is calculated using vertical acceleration values measured by IMU sensor.
 
 Paramaters:
 - Simplified robot model from primitives (bounding boxes, spheres).
@@ -15,35 +14,34 @@ Multi-pass processing:
 """
 from __future__ import absolute_import, division, print_function
 from argparse import ArgumentParser
-from glob import glob
-from matplotlib import cm
 import numpy as np
 from numpy.lib.recfunctions import merge_arrays, unstructured_to_structured
 import os
 import csv
+import cv2
+from cv_bridge import CvBridge
 from ros_numpy import msgify, numpify
-from rosbag import Bag, ROSBagException, Compression
+from rosbag import Bag, Compression
 import rospy
-from sensor_msgs.msg import PointCloud2, Imu
+from sensor_msgs.msg import PointCloud2
 from tf2_ros import BufferCore, TransformException
-from monoforce.geometry import affine, Bodies, Body, Box, inverse, Sphere  # needed for eval
-from monoforce.cloudproc import compute_rigid_support, fit_planes, position, valid_point_mask
-from monoforce.transformations import transform_cloud
-from monoforce.utils import slots, normalize
+from monoforce.segmentation import affine, Body, Box, inverse  # needed for eval
+from monoforce.cloudproc import position, valid_point_mask
+from monoforce.ros import (load_tf_buffer,
+                            get_cams_lidar_transformations,
+                            get_camera_infos,
+                            append_transformation, get_closest_msg, rgb_msg_to_cv2)
+from monoforce.utils import slots
 from monoforce.vis import show_cloud
 from tqdm import tqdm
-from matplotlib import pyplot as plt
 
 
-DEPTH_FIELD_NAME = 'depth'
 LABEL_FIELD_NAME = 'traversability'
+LABEL_TRAVERSABLE = 1
 LABEL_IGNORE = 255
-G_ACC = 9.80665
-# LABEL_OBSTACLE = round(G_ACC)
-LABEL_OBSTACLE = G_ACC
-MIN_VALID_LABELS = 1000
-MIN_TRAVERSED_PTS = 400
-MIN_TRAJECTORY_LENGTH = 1.5
+MIN_VALID_LABELS = 0.0  # [%]
+MIN_TRAVERSED_PTS = 0.0  # [%]
+MIN_TRAJECTORY_LENGTH = 1.0
 
 
 def str2bool(v):
@@ -58,8 +56,9 @@ def arg_parser():
     {secs}, {nsecs} - timestamp from the header (if available).
     """)
     parser.add_argument('--cloud-topics', type=str, nargs='+')
-    parser.add_argument('--imu-topics', type=str, nargs='+')
-    parser.add_argument('--imu-rate', type=int, default=100)
+    parser.add_argument('--lidar-frame', type=str, default='os_sensor')
+    parser.add_argument('--camera-topics', type=str, nargs='+')
+    parser.add_argument('--camera-info-topics', type=str, nargs='+')
     parser.add_argument('--fixed-frame', type=str, default='map')
     parser.add_argument('--robot-frame', type=str, default='base_link')
     parser.add_argument('--exclude-times', type=str, default=None)
@@ -71,102 +70,24 @@ def arg_parser():
                         help='Model at current position discarding points.')
     parser.add_argument('--robot-model', type=str, default=None,
                         help='Model to move along robot path marking points traversable.')
-    parser.add_argument('--obstacles-primitives', type=str2bool, default=False,
-                        help='Fit primitives and mark the inliers as rigid.')
     parser.add_argument('--distance-horizon', '-d', type=float, default=10.0)
     parser.add_argument('--time-horizon', '-t', type=float, nargs=2, default=[0.0, 10.0])
     parser.add_argument('--time-step', '-s', type=float, default=0.5)
-    parser.add_argument('--output-path', '-o', type=str, default='{dir}/{name}_trav/clouds/{secs}_{nsecs:09d}.npz')
+    parser.add_argument('--output-path', '-o', type=str, default='{dir}/{name}/clouds/{secs}_{nsecs:09d}.npz')
+    parser.add_argument('--output-img-path', type=str, default='{dir}/{name}/images/{secs}_{nsecs:09d}_{camera}.png')
     parser.add_argument('--output-bag-path', '-O', type=str, default='{dir}/{name}_segmented.bag')
-    parser.add_argument('--output-traj-path', type=str, default='{dir}/{name}_trav/trajectories/{secs}_{nsecs:09d}.csv')
-    parser.add_argument('--output-global-poses-path', type=str, default='{dir}/{name}_trav/traj_poses.csv')
+    parser.add_argument('--output-traj-path', type=str, default='{dir}/{name}/trajectories/{secs}_{nsecs:09d}.csv')
+    parser.add_argument('--output-global-poses-path', type=str, default='{dir}/{name}/traj_poses.csv')
     parser.add_argument('--output-topic', type=str, default='{topic}_segmented')
     parser.add_argument('--output-period', type=float, default=None)
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save-data', type=str2bool, default=True)
     parser.add_argument('--bag-paths', type=str, nargs='+')
-    parser.add_argument('--z-support', type=str, default=None, help='Z support configuration or empty.')
     return parser
 
 
 def get_topic_types(bag):
     return {k: v.msg_type for k, v in bag.get_type_and_topic_info().topics.items()}
-
-
-def load_tf_imu_buffer(bag_paths, imu_topics=None, imu_rate=100):
-    tf_topics = ['/tf', '/tf_static']
-    if imu_topics is None:
-        imu_topics = ['/imu/data']
-
-    # tf_buffer = BufferCore(cache_time=rospy.Duration(2**31 - 1))
-    # tf_buffer = BufferCore(cache_time=rospy.Duration(24 * 60 * 60))
-    tf_buffer = BufferCore(rospy.Duration(24 * 60 * 60))
-    
-    class IMUBuffer(object):
-        def __init__(self, sensor_rate):
-            self.stamps = []
-            self.msgs = []
-            self.sensor_rate = sensor_rate
-
-        def pop(self, msg):
-            assert isinstance(msg, Imu)
-
-            self.stamps.append(msg.header.stamp.to_sec())
-            self.msgs.append(msg)
-
-        def __len__(self):
-            return len(self.stamps)
-
-        @staticmethod
-        def estimate_traversability(msgs, G=G_ACC):
-            acc_z = np.asarray([msg.linear_acceleration.z for msg in msgs])
-            trav = np.mean(np.abs(acc_z + G))
-            return trav
-
-        def get_traversability_data(self, t_sec):
-            """
-            returns traversability data by averaging Z-axis IMU data
-            closest to `t_sec` stamp
-            """
-            t_ind = np.argmin(np.abs(np.asarray(self.stamps) - t_sec))
-            # print(np.min(np.abs(np.asarray(self.stamps) - t_sec)))
-
-            window_size = int(self.sensor_rate * 0.5)  # average IMU values received during 0.5 sec interval
-            left_ind = max(0, t_ind - window_size // 2)
-            right_ind = min(t_ind + window_size // 2, len(self))
-            traversability = self.estimate_traversability(self.msgs[left_ind:right_ind])
-
-            return traversability
-
-    imu_buffer = IMUBuffer(sensor_rate=imu_rate)
-    
-    for path in bag_paths:
-        try:
-            with Bag(path, 'r') as bag:
-                for topic, msg, stamp in tqdm(bag.read_messages(topics=tf_topics + imu_topics),
-                                              desc='%s: reading transforms' % path.split('/')[-1],
-                                              total=bag.get_message_count(topic_filters=tf_topics)):
-                    if topic == '/tf':
-                        for tf in msg.transforms:
-                            tf_buffer.set_transform(tf, 'bag')
-                    elif topic == '/tf_static':
-                        for tf in msg.transforms:
-                            tf_buffer.set_transform_static(tf, 'bag')
-                    elif topic in imu_topics:
-                        msg = Imu(*slots(msg))
-                        imu_buffer.pop(msg)
-                        
-        except ROSBagException as ex:
-            print('Could not read %s: %s' % (path, ex))
-
-    return tf_buffer, imu_buffer
-
-def fit_primitives(x_valid):
-    # Fit obstacle models (trunks or branches as cylinders, ground or walls as plane).
-    models = []
-    models += fit_planes(x_valid.T, 0.025, normal_z_limits=(0.0, 0.2), max_iterations=200, min_support=25,
-                         max_models=10, cluster_eps=0.25, cluster_k=10, verbose=0, visualize=False)
-    return models
 
 def trajectory_length(poses):
     assert isinstance(poses, np.ndarray) or isinstance(poses, list)
@@ -179,11 +100,7 @@ def trajectory_length(poses):
     return np.sum(np.linalg.norm(np.diff(xyz, axis=0), axis=1)).item()
 
 
-def segment_cloud(robot_model, arr, input_to_robot_tfs, trav_datas,
-                  discard_tf=None, discard_model=None,
-                  obstacles_primitives=True,
-                  input_to_fixed_tf=None, z_support=None):
-
+def segment_cloud(robot_model, arr, input_to_robot_tfs, discard_tf=None, discard_model=None):
     assert robot_model is None or isinstance(robot_model, Body)
     assert isinstance(arr, np.ndarray)
     assert discard_model is None or isinstance(discard_model, Body)
@@ -200,57 +117,33 @@ def segment_cloud(robot_model, arr, input_to_robot_tfs, trav_datas,
     labels = np.full(arr.shape, LABEL_IGNORE, dtype=float).ravel()
 
     # Mark valid points which are contained by future model poses as empty.
-    traversability = np.full((x.shape[1],), np.nan, dtype=float)
-    assert len(input_to_robot_tfs) == len(trav_datas)
-    for input_to_robot_tf, trav_data in zip(input_to_robot_tfs, trav_datas):
+    traversable = np.zeros((x.shape[1],), dtype=bool)
+    for input_to_robot_tf in input_to_robot_tfs:
         assert isinstance(input_to_robot_tf, np.ndarray)
 
         x_robot = affine(input_to_robot_tf, x)
 
         if robot_model:
             robot_points = robot_model.contains_point(x_robot)
-            # average currently received traversability values with previous ones in the map
-            traversability[robot_points] = np.nanmean([traversability[robot_points],
-                                                       trav_data * np.ones_like(traversability[robot_points])], axis=0)
+            traversable = np.logical_or(traversable, robot_points)
 
-    mask_traversed = ~np.isnan(traversability)
-    n_traversed_pts = mask_traversed.sum()
-    print('%.3g = %i / %i traversed points' % (mask_traversed.mean(), n_traversed_pts, mask_traversed.size))
+    traversed_pts_ratio = traversable.mean()
+    # print('Traversed points ratio: %.3f' % traversed_pts_ratio)
 
-    # Fit geometric primitives to points and mark their inliers as obstacles.
-    obstacles = np.zeros((x.shape[1],), dtype=bool)
-    if obstacles_primitives:
-        primitives = fit_primitives(x)
-        for primitive, indices in primitives:
-            obstacles[indices] = True
-        print('%.3g = %i / %i obstacle points' % (obstacles.mean(), obstacles.sum(), obstacles.size))
-
-    if z_support:
-        support, tmp_rigid = compute_rigid_support(arr_valid, transform=input_to_fixed_tf, **z_support)
-        obstacles[tmp_rigid] = True
-        print('Obstacles points: %i' % obstacles.sum())
-
-    if n_traversed_pts > 0:
-        # print('Traversability range for the current scan: %.3f .. %.3f (mean: %.3f)' %
-        #       (np.min(traversability[mask_traversed]), np.max(traversability[mask_traversed]),
-        #        np.mean(traversability[mask_traversed])))
-        # normalize traversability labels as float points in a range between 0 and 1
-        # traversability[mask_traversed] = normalize(traversability[mask_traversed])
-        labels[valid_ind[mask_traversed]] = traversability[mask_traversed]
-        labels[valid_ind[obstacles]] = LABEL_OBSTACLE
+    if traversed_pts_ratio > 0:
+        labels[valid_ind[traversable]] = LABEL_TRAVERSABLE
 
     labels = labels.reshape(arr.shape)
-    return labels, n_traversed_pts
+    return labels, traversed_pts_ratio
 
 
-def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=100, fixed_frame=None, robot_frame=None,
-                  exclude_times=None, input_step=1, input_start=0.0, input_end=float('inf'),
-                  discard_model=None, robot_model=None,
-                  obstacles_primitives=False, z_support=None,
-                  discard_empty=True, distance_horizon=None, time_horizon=None, time_step=None,
-                  output_path=None, output_bag_path=None, output_traj_path=None, output_global_poses_path=None,
-                  output_topic=None, output_period=None,
-                  visualize=False, save_data=True):
+def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, robot_frame=None,
+                         exclude_times=None, input_step=1, input_start=0.0, input_end=float('inf'),
+                         discard_model=None, robot_model=None,
+                         discard_empty=True, distance_horizon=None, time_horizon=None, time_step=None,
+                         output_path=None, output_bag_path=None, output_traj_path=None, output_global_poses_path=None,
+                         output_topic=None, output_period=None,
+                         visualize=False, save_data=True, tf_buffer=None):
     assert bag_paths, bag_paths
     assert not exclude_times or all(len(t) == 2 for t in exclude_times), exclude_times
     assert len(time_horizon) == 2, time_horizon
@@ -260,6 +153,7 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
 
     dir = os.path.dirname(bag_paths[0])
     name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
+    fmt_kwargs = {'dir': dir, 'name': name}
 
     n = [int(np.floor(h / time_step)) for h in time_horizon]
 
@@ -271,13 +165,16 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
             print('Output %s removed from input bag files.' % output_bag_path)
             del bag_paths[bag_paths.index(output_bag_path)]
         os.makedirs(os.path.dirname(output_bag_path), exist_ok=True)
-        output_bag = Bag(output_bag_path, 'w', compression=Compression.LZ4)
+        output_bag = Bag(output_bag_path, 'w')
     else:
         output_bag = None
 
-    tf_buffer, imu_buffer = load_tf_imu_buffer(bag_paths, imu_topics=imu_topics, imu_rate=imu_rate)
+    if tf_buffer is None:
+        tf_buffer = load_tf_buffer(bag_paths)
+
     recorded_traj_poses_header = False
 
+    cloud_stamps = []
     for bag_path in bag_paths:
 
         with Bag(bag_path, 'r') as bag:
@@ -296,8 +193,8 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                 if exclude_times and any(t[0] <= stamp.to_sec() <= t[1] for t in exclude_times):
                     print('Skipping %s at %.3f s (excluded).' % (topic, stamp.to_sec()))
                     continue
+                # print('Processing %s at %.3f s.' % (topic, stamp.to_sec()))
 
-                fmt_kwargs = {'dir': dir, 'name': name}
                 if hasattr(msg, 'header'):
                     secs, nsecs = msg.header.stamp.secs, msg.header.stamp.nsecs
                     start = msg.header.stamp.to_sec()
@@ -320,7 +217,6 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
 
                 # Find transforms from input cloud to robot positions within the horizon.
                 input_to_robot_tfs = []
-                trav_data_horizon = []
                 stamps_within_horizon = np.linspace(start - n[0] * time_step, start + n[1] * time_step, sum(n) + 1)
                 traj_stamps = []
                 for t in stamps_within_horizon:
@@ -342,10 +238,6 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                     input_to_robot_tfs.append(T)
                     traj_stamps.append(t)
 
-                    # compute traversability from IMU data closest to point clouds' stamps
-                    trav_data = imu_buffer.get_traversability_data(t)
-                    trav_data_horizon.append(trav_data)
-
                 if not input_to_robot_tfs:
                     continue
 
@@ -356,36 +248,27 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                         input_struct = input_struct.reshape((-1,))
                     # print('Input struct:', input_struct.shape)
 
-                    # H x W unstructured depth image.
-                    depth = np.linalg.norm(position(input_struct), axis=-1)
-                    # H x W structured depth cloud.
-                    depth_struct = depth.reshape((input_struct.size, -1))
-                    depth_struct = unstructured_to_structured(depth_struct, names=[DEPTH_FIELD_NAME])
-                    # depth_struct = depth_struct.reshape(input_struct.shape)
-                    # assert depth_struct.shape == input_struct.shape, (depth_struct.shape, input_struct.shape)
-
                     # H x W unstructured label image.
-                    label, n_traversed_pts = segment_cloud(robot_model, input_struct, input_to_robot_tfs, trav_data_horizon,
-                                                           discard_tf=input_to_robot_tfs[n[0]], discard_model=discard_model,
-                                                           obstacles_primitives=obstacles_primitives,
-                                                           input_to_fixed_tf=input_to_fixed_tf, z_support=z_support)
+                    label, traversed_pts_ratio = segment_cloud(robot_model, input_struct, input_to_robot_tfs,
+                                                           discard_tf=input_to_robot_tfs[n[0]], discard_model=discard_model)
                     # H x W structured label cloud.
                     label_struct = label.reshape((input_struct.size, -1))
                     label_struct = unstructured_to_structured(label_struct, names=[LABEL_FIELD_NAME])
 
-                    cloud_struct = merge_arrays([input_struct, depth_struct, label_struct],
-                                                flatten=True)
+                    cloud_struct = merge_arrays([input_struct, label_struct], flatten=True)
                     cloud_struct = cloud_struct.reshape(input_struct.shape)
                     # print('Cloud struct:', cloud_struct.shape)
                     assert cloud_struct.shape == input_struct.shape
 
-                    n_valid_labels = (label != LABEL_IGNORE).sum()
-                    if discard_empty and (n_valid_labels < MIN_VALID_LABELS):
-                        print('Discarding cloud with not enough valid labels.')
+                    valid_labels_ratio = np.mean(label != LABEL_IGNORE)
+                    if discard_empty and (valid_labels_ratio < MIN_VALID_LABELS):
+                        print('Discarding cloud with not enough valid labels (%.2f < %.2f).'
+                              % (valid_labels_ratio, MIN_VALID_LABELS))
                         continue
 
-                    if n_traversed_pts < MIN_TRAVERSED_PTS:
-                        print('Discarding cloud with not enough traversed points.')
+                    if traversed_pts_ratio < MIN_TRAVERSED_PTS:
+                        print('Discarding cloud with not enough traversed points (%.2f < %.2f).'
+                              % (traversed_pts_ratio, MIN_TRAVERSED_PTS))
                         continue
 
                     robot_to_input_tfs = [np.linalg.inv(T) for T in input_to_robot_tfs]
@@ -397,27 +280,16 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
                     last_out[topic] = start
 
                     traj_poses = robot_to_input_tfs
-                    # # transform cloud to robot frame (base link)
-                    # Tr = np.linalg.inv(robot_to_input_tfs[0])
-                    # cloud_struct = transform_cloud(cloud_struct, Tr)
-                    #
-                    # # transform robot poses to base link
-                    # traj_poses = [Tr @ T for T in robot_to_input_tfs]
+
+                    cloud_stamps.append(rospy.Time(fmt_kwargs['secs'], fmt_kwargs['nsecs']))
 
                     if visualize:
                         points = position(cloud_struct)
-                        show_cloud(points, label, min=label.min(), max=LABEL_OBSTACLE + 1, colormap=cm.jet)
-                        plt.figure()
-                        plt.plot(points[::10, 0], points[::10, 1], 'b.')
-                        p = np.asarray(traj_poses)
-                        plt.plot(p[:, 0, 3], p[:, 1, 3], 'k-', markersize=4)
-                        plt.axis('equal')
-                        plt.show()
+                        show_cloud(points, label)
 
                     if save_data:
-                        print('Storing cloud with %i valid labels and %i traversed points.' %
-                              (n_valid_labels, n_traversed_pts))
-
+                        # print('Storing cloud with %.2f valid labels and %.2f traversed points.' %
+                        #       (valid_labels_ratio, traversed_pts_ratio))
                         # write np arrays
                         if output_path is not None:
                             p = output_path.format(**fmt_kwargs)
@@ -466,12 +338,83 @@ def generate_data(bag_paths=None, cloud_topics=None, imu_topics=None, imu_rate=1
     if output_bag:
         output_bag.close()
 
+    return cloud_stamps
+
+
+def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1.0, save=True, log=False):
+    for path in bag_paths:
+        assert os.path.exists(path), 'Bag file does not exist: %s' % path
+    for topic in img_topics:
+        assert topic, 'Image topic is empty: %s' % topic
+    for t in time_stamps:
+        assert isinstance(t, rospy.Time), 'Time stamp is not a rospy.Time: %s' % t
+    assert output_img_path, 'Output image path is empty: %s' % output_img_path
+    assert time_step > 0, 'Time period is not positive: %.3f' % time_step
+
+    cv_bridge = CvBridge()
+    dir = os.path.dirname(bag_paths[0])
+    name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
+
+    for bag_path in bag_paths:
+        with Bag(bag_path, 'r') as bag:
+            # save images at cloud timestamps
+            for rgb_topic in img_topics:
+                camera = rgb_topic.split('/')[1]
+                for i in tqdm(range(len(time_stamps)), desc='Saving images from topic "%s"' % rgb_topic):
+                    # get the closest image at points time
+                    msg = get_closest_msg(bag=bag, topic=rgb_topic, time_moment=time_stamps[i].to_sec(),
+                                          time_window=2*time_step, max_time_diff=time_step)
+                    if msg is None:
+                        print('No image found for topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
+                        continue
+                    # convert msg to cv2 image
+                    img_raw = rgb_msg_to_cv2(msg, cv_bridge)
+                    if save:
+                        if log:
+                            print('Saving image from topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
+                        # save images
+                        path = output_img_path.format(dir=dir, name=name,
+                                                      secs=time_stamps[i].secs, nsecs=time_stamps[i].nsecs,
+                                                      camera=camera)
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        cv2.imwrite(path, img_raw)
+
+
+def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_topics, fixed_frame, robot_frame,
+            exclude_times, discard_empty, input_step, input_start, input_end, discard_model, robot_model,
+            distance_horizon, time_horizon, time_step, output_path, output_img_path, output_bag_path, output_traj_path,
+            output_global_poses_path, output_topic, output_period, visualize, save_data, **kwargs):
+    for path in bag_paths:
+        assert os.path.exists(path), 'Bag file does not exist: %s' % path
+
+    print('Obtaining transforms from bag files...')
+    tf_buffer = load_tf_buffer(bag_paths)
+    print('Obtaining camera infos from bag file...')
+    get_camera_infos(bag_paths, camera_info_topics, save=save_data)
+    print('Obtaining lidar to cameras transformations from bag file...')
+    get_cams_lidar_transformations(bag_paths, camera_topics, lidar_frame, tf_buffer, save=save_data)
+    print(f'Obtaining {robot_frame} to base_footprint transformations from bag file...')
+    append_transformation(bag_paths, source_frame=robot_frame, target_frame='base_footprint',
+                          save=save_data, tf_buffer=tf_buffer)
+    print(f'Obtaining {robot_frame} to {lidar_frame} transformations from bag file...')
+    append_transformation(bag_paths, source_frame=robot_frame, target_frame=lidar_frame,
+                          save=save_data, tf_buffer=tf_buffer,
+                          matrix_name=f'T_{robot_frame}__os_sensor')
+    print('Saving clouds and trajectories...')
+    cloud_stamps = get_clouds_and_trajs(bag_paths=bag_paths, cloud_topics=cloud_topics, fixed_frame=fixed_frame, robot_frame=robot_frame,
+                                        exclude_times=exclude_times, input_step=input_step, input_start=input_start, input_end=input_end,
+                                        discard_model=discard_model, robot_model=robot_model, discard_empty=discard_empty,
+                                        distance_horizon=distance_horizon, time_horizon=time_horizon, time_step=time_step,
+                                        output_path=output_path, output_bag_path=output_bag_path, output_traj_path=output_traj_path,
+                                        output_global_poses_path=output_global_poses_path, output_topic=output_topic, output_period=output_period,
+                                        visualize=visualize, save_data=save_data, tf_buffer=tf_buffer)
+    print('Saving images...')
+    save_images(bag_paths, camera_topics, cloud_stamps, output_img_path, time_step=time_step, save=save_data)
+
 
 def main():
     args = arg_parser().parse_args()
     print(args)
-
-    args.bag_paths = sum((glob(b) for b in args.bag_paths), start=[])
     print('Processing %i bag files:' % len(args.bag_paths), *args.bag_paths, sep='\n')
 
     if args.exclude_times:
@@ -487,18 +430,7 @@ def main():
         args.robot_model = eval(args.robot_model)
         print('Robot model:', args.robot_model)
 
-    if args.z_support is None:
-        # TODO: obstacles generation settings for Cemicky les only
-        args.z_support = {}
-        scale = [1.0, 1.0, 0.05]
-        scale = np.asarray(scale).reshape((-1, 3))
-        args.z_support['scale'] = scale
-        args.z_support['grid'] = 0.05
-        args.z_support['radius'] = 0.05
-        args.z_support['range'] = [0.6, 8.0]
-        print('Z support:', args.z_support)
-
-    generate_data(**vars(args))
+    process(**vars(args))
 
 
 if __name__ == '__main__':

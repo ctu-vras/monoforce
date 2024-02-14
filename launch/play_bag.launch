@@ -19,25 +19,27 @@
     </node>
 
     <!-- Debayering of images with image_proc -->
-    <group ns="camera_front">
-        <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
-             <param name="image_transport" value="compressed"/>
-        </node>
-    </group>
-    <group ns="camera_left">
-        <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
-             <param name="image_transport" value="compressed"/>
-        </node>
-    </group>
-    <group ns="camera_rear">
-        <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
-             <param name="image_transport" value="compressed"/>
-        </node>
-    </group>
-    <group ns="camera_right">
-        <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
-             <param name="image_transport" value="compressed"/>
-        </node>
+    <group>
+        <group ns="camera_front">
+            <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
+                 <param name="image_transport" value="compressed"/>
+            </node>
+        </group>
+        <group ns="camera_left">
+            <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
+                 <param name="image_transport" value="compressed"/>
+            </node>
+        </group>
+        <group ns="camera_rear">
+            <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
+                 <param name="image_transport" value="compressed"/>
+            </node>
+        </group>
+        <group ns="camera_right">
+            <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
+                 <param name="image_transport" value="compressed"/>
+            </node>
+        </group>
     </group>
 
     <!-- Visualization -->
