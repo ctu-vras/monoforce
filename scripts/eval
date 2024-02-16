@@ -15,7 +15,6 @@ from monoforce.losses import RMSE
 from monoforce.utils import read_yaml
 from tqdm import tqdm
 import matplotlib
-matplotlib.use('QtAgg')
 
 torch.set_default_dtype(torch.float32)
 

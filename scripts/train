@@ -56,7 +56,8 @@ class Trainer:
             self.model = self.load_model(modelf=pretrained_model_path)
 
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-            self.loss_fn = RMSE(reduction='none')
+            self.loss_fn = torch.nn.MSELoss(reduction='none')
+            # self.loss_fn = RMSE(reduction='none')
 
             self.writer = SummaryWriter(log_dir=log_dir)
             # save configs to log dir
@@ -223,10 +224,10 @@ class Trainer:
                 loss_rigid = self.traj_hm_loss(height_pred_rigid, height_traj, weights_traj)
 
                 # add height difference loss
-                # loss_hdiff = height_pred_diff.abs().mean()
                 # loss_hdiff = total_variation(height_pred_diff)
+                loss_hdiff = height_pred_diff.std()
 
-                loss = loss_geom + 100.*loss_rigid  #+ 0.1*loss_hdiff
+                loss = loss_geom + 100.*loss_rigid + 0.001*loss_hdiff
                 if self.map_consistency and len(height_pred_rigid) > 1:
                     loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
                     loss += 0.1*loss_map
@@ -243,7 +244,7 @@ class Trainer:
                 counter += 1
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_rigid, counter)
-                # self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 

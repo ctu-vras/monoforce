@@ -16,20 +16,18 @@ from monoforce.cloudproc import hm_to_cloud
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.datasets.data import seq_paths
 from monoforce.config import Config
-from monoforce.models.lss.tools import ego_to_cam, get_only_in_img_mask
 from monoforce.transformations import transform_cloud
 from monoforce.utils import read_yaml
 from monoforce.models.lss.model import compile_model
 from monoforce.losses import total_variation
-import matplotlib as mpl
 import open3d as o3d
-# mpl.use('Qt5Agg')
 
 
 torch.set_default_dtype(torch.float32)
 
 def feed_data():
     path = '/media/ruslan/data/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
+    # path = '/media/ruslan/data/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/'
 
     # lss model
     cfg = Config()
@@ -41,17 +39,21 @@ def feed_data():
     # explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False)
 
     ds = TravData(path, data_aug_conf, is_train=False, cfg=cfg)
-    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=False)
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     model.train()
     model.to(cfg.device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    criterion = torch.nn.MSELoss()
     max_grad_norm = 5.0
+
+    def criterion(height_pred, height_gt, weights=None):
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        return torch.mean(weights * (height_pred - height_gt) ** 2)
 
     # train on a single example
     sample_i = np.random.randint(len(ds))
+    print('Sample index:', sample_i)
     imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[sample_i]
     inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
     inputs = [s[np.newaxis].to(cfg.device) for s in inputs]
@@ -62,21 +64,27 @@ def feed_data():
     hm_traj = torch.as_tensor(hm_traj[np.newaxis], device=cfg.device)
     height_traj, mask_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
 
-    losses = {'lidar': [], 'traj': [], 'total': []}
-    for i in tqdm(range(501)):
+    losses = {'lidar': [], 'traj': [], 'total': [], 'reg': []}
+    n_iters = 1001
+    step = 200
+    for i in tqdm(range(n_iters)):
         voxel_feats = model.get_voxels(*inputs)
         height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
         height_pred_rigid = height_pred_geom - height_pred_diff
 
-        loss_lidar = criterion(height_pred_geom[mask_lidar.bool()], height_lidar[mask_lidar.bool()])
-        loss_traj = 100 * criterion(height_pred_rigid[mask_traj.bool()], height_traj[mask_traj.bool()])
+        weights_obstacles = 1.0 + torch.abs(height_lidar[mask_lidar.bool()] - height_lidar[mask_lidar.bool()].mean())
+        loss_lidar = criterion(height_pred_geom[mask_lidar.bool()], height_lidar[mask_lidar.bool()], weights_obstacles)
+        loss_traj = criterion(height_pred_rigid[mask_traj.bool()], height_traj[mask_traj.bool()])
+        # loss_reg = 0.01*total_variation(height_pred_diff)
+        loss_reg = 0.001*height_pred_diff.std()
 
-        # loss_reg = 0.01 * total_variation(height_pred)
-        loss = loss_lidar + loss_traj
+        loss = loss_lidar + loss_traj + loss_reg
 
-        # print(loss_lidar.item(), loss_traj.item(), loss.item())
+        print('loss lidar: %f, loss traj: %f, loss reg: %f, total loss: %f' %
+              (loss_lidar.item(), loss_traj.item(), loss_reg.item(), loss.item()))
         losses['lidar'].append(loss_lidar.item())
         losses['traj'].append(loss_traj.item())
+        losses['reg'].append(loss_reg.item())
         losses['total'].append(loss.item())
 
         optimizer.zero_grad()
@@ -84,9 +92,9 @@ def feed_data():
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
         optimizer.step()
 
-        if i % 100 == 0:
+        if i % step == 0:
             # plot the result
-            plt.figure(figsize=(20, 5))
+            plt.figure(figsize=(20, 10))
             plt.subplot(2, 3, 1)
             plt.title('Lidar HM')
             plt.imshow(height_lidar[0, 0].cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
@@ -100,12 +108,22 @@ def feed_data():
             plt.subplot(2, 3, 3)
             plt.title('Loss')
             for k, v in losses.items():
-                plt.plot(v[-100:], label=k)
+                plt.plot(v[-step:], label=k)
             plt.legend()
 
             plt.subplot(2, 3, 4)
             plt.title('Prediction Geom')
             plt.imshow(height_pred_geom[0, 0].detach().cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+            plt.colorbar()
+
+            plt.subplot(2, 3, 5)
+            plt.title('Prediction Diff')
+            plt.imshow(height_pred_diff[0, 0].detach().cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+            plt.colorbar()
+
+            plt.subplot(2, 3, 6)
+            plt.title('Prediction Rigid')
+            plt.imshow(height_pred_rigid[0, 0].detach().cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
             plt.colorbar()
 
             plt.show()

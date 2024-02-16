@@ -22,10 +22,6 @@ import cv2
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm
-try:
-    mpl.use('Qt5Agg')
-except:
-    print('Failed to set matplotlib backend to Qt5Agg')
 
 __all__ = [
     'DEMPathData',
