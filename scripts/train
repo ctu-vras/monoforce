@@ -294,7 +294,7 @@ class Trainer:
 def main():
     bsz = 24
     nworkers = 12
-    nepochs = 500
+    nepochs = 1000
     save_model = True
 
     cfg = Config()
@@ -311,14 +311,15 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
-    pretrained_model_path = '../config/weights/lss/train_lss.pt'
-    # pretrained_model_path = None
+    # pretrained_model_path = '../config/tb_runs/lss_2024_01_16_10_40_12/train_lss.pt'
+    pretrained_model_path = None
     debug = False
     vis = False
 
     ds_paths = seq_paths[:3]
     # ds_paths = sim_seq_paths
-    # ds_paths = ['/media/ruslan/SSD/data/bags/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/']
+    # ds_paths = ['/mnt/personal/agishrus/data/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/']
+    # ds_paths = ['/mnt/personal/agishrus/data/husky_sim/husky_2cubes_random_walk_2024-02-14-11-38-08']
 
     trainer = Trainer(data_paths=ds_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
