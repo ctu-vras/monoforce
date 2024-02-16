@@ -10,7 +10,7 @@ help:
 	@echo ""
 
 build:
-	@docker build --tag ros:monoforce -f ./Dockerfile ..
+	@docker build --tag ros:monoforce -f ./Dockerfile .
 
 clean:
 	@docker rmi -f ros:monoforce

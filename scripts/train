@@ -97,12 +97,12 @@ class Trainer:
 
             if debug:
                 print('Debug mode: using small datasets')
-                train_ids = range(32)
-                val_ids = range(8)
+                train_ids = range(int(0.05 * len(train_ds)) + 1)
+                val_ids = range(int(0.01 * len(val_ds)) + 1)
             else:
                 # randomly select a subset of the dataset
                 val_ds_size = int(val_fraction * len(train_ds))
-                # if map consistency is enabled, use the arange of the dataset as validation set
+                # if map consistency is enabled, use a sequential part of the dataset
                 val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False) if not self.map_consistency\
                     else range(len(train_ds) // 2, len(train_ds) // 2 + val_ds_size)
                 train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
@@ -247,9 +247,11 @@ class Trainer:
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
-            loader_loss /= len(loader)
+            if len(loader) > 0:
+                loader_loss /= len(loader)
             epoch_loss += loader_loss
-        epoch_loss /= len(loaders)
+        if len(loaders) > 0:
+            epoch_loss /= len(loaders)
 
         return epoch_loss, counter
 

@@ -27,9 +27,10 @@ SAVE=True
 #CAMERA_TOPICS='/ids_camera/image_raw/compressed'
 #CAMERA_INFO_TOPICS='/ids_camera/camera_info'
 
-BAG_PATHS='/media/ruslan/SSD/data/bags/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00.bag'
+#BAG_PATHS='/media/ruslan/SSD/data/bags/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00.bag'
+BAG_PATHS='/media/ruslan/SSD/data/bags/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56.bag'
 CLOUD_TOPIC='/points'
-LIDAR_FRAME='ouster_link'
+LIDAR_FRAME='os_sensor'
 CAMERA_TOPICS='/realsense_front/color/image_raw/compressed
                /realsense_left/color/image_raw/compressed
                /realsense_rear/color/image_raw/compressed
@@ -49,4 +50,5 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
                    --camera-topics ${CAMERA_TOPICS} \
                    --camera-info-topics ${CAMERA_INFO_TOPICS} \
                    --robot-model 'Box()' --discard-model 'Box()' \
-                   --input-step ${INPUT_STEP} --visualize $VIS --save-data $SAVE
+                   --input-step ${INPUT_STEP} --visualize $VIS --save-data $SAVE \
+                   --fixed-frame odom
