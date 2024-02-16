@@ -90,9 +90,8 @@ class BevEncode(nn.Module):
     def __init__(self, inC, outC):
         super(BevEncode, self).__init__()
 
-        trunk = resnet18(pretrained=False, zero_init_residual=True)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
+        trunk = resnet18(zero_init_residual=True)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = trunk.bn1
         self.relu = trunk.relu
 
@@ -102,16 +101,14 @@ class BevEncode(nn.Module):
 
         self.up1 = Up(64+256, 256, scale_factor=4)
         self.up_geom = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
         self.up_diff = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                                align_corners=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),

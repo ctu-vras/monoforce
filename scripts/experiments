@@ -52,7 +52,8 @@ def feed_data():
         return torch.mean(weights * (height_pred - height_gt) ** 2)
 
     # train on a single example
-    sample_i = np.random.randint(len(ds))
+    # sample_i = np.random.randint(len(ds))
+    sample_i = 64
     print('Sample index:', sample_i)
     imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[sample_i]
     inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -64,9 +65,9 @@ def feed_data():
     hm_traj = torch.as_tensor(hm_traj[np.newaxis], device=cfg.device)
     height_traj, mask_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
 
-    losses = {'lidar': [], 'traj': [], 'total': [], 'reg': []}
+    losses = {'lidar': [], 'traj': [], 'total': [], 'hdiff': []}
     n_iters = 1001
-    step = 200
+    vis_step = 50
     for i in tqdm(range(n_iters)):
         voxel_feats = model.get_voxels(*inputs)
         height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
@@ -75,16 +76,15 @@ def feed_data():
         weights_obstacles = 1.0 + torch.abs(height_lidar[mask_lidar.bool()] - height_lidar[mask_lidar.bool()].mean())
         loss_lidar = criterion(height_pred_geom[mask_lidar.bool()], height_lidar[mask_lidar.bool()], weights_obstacles)
         loss_traj = criterion(height_pred_rigid[mask_traj.bool()], height_traj[mask_traj.bool()])
-        # loss_reg = 0.01*total_variation(height_pred_diff)
-        loss_reg = 0.001*height_pred_diff.std()
+        loss_hdif = height_pred_diff.std()
 
-        loss = loss_lidar + loss_traj + loss_reg
+        loss = 1.*loss_lidar + 100.*loss_traj + 1e-4*loss_hdif
 
         print('loss lidar: %f, loss traj: %f, loss reg: %f, total loss: %f' %
-              (loss_lidar.item(), loss_traj.item(), loss_reg.item(), loss.item()))
+              (loss_lidar.item(), loss_traj.item(), loss_hdif.item(), loss.item()))
         losses['lidar'].append(loss_lidar.item())
         losses['traj'].append(loss_traj.item())
-        losses['reg'].append(loss_reg.item())
+        losses['hdiff'].append(loss_hdif.item())
         losses['total'].append(loss.item())
 
         optimizer.zero_grad()
@@ -92,7 +92,7 @@ def feed_data():
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
         optimizer.step()
 
-        if i % step == 0:
+        if i % vis_step == 0:
             # plot the result
             plt.figure(figsize=(20, 10))
             plt.subplot(2, 3, 1)
@@ -108,7 +108,7 @@ def feed_data():
             plt.subplot(2, 3, 3)
             plt.title('Loss')
             for k, v in losses.items():
-                plt.plot(v[-step:], label=k)
+                plt.plot(v[-vis_step:], label=k)
             plt.legend()
 
             plt.subplot(2, 3, 4)

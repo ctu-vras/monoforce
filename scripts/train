@@ -220,14 +220,13 @@ class Trainer:
                 height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
                 height_pred_rigid = height_pred_geom - height_pred_diff
 
-                loss_geom = self.lidar_hm_loss(height_pred_geom, height_lidar, weights_lidar)
-                loss_rigid = self.traj_hm_loss(height_pred_rigid, height_traj, weights_traj)
+                loss_lidar = self.lidar_hm_loss(height_pred_geom, height_lidar, weights_lidar)
+                loss_traj = self.traj_hm_loss(height_pred_rigid, height_traj, weights_traj)
 
                 # add height difference loss
-                # loss_hdiff = total_variation(height_pred_diff)
                 loss_hdiff = height_pred_diff.std()
 
-                loss = loss_geom + 100.*loss_rigid + 0.001*loss_hdiff
+                loss = 1.*loss_lidar + 100.*loss_traj + 1e-4*loss_hdiff
                 if self.map_consistency and len(height_pred_rigid) > 1:
                     loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
                     loss += 0.1*loss_map
@@ -242,8 +241,8 @@ class Trainer:
                 loader_loss += loss.item()
 
                 counter += 1
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_rigid, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_lidar, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_traj, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
                 self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
