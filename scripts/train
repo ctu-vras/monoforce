@@ -226,7 +226,7 @@ class Trainer:
                 # add height difference loss
                 loss_hdiff = height_pred_diff.std()
 
-                loss = 1.*loss_lidar + 100.*loss_traj + 1e-4*loss_hdiff
+                loss = 1.*loss_lidar + 10.*loss_traj + 1e-4*loss_hdiff
                 if self.map_consistency and len(height_pred_rigid) > 1:
                     loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
                     loss += 0.1*loss_map

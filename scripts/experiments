@@ -26,8 +26,9 @@ import open3d as o3d
 torch.set_default_dtype(torch.float32)
 
 def feed_data():
-    path = '/media/ruslan/data/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
+    # path = '/media/ruslan/data/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
     # path = '/media/ruslan/data/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/'
+    path = seq_paths[1]
 
     # lss model
     cfg = Config()
@@ -36,7 +37,6 @@ def feed_data():
     # load LSS config
     lss_config = read_yaml('../config/lss.yaml')
     grid_conf, data_aug_conf = lss_config['grid_conf'], lss_config['data_aug_conf']
-    # explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False)
 
     ds = TravData(path, data_aug_conf, is_train=False, cfg=cfg)
     model = compile_model(grid_conf, data_aug_conf, outC=1)
@@ -52,9 +52,10 @@ def feed_data():
         return torch.mean(weights * (height_pred - height_gt) ** 2)
 
     # train on a single example
-    # sample_i = np.random.randint(len(ds))
-    sample_i = 64
+    sample_i = np.random.randint(len(ds))
+    # sample_i = 64
     print('Sample index:', sample_i)
+    explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False, sample_range=[sample_i])
     imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[sample_i]
     inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
     inputs = [s[np.newaxis].to(cfg.device) for s in inputs]
@@ -75,10 +76,10 @@ def feed_data():
 
         weights_obstacles = 1.0 + torch.abs(height_lidar[mask_lidar.bool()] - height_lidar[mask_lidar.bool()].mean())
         loss_lidar = criterion(height_pred_geom[mask_lidar.bool()], height_lidar[mask_lidar.bool()], weights_obstacles)
-        loss_traj = criterion(height_pred_rigid[mask_traj.bool()], height_traj[mask_traj.bool()])
-        loss_hdif = height_pred_diff.std()
+        loss_traj = 10.*criterion(height_pred_rigid[mask_traj.bool()], height_traj[mask_traj.bool()])
+        loss_hdif = 1e-4*height_pred_diff.std()
 
-        loss = 1.*loss_lidar + 100.*loss_traj + 1e-4*loss_hdif
+        loss = loss_lidar + loss_traj + loss_hdif
 
         print('loss lidar: %f, loss traj: %f, loss reg: %f, total loss: %f' %
               (loss_lidar.item(), loss_traj.item(), loss_hdif.item(), loss.item()))
@@ -127,6 +128,7 @@ def feed_data():
             plt.colorbar()
 
             plt.show()
+            plt.close()
 
 
 def map_consistency():

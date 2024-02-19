@@ -22,6 +22,11 @@ import cv2
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm
+try:
+    mpl.use('TkAgg')
+except:
+    print('TkAgg backend is not available')
+    pass
 
 __all__ = [
     'DEMPathData',
