@@ -72,7 +72,7 @@ sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 class DEMPathData(Dataset):
     """
     Class to wrap semi-supervised traversability data generated using lidar odometry.
-    Please, have a look at the `save_clouds_and_trajectories_from_bag` script for data generation from bag file.
+    Please, have a look at the `scripts/data/save_sensor_data` script for data generation from bag file.
     The dataset additionally contains camera images, calibration data, IMU measurements,
     and RGB colors projected from cameras onto the point clouds.
 
@@ -216,9 +216,9 @@ class DEMPathData(Dataset):
         img = np.asarray(img)
         return img
 
-    def get_optimized_terrain(self, i):
+    def get_traj_dphyics_terrain(self, i):
         ind = self.ids[i]
-        p = os.path.join(self.path, 'terrain', '%s.npy' % ind)
+        p = os.path.join(self.path, 'terrain', 'traj', 'dphysics', '%s.npy' % ind)
         terrain = np.load(p)['height']
         return terrain
 
@@ -244,7 +244,7 @@ class DEMPathData(Dataset):
         trajectory_footprint = np.concatenate(trajectory_footprint, axis=0)
         return trajectory_footprint
 
-    def get_footprint_terrain(self, i, robot_size=(0.7, 1.0)):
+    def get_traj_footprint_terrain(self, i, robot_size=(0.7, 1.0)):
         traj_points = self.estimated_footprint_traj_points(i, robot_size=robot_size)
         traj_hm = self.estimate_heightmap(traj_points)['z']
         return traj_hm
@@ -323,7 +323,7 @@ class RigidDEMPathData(DEMPathData):
         cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
 
         traj = self.get_traj(i)
-        height = self.get_optimized_terrain(i)
+        height = self.get_traj_dphyics_terrain(i)
         H, W = height.shape
         h, w = 2 * self.cfg.d_max // self.cfg.grid_res, 2 * self.cfg.d_max // self.cfg.grid_res
         # select only the h x w area from the center of the height map
@@ -489,7 +489,7 @@ class MonoDEMData(DEMPathData):
         height_est = heightmap['z']
 
         # optimized height map
-        height_traj = self.get_optimized_terrain(i)
+        height_traj = self.get_traj_dphyics_terrain(i)
 
         # crop height map to observation area defined by square grid
         h, w = height_est.shape
@@ -683,8 +683,8 @@ class OmniDEMData(MonoDEMData):
         post_trans = []
         intrins = []
 
-        # permute cameras
         cameras = self.cameras.copy()
+        # permute cameras
         # if self.is_train:
         #     np.random.shuffle(cameras)
 
@@ -749,7 +749,7 @@ class OmniDEMData(MonoDEMData):
     def get_lidar_height_map(self, i, cached=True):
         # height map from point cloud (!!! assumes points are in robot frame)
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
-        dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
+        dir_path = os.path.join(self.path, 'terrain', 'lidar', interpolation)
         # if height map was estimated before - load it
         if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
@@ -826,12 +826,13 @@ class OmniRigidDEMData(OmniDEMData):
                  ):
         super(OmniRigidDEMData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
-    def get_traj_height_map(self, i, method='footprint'):
-        assert method in ['optimized', 'footprint']
-        if method == 'optimized':
-            height = self.get_optimized_terrain(i)
+    def get_traj_height_map(self, i, method='footprint', cached=True):
+        assert method in ['dphysics', 'footprint']
+        if method == 'dphysics':
+            height = self.get_traj_dphyics_terrain(i)
             # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
             H, W = height.shape
+            assert H == W == 256, f'Height map shape is {H} x {W}. Expected 256 x 256.'
             h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
             # select only the h x w area from the center of the height map
             height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
@@ -852,8 +853,15 @@ class OmniRigidDEMData(OmniDEMData):
             mask = cv2.dilate(mask, kernel, iterations=2)
         else:
             assert method == 'footprint'
-            traj_points = self.estimated_footprint_traj_points(i)
-            traj_hm = self.estimate_heightmap(traj_points, robot_size=None)
+            file_path = os.path.join(self.path, 'terrain', 'traj', 'footprint', f'{self.ids[i]}.npy')
+            if cached and os.path.exists(file_path):
+                traj_hm = np.load(file_path, allow_pickle=True).item()
+            else:
+                traj_points = self.estimated_footprint_traj_points(i)
+                traj_hm = self.estimate_heightmap(traj_points, robot_size=None)
+                # save height map as numpy array
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                np.save(file_path, traj_hm)
             height = traj_hm['z']
             mask = traj_hm['mask']
 
@@ -1173,7 +1181,7 @@ def traversed_height_map():
     height_est = heightmap['z']
     x_grid, y_grid = heightmap['x'], heightmap['y']
     # height map: optimized from robot-terrain interaction model
-    height = ds.get_optimized_terrain(i)
+    height = ds.get_traj_dphyics_terrain(i)
 
     plt.figure(figsize=(12, 12))
     h, w = height_est.shape

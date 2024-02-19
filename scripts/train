@@ -98,8 +98,9 @@ class Trainer:
 
             if debug:
                 print('Debug mode: using small datasets')
-                train_ids = range(int(0.05 * len(train_ds)) + 1)
-                val_ids = range(int(0.01 * len(val_ds)) + 1)
+                # randomly sample from the dataset
+                train_ids = np.random.choice(len(train_ds), int(0.1 * len(train_ds)), replace=False)
+                val_ids = np.random.choice(len(val_ds), int(0.05 * len(val_ds)), replace=False)
             else:
                 # randomly select a subset of the dataset
                 val_ds_size = int(val_fraction * len(train_ds))
