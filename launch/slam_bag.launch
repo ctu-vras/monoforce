@@ -16,18 +16,9 @@
         <arg name="rviz" value="false"/>
     </include>
 
-    <!-- Cloud filterring -->
-    <include file="$(dirname)/cloud_filter.launch">
-        <arg name="input" value="points"/>
-        <arg name="output" value="filtered_cloud"/>
-        <arg name="min_depth" value="$(arg min_depth)"/>
-        <arg name="max_depth" value="$(arg max_depth)"/>
-        <arg name="grid_res" value="$(arg grid_res)"/>
-    </include>
-
     <!-- SLAM -->
     <include file="$(dirname)/slam.launch">
-        <arg name="cloud" value="filtered_cloud"/>
+        <arg name="cloud" value="points"/>
         <arg name="odom_frame" value="odom"/>
     </include>
 
