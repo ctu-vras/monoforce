@@ -59,12 +59,10 @@ class LSS:
         # tf listener
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-        # height map publisher
-        self.hm_img_pub = rospy.Publisher('/height_map/image', Image, queue_size=1)
-        # point cloud publisher
-        self.hm_cloud_pub = rospy.Publisher('/height_map/points', PointCloud2, queue_size=1)
         # grid map publisher
-        self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
+        self.hm_rigid_pub = rospy.Publisher('/grid_map/rigid', GridMap, queue_size=1)
+        self.hm_geom_pub = rospy.Publisher('/grid_map/geom', GridMap, queue_size=1)
+        self.hm_diff_pub = rospy.Publisher('/grid_map/diff', GridMap, queue_size=1)
 
         # subscribe to camera intrinsics (ones)
         self.proc_lock = RLock()
@@ -251,33 +249,22 @@ class LSS:
         inputs = [i.to(self.cfg.device) for i in inputs]
 
         # model inference
-        pred = self.model(*inputs)
+        voxel_feats = self.model.get_voxels(*inputs)
+        height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+        height_pred_rigid = height_pred_geom - height_pred_diff
 
-        height = pred.squeeze().cpu().numpy()
-        rospy.logdebug('Predicted height map shape: %s' % str(height.shape))
-        rospy.logdebug('Height min: %.3f, max: %.3f' % (height.min(), height.max()))
-
-        # publish height map as image
-        stamp = rospy.Time.now()
-        # height_uint8 = np.asarray(255 * normalize(height), dtype='uint8')
-        # img_msg = self.cv_bridge.cv2_to_imgmsg(height_uint8, encoding='mono8')
-        # img_msg.header.stamp = stamp
-        # img_msg.header.frame_id = self.hm_frame
-        # self.hm_img_pub.publish(img_msg)
-
-        # publish height map as point cloud
-        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
-                                                  xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
-        cloud_msg.header.stamp = stamp
-        cloud_msg.header.frame_id = self.hm_frame
-        self.hm_cloud_pub.publish(cloud_msg)
+        rospy.logdebug('Predicted height map shape: %s' % str(height_pred_rigid.shape))
 
         # publish height map as grid map
-        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
-                                             xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
-        grid_msg.info.header.stamp = stamp
-        grid_msg.info.header.frame_id = self.hm_frame
-        self.hm_grid_pub.publish(grid_msg)
+        stamp = rospy.Time.now()
+        for height, pub in zip([height_pred_rigid, height_pred_geom, height_pred_diff],
+                               [self.hm_rigid_pub, self.hm_geom_pub, self.hm_diff_pub]):
+            height = height.squeeze().cpu().numpy()
+            grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
+                                                 xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+            grid_msg.info.header.stamp = stamp
+            grid_msg.info.header.frame_id = self.hm_frame
+            pub.publish(grid_msg)
 
     def spin(self):
         try:

@@ -18,17 +18,6 @@
                                              '/camera_right/camera_info']"/>
     <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/calibration/"/>
 
-<!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/> -->
-<!--     <arg name="img_topics" default="['/camera_fisheye_front/image_color/compressed', -->
-<!--                                      '/camera_left/image_color/compressed', -->
-<!--                                      '/camera_right/image_color/compressed', -->
-<!--                                      '/camera_fisheye_rear/image_color/compressed']"/> -->
-<!--     <arg name="camera_info_topics" default="['/camera_fisheye_front/camera_info', -->
-<!--                                              '/camera_left/camera_info', -->
-<!--                                              '/camera_right/camera_info', -->
-<!--                                              '/camera_fisheye_rear/camera_info']"/> -->
-<!--     <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/calibration/"/> -->
-
     <!-- Robot data: from bag file -->
     <include file="$(dirname)/play_bag.launch">
         <arg name="bag" value="$(arg bag)"/>
