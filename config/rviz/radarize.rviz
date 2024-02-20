@@ -63,7 +63,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 1
@@ -80,7 +80,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -93,7 +93,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 1
@@ -110,7 +110,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Class: rviz/Image
       Enabled: true
       Image Topic: /flir_camera/image_raw
@@ -150,8 +150,6 @@ Visualization Manager:
           Value: true
         hugin_radar:
           Value: true
-        map:
-          Value: true
         navtech:
           Value: true
         odom:
@@ -179,32 +177,31 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          odom:
-            base_link:
-              camera:
+        odom:
+          base_link:
+            camera:
+              {}
+            flir_camera:
+              {}
+            hugin_radar:
+              {}
+            navtech:
+              {}
+            os_sensor:
+              os_imu:
                 {}
-              flir_camera:
+              os_lidar:
                 {}
-              hugin_radar:
-                {}
-              navtech:
-                {}
-              os_sensor:
-                os_imu:
-                  {}
-                os_lidar:
-                  {}
-              radar_pose_can0:
-                {}
-              radar_pose_can1:
-                {}
-              sick:
-                {}
-              ti_mmwave_0:
-                {}
-              vertical_os_sensor:
-                {}
+            radar_pose_can0:
+              {}
+            radar_pose_can1:
+              {}
+            sick:
+              {}
+            ti_mmwave_0:
+              {}
+            vertical_os_sensor:
+              {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612

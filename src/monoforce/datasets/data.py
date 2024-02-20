@@ -40,34 +40,44 @@ __all__ = [
     'DepthDEMDataVis',
     'TravData',
     'TravDataVis',
-    'seq_paths',
+    'robingas_husky_seq_paths',
     'sim_seq_paths',
+    'oru_seq_paths',
 ]
 
 IGNORE_LABEL = 255
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
 
-seq_paths = [
-        os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
-        os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/'),
-        os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
-        os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31_trav/'),
-        os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
-        os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
+robingas_husky_seq_paths = [
+    os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
+    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/'),
+    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
+    # os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31_trav/'),
 ]
-seq_paths = [os.path.normpath(path) for path in seq_paths]
+robingas_husky_seq_paths = [os.path.normpath(path) for path in robingas_husky_seq_paths]
+
+robingas_marv_seq_paths = [
+    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
+    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
+]
+robingas_marv_seq_paths = [os.path.normpath(path) for path in robingas_marv_seq_paths]
 
 sim_seq_paths = [
-        os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23_trav'),
-        os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
 ]
 sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
+
+oru_seq_paths = [
+    os.path.join(data_dir, 'ORU/2024_02_07_Husky_campus_forest_bushes/bags/radarize__2024-02-07-10-47-13_0/'),
+]
+oru_seq_paths = [os.path.normpath(path) for path in oru_seq_paths]
 
 class DEMPathData(Dataset):
     """
@@ -1016,7 +1026,7 @@ def heightmap_demo():
     from ..cloudproc import filter_grid, filter_range
     import matplotlib.pyplot as plt
 
-    path = seq_paths[0]
+    path = robingas_husky_seq_paths[0]
     assert os.path.exists(path)
 
     cfg = Config()
@@ -1047,7 +1057,7 @@ def extrinsics_demo():
     from mayavi import mlab
     from ..vis import draw_coord_frames, draw_coord_frame
 
-    for path in seq_paths:
+    for path in robingas_husky_seq_paths:
         assert os.path.exists(path)
 
         cfg = Config()
@@ -1091,7 +1101,7 @@ def vis_rgb_cloud():
     from ..vis import show_cloud
     from ..utils import normalize
 
-    for path in seq_paths:
+    for path in robingas_husky_seq_paths:
         assert os.path.exists(path)
 
         cfg = Config()
@@ -1158,7 +1168,7 @@ def vis_rgb_cloud():
 
 
 def traversed_height_map():
-    path = np.random.choice(seq_paths)
+    path = np.random.choice(robingas_husky_seq_paths)
     assert os.path.exists(path)
 
     cfg = Config()
@@ -1199,7 +1209,7 @@ def traversed_height_map():
 
 def vis_train_sample():
     cfg = Config()
-    path = np.random.choice(seq_paths)
+    path = np.random.choice(robingas_husky_seq_paths)
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
 
     ds = MonoDEMData(path=path, cfg=cfg)
@@ -1255,7 +1265,7 @@ def vis_estimated_height_map():
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 
-    path = np.random.choice(seq_paths)
+    path = np.random.choice(robingas_husky_seq_paths)
     ds = DEMPathData(path=path, cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
@@ -1278,7 +1288,7 @@ def vis_estimated_height_map():
 
 
 def vis_img_augs():
-    path = np.random.choice(seq_paths)
+    path = np.random.choice(robingas_husky_seq_paths)
     cfg = Config()
     ds = MonoDEMData(path=path,
                      is_train=True,
@@ -1313,7 +1323,7 @@ def vis_img_augs():
 
 
 def global_cloud_demo():
-    for path in seq_paths:
+    for path in robingas_husky_seq_paths:
         ds = DEMPathData(path=path)
         ds.global_cloud(vis=True)
 
@@ -1370,7 +1380,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 showimg = denormalize_img(img)
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=1, alpha=0.1, cmap='jet')
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=1, cmap='jet')
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
@@ -1408,10 +1418,10 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 plt.show()
 
 
-def geometric_traversed_heightmap():
+def trajecory_footprint_heightmap():
     import open3d as o3d
 
-    path = seq_paths[0]
+    path = robingas_husky_seq_paths[0]
     assert os.path.exists(path)
 
     cfg = Config()
@@ -1462,7 +1472,7 @@ def main():
     vis_estimated_height_map()
     vis_img_augs()
     global_cloud_demo()
-    geometric_traversed_heightmap()
+    trajecory_footprint_heightmap()
 
 
 if __name__ == '__main__':

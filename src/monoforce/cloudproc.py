@@ -234,7 +234,7 @@ def hm_to_cloud(height, cfg, mask=None):
 
 
 def demo():
-    from .datasets import TravData, seq_paths
+    from .datasets import TravData, robingas_husky_seq_paths
     from .utils import read_yaml
     from .config import Config
 
@@ -264,7 +264,7 @@ def demo():
 
     # ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
     # i = 50
-    ds = TravData(seq_paths[2], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravData(robingas_husky_seq_paths[2], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
     i = 5
     cloud = ds.get_cloud(i)
     points = position(cloud)

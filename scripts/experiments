@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from monoforce.cloudproc import hm_to_cloud
 from monoforce.datasets.data import TravData, explore_data
-from monoforce.datasets.data import seq_paths
+from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
 from monoforce.transformations import transform_cloud
 from monoforce.utils import read_yaml
@@ -28,7 +28,7 @@ torch.set_default_dtype(torch.float32)
 def feed_data():
     # path = '/media/ruslan/data/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
     # path = '/media/ruslan/data/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/'
-    path = seq_paths[1]
+    path = robingas_husky_seq_paths[1]
 
     # lss model
     cfg = Config()
@@ -148,7 +148,7 @@ def map_consistency():
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravData(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
     loader = DataLoader(ds, batch_size=16, shuffle=False)
     # ds.global_cloud(vis=True)
     ds.global_hm_cloud(vis=True)
@@ -203,7 +203,7 @@ def data_slicing():
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravData(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
     ds_slice = ds[150:200]
     print("Full dataset contains samples", ds.ids)
     print("Sliced dataset contains samples", ds_slice.ids)

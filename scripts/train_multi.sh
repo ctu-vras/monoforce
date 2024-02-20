@@ -99,4 +99,3 @@ case $EXPERIMENT_ID in
         ;;
 esac
 echo "Done training."
-

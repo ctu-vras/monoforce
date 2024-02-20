@@ -12,9 +12,8 @@ from monoforce.models.lss.tools import denormalize_img
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.config import Config
-from monoforce.utils import read_yaml, write_to_yaml, normalize
-from monoforce.datasets import seq_paths, sim_seq_paths
-from monoforce.losses import RMSE, total_variation
+from monoforce.utils import read_yaml, write_to_yaml
+from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
