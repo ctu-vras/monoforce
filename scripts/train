@@ -53,6 +53,28 @@ def arg_parser():
     return parser.parse_args()
 
 class Trainer:
+    """
+    Trainer for LSS terrain encoder model
+
+    Args:
+    data_paths: list of str, paths to training datasets
+    cfg: Config, configuration object
+    data_aug_conf: dict, data augmentation configuration
+    grid_conf: dict, grid configuration
+    bsz: int, batch size
+    nworkers: int, number of workers for dataloaders
+    lr: float, learning rate
+    weight_decay: float, weight decay
+    nepochs: int, number of epochs
+    map_consistency: bool, enable map consistency loss
+    pretrained_model_path: str, path to pretrained model
+    log_dir: str, path to log directory
+    debug: bool, debug mode: use small datasets
+    vis: bool, visualize training samples
+    lidar_hm_weight: float, weight for lidar heightmap loss
+    traj_hm_weight: float, weight for trajectory heightmap loss
+    hdiff_weight: float, weight for height difference loss
+    """
     def __init__(self,
                  data_paths,
                  cfg,

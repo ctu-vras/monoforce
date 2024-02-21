@@ -54,8 +54,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
+        Max Value: 19.520450592041016
+        Min Value: 4.456877708435059
         Value: true
       Axis: Z
       Channel Name: z
@@ -106,7 +106,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.019999999552965164
       Style: Spheres
-      Topic: /point_cloud_deskewed
+      Topic: /ouster/points_deskewed
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -150,6 +150,8 @@ Visualization Manager:
           Value: true
         hugin_radar:
           Value: true
+        map:
+          Value: true
         navtech:
           Value: true
         odom:
@@ -177,31 +179,32 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        odom:
-          base_link:
-            camera:
-              {}
-            flir_camera:
-              {}
-            hugin_radar:
-              {}
-            navtech:
-              {}
-            os_sensor:
-              os_imu:
+        map:
+          odom:
+            base_link:
+              camera:
                 {}
-              os_lidar:
+              flir_camera:
                 {}
-            radar_pose_can0:
-              {}
-            radar_pose_can1:
-              {}
-            sick:
-              {}
-            ti_mmwave_0:
-              {}
-            vertical_os_sensor:
-              {}
+              hugin_radar:
+                {}
+              navtech:
+                {}
+              os_sensor:
+                os_imu:
+                  {}
+                os_lidar:
+                  {}
+              radar_pose_can0:
+                {}
+              radar_pose_can1:
+                {}
+              sick:
+                {}
+              ti_mmwave_0:
+                {}
+              vertical_os_sensor:
+                {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -266,14 +269,14 @@ Visualization Manager:
     - Alpha: 0.800000011920929
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
+        Max Value: 16.712055206298828
+        Min Value: 5.172728061676025
         Value: true
       Axis: Z
       Channel Name: z
       Class: rviz/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: FlatColor
+      Color Transformer: AxisColor
       Decay Time: 0
       Enabled: false
       Invert Rainbow: false
@@ -295,7 +298,7 @@ Visualization Manager:
   Global Options:
     Background Color: 46; 52; 54
     Default Light: true
-    Fixed Frame: odom
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -335,9 +338,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 1
-      Pitch: 0.555398166179657
+      Pitch: 0.7853981852531433
       Target Frame: base_link
-      Yaw: 0.7803981900215149
+      Yaw: 0.7853981852531433
     Saved:
       - Class: rviz/ThirdPersonFollower
         Distance: 10

@@ -5,7 +5,8 @@
     <arg name="record" default="false"/>
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
     <arg name="params" default="$(eval bag.split()[0] + '.params')"/>
-    <!-- Cloud filter -->
+    <!-- Cloud preprocessing -->
+    <arg name="filter_cloud" default="true"/>
     <arg name="min_depth" default="1.0"/>
     <arg name="max_depth" default="25.0"/>
     <arg name="grid_res" default="0.1"/>
@@ -14,12 +15,24 @@
     <include file="$(dirname)/play_bag.launch">
         <arg name="bag" value="$(arg bag)"/>
         <arg name="rviz" value="false"/>
+        <arg name="rate" value="1"/>
+    </include>
+
+    <!-- Cloud preprocessing (filtering + deskewing) -->
+    <include if="$(arg filter_cloud)" file="$(dirname)/cloud_preproc.launch">
+        <arg name="input" value="points"/>
+        <arg name="output" value="points_filtered"/>
+        <arg name="min_depth" value="$(arg min_depth)"/>
+        <arg name="max_depth" value="$(arg max_depth)"/>
+        <arg name="grid_res" value="$(arg grid_res)"/>
     </include>
 
     <!-- SLAM -->
     <include file="$(dirname)/slam.launch">
-        <arg name="cloud" value="points"/>
+        <arg unless="$(arg filter_cloud)" name="cloud" value="points"/>
+        <arg if="$(arg filter_cloud)" name="cloud" value="points_filtered"/>
         <arg name="odom_frame" value="odom"/>
+        <arg name="lidar_beams" value="128"/>
     </include>
 
     <!-- RVIZ -->

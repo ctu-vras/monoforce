@@ -170,7 +170,7 @@ def main():
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
     for path in paths:
         sample_range = 'random'
-        explore_data(path, grid_conf, data_aug_conf, cfg, save=True, is_train=False, sample_range=sample_range)
+        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range=sample_range)
         hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 

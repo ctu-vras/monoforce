@@ -28,17 +28,29 @@ SAVE=True
 #CAMERA_INFO_TOPICS='/ids_camera/camera_info'
 
 #BAG_PATHS='/media/ruslan/SSD/data/bags/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00.bag'
-BAG_PATHS='/media/ruslan/SSD/data/bags/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56.bag'
+#CLOUD_TOPIC='/points'
+#LIDAR_FRAME='os_sensor'
+#CAMERA_TOPICS='/realsense_front/color/image_raw/compressed
+#               /realsense_left/color/image_raw/compressed
+#               /realsense_rear/color/image_raw/compressed
+#               /realsense_right/color/image_raw/compressed'
+#CAMERA_INFO_TOPICS='/realsense_front/color/camera_info
+#                    /realsense_left/color/camera_info
+#                    /realsense_rear/color/camera_info
+#                    /realsense_right/color/camera_info'
+
+BAG_PATHS='/media/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag
+           /media/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_loc.bag'
 CLOUD_TOPIC='/points'
 LIDAR_FRAME='os_sensor'
-CAMERA_TOPICS='/realsense_front/color/image_raw/compressed
-               /realsense_left/color/image_raw/compressed
-               /realsense_rear/color/image_raw/compressed
-               /realsense_right/color/image_raw/compressed'
-CAMERA_INFO_TOPICS='/realsense_front/color/camera_info
-                    /realsense_left/color/camera_info
-                    /realsense_rear/color/camera_info
-                    /realsense_right/color/camera_info'
+CAMERA_TOPICS='/camera_front/image_color/compressed
+               /camera_left/image_color/compressed
+               /camera_rear/image_color/compressed
+               /camera_right/image_color/compressed'
+CAMERA_INFO_TOPICS='/camera_front/camera_info
+                    /camera_left/camera_info
+                    /camera_rear/camera_info
+                    /camera_right/camera_info'
 
 # source ROS workspace
 source /home/$USER/workspaces/traversability_ws/devel/setup.bash
@@ -51,4 +63,4 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
                    --camera-info-topics ${CAMERA_INFO_TOPICS} \
                    --robot-model 'Box()' --discard-model 'Box()' \
                    --input-step ${INPUT_STEP} --visualize $VIS --save-data $SAVE \
-                   --fixed-frame odom
+                   --fixed-frame map

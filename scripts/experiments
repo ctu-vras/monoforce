@@ -212,10 +212,28 @@ def data_slicing():
     ds_slice.global_hm_cloud(vis=True)
 
 
+def visualize_point_cloud_map():
+    """
+    Visualize point cloud map and trajectory point cloud
+    """
+    import open3d as o3d
+
+    # map_path = os.path.join(robingas_husky_seq_paths[0], 'map.pcd')
+    # traj_path = os.path.join(robingas_husky_seq_paths[0], 'trajectory.pcd')
+    map_path = os.path.join(oru_seq_paths[0], 'map.pcd')
+    traj_path = os.path.join(oru_seq_paths[0], 'trajectory.pcd')
+
+    pcd = o3d.io.read_point_cloud(map_path)
+    pcd_traj = o3d.io.read_point_cloud(traj_path)
+    pcd_traj.paint_uniform_color([1, 0, 0])
+    o3d.visualization.draw_geometries([pcd, pcd_traj])
+
+
 def main():
-    feed_data()
+    # feed_data()
     # map_consistency()
     # data_slicing()
+    visualize_point_cloud_map()
 
 
 if __name__ == '__main__':
