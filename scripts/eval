@@ -47,8 +47,8 @@ def hm_to_imgs_projection_demo(seq_path, data_aug_conf, grid_conf, cfg, modelf, 
             # compute loss
             hm_gt = hm_gt.to(cfg.device)
             B, D, H, W = hm_gt.shape
-            height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-            mask_measured = weights.bool()
+            height_gt, mask_measured = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
+            mask_measured = mask_measured.bool()
             loss = loss_fn(height_pred[mask_measured], height_gt[mask_measured])
 
             # figure title
@@ -133,8 +133,8 @@ def eval(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
                 # compute loss
                 hm_gt = hm_gt.to(cfg.device)
                 B, D, H, W = hm_gt.shape
-                height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-                loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+                height_gt, mask_measured = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
+                loss = loss_fn(height_pred[mask_measured.bool()], height_gt[mask_measured.bool()])
 
                 eval_loss += loss.item()
             eval_loss /= len(valloader)
@@ -159,19 +159,19 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     # modelf = '../config/weights/lss/lss.pt'
-    modelf = '../config/tb_runs/lss_2024_01_29_16_21_19/train_lss.pt'
+    modelf = '../config/tb_runs/lss_2024_02_20_16_33_37/train_lss.pt'
     # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
-    # paths = robingas_husky_seq_paths
+    paths = robingas_husky_seq_paths
     # paths = sim_seq_paths
-    paths = oru_seq_paths
+    # paths = oru_seq_paths
 
-    for path in paths:
-        sample_range = 'all'
-        explore_data(path, grid_conf, data_aug_conf, cfg, save=True, is_train=False, sample_range=sample_range)
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
-    # hm_to_imgs_projection_demo(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
+    for path in paths:
+        sample_range = 'random'
+        explore_data(path, grid_conf, data_aug_conf, cfg, save=True, is_train=False, sample_range=sample_range)
+        hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 
 if __name__ == '__main__':

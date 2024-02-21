@@ -8,7 +8,7 @@ from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Pointclouds
 from monoforce.cloudproc import hm_to_cloud
 from monoforce.transformations import transform_cloud
-from monoforce.models.lss.tools import denormalize_img
+from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.config import Config
@@ -323,15 +323,11 @@ class Trainer:
                     self.writer.add_figure('val/prediction', fig, e)
 
     def vis_pred(self, loader):
-        model = self.model
-        grid_conf = self.grid_conf
-        device = self.cfg.device
-
         fig = plt.figure(figsize=(20, 12))
         ax1 = fig.add_subplot(341)
-        ax2 = fig.add_subplot(342, projection='3d')
-        ax3 = fig.add_subplot(343, projection='3d')
-        ax4 = fig.add_subplot(344, projection='3d')
+        ax2 = fig.add_subplot(342)
+        ax3 = fig.add_subplot(343)
+        ax4 = fig.add_subplot(344)
         ax5 = fig.add_subplot(345)
         ax6 = fig.add_subplot(346)
         ax7 = fig.add_subplot(347)
@@ -342,52 +338,48 @@ class Trainer:
         ax12 = fig.add_subplot(3, 4, 12)
 
         axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
+        for ax in axes:
+            ax.clear()
 
         # visualize training predictions
         with torch.no_grad():
             imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
-            hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32, device=device)
-            voxel_feats = model.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
+            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.cfg.device) for i in inputs]
+            hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32)
+            voxel_feats = self.model.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
             height_pred = height_pred_geom - height_pred_diff
 
-            for ax in axes:
-                ax.clear()
+            batchi = 0
+            height_pred = height_pred[batchi, 0].cpu()
+            height_pred_geom = height_pred_geom[batchi, 0].cpu()
+            height_pred_diff = height_pred_diff[batchi, 0].cpu()
+            height_lidar = hm_lidar[batchi, 0].cpu()
+            height_traj = hm_traj[batchi, 0].cpu()
+            mask_measured = hm_lidar[batchi, 1].bool().cpu()
 
-            # plot image
-            img = denormalize_img(imgs[0][0])
-            ax1.imshow(img)
+            # get height map points
+            z_grid = height_pred
+            x_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+            hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+            hm_points = hm_points[mask_measured]
+            hm_points = hm_points.view(-1, 3).T
 
-            # plot prediction as surface
-            ax2.set_title('Pred Surface')
-            height_pred = height_pred[0][0].cpu().numpy().T
-            height_pred_geom = height_pred_geom[0][0].cpu().numpy().T
-            height_pred_diff = height_pred_diff[0][0].cpu().numpy().T
-            height_lidar = hm_lidar[0][0].cpu().numpy().T
-            height_traj = hm_traj[0][0].cpu().numpy().T
-            mask = hm_lidar[0][1].bool().cpu().numpy().T
-            x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
-            y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
-            x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-            ax2.plot_surface(x_grid, y_grid, height_pred, cmap='jet', vmin=-1.0, vmax=1.0)
-            ax2.set_zlim(-1.0, 1.0)
-            ax2.set_xlabel('x [m]')
-            ax2.set_ylabel('y [m]')
-            ax2.set_zlabel('z [m]')
-
-            # plot ground truth as surface
-            ax3.set_title('Lidar Surface')
-            ax3.plot_surface(x_grid, y_grid, height_lidar, cmap='jet', vmin=-1.0, vmax=1.0)
-            ax3.set_zlim(-1.0, 1.0)
-            ax3.set_xlabel('x [m]')
-            ax3.set_ylabel('y [m]')
-            ax3.set_zlabel('z [m]')
-
-            # plot traj heightmap as surface
-            ax4.set_title('Traj Surface')
-            ax4.plot_surface(x_grid, y_grid, height_traj, cmap='jet', vmin=-1.0, vmax=1.0)
+            # plot images with projected height map points
+            for imgi in range(imgs.shape[1])[:4]:
+                ax = axes[imgi]
+                img = imgs[batchi, imgi]
+                img = denormalize_img(img)
+                ego_pts = ego_to_cam(hm_points, rots[batchi, imgi], trans[batchi, imgi], intrins[batchi, imgi])
+                img_H, img_W = self.data_aug_conf['H'], self.data_aug_conf['W']
+                mask_img = get_only_in_img_mask(ego_pts, img_H, img_W)
+                plot_pts = post_rots[batchi, imgi].matmul(ego_pts) + post_trans[batchi, imgi].unsqueeze(1)
+                ax.imshow(img)
+                ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=-plot_pts[1, mask_img], cmap='jet')
+                ax.axis('off')
 
             # plot prediction as image
             ax5.set_title('Prediction')
@@ -395,34 +387,34 @@ class Trainer:
 
             ax6.set_title('Masked Prediction')
             height_pred_vis = np.zeros_like(height_pred)
-            height_pred_vis[mask] = height_pred[mask]
-            ax6.imshow(height_pred_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            height_pred_vis[mask_measured] = height_pred[mask_measured]
+            ax6.imshow(height_pred_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax7.set_title('Lidar')
-            ax7.imshow(height_lidar, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax7.imshow(height_lidar.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax8.set_title('Traj')
-            ax8.imshow(height_traj, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax8.imshow(height_traj.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             # predicted geometric height
             ax9.set_title('Geom Pred')
-            ax9.imshow(height_pred_geom, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax9.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             # masked predicted geometric height
             ax10.set_title('Masked Geom Pred')
             height_pred_geom_vis = np.zeros_like(height_pred)
-            height_pred_geom_vis[mask] = height_pred_geom[mask]
-            ax10.imshow(height_pred_geom_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            height_pred_geom_vis[mask_measured] = height_pred_geom[mask_measured]
+            ax10.imshow(height_pred_geom_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             # predicted diff height
             ax11.set_title('Diff Pred')
-            ax11.imshow(height_pred_diff, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax11.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             # masked predicted diff height
             ax12.set_title('Masked Diff Pred')
             height_pred_diff_vis = np.zeros_like(height_pred)
-            height_pred_diff_vis[mask] = height_pred_diff[mask]
-            ax12.imshow(height_pred_diff_vis, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            height_pred_diff_vis[mask_measured] = height_pred_diff[mask_measured]
+            ax12.imshow(height_pred_diff_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 
