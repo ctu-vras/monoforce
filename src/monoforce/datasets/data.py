@@ -49,28 +49,28 @@ IGNORE_LABEL = 255
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
 
 robingas_husky_seq_paths = [
-    os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_trav/'),
-    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_trav/'),
-    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'),
-    # os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31_trav/'),
+    os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57/'),
+    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15/'),
+    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'),
+    # os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31/'),
 ]
 robingas_husky_seq_paths = [os.path.normpath(path) for path in robingas_husky_seq_paths]
 
 robingas_marv_seq_paths = [
-    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03_trav/'),
-    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'),
+    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03/'),
+    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'),
 ]
 robingas_marv_seq_paths = [os.path.normpath(path) for path in robingas_marv_seq_paths]
 
 sim_seq_paths = [
-    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23_trav'),
-    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46_trav'),
+    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25'),
+    os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36'),
+    os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34'),
+    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23'),
+    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46'),
 ]
 sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 

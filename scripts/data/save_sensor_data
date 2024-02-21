@@ -274,7 +274,7 @@ def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, ro
                     robot_to_input_tfs = [np.linalg.inv(T) for T in input_to_robot_tfs]
                     l = trajectory_length(robot_to_input_tfs)
                     if l < MIN_TRAJECTORY_LENGTH:
-                        print('Discarding cloud with short trajectory length (%.2f < %2f).' % (l, MIN_TRAJECTORY_LENGTH))
+                        print('Discarding cloud with short trajectory length (%.2f < %.2f).' % (l, MIN_TRAJECTORY_LENGTH))
                         continue
 
                     last_out[topic] = start
@@ -355,18 +355,21 @@ def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1
     dir = os.path.dirname(bag_paths[0])
     name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
 
+    img_stamps = {}
     for bag_path in bag_paths:
         with Bag(bag_path, 'r') as bag:
             # save images at cloud timestamps
             for rgb_topic in img_topics:
                 camera = rgb_topic.split('/')[1]
+                img_stamps[camera] = []
                 for i in tqdm(range(len(time_stamps)), desc='Saving images from topic "%s"' % rgb_topic):
                     # get the closest image at points time
-                    msg = get_closest_msg(bag=bag, topic=rgb_topic, time_moment=time_stamps[i].to_sec(),
-                                          time_window=2*time_step, max_time_diff=time_step)
+                    msg, img_stamp = get_closest_msg(bag=bag, topic=rgb_topic, time_moment=time_stamps[i].to_sec(),
+                                                     time_window=2*time_step, max_time_diff=time_step)
                     if msg is None:
                         print('No image found for topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
                         continue
+                    img_stamps[camera].append(img_stamp)
                     # convert msg to cv2 image
                     img_raw = rgb_msg_to_cv2(msg, cv_bridge)
                     if save:
@@ -378,6 +381,7 @@ def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1
                                                       camera=camera)
                         os.makedirs(os.path.dirname(path), exist_ok=True)
                         cv2.imwrite(path, img_raw)
+    return img_stamps
 
 
 def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_topics, fixed_frame, robot_frame,
@@ -409,8 +413,19 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
                                         output_global_poses_path=output_global_poses_path, output_topic=output_topic, output_period=output_period,
                                         visualize=visualize, save_data=save_data, tf_buffer=tf_buffer)
     print('Saving images...')
-    save_images(bag_paths, camera_topics, cloud_stamps, output_img_path, time_step=time_step, save=save_data)
+    img_stamps = save_images(bag_paths, camera_topics, cloud_stamps, output_img_path, time_step=time_step, save=save_data)
 
+    # save cloud and image timestamps in the following format: lidar_stamp, camera1_stamp, camera2_stamp, ...
+    dir = os.path.dirname(bag_paths[0])
+    name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
+    path = os.path.join(dir, name, 'timestamps.csv')
+    with open(path, 'w') as f:
+        cameras = img_stamps.keys()
+        writer = csv.writer(f)
+        writer.writerow(['lidar'] + cameras)
+        for i in range(len(cloud_stamps)):
+            row = [cloud_stamps[i].to_sec()] + [img_stamps[camera][i].to_sec() for camera in cameras]
+            writer.writerow(row)
 
 def main():
     args = arg_parser().parse_args()

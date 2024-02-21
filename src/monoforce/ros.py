@@ -246,7 +246,7 @@ def get_topic_types(bag):
 @timing
 def get_closest_msg(bag, topic, time_moment, time_window=1.0,
                     max_time_diff=0.5, max_time_window=10.0,
-                    verbose=False, return_time_diff=False):
+                    verbose=False):
     assert isinstance(bag, Bag)
     assert isinstance(topic, str)
     assert isinstance(time_moment, float)
@@ -269,24 +269,19 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
     if len(stamps_in_window) == 0:
         # # raise Exception('No image messages in window')
         print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time_moment, topic))
-        # print('Trying to increase time_window twice (%f [sec])' % (2*time_window))
-        # return get_closest_msg(bag=bag, topic=topic, time_moment=time_moment, time_window=time_window * 2.0,
-        #                        max_time_diff=max_time_diff, max_time_window=max_time_window,
-        #                        verbose=verbose, return_time_diff=return_time_diff)
-        return None
+        return None, None
 
     time_diffs = np.abs(np.array(stamps_in_window) - time_moment)
-    msg = msgs[np.argmin(time_diffs)]
+    i_min = np.argmin(time_diffs)
+    msg = msgs[i_min]
+    msg_stamp = stamps_in_window[i_min]
 
     time_diff = np.min(time_diffs)
     if verbose:
         print('Got the closest message with time difference: %.3f [sec]' % time_diff)
     assert time_diff < max_time_diff, 'Time difference is too large: %.3f [sec]' % time_diff
 
-    if return_time_diff:
-        return msg, time_diff
-
-    return msg
+    return msg, msg_stamp
 
 
 def get_cams_robot_transformations(bag_path, camera_topics, robot_frame, tf_buffer, save=True, output_path=None):
