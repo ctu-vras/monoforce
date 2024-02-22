@@ -1,12 +1,7 @@
 #! /usr/bin/env python3
 import os
 import torch
-from pytorch3d.loss import (
-        chamfer_distance,
-        mesh_edge_loss,
-        mesh_laplacian_smoothing,
-        mesh_normal_consistency,
-    )
+from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Meshes, Pointclouds
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,11 +11,17 @@ from monoforce.cloudproc import hm_to_cloud, filter_grid
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
-from monoforce.transformations import transform_cloud
+from monoforce.transformations import transform_cloud, so3_to_quaternion
 from monoforce.utils import read_yaml, position
 from monoforce.models.lss.model import compile_model
-from monoforce.losses import total_variation
 import open3d as o3d
+import bisect
+import numpy.matlib as ml
+try:
+    import matplotlib as mpl
+    mpl.use('QtAgg')
+except ImportError:
+    pass
 
 
 torch.set_default_dtype(torch.float32)
@@ -263,12 +264,157 @@ def visualize_point_cloud_map():
     o3d.visualization.draw_geometries([pcd, pcd_traj])
 
 
+def interpolate_poses(pose_timestamps, abs_poses, requested_timestamps, origin_timestamp):
+    """Interpolate between absolute poses.
+
+    Args:
+        pose_timestamps (list[int]): Timestamps of supplied poses. Must be in ascending order.
+        abs_poses (list[numpy.matrixlib.defmatrix.matrix]): SE3 matrices representing poses at the timestamps specified.
+        requested_timestamps (list[int]): Timestamps for which interpolated timestamps are required.
+        origin_timestamp (int): UNIX timestamp of origin frame. Poses will be reported relative to this frame.
+
+    Returns:
+        list[numpy.matrixlib.defmatrix.matrix]: SE3 matrix representing interpolated pose for each requested timestamp.
+
+    Raises:
+        ValueError: if pose_timestamps and abs_poses are not the same length
+        ValueError: if pose_timestamps is not in ascending order
+
+    """
+    requested_timestamps.insert(0, origin_timestamp)
+    requested_timestamps = np.array(requested_timestamps)
+    pose_timestamps = np.array(pose_timestamps)
+
+    if len(pose_timestamps) != len(abs_poses):
+        raise ValueError('Must supply same number of timestamps as poses')
+
+    abs_quaternions = np.zeros((4, len(abs_poses)))
+    abs_positions = np.zeros((3, len(abs_poses)))
+    for i, pose in enumerate(abs_poses):
+        if i > 0 and pose_timestamps[i-1] >= pose_timestamps[i]:
+            raise ValueError('Pose timestamps must be in ascending order')
+
+        abs_quaternions[:, i] = so3_to_quaternion(pose[0:3, 0:3])
+        abs_positions[:, i] = np.ravel(pose[0:3, 3])
+
+    upper_indices = [bisect.bisect(pose_timestamps, pt) for pt in requested_timestamps]
+    lower_indices = [u - 1 for u in upper_indices]
+
+    if max(upper_indices) >= len(pose_timestamps):
+        upper_indices = [min(i, len(pose_timestamps) - 1) for i in upper_indices]
+
+    fractions = (requested_timestamps - pose_timestamps[lower_indices]) // \
+                (pose_timestamps[upper_indices] - pose_timestamps[lower_indices])
+
+    quaternions_lower = abs_quaternions[:, lower_indices]
+    quaternions_upper = abs_quaternions[:, upper_indices]
+
+    d_array = (quaternions_lower * quaternions_upper).sum(0)
+
+    linear_interp_indices = np.nonzero(d_array >= 1)
+    sin_interp_indices = np.nonzero(d_array < 1)
+
+    scale0_array = np.zeros(d_array.shape)
+    scale1_array = np.zeros(d_array.shape)
+
+    scale0_array[linear_interp_indices] = 1 - fractions[linear_interp_indices]
+    scale1_array[linear_interp_indices] = fractions[linear_interp_indices]
+
+    theta_array = np.arccos(np.abs(d_array[sin_interp_indices]))
+
+    scale0_array[sin_interp_indices] = \
+        np.sin((1 - fractions[sin_interp_indices]) * theta_array) / np.sin(theta_array)
+    scale1_array[sin_interp_indices] = \
+        np.sin(fractions[sin_interp_indices] * theta_array) / np.sin(theta_array)
+
+    negative_d_indices = np.nonzero(d_array < 0)
+    scale1_array[negative_d_indices] = -scale1_array[negative_d_indices]
+
+    quaternions_interp = np.tile(scale0_array, (4, 1)) * quaternions_lower \
+                         + np.tile(scale1_array, (4, 1)) * quaternions_upper
+
+    positions_lower = abs_positions[:, lower_indices]
+    positions_upper = abs_positions[:, upper_indices]
+
+    positions_interp = np.multiply(np.tile((1 - fractions), (3, 1)), positions_lower) \
+                       + np.multiply(np.tile(fractions, (3, 1)), positions_upper)
+
+    poses_mat = ml.zeros((4, 4 * len(requested_timestamps)))
+
+    poses_mat[0, 0::4] = 1 - 2 * np.square(quaternions_interp[2, :]) - \
+                         2 * np.square(quaternions_interp[3, :])
+    poses_mat[0, 1::4] = 2 * np.multiply(quaternions_interp[1, :], quaternions_interp[2, :]) - \
+                         2 * np.multiply(quaternions_interp[3, :], quaternions_interp[0, :])
+    poses_mat[0, 2::4] = 2 * np.multiply(quaternions_interp[1, :], quaternions_interp[3, :]) + \
+                         2 * np.multiply(quaternions_interp[2, :], quaternions_interp[0, :])
+
+    poses_mat[1, 0::4] = 2 * np.multiply(quaternions_interp[1, :], quaternions_interp[2, :]) \
+                         + 2 * np.multiply(quaternions_interp[3, :], quaternions_interp[0, :])
+    poses_mat[1, 1::4] = 1 - 2 * np.square(quaternions_interp[1, :]) \
+                         - 2 * np.square(quaternions_interp[3, :])
+    poses_mat[1, 2::4] = 2 * np.multiply(quaternions_interp[2, :], quaternions_interp[3, :]) - \
+                         2 * np.multiply(quaternions_interp[1, :], quaternions_interp[0, :])
+
+    poses_mat[2, 0::4] = 2 * np.multiply(quaternions_interp[1, :], quaternions_interp[3, :]) - \
+                         2 * np.multiply(quaternions_interp[2, :], quaternions_interp[0, :])
+    poses_mat[2, 1::4] = 2 * np.multiply(quaternions_interp[2, :], quaternions_interp[3, :]) + \
+                         2 * np.multiply(quaternions_interp[1, :], quaternions_interp[0, :])
+    poses_mat[2, 2::4] = 1 - 2 * np.square(quaternions_interp[1, :]) - \
+                         2 * np.square(quaternions_interp[2, :])
+
+    poses_mat[0:3, 3::4] = positions_interp
+    poses_mat[3, 3::4] = 1
+
+    poses_mat = np.linalg.solve(poses_mat[0:4, 0:4], poses_mat)
+
+    poses_out = [0] * (len(requested_timestamps) - 1)
+    for i in range(1, len(requested_timestamps)):
+        poses_out[i - 1] = poses_mat[0:4, i * 4:(i + 1) * 4]
+
+    return poses_out
+
+
+def check_interpolate_poses():
+    from monoforce.vis import draw_coord_frame, draw_coord_frames
+    from mayavi import mlab
+
+    pose_timestamps = [0, 1, 2, 3, 4]
+    pose0 = np.eye(4)
+    abs_poses = []
+    for i in range(len(pose_timestamps)):
+        pose = pose0.copy()
+        pose[0, 3] += i+1
+        abs_poses.append(pose)
+
+    requested_timestamps = [p + 0.5 for p in pose_timestamps[:-1]]
+    origin_timestamp = 0
+
+    interp_poses = interpolate_poses(pose_timestamps, abs_poses, requested_timestamps.copy(), origin_timestamp)
+    print(interp_poses)
+
+    abs_poses = np.asarray(abs_poses)
+    interp_poses = np.asarray(interp_poses)
+
+    poses = np.vstack((abs_poses, interp_poses))
+
+    # visualize
+    draw_coord_frames(poses)
+    mlab.show()
+
+    # plt.figure()
+    # plt.plot(pose_timestamps, abs_poses[:, 0, 3], 'o', label='Pose timestamps')
+    # plt.plot(requested_timestamps, poses[:, 0, 3], 'x', label='Interpolated poses')
+    # plt.legend()
+    # plt.show()
+
+
 def main():
     # feed_data()
     # map_consistency()
     # data_slicing()
     # visualize_point_cloud_map()
-    create_global_gloud_map()
+    # create_global_gloud_map()
+    check_interpolate_poses()
 
 
 if __name__ == '__main__':

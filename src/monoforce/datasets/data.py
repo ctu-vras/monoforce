@@ -25,7 +25,10 @@ from tqdm import tqdm
 try:
     mpl.use('TkAgg')
 except:
-    print('TkAgg backend is not available')
+    try:
+        mpl.use('QtAgg')
+    except:
+        print('Cannot set matplotlib backend')
     pass
 
 __all__ = [
