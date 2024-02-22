@@ -440,25 +440,28 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
                                         output_path=output_path, output_bag_path=output_bag_path, output_traj_path=output_traj_path,
                                         output_global_poses_path=output_global_poses_path, output_topic=output_topic, output_period=output_period,
                                         visualize=visualize, save_data=save_data, tf_buffer=tf_buffer)
+
+    # path = bag_paths[0].replace('.bag', '')
+    # print(path)
+    # cloud_names = os.listdir(os.path.join(path, 'clouds'))
+    # cloud_stamps = sorted([rospy.Time(int(name.split('_')[0]), int(name.split('_')[1].split('.')[0])) for name in cloud_names])
+    # # convert cloud stamps to datetime
+    # import datetime
+    # for stamp in cloud_stamps:
+    #     print(datetime.datetime.utcfromtimestamp(stamp.to_sec()))
+
     print('Saving images...')
     img_stamps = save_images(bag_paths, camera_topics, cloud_stamps, output_img_path, time_step=time_step, save=save_data)
 
     # save cloud and image timestamps in the following format: lidar_stamp, camera1_stamp, camera2_stamp, ...
-    dir = os.path.dirname(bag_paths[0])
-    name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
-    path = os.path.join(dir, name, 'timestamps.csv')
-    with open(path, 'w') as f:
-        cameras = img_stamps.keys()
-        writer = csv.writer(f)
-        writer.writerow(['lidar'] + cameras)
-        for i in range(len(cloud_stamps)):
-            row = [cloud_stamps[i].to_sec()] + [img_stamps[camera][i].to_sec() for camera in cameras]
-            writer.writerow(row)
+    print('Saving timestamps...')
+    save_timestamps(cloud_stamps, img_stamps, bag_paths)
+    print('Done.')
+
 
 def main():
     args = arg_parser().parse_args()
     print(args)
-    print('Processing %i bag files:' % len(args.bag_paths), *args.bag_paths, sep='\n')
 
     if args.exclude_times:
         args.exclude_times = eval(args.exclude_times)
