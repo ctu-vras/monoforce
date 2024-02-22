@@ -12,12 +12,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from monoforce.cloudproc import hm_to_cloud
+from monoforce.cloudproc import hm_to_cloud, filter_grid
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
 from monoforce.transformations import transform_cloud
-from monoforce.utils import read_yaml
+from monoforce.utils import read_yaml, position
 from monoforce.models.lss.model import compile_model
 from monoforce.losses import total_variation
 import open3d as o3d
@@ -212,16 +212,50 @@ def data_slicing():
     ds_slice.global_hm_cloud(vis=True)
 
 
+def create_global_gloud_map():
+    """
+    Create global heightmap cloud from the sequence of point clouds
+    """
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    ds = TravData(robingas_husky_seq_paths[2], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+
+    # create global cloud
+    poses = ds.get_poses()
+    for i in tqdm(range(len(ds))):
+        cloud = ds.get_cloud(i)
+        T = poses[i]
+        cloud = transform_cloud(cloud, T)
+        points = position(cloud)
+        if i == 0:
+            mask = filter_grid(points, ds.cfg.grid_res, keep='first', log=False, only_mask=True)
+            global_cloud = points[mask]
+        else:
+            global_cloud = np.vstack((global_cloud, points[mask]))
+
+    # visualize global cloud
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(global_cloud)
+
+    pcd_poses = o3d.geometry.PointCloud()
+    pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
+    pcd_poses.paint_uniform_color([1, 0, 0])
+
+    o3d.visualization.draw_geometries([pcd, pcd_poses])
+
 def visualize_point_cloud_map():
     """
     Visualize point cloud map and trajectory point cloud
     """
-    import open3d as o3d
+    path = robingas_husky_seq_paths[0]
+    # path = oru_seq_paths[0]
 
-    # map_path = os.path.join(robingas_husky_seq_paths[0], 'map.pcd')
-    # traj_path = os.path.join(robingas_husky_seq_paths[0], 'trajectory.pcd')
-    map_path = os.path.join(oru_seq_paths[0], 'map.pcd')
-    traj_path = os.path.join(oru_seq_paths[0], 'trajectory.pcd')
+    map_path = os.path.join(path, 'map.pcd')
+    traj_path = os.path.join(path, 'trajectory.pcd')
 
     pcd = o3d.io.read_point_cloud(map_path)
     pcd_traj = o3d.io.read_point_cloud(traj_path)
@@ -233,7 +267,8 @@ def main():
     # feed_data()
     # map_consistency()
     # data_slicing()
-    visualize_point_cloud_map()
+    # visualize_point_cloud_map()
+    create_global_gloud_map()
 
 
 if __name__ == '__main__':

@@ -263,7 +263,7 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
     for topic, msg, stamp in bag.read_messages(topics=[topic],
                                                start_time=rospy.Time.from_seconds(tl),
                                                end_time=rospy.Time.from_seconds(tr)):
-        stamps_in_window.append(stamp.to_sec())
+        stamps_in_window.append(stamp)
         msgs.append(msg)
 
     if len(stamps_in_window) == 0:
@@ -271,7 +271,7 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
         print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time_moment, topic))
         return None, None
 
-    time_diffs = np.abs(np.array(stamps_in_window) - time_moment)
+    time_diffs = np.abs(np.array([s.to_sec() for s in stamps_in_window]) - time_moment)
     i_min = np.argmin(time_diffs)
     msg = msgs[i_min]
     msg_stamp = stamps_in_window[i_min]

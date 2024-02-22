@@ -338,15 +338,15 @@ def get_clouds_and_trajs(bag_paths=None, cloud_topics=None, fixed_frame=None, ro
     if output_bag:
         output_bag.close()
 
-    return cloud_stamps
+    return sorted(cloud_stamps)
 
 
-def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1.0, save=True, log=False):
+def save_images(bag_paths, img_topics, reference_stamps, output_img_path, time_step=1.0, save=True, log=False):
     for path in bag_paths:
         assert os.path.exists(path), 'Bag file does not exist: %s' % path
     for topic in img_topics:
         assert topic, 'Image topic is empty: %s' % topic
-    for t in time_stamps:
+    for t in reference_stamps:
         assert isinstance(t, rospy.Time), 'Time stamp is not a rospy.Time: %s' % t
     assert output_img_path, 'Output image path is empty: %s' % output_img_path
     assert time_step > 0, 'Time period is not positive: %.3f' % time_step
@@ -362,26 +362,54 @@ def save_images(bag_paths, img_topics, time_stamps, output_img_path, time_step=1
             for rgb_topic in img_topics:
                 camera = rgb_topic.split('/')[1]
                 img_stamps[camera] = []
-                for i in tqdm(range(len(time_stamps)), desc='Saving images from topic "%s"' % rgb_topic):
+                for i in tqdm(range(len(reference_stamps)), desc='Saving images from topic "%s"' % rgb_topic):
                     # get the closest image at points time
-                    msg, img_stamp = get_closest_msg(bag=bag, topic=rgb_topic, time_moment=time_stamps[i].to_sec(),
-                                                     time_window=2*time_step, max_time_diff=time_step)
+                    msg, closest_stamp = get_closest_msg(bag=bag, topic=rgb_topic, time_moment=reference_stamps[i].to_sec(),
+                                                         time_window=2*time_step, max_time_diff=time_step)
                     if msg is None:
-                        print('No image found for topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
+                        print('No image found for topic "%s" at %.3f s.' % (rgb_topic, reference_stamps[i].to_sec()))
+                        img_stamps[camera].append(None)
                         continue
-                    img_stamps[camera].append(img_stamp)
+
+                    img_stamps[camera].append(closest_stamp)
                     # convert msg to cv2 image
                     img_raw = rgb_msg_to_cv2(msg, cv_bridge)
                     if save:
                         if log:
-                            print('Saving image from topic "%s" at %.3f s.' % (rgb_topic, time_stamps[i].to_sec()))
+                            print('Saving image from topic "%s" at %.3f s.' % (rgb_topic, reference_stamps[i].to_sec()))
                         # save images
                         path = output_img_path.format(dir=dir, name=name,
-                                                      secs=time_stamps[i].secs, nsecs=time_stamps[i].nsecs,
+                                                      secs=reference_stamps[i].secs, nsecs=reference_stamps[i].nsecs,
                                                       camera=camera)
                         os.makedirs(os.path.dirname(path), exist_ok=True)
                         cv2.imwrite(path, img_raw)
+
+    # make sure that all cameras have the same number of recorded timestamps
+    assert all(len(img_stamps[camera]) == len(reference_stamps) for camera in img_stamps)
+
     return img_stamps
+
+
+def save_timestamps(cloud_stamps, img_stamps, bag_paths):
+    # save cloud and image timestamps in the following format: lidar_stamp, camera1_stamp, camera2_stamp, ...
+    dir = os.path.dirname(bag_paths[0])
+    name, _ = os.path.splitext(os.path.basename(bag_paths[0]))
+    path = os.path.join(dir, name, 'timestamps.csv')
+    with open(path, 'w') as f:
+        cameras = list(img_stamps.keys())
+        writer = csv.writer(f)
+        writer.writerow(['lidar'] + cameras)
+        for i in range(len(cloud_stamps)):
+            cloud_time = cloud_stamps[i].to_sec()
+            img_times = []
+            for camera in cameras:
+                img_time = img_stamps[camera][i]
+                if img_time is not None:
+                    img_times.append(img_time.to_sec())
+                else:
+                    img_times.append(None)
+            row = [cloud_time] + img_times
+            writer.writerow(row)
 
 
 def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_topics, fixed_frame, robot_frame,

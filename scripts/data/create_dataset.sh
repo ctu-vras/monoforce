@@ -39,8 +39,11 @@ SAVE=True
 #                    /realsense_rear/color/camera_info
 #                    /realsense_right/color/camera_info'
 
-BAG_PATHS='/media/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag
-           /media/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_loc.bag'
+#BAG_PATHS='/media/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag
+#           /media/ruslan/data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57_loc.bag'
+BAG_PATHS='/media/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15.bag
+           /media/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15_loc.bag'
+#BAG_PATHS='/media/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag'
 CLOUD_TOPIC='/points'
 LIDAR_FRAME='os_sensor'
 CAMERA_TOPICS='/camera_front/image_color/compressed

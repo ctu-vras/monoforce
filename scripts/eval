@@ -82,7 +82,8 @@ def hm_to_imgs_projection_demo(seq_path, data_aug_conf, grid_conf, cfg, modelf, 
                 mask = get_only_in_img_mask(ego_pts, img_H, img_W)
                 plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
                 ax.imshow(img)
-                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=-plot_pts[1, mask], cmap='jet')
+                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=hm_points[2, mask],
+                           cmap='jet', vmin=-1.0, vmax=1.0)
                 ax.axis('off')
             
             # plot prediction as image
@@ -168,9 +169,8 @@ def main():
     # paths = oru_seq_paths
 
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
-    for path in paths:
-        sample_range = 'random'
-        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range=sample_range)
+    for path in paths[-1:]:
+        # explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range='random')
         hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 
