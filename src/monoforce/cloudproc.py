@@ -1,16 +1,22 @@
-import os.path
-
+import os
 import torch
 from .segmentation import affine
-from .transformations import rot2rpy, rpy2rot, transform_cloud
-from .utils import timing, position
-from .vis import show_cloud
+from .transformations import rot2rpy, rpy2rot
+from .utils import position
 import numpy as np
-from numpy.lib.recfunctions import structured_to_unstructured
-from scipy.spatial import cKDTree
 from scipy.interpolate import griddata
 
 default_rng = np.random.default_rng(135)
+
+
+__all__ = [
+    'filter_range',
+    'filter_grid',
+    'filter_cylinder',
+    'valid_point_mask',
+    'estimate_heightmap',
+    'hm_to_cloud',
+]
 
 
 def filter_range(cloud, min, max, log=False, only_mask=False):
@@ -231,54 +237,3 @@ def hm_to_cloud(height, cfg, mask=None):
         hm_cloud = hm_cloud[mask]
     hm_cloud = hm_cloud.reshape([-1, 3])
     return hm_cloud
-
-
-def demo():
-    from .datasets import TravData, robingas_husky_seq_paths
-    from .utils import read_yaml
-    from .config import Config
-
-    def show_clouds(points1, points2=None, **kwargs):
-        import open3d as o3d
-
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(points1)
-        pcd1.paint_uniform_color([1.0, 0.0, 0.0])
-
-        if points2 is None:
-            o3d.visualization.draw_geometries([pcd1], **kwargs)
-            return
-
-        pcd2 = o3d.geometry.PointCloud()
-        pcd2.points = o3d.utility.Vector3dVector(points2)
-        pcd2.paint_uniform_color([0.0, 0.0, 1.0])
-        o3d.visualization.draw_geometries([pcd1, pcd2], **kwargs)
-
-    cfg = Config()
-    path = '/home/ruslan/workspaces/traversability_ws/src/monoforce'
-    cfg.from_yaml(os.path.join(path, 'config/cfg.yaml'))
-    cfg.hm_interp_method = None
-
-    lss_cfg = read_yaml(os.path.join(path, 'config/lss.yaml'))
-    data_aug_conf = lss_cfg['data_aug_conf']
-
-    # ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
-    # i = 50
-    ds = TravData(robingas_husky_seq_paths[2], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
-    i = 5
-    cloud = ds.get_cloud(i)
-    points = position(cloud)
-    map_pose = ds.get_pose(i)
-    # map_pose = np.eye(4)
-
-    hm = estimate_heightmap(points, d_min=cfg.d_min, d_max=cfg.d_max, grid_res=cfg.grid_res,
-                            h_max=cfg.h_max, hm_interp_method=cfg.hm_interp_method,
-                            fill_value=0., return_filtered_points=False,
-                            map_pose=map_pose, grass_range=cfg.grass_range)
-
-    hm_cloud = np.stack([hm['x'], hm['y'], hm['z'].T], axis=2)[hm['mask'].astype(bool).T]
-    show_clouds(points, hm_cloud)
-
-
-if __name__ == '__main__':
-    demo()

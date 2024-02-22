@@ -111,7 +111,7 @@ class DEMPathData(Dataset):
         - terrain
             - <id>.npy
             - ...
-        - traj_poses.csv
+        - lidar_poses.csv
 
     A sample of the dataset contains:
     - point cloud (N x 3), TODO: describe fields
@@ -129,7 +129,7 @@ class DEMPathData(Dataset):
         # assert os.path.exists(self.cloud_color_path)
         self.traj_path = os.path.join(path, 'trajectories')
         # global pose of the robot (initial trajectory pose on a map) path (from SLAM)
-        self.poses_path = os.path.join(path, 'traj_poses.csv')
+        self.poses_path = os.path.join(path, 'lidar_poses.csv')
         # assert os.path.exists(self.traj_path)
         self.calib_path = os.path.join(path, 'calibration')
         # assert os.path.exists(self.calib_path)

@@ -98,13 +98,11 @@ def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.])
     msg = msgify(PointCloud2, cloud)
     return msg
 
-def load_tf_buffer(bag_paths, tf_topics=None):
+def load_tf_buffer(bag_paths, tf_topics=None, duration_sec=24 * 60 * 60):
     if tf_topics is None:
         tf_topics = ['/tf', '/tf_static']
 
-    # tf_buffer = BufferCore(cache_time=rospy.Duration(2**31 - 1))
-    # tf_buffer = BufferCore(cache_time=rospy.Duration(24 * 60 * 60))
-    tf_buffer = BufferCore(rospy.Duration(24 * 60 * 60))
+    tf_buffer = BufferCore(rospy.Duration(duration_sec))
 
     for path in bag_paths:
         try:
@@ -353,40 +351,40 @@ def get_cams_lidar_transformations(bag_path, camera_topics, lidar_frame, tf_buff
         output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    with open(output_path, 'w') as f:
-        try:
-            with Bag(bag_path, 'r') as bag:
-                for cam_topic in camera_topics:
-                    for topic, img_msg, stamp in bag.read_messages(topics=[cam_topic]):
-                        # find transformation between camera and lidar
-                        try:
-                            lidar_to_camera = tf_buffer.lookup_transform_core(img_msg.header.frame_id,
-                                                                              lidar_frame,
-                                                                              img_msg.header.stamp)
-                        except TransformException as ex:
-                            print('Could not transform from %s to %s at %.3f s.' %
-                                  (lidar_frame, img_msg.header.frame_id, img_msg.header.stamp.to_sec()))
-                            continue
-                        print('Got transformation from %s to %s at %.3f s' % (lidar_frame,
-                                                                              img_msg.header.frame_id,
-                                                                              img_msg.header.stamp.to_sec()))
-                        Tr = numpify(lidar_to_camera.transform)
-                        print('Tr:\n', Tr)
+    transforms = {}
+    with Bag(bag_path, 'r') as bag:
+        for cam_topic in camera_topics:
+            for topic, img_msg, stamp in bag.read_messages(topics=[cam_topic]):
+                # find transformation between camera and lidar
+                camera_frame = img_msg.header.frame_id
+                camera_name = cam_topic.split('/')[1]
+                try:
+                    lidar_to_camera = tf_buffer.lookup_transform_core(camera_frame,
+                                                                      lidar_frame,
+                                                                      img_msg.header.stamp)
+                except TransformException as ex:
+                    print('Could not transform from %s to %s at %.3f s.' %
+                          (lidar_frame, camera_frame, img_msg.header.stamp.to_sec()))
+                    continue
+                print('Got transformation from %s to %s at %.3f s' % (lidar_frame,
+                                                                      camera_frame,
+                                                                      img_msg.header.stamp.to_sec()))
+                Tr = numpify(lidar_to_camera.transform)
+                print('Tr:\n', Tr)
+                transforms[f'T_{lidar_frame}__{camera_name}'] = Tr
 
-                        # save transformation to yaml file
-                        if save:
-                            camera = cam_topic.split('/')[1]
-                            print('Saving to %s' % output_path)
+                # save transformation to yaml file
+                if save:
+                    print('Saving to %s' % output_path)
+                    with open(output_path, 'w') as f:
+                        f.write(f'T_{lidar_frame}__{camera_name}:\n')
+                        f.write('  rows: 4\n')
+                        f.write('  cols: 4\n')
+                        f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
+                        f.close()
+                break
 
-                            f.write(f'T_{lidar_frame}__{camera}:\n')
-                            f.write('  rows: 4\n')
-                            f.write('  cols: 4\n')
-                            f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
-                        break
-        except ROSBagException as ex:
-            print('Could not read %s: %s' % (bag_path, ex))
-
-        f.close()
+    return transforms
 
 
 def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
