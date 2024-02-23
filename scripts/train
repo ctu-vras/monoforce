@@ -405,7 +405,7 @@ class Trainer:
 
             # plot prediction as image
             ax5.set_title('Prediction')
-            ax5.imshow(height_pred, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax5.imshow(height_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax6.set_title('Masked Prediction')
             height_pred_vis = np.zeros_like(height_pred)

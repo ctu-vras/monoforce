@@ -28,7 +28,7 @@ from tf2_ros import BufferCore, TransformException
 from monoforce.segmentation import affine, Body, Box, inverse  # needed for eval
 from monoforce.cloudproc import position, valid_point_mask
 from monoforce.ros import (load_tf_buffer,
-                           get_cams_lidar_transformations,
+                           get_cams_extrinsics,
                            get_camera_infos,
                            append_transformation, get_closest_msg, rgb_msg_to_cv2)
 from monoforce.utils import slots
@@ -476,7 +476,9 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
     print('Obtaining camera infos from bag file...')
     get_camera_infos(bag_paths, camera_info_topics, save=save_data)
     print('Obtaining lidar to cameras transformations from bag file...')
-    Tr_lidar_cams = get_cams_lidar_transformations(bag_paths, camera_topics, lidar_frame, tf_buffer, save=save_data)
+    Tr_lidar_cams = get_cams_extrinsics(bag_paths, camera_topics, lidar_frame, tf_buffer, save=save_data)
+    print('Obtaining robot to camera transformations from bag file...')
+    get_cams_extrinsics(bag_paths, camera_topics, robot_frame, tf_buffer, save=save_data)
     print(f'Obtaining {robot_frame} to base_footprint transformations from bag file...')
     append_transformation(bag_paths, source_frame=robot_frame, target_frame='base_footprint',
                           save=save_data, tf_buffer=tf_buffer)
@@ -498,8 +500,9 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
     print('Saving timestamps...')
     save_timestamps(cloud_stamps, img_stamps, bag_paths, lidar_frame=lidar_frame)
 
-    print('Saving camera poses...')
-    save_camera_poses(bag_paths, camera_topics, Tr_lidar_cams, fixed_frame, lidar_frame, tf_buffer=tf_buffer)
+    # print('Saving camera poses...')
+    # save_camera_poses(bag_paths, camera_topics, Tr_lidar_cams, fixed_frame, lidar_frame, tf_buffer=tf_buffer)
+
     print('Done.')
 
 

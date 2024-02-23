@@ -735,22 +735,11 @@ class OmniDEMData(MonoDEMData):
                 img = normalize_img(img)
             else:
                 img = torchvision.transforms.ToTensor()(img)
-
             K = torch.as_tensor(K)
 
             # extrinsics
-            if f'T_base_link__{cam}' in self.calib['transformations'].keys():
-                T_cam_robot = self.calib['transformations'][f'T_base_link__{cam}']['data']
-                T_cam_robot = np.asarray(T_cam_robot, dtype=np.float32).reshape((4, 4))
-                T_robot_cam = np.linalg.inv(T_cam_robot)
-            else:
-                T_lidar_cam = self.calib['transformations']['T_os_sensor__%s' % cam]['data']
-                T_lidar_cam = np.asarray(T_lidar_cam, dtype=np.float32).reshape((4, 4))
-                T_cam_lidar = np.linalg.inv(T_lidar_cam)
-                T_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
-                T_robot_lidar = np.asarray(T_robot_lidar, dtype=np.float32).reshape((4, 4))
-                T_robot_cam = T_robot_lidar @ T_cam_lidar
-
+            T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
             rot = torch.as_tensor(T_robot_cam[:3, :3])
             tran = torch.as_tensor(T_robot_cam[:3, 3])
 
@@ -1093,11 +1082,10 @@ def extrinsics_demo():
 
         cam_poses = []
         for frame in camera_frames:
-            Tr_lidar_cam = ds.calib['transformations'][f'T_{lidar_frame}__{frame}']['data']
-            Tr_lidar_cam = np.asarray(Tr_lidar_cam, dtype=float).reshape((4, 4))
-            Tr_cam_lidar = np.linalg.inv(Tr_lidar_cam)
-            Tr_robot_cam = Tr_robot_lidar @ Tr_cam_lidar
-            cam_poses.append(Tr_robot_cam[np.newaxis])
+            T_robot_cam = ds.calib['transformations'][f'T_{robot_frame}__{frame}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+
+            cam_poses.append(T_robot_cam[np.newaxis])
         cam_poses = np.concatenate(cam_poses, axis=0)
 
         # draw coordinate frames

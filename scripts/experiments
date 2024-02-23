@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from monoforce.cloudproc import hm_to_cloud, filter_grid
-from monoforce.datasets.data import TravData, explore_data
+from monoforce.datasets.data import TravData, explore_data, DEMPathData
 from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
 from monoforce.transformations import transform_cloud
@@ -351,25 +351,60 @@ def vis_camera_poses():
     from monoforce.vis import draw_coord_frame, draw_coord_frames
     from mayavi import mlab
 
-    cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    # cfg = Config()
+    # cfg.from_yaml('../config/cfg.yaml')
+    #
+    # lss_cfg = read_yaml('../config/lss.yaml')
+    # data_aug_conf = lss_cfg['data_aug_conf']
+    #
+    # seq_path = robingas_husky_seq_paths[2]
+    # ds = TravData(seq_path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    #
+    # # poses = ds.get_poses()
+    # camera = 'camera_rear'
+    # poses = ds.get_camera_poses(camera)
+    #
+    # lidar_frame = 'os_sensor'
+    # robot_frame = 'base_link'
+    # Tr_lidar_cam = ds.calib['transformations'][f'T_{lidar_frame}__{camera}']['data']
+    # Tr_lidar_cam = np.asarray(Tr_lidar_cam, dtype=float).reshape((4, 4))
+    # Tr_cam_lidar = np.linalg.inv(Tr_lidar_cam)
+    # Tr_robot_lidar = ds.calib['transformations'][f'T_{robot_frame}__{lidar_frame}']['data']
+    # Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
+    # Tr_robot_cam = Tr_robot_lidar @ Tr_cam_lidar
+    # cam_poses = []
+    # for p in poses:
+    #     cam_poses.append(p @ Tr_robot_cam)
+    # cam_poses = np.asarray(cam_poses)
+    #
+    # draw_coord_frames(poses[::5], scale=0.8)
+    # draw_coord_frames(cam_poses[::5], scale=0.4)
+    # mlab.show()
 
-    lss_cfg = read_yaml('../config/lss.yaml')
-    data_aug_conf = lss_cfg['data_aug_conf']
+    for path in robingas_husky_seq_paths[-1:]:
+        assert os.path.exists(path)
 
-    seq_path = robingas_husky_seq_paths[2]
-    ds = TravData(seq_path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+        cfg = Config()
+        ds = DEMPathData(path, cfg=cfg)
 
-    poses = ds.get_poses()
-    cam_front_poses = ds.get_camera_poses('camera_front')
-    cam_rear_poses = ds.get_camera_poses('camera_rear')
+        robot_pose = np.eye(4)
+        robot_frame = 'base_link'
+        camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
 
-    mse = np.mean((poses - cam_front_poses) ** 2)
-    print(np.allclose(poses, cam_front_poses), mse)
+        cam_poses = []
+        for cam_frame in camera_frames:
 
-    draw_coord_frames(poses, scale=0.8)
-    draw_coord_frames(cam_front_poses, scale=0.4)
-    mlab.show()
+            T_robot_cam = ds.calib['transformations'][f'T_{robot_frame}__{cam_frame}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+
+            cam_poses.append(T_robot_cam[np.newaxis])
+        cam_poses = np.concatenate(cam_poses, axis=0)
+
+        # draw coordinate frames
+        mlab.figure(size=(800, 800))
+        draw_coord_frame(robot_pose, scale=0.5)
+        draw_coord_frames(cam_poses, scale=0.1)
+        mlab.show()
 
 
 def main():
