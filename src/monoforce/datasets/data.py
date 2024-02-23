@@ -1095,7 +1095,7 @@ def extrinsics_demo():
         for frame in camera_frames:
             Tr_lidar_cam = ds.calib['transformations'][f'T_{lidar_frame}__{frame}']['data']
             Tr_lidar_cam = np.asarray(Tr_lidar_cam, dtype=float).reshape((4, 4))
-            Tr_cam_lidar= np.linalg.inv(Tr_lidar_cam)
+            Tr_cam_lidar = np.linalg.inv(Tr_lidar_cam)
             Tr_robot_cam = Tr_robot_lidar @ Tr_cam_lidar
             cam_poses.append(Tr_robot_cam[np.newaxis])
         cam_poses = np.concatenate(cam_poses, axis=0)
