@@ -111,7 +111,10 @@ class DEMPathData(Dataset):
         - terrain
             - <id>.npy
             - ...
-        - lidar_poses.csv
+        - poses
+            - lidar_poses.csv
+            - camera_front_poses.csv
+            - ...
 
     A sample of the dataset contains:
     - point cloud (N x 3), TODO: describe fields
@@ -129,7 +132,7 @@ class DEMPathData(Dataset):
         # assert os.path.exists(self.cloud_color_path)
         self.traj_path = os.path.join(path, 'trajectories')
         # global pose of the robot (initial trajectory pose on a map) path (from SLAM)
-        self.poses_path = os.path.join(path, 'lidar_poses.csv')
+        self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         # assert os.path.exists(self.traj_path)
         self.calib_path = os.path.join(path, 'calibration')
         # assert os.path.exists(self.calib_path)
@@ -431,7 +434,6 @@ class MonoDEMData(DEMPathData):
         img = self.resize_crop_img(img_raw)
         if self.is_train:
             img = self.img_augs(image=img)['image']
-        # img = standardize_img(img)
         return img
 
     def __getitem__(self, i, visualize=False):
@@ -660,8 +662,14 @@ class OmniDEMData(MonoDEMData):
                  is_train=True,
                  cfg=Config()):
         super(OmniDEMData, self).__init__(path, is_train=is_train, cfg=cfg)
-
+        self.camera_poses_path = {cam: os.path.join(self.path, 'poses', f'{cam}_poses.csv') for cam in self.cameras}
         self.data_aug_conf = data_aug_conf
+
+    def get_camera_poses(self, cam):
+        poses = np.loadtxt(self.camera_poses_path[cam], delimiter=',', skiprows=1)
+        stamps, poses = poses[:, 0], poses[:, 1:13]
+        poses = np.asarray([self.pose2mat(pose) for pose in poses])
+        return poses
 
     def sample_augmentation(self):
         H, W = self.data_aug_conf['H'], self.data_aug_conf['W']

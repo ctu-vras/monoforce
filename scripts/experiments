@@ -346,11 +346,30 @@ def check_interpolate_poses():
     draw_coord_frames(interp_poses, scale=0.1)
     mlab.show()
 
-    # plt.figure()
-    # plt.plot(pose_timestamps, abs_poses[:, 0, 3], 'o', label='Pose timestamps')
-    # plt.plot(requested_timestamps, poses[:, 0, 3], 'x', label='Interpolated poses')
-    # plt.legend()
-    # plt.show()
+
+def vis_camera_poses():
+    from monoforce.vis import draw_coord_frame, draw_coord_frames
+    from mayavi import mlab
+
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    seq_path = robingas_husky_seq_paths[2]
+    ds = TravData(seq_path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+
+    poses = ds.get_poses()
+    cam_front_poses = ds.get_camera_poses('camera_front')
+    cam_rear_poses = ds.get_camera_poses('camera_rear')
+
+    mse = np.mean((poses - cam_front_poses) ** 2)
+    print(np.allclose(poses, cam_front_poses), mse)
+
+    draw_coord_frames(poses, scale=0.8)
+    draw_coord_frames(cam_front_poses, scale=0.4)
+    mlab.show()
 
 
 def main():
@@ -359,7 +378,8 @@ def main():
     # data_slicing()
     # visualize_point_cloud_map()
     # create_global_gloud_map()
-    check_interpolate_poses()
+    # check_interpolate_poses()
+    vis_camera_poses()
 
 
 if __name__ == '__main__':

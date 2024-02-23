@@ -77,7 +77,7 @@ def arg_parser():
     parser.add_argument('--output-img-path', type=str, default='{dir}/{name}/images/{secs}_{nsecs:09d}_{camera}.png')
     parser.add_argument('--output-bag-path', '-O', type=str, default='{dir}/{name}_segmented.bag')
     parser.add_argument('--output-traj-path', type=str, default='{dir}/{name}/trajectories/{secs}_{nsecs:09d}.csv')
-    parser.add_argument('--output-global-poses-path', type=str, default='{dir}/{name}/lidar_poses.csv')
+    parser.add_argument('--output-global-poses-path', type=str, default='{dir}/{name}/poses/lidar_poses.csv')
     parser.add_argument('--output-topic', type=str, default='{topic}_segmented')
     parser.add_argument('--output-period', type=float, default=None)
     parser.add_argument('--visualize', type=str2bool, default=False)
@@ -450,7 +450,9 @@ def save_camera_poses(bag_paths, camera_topics, Tr_lidar_cams, fixed_frame, lida
         cam_poses = Tr_lidar_cams[f'T_{lidar_frame}__{camera}'] @ robot_poses
 
         # write poses to a csv file for each camera
-        img_poses_path = os.path.join(path, f'{camera}_poses.csv')
+        poses_path = os.path.join(path, 'poses')
+        os.makedirs(poses_path, exist_ok=True)
+        img_poses_path = os.path.join(poses_path, f'{camera}_poses.csv')
         with open(img_poses_path, 'w') as f:
             writer = csv.writer(f)
             writer.writerow(['stamp', 'T00', 'T01', 'T02', 'T03',
