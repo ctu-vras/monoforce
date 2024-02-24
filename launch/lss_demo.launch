@@ -16,7 +16,7 @@
                                              '/camera_left/camera_info',
                                              '/camera_rear/camera_info',
                                              '/camera_right/camera_info']"/>
-    <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/calibration/"/>
+    <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/calibration/"/>
 
     <!-- Robot data: from bag file -->
     <include file="$(dirname)/play_bag.launch">

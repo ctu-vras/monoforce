@@ -130,7 +130,7 @@ class LSS:
 
         return img, post_rot, post_tran
 
-    def get_cam_calib_from_yaml(self, camera, lidar='os_sensor'):
+    def get_cam_calib_from_yaml(self, camera, robot_frame='base_link'):
         """
         Load camera calibration parameters from yaml file.
         :param calib_path: path to yaml file
@@ -140,9 +140,8 @@ class LSS:
         """
         assert self.calib is not None
 
-        Tr_lid_cam = np.asarray(self.calib['transformations'][f'T_{lidar}__{camera}']['data'], dtype=np.float32).reshape((4, 4))
-        Tr_robot_lid = np.asarray(self.calib['transformations'][f'T_{self.hm_frame}__{lidar}']['data'], dtype=np.float32).reshape((4, 4))
-        Tr_robot_cam = Tr_robot_lid @ np.linalg.inv(Tr_lid_cam)
+        Tr_robot_cam = self.calib['transformations'][f'T_{robot_frame}__{camera}']['data']
+        Tr_robot_cam = np.array(Tr_robot_cam, dtype=np.float32).reshape((4, 4))
         E = Tr_robot_cam
         K = np.array(self.calib[camera]['camera_matrix']['data'], dtype=np.float32).reshape((3, 3))
         D = np.array(self.calib[camera]['distortion_coefficients']['data'], dtype=np.float32)

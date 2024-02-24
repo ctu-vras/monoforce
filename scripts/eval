@@ -155,7 +155,7 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     # modelf = '../config/weights/lss/lss.pt'
-    modelf = '../config/tb_runs/lss_2024_02_20_16_33_37/train_lss.pt'
+    modelf = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
     # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
@@ -164,8 +164,8 @@ def main():
     # paths = oru_seq_paths
 
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
-    for path in paths[-1:]:
-        # explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range='random')
+    for path in paths:
+        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range='random')
         hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 
