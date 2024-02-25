@@ -9,7 +9,8 @@
     <include file="$(find ouster_ros)/launch/replay.launch">
             <arg name="ouster_ns" value="ouster"/>
 	    <arg name="sensor_frame" value="os_sensor"/>
-	    <arg name="metadata" value="$(dirname)/../config/ouster/os1-122047000415-metadata.json"/>
+<!-- 	    <arg name="metadata" value="$(dirname)/../config/ouster/os1-122047000415-metadata.json"/> -->
+	    <arg name="metadata" value="$(dirname)/../config/ouster/os0-122140000627-metadata.json"/>
 	    <arg name="viz" value="false"/>
     </include>
 
