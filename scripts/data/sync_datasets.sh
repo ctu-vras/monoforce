@@ -22,7 +22,7 @@ SERVER=login3.rci.cvut.cz
 for SEQ in "${SEQUENCES[@]}"
 do
     echo "Processing sequence: ${SEQ}"
-    SOURCE_PATH=${USER_NAME}@$SERVER:/mnt/personal/agishrus/data/robingas/data/$SEQ
+    SOURCE_PATH=${USER_NAME}@$SERVER:/mnt/personal/agishrus/data/$SEQ
     TARGET_PATH=${DATA_PATH}/$SEQ
     echo "Synchronizing from source path ${SOURCE_PATH}"
     echo "to target path $TARGET_PATH"
