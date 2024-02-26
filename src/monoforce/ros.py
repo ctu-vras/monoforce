@@ -492,10 +492,14 @@ def append_transformation(bag_paths, source_frame, target_frame, save=True, tf_b
 
 
 def append_to_yaml(yaml_path, data_dict):
-    with open(yaml_path, 'r') as yamlfile:
-        print('Updating yaml file: %s' % yaml_path)
-        cur_yaml = yaml.load(yamlfile, Loader=yaml.FullLoader)
-        cur_yaml.update(data_dict)
+    if not os.path.exists(yaml_path):
+        with open(yaml_path, 'w') as f:
+            yaml.dump(data_dict, f)
+    else:
+        with open(yaml_path, 'r') as f:
+            print('Updating yaml file: %s' % yaml_path)
+            cur_yaml = yaml.load(f, Loader=yaml.FullLoader)
+            cur_yaml.update(data_dict)
 
-    with open(yaml_path, 'w') as yamlfile:
-        yaml.safe_dump(cur_yaml, yamlfile)  # Also note the safe_dump
+        with open(yaml_path, 'w') as f:
+            yaml.safe_dump(cur_yaml, f)  # Also note the safe_dump

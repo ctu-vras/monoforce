@@ -662,13 +662,13 @@ class OmniDEMData(MonoDEMData):
                  is_train=True,
                  cfg=Config()):
         super(OmniDEMData, self).__init__(path, is_train=is_train, cfg=cfg)
-        self.camera_poses_path = {cam: os.path.join(self.path, 'poses', f'{cam}_poses.csv') for cam in self.cameras}
+        self.poses_at_camera_stamps_path = {cam: os.path.join(self.path, 'poses', f'robot_poses_at_{cam}_timestamps.csv') for cam in self.cameras}
         self.data_aug_conf = data_aug_conf
 
-    def get_camera_poses(self, cam):
-        poses = np.loadtxt(self.camera_poses_path[cam], delimiter=',', skiprows=1)
+    def get_poses_at_camera_stamps(self, cam):
+        poses = np.loadtxt(self.poses_at_camera_stamps_path[cam], delimiter=',', skiprows=1)
         stamps, poses = poses[:, 0], poses[:, 1:13]
-        poses = np.asarray([self.pose2mat(pose) for pose in poses])
+        poses = np.asarray([self.pose2mat(pose) for pose in poses], dtype=np.float32)
         return poses
 
     def sample_augmentation(self):
@@ -1358,6 +1358,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
 
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
+        # print('sample', sample_i, 'id', ds.ids[sample_i])
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
         if modelf is not None:
             with torch.no_grad():

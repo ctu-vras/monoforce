@@ -431,28 +431,24 @@ def get_poses_at_timestamps(bag_paths, timestamps, child_frame, fixed_frame, tf_
     return poses
 
 
-def save_camera_poses(bag_paths, camera_topics, Tr_lidar_cams, fixed_frame, lidar_frame, tf_buffer=None):
+def save_poses_at_img_stamps(bag_paths, fixed_frame, tf_buffer=None):
     path = bag_paths[0].replace('.bag', '')
-    img_fnames = os.listdir(os.path.join(path, 'images'))
-    camera_names = [camera_topic.split('/')[1] for camera_topic in camera_topics]
+    timestamps_path = os.path.join(path, 'timestamps.csv')
+    poses_path = os.path.join(path, 'poses')
+    data = np.loadtxt(timestamps_path, delimiter=',', skiprows=1)
+    camera_names = np.loadtxt(timestamps_path, delimiter=',', dtype=str)[0, 1:]
+
     for camera in camera_names:
-        img_stamps = []
-        for fname in img_fnames:
-            if camera in fname:
-                sec, nsec = fname.split('_')[:2]
-                stamp = rospy.Time(int(sec), int(nsec))
-                img_stamps.append(stamp)
-        img_stamps = sorted(img_stamps)
+        img_times = data[:, 1 + np.where(camera_names == camera)[0][0]]
+        img_stamps = [rospy.Time.from_sec(t) for t in img_times if t is not None]
 
         robot_poses = get_poses_at_timestamps(bag_paths, img_stamps,
                                               child_frame='base_link', fixed_frame=fixed_frame, tf_buffer=tf_buffer)
         robot_poses = np.asarray(robot_poses)
-        cam_poses = Tr_lidar_cams[f'T_{lidar_frame}__{camera}'] @ robot_poses
 
         # write poses to a csv file for each camera
-        poses_path = os.path.join(path, 'poses')
         os.makedirs(poses_path, exist_ok=True)
-        img_poses_path = os.path.join(poses_path, f'{camera}_poses.csv')
+        img_poses_path = os.path.join(poses_path, f'robot_poses_at_{camera}_timestamps.csv')
         with open(img_poses_path, 'w') as f:
             writer = csv.writer(f)
             writer.writerow(['stamp', 'T00', 'T01', 'T02', 'T03',
@@ -460,7 +456,7 @@ def save_camera_poses(bag_paths, camera_topics, Tr_lidar_cams, fixed_frame, lida
                              'T20', 'T21', 'T22', 'T23'])
             for i in range(len(img_stamps)):
                 stamp = img_stamps[i]
-                T = cam_poses[i]
+                T = robot_poses[i]
                 writer.writerow([stamp.to_sec()] + T[:3, :4].flatten().tolist())
 
 
@@ -476,7 +472,7 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
     print('Obtaining camera infos from bag file...')
     get_camera_infos(bag_paths, camera_info_topics, save=save_data)
     print('Obtaining lidar to cameras transformations from bag file...')
-    Tr_lidar_cams = get_cams_extrinsics(bag_paths, camera_topics, lidar_frame, tf_buffer, save=save_data)
+    get_cams_extrinsics(bag_paths, camera_topics, lidar_frame, tf_buffer, save=save_data)
     print('Obtaining robot to camera transformations from bag file...')
     get_cams_extrinsics(bag_paths, camera_topics, robot_frame, tf_buffer, save=save_data)
     print(f'Obtaining {robot_frame} to base_footprint transformations from bag file...')
@@ -500,14 +496,14 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
     print('Saving timestamps...')
     save_timestamps(cloud_stamps, img_stamps, bag_paths, lidar_frame=lidar_frame)
 
-    # print('Saving camera poses...')
-    # save_camera_poses(bag_paths, camera_topics, Tr_lidar_cams, fixed_frame, lidar_frame, tf_buffer=tf_buffer)
-
+    print('Saving camera poses...')
+    save_poses_at_img_stamps(bag_paths, fixed_frame, tf_buffer=tf_buffer)
     print('Done.')
 
 
 def main():
     args = arg_parser().parse_args()
+    print(args)
     print('Processing bag files:', *args.bag_paths, sep='\n')
 
     if args.exclude_times:

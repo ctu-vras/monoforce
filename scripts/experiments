@@ -19,7 +19,8 @@ from scipy import interpolate
 from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 from scipy.spatial import cKDTree
-
+from monoforce.vis import draw_coord_frame, draw_coord_frames
+from mayavi import mlab
 
 torch.set_default_dtype(torch.float32)
 
@@ -265,25 +266,37 @@ def create_global_gloud_map():
 
         # save global cloud
         o3d.io.write_point_cloud(os.path.join(path, 'global_map.pcd'), pcd)
-
         o3d.visualization.draw_geometries([pcd, pcd_poses])
 
 def visualize_point_cloud_map():
     """
     Visualize point cloud map and trajectory point cloud
     """
-    path = robingas_husky_seq_paths[0]
-    # path = oru_seq_paths[0]
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
 
-    map_path = os.path.join(path, 'map.pcd')
-    traj_path = os.path.join(path, 'trajectory.pcd')
-    assert os.path.exists(map_path)
-    assert os.path.exists(traj_path)
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
 
-    pcd = o3d.io.read_point_cloud(map_path)
-    pcd_traj = o3d.io.read_point_cloud(traj_path)
-    pcd_traj.paint_uniform_color([1, 0, 0])
-    o3d.visualization.draw_geometries([pcd, pcd_traj])
+    paths = robingas_husky_seq_paths
+    # paths = oru_seq_paths
+
+    for path in paths:
+        ds = TravData(path, data_aug_conf=data_aug_conf, cfg=cfg)
+        poses = ds.get_poses()
+
+        map_path = os.path.join(path, 'global_map.pcd')
+        assert os.path.exists(map_path)
+        pcd = o3d.io.read_point_cloud(map_path)
+        # pcd = o3d.geometry.PointCloud()
+        # map_points = ds.global_cloud(vis=False)
+        # pcd.points = o3d.utility.Vector3dVector(map_points)
+
+        pcd_poses = o3d.geometry.PointCloud()
+        pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
+        pcd_poses.paint_uniform_color([1, 0, 0])
+
+        o3d.visualization.draw_geometries([pcd, pcd_poses])
 
 
 def interpolate_poses(pose_timestamps, abs_poses, requested_timestamps, origin_timestamp):
@@ -296,12 +309,7 @@ def interpolate_poses(pose_timestamps, abs_poses, requested_timestamps, origin_t
         origin_timestamp (int): UNIX timestamp of origin frame. Poses will be reported relative to this frame.
 
     Returns:
-        list[numpy.matrixlib.defmatrix.matrix]: SE3 matrix representing interpolated pose for each requested timestamp.
-
-    Raises:
-        ValueError: if pose_timestamps and abs_poses are not the same length
-        ValueError: if pose_timestamps is not in ascending order
-
+        list[numpy.matrixlib.defmatrix.matrix]: Interpolated poses at the requested timestamps.
     """
     if len(pose_timestamps) != len(abs_poses):
         raise ValueError('pose_timestamps and abs_poses must be the same length')
@@ -374,40 +382,7 @@ def check_interpolate_poses():
 
 
 def vis_camera_poses():
-    from monoforce.vis import draw_coord_frame, draw_coord_frames
-    from mayavi import mlab
-
-    # cfg = Config()
-    # cfg.from_yaml('../config/cfg.yaml')
-    #
-    # lss_cfg = read_yaml('../config/lss.yaml')
-    # data_aug_conf = lss_cfg['data_aug_conf']
-    #
-    # seq_path = robingas_husky_seq_paths[2]
-    # ds = TravData(seq_path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
-    #
-    # # poses = ds.get_poses()
-    # camera = 'camera_rear'
-    # poses = ds.get_camera_poses(camera)
-    #
-    # lidar_frame = 'os_sensor'
-    # robot_frame = 'base_link'
-    # Tr_lidar_cam = ds.calib['transformations'][f'T_{lidar_frame}__{camera}']['data']
-    # Tr_lidar_cam = np.asarray(Tr_lidar_cam, dtype=float).reshape((4, 4))
-    # Tr_cam_lidar = np.linalg.inv(Tr_lidar_cam)
-    # Tr_robot_lidar = ds.calib['transformations'][f'T_{robot_frame}__{lidar_frame}']['data']
-    # Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
-    # Tr_robot_cam = Tr_robot_lidar @ Tr_cam_lidar
-    # cam_poses = []
-    # for p in poses:
-    #     cam_poses.append(p @ Tr_robot_cam)
-    # cam_poses = np.asarray(cam_poses)
-    #
-    # draw_coord_frames(poses[::5], scale=0.8)
-    # draw_coord_frames(cam_poses[::5], scale=0.4)
-    # mlab.show()
-
-    for path in robingas_husky_seq_paths[-1:]:
+    for path in robingas_husky_seq_paths:
         assert os.path.exists(path)
 
         cfg = Config()
@@ -433,6 +408,34 @@ def vis_camera_poses():
         mlab.show()
 
 
+def vis_trajectory():
+    from monoforce.losses import translation_difference, rotation_difference
+
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    paths = robingas_husky_seq_paths
+    # paths = oru_seq_paths
+
+    for path in paths:
+        ds = TravData(path, data_aug_conf=data_aug_conf, cfg=cfg)
+        poses = ds.get_poses()
+        cam_poses = ds.get_poses_at_camera_stamps('camera_front')
+        assert len(poses) == len(cam_poses)
+        trans_diff = translation_difference(torch.as_tensor(poses[:, :3, 3:4]), torch.as_tensor(cam_poses[:, :3, 3:4]))
+        rot_diff = rotation_difference(torch.as_tensor(poses[:, :3, :3]), torch.as_tensor(cam_poses[:, :3, :3]))
+        print('Translation difference:', trans_diff)
+        print('Rotation difference:', rot_diff)
+
+        mlab.figure(size=(800, 800))
+        draw_coord_frames(poses[::5], scale=0.5)
+        draw_coord_frames(cam_poses[::5], scale=1)
+        mlab.show()
+
+
 def main():
     # feed_data()
     # map_consistency()
@@ -440,7 +443,8 @@ def main():
     # visualize_point_cloud_map()
     # create_global_gloud_map()
     # check_interpolate_poses()
-    vis_camera_poses()
+    # vis_camera_poses()
+    vis_trajectory()
 
 
 if __name__ == '__main__':
