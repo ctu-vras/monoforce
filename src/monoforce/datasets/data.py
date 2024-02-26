@@ -22,6 +22,7 @@ import cv2
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm
+import open3d as o3d
 try:
     mpl.use('TkAgg')
 except:
@@ -33,7 +34,6 @@ except:
 
 __all__ = [
     'DEMPathData',
-    'RigidDEMPathData',
     'MonoDEMData',
     'OmniDEMData',
     'OmniDEMDataVis',
@@ -265,33 +265,30 @@ class DEMPathData(Dataset):
         traj_hm = self.estimate_heightmap(traj_points)['z']
         return traj_hm
 
-    def global_cloud(self, colorize=False, vis=False):
-        poses = self.get_poses()
-
-        # create global cloud
-        for i in tqdm(range(len(self))):
-            cloud = self.get_cloud(i)
-            if colorize:
-                # cloud color
-                color_struct = self.get_cloud_color(i)
-                rgb = normalize(color(color_struct))
-            T = poses[i]
-            cloud = transform_cloud(cloud, T)
-            points = position(cloud)
-            if i == 0:
-                mask = filter_grid(points, self.cfg.grid_res, keep='first', log=False, only_mask=True)
-                global_cloud = points[mask]
-                global_cloud_rgb = rgb[mask] if colorize else None
-            else:
-                global_cloud = np.vstack((global_cloud, points[mask]))
-                global_cloud_rgb = np.vstack((global_cloud_rgb, rgb[mask])) if colorize else None
+    def global_cloud(self, vis=False):
+        path = os.path.join(self.path, 'global_map.pcd')
+        if os.path.exists(path):
+            print('Loading global cloud from file...')
+            pcd = o3d.io.read_point_cloud(path)
+            global_cloud = np.asarray(pcd.points)
+        else:
+            # create global cloud
+            poses = self.get_poses()
+            global_cloud = None
+            for i in tqdm(range(len(self))):
+                cloud = self.get_cloud(i)
+                T = poses[i]
+                cloud = transform_cloud(cloud, T)
+                points = position(cloud)
+                points = filter_grid(points, self.cfg.grid_res, keep='first', log=False)
+                if i == 0:
+                    global_cloud = points
+                else:
+                    global_cloud = np.vstack((global_cloud, points))
 
         if vis:
-            import open3d as o3d
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(global_cloud)
-            if colorize:
-                pcd.colors = o3d.utility.Vector3dVector(global_cloud_rgb)
             o3d.visualization.draw_geometries([pcd])
         return global_cloud
 
@@ -325,38 +322,6 @@ class DEMPathData(Dataset):
 
     def __len__(self):
         return len(self.ids)
-
-
-class RigidDEMPathData(DEMPathData):
-    def __init__(self, path, cfg=Config()):
-        super(RigidDEMPathData, self).__init__(path, cfg)
-
-    def __getitem__(self, i, visualize=False):
-        cloud = self.get_cloud(i)
-        color = self.get_cloud_color(i)
-
-        # merge cloud and colors
-        cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
-
-        traj = self.get_traj(i)
-        height = self.get_traj_dphyics_terrain(i)
-        H, W = height.shape
-        h, w = 2 * self.cfg.d_max // self.cfg.grid_res, 2 * self.cfg.d_max // self.cfg.grid_res
-        # select only the h x w area from the center of the height map
-        height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
-                        int(W // 2 - w // 2):int(W // 2 + w // 2)]
-
-        n = int(2 * self.cfg.d_max / self.cfg.grid_res)
-        xi = np.linspace(-self.cfg.d_max, self.cfg.d_max, n)
-        yi = np.linspace(-self.cfg.d_max, self.cfg.d_max, n)
-        x_grid, y_grid = np.meshgrid(xi, yi)
-        terrain = {
-            'x': x_grid,
-            'y': y_grid,
-            'z': height
-        }
-
-        return cloud, traj, terrain
 
 
 class MonoDEMData(DEMPathData):

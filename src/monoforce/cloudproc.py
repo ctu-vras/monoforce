@@ -1,4 +1,3 @@
-import os
 import torch
 from .segmentation import affine
 from .transformations import rot2rpy, rpy2rot
@@ -13,10 +12,42 @@ __all__ = [
     'filter_range',
     'filter_grid',
     'filter_cylinder',
+    'filter_box',
     'valid_point_mask',
     'estimate_heightmap',
     'hm_to_cloud',
 ]
+
+
+def within_bounds(x, min=None, max=None, bounds=None, log_variable=None):
+    """Mask of x being within bounds  min <= x <= max."""
+    if not isinstance(x, torch.Tensor):
+        x = torch.tensor(x)
+    assert isinstance(x, torch.Tensor)
+
+    keep = torch.ones((x.numel(),), dtype=torch.bool, device=x.device)
+
+    if bounds:
+        assert min is None and max is None
+        min, max = bounds
+
+    if min is not None and min > -float('inf'):
+        if not isinstance(min, torch.Tensor):
+            min = torch.tensor(min)
+        keep = keep & (x.flatten() >= min)
+    if max is not None and max < float('inf'):
+        if not isinstance(max, torch.Tensor):
+            max = torch.tensor(max)
+        keep = keep & (x.flatten() <= max)
+
+    if log_variable is not None:
+        print('%.3f = %i / %i points kept (%.3g <= %s <= %.3g).'
+              % (keep.double().mean(), keep.sum(), keep.numel(),
+                 min if min is not None else float('nan'),
+                 log_variable,
+                 max if max is not None else float('nan')))
+
+    return keep
 
 
 def filter_range(cloud, min, max, log=False, only_mask=False):
@@ -105,6 +136,47 @@ def filter_cylinder(cloud, radius, axis='z', log=False, only_mask=False):
 
     filtered = cloud[mask]
     return filtered
+
+
+def filter_box(cloud, box_size, box_pose=None, only_mask=False):
+    """Keep points with rectangular bounds."""
+    assert isinstance(cloud, np.ndarray)
+    assert isinstance(box_size, (tuple, list)) and len(box_size) == 3
+    assert all(isinstance(s, (float, int)) and s > 0.0 for s in box_size)
+    assert box_pose is None or isinstance(box_pose, np.ndarray)
+
+    if cloud.dtype.names:
+        pts = position(cloud)
+    else:
+        pts = cloud
+    assert pts.ndim == 2, "Input points tensor dimensions is %i (only 2 is supported)" % pts.ndim
+    pts = torch.from_numpy(pts)
+
+    if box_pose is None:
+        box_pose = np.eye(4)
+    assert isinstance(box_pose, np.ndarray)
+    assert box_pose.shape == (4, 4)
+    box_center = box_pose[:3, 3]
+    box_orient = box_pose[:3, :3]
+
+    pts = (pts - box_center) @ box_orient
+
+    x = pts[:, 0]
+    y = pts[:, 1]
+    z = pts[:, 2]
+
+    keep_x = within_bounds(x, min=-box_size[0] / 2, max=+box_size[0] / 2)
+    keep_y = within_bounds(y, min=-box_size[1] / 2, max=+box_size[1] / 2)
+    keep_z = within_bounds(z, min=-box_size[2] / 2, max=+box_size[2] / 2)
+
+    keep = torch.logical_and(keep_x, keep_y)
+    keep = torch.logical_and(keep, keep_z)
+
+    if only_mask:
+        return keep
+    filtered = cloud[keep]
+    return filtered
+
 
 def valid_point_mask(arr, discard_tf=None, discard_model=None):
     assert isinstance(arr, np.ndarray)

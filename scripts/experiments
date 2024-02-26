@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from monoforce.cloudproc import hm_to_cloud, filter_grid
+from monoforce.cloudproc import hm_to_cloud, filter_grid, filter_box
 from monoforce.datasets.data import TravData, explore_data, DEMPathData
 from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
@@ -234,8 +234,8 @@ def create_global_gloud_map():
             T = poses[i]
             cloud = transform_cloud(cloud, T)
             points = position(cloud)
+            points = filter_grid(points, ds.cfg.grid_res, keep='first', log=False)
             if i == 0:
-                points = filter_grid(points, ds.cfg.grid_res, keep='first', log=False)
                 global_cloud = points
             else:
                 tree = cKDTree(global_cloud)
@@ -436,6 +436,36 @@ def vis_trajectory():
         mlab.show()
 
 
+def sample_heightmap_at_img_pose():
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    path = robingas_husky_seq_paths[2]
+
+    ds = TravData(path, data_aug_conf=data_aug_conf, cfg=cfg)
+    poses = ds.get_poses_at_camera_stamps('camera_front')
+    global_cloud = ds.global_cloud(vis=False)
+    pose = poses[10]
+
+    # sample heightmap at pose
+    box_size = [2*cfg.d_max, 2*cfg.d_max, 2*cfg.h_max]
+    cloud = filter_box(global_cloud, box_size=box_size, box_pose=pose)
+    # cloud = transform_cloud(cloud, np.linalg.inv(pose))
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(global_cloud)
+
+    pcd_pose = o3d.geometry.PointCloud()
+    pcd_pose.points = o3d.utility.Vector3dVector(cloud)
+    pcd_pose.paint_uniform_color([1, 0, 0])
+
+    o3d.visualization.draw_geometries([pcd, pcd_pose])
+
+
+
 def main():
     # feed_data()
     # map_consistency()
@@ -444,7 +474,8 @@ def main():
     # create_global_gloud_map()
     # check_interpolate_poses()
     # vis_camera_poses()
-    vis_trajectory()
+    # vis_trajectory()
+    sample_heightmap_at_img_pose()
 
 
 if __name__ == '__main__':
