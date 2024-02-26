@@ -3,6 +3,7 @@ import matplotlib as mpl
 import numpy as np
 import torch
 import torchvision
+from scipy.spatial import cKDTree
 from torch.utils.data import Dataset
 from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
 from matplotlib import cm, pyplot as plt
@@ -11,7 +12,7 @@ from ..models.lss.tools import ego_to_cam, get_only_in_img_mask, denormalize_img
 from ..models.lss.model import compile_model
 from ..config import Config
 from ..transformations import transform_cloud
-from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_box
 from ..utils import position, color
 from ..cloudproc import filter_grid, filter_range
 from ..imgproc import undistort_image, project_cloud_to_image
@@ -270,7 +271,7 @@ class DEMPathData(Dataset):
         if os.path.exists(path):
             print('Loading global cloud from file...')
             pcd = o3d.io.read_point_cloud(path)
-            global_cloud = np.asarray(pcd.points)
+            global_cloud = np.asarray(pcd.points, dtype=np.float32)
         else:
             # create global cloud
             poses = self.get_poses()
@@ -630,8 +631,8 @@ class OmniDEMData(MonoDEMData):
         self.poses_at_camera_stamps_path = {cam: os.path.join(self.path, 'poses', f'robot_poses_at_{cam}_timestamps.csv') for cam in self.cameras}
         self.data_aug_conf = data_aug_conf
 
-    def get_poses_at_camera_stamps(self, cam):
-        poses = np.loadtxt(self.poses_at_camera_stamps_path[cam], delimiter=',', skiprows=1)
+    def get_poses_at_camera_stamps(self, camera):
+        poses = np.loadtxt(self.poses_at_camera_stamps_path[camera], delimiter=',', skiprows=1)
         stamps, poses = poses[:, 0], poses[:, 1:13]
         poses = np.asarray([self.pose2mat(pose) for pose in poses], dtype=np.float32)
         return poses
@@ -986,6 +987,74 @@ class TravDataVis(TravData):
         return ds
 
 
+class TravDataCamSynch(TravData):
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config(),
+                 camera_to_synchronize_to='camera_front'
+                 ):
+        super(TravDataCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+        self.camera_to_synchronize_to = camera_to_synchronize_to
+
+    def get_cloud(self, i):
+        # get cloud from lidar
+        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(self.get_raw_cloud(i), Tr)
+        cloud = position(cloud)
+
+        # sample cloud from map at the same time as the camera image
+        poses = self.get_poses_at_camera_stamps(camera=self.camera_to_synchronize_to)
+        global_cloud = self.global_cloud(vis=False)
+        pose = poses[i]
+        box_size = [2 * self.cfg.d_max, 2 * self.cfg.d_max, 2 * self.cfg.h_max]
+        cloud_from_map = filter_box(global_cloud, box_size=box_size, box_pose=pose)
+        cloud_from_map = transform_cloud(cloud_from_map, np.linalg.inv(pose))
+
+        # find nearest neighbors from the cloud from the map to the lidar cloud
+        tree = cKDTree(cloud_from_map)
+        dists, idxs = tree.query(cloud, k=1)
+        cloud_from_map = cloud_from_map[idxs]
+
+        return cloud_from_map
+
+
+class TravDataCamSynchVis(TravDataCamSynch):
+    def __init__(self,
+                 path,
+                 data_aug_conf,
+                 is_train=True,
+                 cfg=Config()
+                 ):
+        super(TravDataCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+
+    def get_sample(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)
+        height_lidar = self.get_lidar_height_map(i)
+        height_traj = self.get_traj_height_map(i)
+        map_pose = torch.as_tensor(self.get_pose(i))
+        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
+        sample = (imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts)
+        return sample
+
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = TravDataCamSynchVis(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
+
+
 def heightmap_demo():
     from ..vis import show_cloud_plt
     from ..cloudproc import filter_grid, filter_range
@@ -1293,7 +1362,7 @@ def global_cloud_demo():
 
 
 def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
-                 sample_range='random', save=False, is_train=False):
+                 sample_range='random', save=False, is_train=False, DataClass=TravDataVis):
     assert os.path.exists(path)
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
@@ -1302,7 +1371,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
         print('Loaded LSS model from', modelf)
         model.eval()
 
-    ds = TravDataVis(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
 
     H, W = data_aug_conf['H'], data_aug_conf['W']
     cams = data_aug_conf['cams']
@@ -1345,7 +1414,8 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 showimg = denormalize_img(img)
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=1, alpha=0.2, cmap='jet')
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
+                            s=1, alpha=0.2, cmap='jet', vmin=-1, vmax=1)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),

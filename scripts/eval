@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data
+from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data, TravDataCamSynchVis, TravDataVis
 from monoforce.config import Config
 from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from monoforce.losses import RMSE
@@ -165,8 +165,9 @@ def main():
 
     # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
     for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range='random')
-        hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
+        explore_data(path, grid_conf, data_aug_conf, cfg,
+                     save=True, is_train=False, sample_range='all', DataClass=TravDataCamSynchVis)
+        # hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 
 if __name__ == '__main__':
