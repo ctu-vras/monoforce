@@ -24,6 +24,7 @@ import albumentations as A
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
+import pandas as pd
 try:
     mpl.use('TkAgg')
 except:
@@ -993,10 +994,15 @@ class TravDataCamSynch(TravData):
                  data_aug_conf,
                  is_train=True,
                  cfg=Config(),
-                 camera_to_synchronize_to='camera_front'
+                 camera_to_synchronize_to='camera_rear'
                  ):
         super(TravDataCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
         self.camera_to_synchronize_to = camera_to_synchronize_to
+
+    def get_timestamps(self):
+        path = os.path.join(self.path, 'timestamps.csv')
+        timestamps = pd.read_csv(path)
+        return timestamps
 
     def get_cloud(self, i):
         # get cloud from lidar
@@ -1005,20 +1011,33 @@ class TravDataCamSynch(TravData):
         cloud = transform_cloud(self.get_raw_cloud(i), Tr)
         cloud = position(cloud)
 
-        # sample cloud from map at the same time as the camera image
-        poses = self.get_poses_at_camera_stamps(camera=self.camera_to_synchronize_to)
-        global_cloud = self.global_cloud(vis=False)
-        pose = poses[i]
-        box_size = [2 * self.cfg.d_max, 2 * self.cfg.d_max, 2 * self.cfg.h_max]
-        cloud_from_map = filter_box(global_cloud, box_size=box_size, box_pose=pose)
-        cloud_from_map = transform_cloud(cloud_from_map, np.linalg.inv(pose))
+        pose_lidar_stamp = self.get_pose(i)
+        poses_cam_stamp = self.get_poses_at_camera_stamps(camera=self.camera_to_synchronize_to)
+        pose_cam_stamp = poses_cam_stamp[i]
 
-        # find nearest neighbors from the cloud from the map to the lidar cloud
-        tree = cKDTree(cloud_from_map)
-        dists, idxs = tree.query(cloud, k=1)
-        cloud_from_map = cloud_from_map[idxs]
+        timestamps = self.get_timestamps()
+        lidar_time = timestamps['os_sensor'][i]
+        cam_time = timestamps[self.camera_to_synchronize_to][i]
+        time_diff = cam_time - lidar_time
+        # pose_diff = pose_lidar_stamp @ np.linalg.inv(pose_cam_stamp)
+        pose_diff = pose_cam_stamp @ np.linalg.inv(pose_lidar_stamp)
+        print(f'pose_diff: {pose_diff}')
+        print(f'time_diff: {time_diff}')
 
-        return cloud_from_map
+        cloud_img_stamp = transform_cloud(cloud, pose_diff)
+        
+        # # sample cloud from map at the same time as the camera image
+        # global_cloud = self.global_cloud(vis=False)
+        # box_size = [2 * self.cfg.d_max, 2 * self.cfg.d_max, 2 * self.cfg.h_max]
+        # cloud_img_stamp = filter_box(global_cloud, box_size=box_size, box_pose=pose_cam_stamp)
+        # cloud_img_stamp = transform_cloud(cloud_img_stamp, np.linalg.inv(pose))
+        # 
+        # # find nearest neighbors from the cloud from the map to the lidar cloud
+        # tree = cKDTree(cloud_img_stamp)
+        # dists, idxs = tree.query(cloud, k=1)
+        # cloud_img_stamp = cloud_img_stamp[idxs]
+
+        return cloud_img_stamp
 
 
 class TravDataCamSynchVis(TravDataCamSynch):
