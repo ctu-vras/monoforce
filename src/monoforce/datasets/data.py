@@ -1015,29 +1015,21 @@ class TravDataCamSynch(TravData):
         poses_cam_stamp = self.get_poses_at_camera_stamps(camera=self.camera_to_synchronize_to)
         pose_cam_stamp = poses_cam_stamp[i]
 
-        timestamps = self.get_timestamps()
-        lidar_time = timestamps['os_sensor'][i]
-        cam_time = timestamps[self.camera_to_synchronize_to][i]
-        time_diff = cam_time - lidar_time
-        # pose_diff = pose_lidar_stamp @ np.linalg.inv(pose_cam_stamp)
-        pose_diff = pose_cam_stamp @ np.linalg.inv(pose_lidar_stamp)
-        print(f'pose_diff: {pose_diff}')
-        print(f'time_diff: {time_diff}')
-
-        cloud_img_stamp = transform_cloud(cloud, pose_diff)
+        pose_diff = np.linalg.inv(pose_cam_stamp) @ pose_lidar_stamp
+        cloud_cam_stamp = transform_cloud(cloud, pose_diff)
         
-        # # sample cloud from map at the same time as the camera image
-        # global_cloud = self.global_cloud(vis=False)
-        # box_size = [2 * self.cfg.d_max, 2 * self.cfg.d_max, 2 * self.cfg.h_max]
-        # cloud_img_stamp = filter_box(global_cloud, box_size=box_size, box_pose=pose_cam_stamp)
-        # cloud_img_stamp = transform_cloud(cloud_img_stamp, np.linalg.inv(pose))
-        # 
-        # # find nearest neighbors from the cloud from the map to the lidar cloud
-        # tree = cKDTree(cloud_img_stamp)
-        # dists, idxs = tree.query(cloud, k=1)
-        # cloud_img_stamp = cloud_img_stamp[idxs]
+        # sample cloud from map at the same time as the camera image
+        global_cloud = self.global_cloud(vis=False)
+        box_size = [2 * self.cfg.d_max, 2 * self.cfg.d_max, 2 * self.cfg.h_max]
+        cloud_sampled = filter_box(global_cloud, box_size=box_size, box_pose=pose_cam_stamp)
+        cloud_sampled = transform_cloud(cloud_sampled, np.linalg.inv(pose_cam_stamp))
 
-        return cloud_img_stamp
+        # find nearest neighbors from the cloud from the map to the lidar cloud
+        tree = cKDTree(cloud_sampled)
+        dists, idxs = tree.query(cloud_cam_stamp, k=1)
+        cloud_sampled = cloud_sampled[idxs]
+
+        return cloud_sampled
 
 
 class TravDataCamSynchVis(TravDataCamSynch):
@@ -1045,9 +1037,11 @@ class TravDataCamSynchVis(TravDataCamSynch):
                  path,
                  data_aug_conf,
                  is_train=True,
-                 cfg=Config()
+                 cfg=Config(),
+                 camera_to_synchronize_to='camera_rear'
                  ):
-        super(TravDataCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+        super(TravDataCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg,
+                                                  camera_to_synchronize_to=camera_to_synchronize_to)
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(i)

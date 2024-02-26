@@ -10,7 +10,7 @@ from monoforce.cloudproc import hm_to_cloud
 from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import TravData, explore_data
+from monoforce.datasets.data import TravData, TravDataCamSynch, TravDataVis, TravDataCamSynchVis, explore_data
 from monoforce.config import Config
 from monoforce.utils import read_yaml, write_to_yaml
 from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
@@ -135,9 +135,6 @@ class Trainer:
         return model
 
     def create_dataloaders(self, val_fraction=0.1, bsz=1, nworkers=1, debug=False, vis=False):
-        # random seed to have consistent train/val split
-        # np.random.seed(0)
-
         # create dataset for LSS model training
         train_datasets = []
         val_datasets = []
@@ -145,11 +142,14 @@ class Trainer:
         for path in self.data_paths:
             assert os.path.exists(path)
             # print(f'Train dataset from path {path} size is {len(ds)}')
+            Data = TravDataCamSynch
+            DataVis = TravDataCamSynchVis
             if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
+                             save=False, is_train=True, DataClass=DataVis)
 
-            train_ds = TravData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
             if debug:
                 print('Debug mode: using small datasets')

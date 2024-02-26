@@ -244,18 +244,6 @@ def create_global_gloud_map():
                 new_points = points[new_pts_mask]
                 global_cloud = np.vstack((global_cloud, new_points))
 
-                print('Adding new points:', len(new_points))
-                print('Global cloud size:', len(global_cloud))
-                # pcd_new = o3d.geometry.PointCloud()
-                # pcd_new.points = o3d.utility.Vector3dVector(new_points)
-                # pcd_new.paint_uniform_color([0, 1, 0])
-                #
-                # pcd_global = o3d.geometry.PointCloud()
-                # pcd_global.points = o3d.utility.Vector3dVector(global_cloud)
-                # pcd_global.paint_uniform_color([0, 0, 1])
-                #
-                # o3d.visualization.draw_geometries([pcd_global, pcd_new])
-
         # visualize global cloud
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(global_cloud)
