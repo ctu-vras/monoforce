@@ -254,17 +254,17 @@ def save_result(system, output_name, log, cfg):
     damping = system.damping.detach().cpu().numpy()
     # create structured array
     result = np.zeros((height.shape[0], height.shape[1]), dtype=[('height_init', np.float64),
-                                                                 ('height', np.float64),
-                                                                 ('friction', np.float64),
-                                                                 ('elasticity', np.float64),
-                                                                 ('damping', np.float64)])
+                                                                       ('height', np.float64),
+                                                                       ('friction', np.float64),
+                                                                       ('elasticity', np.float64),
+                                                                       ('damping', np.float64)])
     result['height_init'] = height_init
     result['height'] = height
     result['friction'] = friction
     result['elasticity'] = elasticity
     result['damping'] = damping
     # save terrain properties array to file
-    output_path = os.path.join(cfg.dataset_path, 'terrain')
+    output_path = os.path.join(cfg.dataset_path, 'terrain', 'traj', 'dphysics')
     os.makedirs(output_path, exist_ok=True)
     # output_name = '%s_loss_%.3f_loss0_%.3f_train_iter_%i.npy' % \
     #               (output_name, log['losses'][np.argmin(log['losses'])], log['losses'][0], np.argmin(log['losses']).item())
@@ -376,10 +376,10 @@ def main():
     print(args)
 
     cfg = Config()
-    # cfg.dataset_path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # cfg.dataset_path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
-    # cfg.dataset_path = '/mnt/personal/agishrus/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/'
-    # cfg.dataset_path = '/mnt/personal/agishrus/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/'
+    # cfg.dataset_path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'
+    # cfg.dataset_path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'
+    # cfg.dataset_path = '/mnt/personal/agishrus/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'
+    # cfg.dataset_path = '/mnt/personal/agishrus/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'
     cfg.dataset_path = args.dataset_path
     cfg.grid_res = args.grid_res
     cfg.d_min = args.d_min  # robot points removal

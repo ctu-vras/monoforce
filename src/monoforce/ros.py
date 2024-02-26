@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import yaml
 from scipy.ndimage import rotate
+from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 from cv_bridge import CvBridge
 from jsk_recognition_msgs.msg import BoundingBox
@@ -76,12 +77,13 @@ def height_map_to_gridmap_msg(height, grid_res,
 
     return map
 
+
 def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.]), q=np.asarray([0., 0., 0., 1.])):
     assert isinstance(height, np.ndarray)
     assert height.ndim == 2
     H, W = height.shape
     n_pts = H * W
-    x, y = np.meshgrid(np.arange(-H//2, H//2), np.arange(-W//2, W//2))
+    x, y = np.meshgrid(np.arange(-H // 2, H // 2), np.arange(-W // 2, W // 2))
     x = x.ravel() * grid_res
     y = y.ravel() * grid_res
     z = height.T.ravel()
@@ -98,13 +100,12 @@ def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.])
     msg = msgify(PointCloud2, cloud)
     return msg
 
-def load_tf_buffer(bag_paths, tf_topics=None):
+
+def load_tf_buffer(bag_paths, tf_topics=None, duration_sec=24 * 60 * 60):
     if tf_topics is None:
         tf_topics = ['/tf', '/tf_static']
 
-    # tf_buffer = BufferCore(cache_time=rospy.Duration(2**31 - 1))
-    # tf_buffer = BufferCore(cache_time=rospy.Duration(24 * 60 * 60))
-    tf_buffer = BufferCore(rospy.Duration(24 * 60 * 60))
+    tf_buffer = BufferCore(rospy.Duration(duration_sec))
 
     for path in bag_paths:
         try:
@@ -144,6 +145,7 @@ def to_tf(pose, frame_id, child_frame_id, stamp=None):
     t.transform.rotation.w = q[3]
     return t
 
+
 def to_cloud_msg(cloud, stamp=None, frame_id=None, fields=None):
     assert isinstance(cloud, np.ndarray)
     assert cloud.shape[1] >= 3
@@ -153,6 +155,7 @@ def to_cloud_msg(cloud, stamp=None, frame_id=None, fields=None):
     cloud = np.asarray(cloud, dtype=np.float32)
     cloud_struct = unstructured_to_structured(cloud, names=fields)
     return msgify(PointCloud2, cloud_struct, stamp=stamp, frame_id=frame_id)
+
 
 def to_pose_array(poses, stamp=None, frame_id=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
@@ -164,6 +167,7 @@ def to_pose_array(poses, stamp=None, frame_id=None):
         pose = msgify(Pose, poses[i])
         pose_array.poses.append(pose)
     return pose_array
+
 
 def to_path(poses, stamp=None, frame_id=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
@@ -182,6 +186,7 @@ def to_path(poses, stamp=None, frame_id=None):
         pose.pose = msgify(Pose, poses[i])
         path.poses.append(pose)
     return path
+
 
 def to_box_msg(pose, size, stamp=None, frame_id=None):
     assert isinstance(pose, np.ndarray) or isinstance(pose, torch.Tensor)
@@ -203,6 +208,7 @@ def to_box_msg(pose, size, stamp=None, frame_id=None):
     box.dimensions.y = size[1]
     box.dimensions.z = size[2]
     return box
+
 
 def to_marker(poses, color=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
@@ -246,7 +252,7 @@ def get_topic_types(bag):
 @timing
 def get_closest_msg(bag, topic, time_moment, time_window=1.0,
                     max_time_diff=0.5, max_time_window=10.0,
-                    verbose=False, return_time_diff=False):
+                    verbose=False):
     assert isinstance(bag, Bag)
     assert isinstance(topic, str)
     assert isinstance(time_moment, float)
@@ -263,30 +269,25 @@ def get_closest_msg(bag, topic, time_moment, time_window=1.0,
     for topic, msg, stamp in bag.read_messages(topics=[topic],
                                                start_time=rospy.Time.from_seconds(tl),
                                                end_time=rospy.Time.from_seconds(tr)):
-        stamps_in_window.append(stamp.to_sec())
+        stamps_in_window.append(stamp)
         msgs.append(msg)
 
     if len(stamps_in_window) == 0:
         # # raise Exception('No image messages in window')
         print('No image messages in window for cloud time %.3f [sec] and topic "%s"' % (time_moment, topic))
-        # print('Trying to increase time_window twice (%f [sec])' % (2*time_window))
-        # return get_closest_msg(bag=bag, topic=topic, time_moment=time_moment, time_window=time_window * 2.0,
-        #                        max_time_diff=max_time_diff, max_time_window=max_time_window,
-        #                        verbose=verbose, return_time_diff=return_time_diff)
-        return None
+        return None, None
 
-    time_diffs = np.abs(np.array(stamps_in_window) - time_moment)
-    msg = msgs[np.argmin(time_diffs)]
+    time_diffs = np.abs(np.array([s.to_sec() for s in stamps_in_window]) - time_moment)
+    i_min = np.argmin(time_diffs)
+    msg = msgs[i_min]
+    msg_stamp = stamps_in_window[i_min]
 
     time_diff = np.min(time_diffs)
     if verbose:
         print('Got the closest message with time difference: %.3f [sec]' % time_diff)
     assert time_diff < max_time_diff, 'Time difference is too large: %.3f [sec]' % time_diff
 
-    if return_time_diff:
-        return msg, time_diff
-
-    return msg
+    return msg, msg_stamp
 
 
 def get_cams_robot_transformations(bag_path, camera_topics, robot_frame, tf_buffer, save=True, output_path=None):
@@ -346,7 +347,7 @@ def get_cams_robot_transformations(bag_path, camera_topics, robot_frame, tf_buff
     return Trs
 
 
-def get_cams_lidar_transformations(bag_path, camera_topics, lidar_frame, tf_buffer, save=True, output_path=None):
+def get_cams_extrinsics(bag_path, camera_topics, center_frame, tf_buffer, save=True, output_path=None):
     if isinstance(bag_path, list):
         assert len(bag_path) > 0, 'No bag files provided'
         bag_path = bag_path[0]
@@ -358,40 +359,47 @@ def get_cams_lidar_transformations(bag_path, camera_topics, lidar_frame, tf_buff
         output_path = output_path_pattern.format(dir=dir, name=bag_path.split('/')[-1].split('.')[0])
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    with open(output_path, 'w') as f:
-        try:
-            with Bag(bag_path, 'r') as bag:
-                for cam_topic in camera_topics:
-                    for topic, img_msg, stamp in bag.read_messages(topics=[cam_topic]):
-                        # find transformation between camera and lidar
-                        try:
-                            lidar_to_camera = tf_buffer.lookup_transform_core(img_msg.header.frame_id,
-                                                                              lidar_frame,
-                                                                              img_msg.header.stamp)
-                        except TransformException as ex:
-                            print('Could not transform from %s to %s at %.3f s.' %
-                                  (lidar_frame, img_msg.header.frame_id, img_msg.header.stamp.to_sec()))
-                            continue
-                        print('Got transformation from %s to %s at %.3f s' % (lidar_frame,
-                                                                              img_msg.header.frame_id,
-                                                                              img_msg.header.stamp.to_sec()))
-                        Tr = numpify(lidar_to_camera.transform)
-                        print('Tr:\n', Tr)
+    transforms = {}
+    with Bag(bag_path, 'r') as bag:
+        for cam_topic in camera_topics:
+            for topic, img_msg, stamp in bag.read_messages(topics=[cam_topic]):
+                # find transformation between camera and lidar
+                camera_frame = img_msg.header.frame_id
+                camera_name = cam_topic.split('/')[1]
+                try:
+                    lidar_to_camera = tf_buffer.lookup_transform_core(center_frame,
+                                                                      camera_frame,
+                                                                      img_msg.header.stamp)
+                except TransformException as ex:
+                    print('Could not transform from %s to %s at %.3f s.' %
+                          (center_frame, camera_frame, img_msg.header.stamp.to_sec()))
+                    continue
+                print('Got transformation from %s to %s at %.3f s' % (center_frame,
+                                                                      camera_frame,
+                                                                      img_msg.header.stamp.to_sec()))
+                Tr = numpify(lidar_to_camera.transform)
+                # TODO: fix the transformation for Husky robot in bag files
+                if 'husky' in bag_path:
+                    print('Fixing the transformation for Husky robot')
+                    Tr_fix = np.eye(4)
+                    R = Rotation.from_euler('x', -np.pi/2, degrees=False).as_matrix()
+                    Tr_fix[:3, :3] = R
+                    Tr = Tr @ Tr_fix
 
-                        # save transformation to yaml file
-                        if save:
-                            camera = cam_topic.split('/')[1]
-                            print('Saving to %s' % output_path)
+                print('Tr:\n', Tr)
+                transforms[f'T_{center_frame}__{camera_name}'] = Tr
 
-                            f.write(f'T_{lidar_frame}__{camera}:\n')
-                            f.write('  rows: 4\n')
-                            f.write('  cols: 4\n')
-                            f.write('  data: [%s]\n' % ', '.join(['%.3f' % x for x in Tr.reshape(-1)]))
-                        break
-        except ROSBagException as ex:
-            print('Could not read %s: %s' % (bag_path, ex))
+                # save transformation to yaml file
+                if save:
+                    print('Saving to %s' % output_path)
+                    data_dict = {f'T_{center_frame}__{camera_name}':
+                                       {'rows': 4,
+                                        'cols': 4,
+                                        'data': ['%.3f' % x for x in Tr.reshape(-1)]}}
+                    append_to_yaml(output_path, data_dict)
+                break
 
-        f.close()
+    return transforms
 
 
 def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
@@ -449,7 +457,7 @@ def get_camera_infos(bag_path, camera_info_topics, save=True, output_path=None):
     return Ks, Ds
 
 
-def append_transformation(bag_paths, source_frame='base_link', target_frame='base_footprint', save=True, tf_buffer=None,
+def append_transformation(bag_paths, source_frame, target_frame, save=True, tf_buffer=None,
                           matrix_name=None):
     """
     Append transformation from source_frame to target_frame to the yaml file
@@ -480,11 +488,18 @@ def append_transformation(bag_paths, source_frame='base_link', target_frame='bas
                                   {'rows': 4,
                                    'cols': 4,
                                    'data': ['%.3f' % x for x in Tr.reshape(-1)]}}
+        append_to_yaml(output_path, new_yaml_data_dict)
 
-        with open(output_path, 'r') as yamlfile:
-            print('Updating yaml file: %s' % output_path)
-            cur_yaml = yaml.load(yamlfile, Loader=yaml.FullLoader)
-            cur_yaml.update(new_yaml_data_dict)
 
-        with open(output_path, 'w') as yamlfile:
-            yaml.safe_dump(cur_yaml, yamlfile)  # Also note the safe_dump
+def append_to_yaml(yaml_path, data_dict):
+    if not os.path.exists(yaml_path):
+        with open(yaml_path, 'w') as f:
+            yaml.dump(data_dict, f)
+    else:
+        with open(yaml_path, 'r') as f:
+            print('Updating yaml file: %s' % yaml_path)
+            cur_yaml = yaml.load(f, Loader=yaml.FullLoader)
+            cur_yaml.update(data_dict)
+
+        with open(yaml_path, 'w') as f:
+            yaml.safe_dump(cur_yaml, f)  # Also note the safe_dump

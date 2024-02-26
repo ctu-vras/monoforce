@@ -10,17 +10,15 @@ from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data
 from monoforce.config import Config
-from monoforce.datasets import seq_paths, sim_seq_paths
+from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from monoforce.losses import RMSE
 from monoforce.utils import read_yaml
 from tqdm import tqdm
-import matplotlib
-matplotlib.use('QtAgg')
 
 torch.set_default_dtype(torch.float32)
 
 
-def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
+def hm_to_imgs_projection_demo(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
@@ -44,8 +42,8 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
             # compute loss
             hm_gt = hm_gt.to(cfg.device)
             B, D, H, W = hm_gt.shape
-            height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-            mask_measured = weights.bool()
+            height_gt, mask_measured = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
+            mask_measured = mask_measured.bool()
             loss = loss_fn(height_pred[mask_measured], height_gt[mask_measured])
 
             # figure title
@@ -79,7 +77,8 @@ def test(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
                 mask = get_only_in_img_mask(ego_pts, img_H, img_W)
                 plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
                 ax.imshow(img)
-                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=-plot_pts[1, mask], cmap='jet')
+                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=hm_points[2, mask],
+                           cmap='jet', vmin=-1.0, vmax=1.0)
                 ax.axis('off')
             
             # plot prediction as image
@@ -130,8 +129,8 @@ def eval(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
                 # compute loss
                 hm_gt = hm_gt.to(cfg.device)
                 B, D, H, W = hm_gt.shape
-                height_gt, weights = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-                loss = loss_fn(height_pred[weights.bool()], height_gt[weights.bool()])
+                height_gt, mask_measured = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
+                loss = loss_fn(height_pred[mask_measured.bool()], height_gt[mask_measured.bool()])
 
                 eval_loss += loss.item()
             eval_loss /= len(valloader)
@@ -156,18 +155,18 @@ def main():
     data_aug_conf = lss_config['data_aug_conf']
 
     # modelf = '../config/weights/lss/lss.pt'
-    modelf = '../config/weights/lss/train_lss.pt'
+    modelf = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
     # modelf = '../config/weights/lss/lss_sim.pt'
     # modelf = None
 
-    paths = seq_paths[:3]
+    paths = robingas_husky_seq_paths
     # paths = sim_seq_paths
+    # paths = oru_seq_paths
 
+    # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
     for path in paths:
-        sample_range = [10]
-        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range=sample_range)
-    # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=32)
-    test(np.random.choice(paths), data_aug_conf, grid_conf, cfg, modelf)
+        explore_data(path, grid_conf, data_aug_conf, cfg, save=False, is_train=False, sample_range='random')
+        hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 
 if __name__ == '__main__':

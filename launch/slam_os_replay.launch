@@ -5,15 +5,22 @@
     <arg name="record_folder" default="$(dirname)"/>
 
     <!-- Robot data: from bag file -->
-    <include file="$(dirname)/replay.launch">
+    <include file="$(dirname)/os_replay.launch">
         <arg name="rviz" value="false"/>
     </include>
 
+    <!-- Point cloud deskewing -->
+    <node name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
+        <remap from="input_point_cloud" to="ouster/points" />
+        <remap from="output_point_cloud" to="ouster/points_deskewed" />
+	</node>
+
     <!-- SLAM -->
     <include file="$(dirname)/slam.launch">
-        <arg name="cloud" value="ouster/points"/>
+        <arg name="cloud" value="ouster/points_deskewed"/>
         <arg name="odom_frame" value="odom"/>
         <arg name="robot_frame" value="base_link"/>
+        <arg name="lidar_beams" default="32"/>
     </include>
 
     <!-- RVIZ -->
@@ -22,7 +29,7 @@
 
     <!-- Record new bag files -->
     <node if="$(arg record)" pkg="rosbag" type="record" name="rosbag_record_tf"
-          args="/tf -O $(arg record_folder)/map2odom.bag"/>
+          args="tf -O $(arg record_folder)/map2odom.bag"/>
     <node if="$(arg record)" pkg="rosbag" type="record" name="rosbag_record_points"
-          args="/point_cloud_deskewed -O $(arg record_folder)/points.bag"/>
+          args="ouster/points_deskewed -O $(arg record_folder)/points.bag"/>
 </launch>

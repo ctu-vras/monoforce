@@ -1,201 +1,133 @@
 #! /usr/bin/env python3
 import os
 import torch
-from pytorch3d.loss import (
-        chamfer_distance,
-        mesh_edge_loss,
-        mesh_laplacian_smoothing,
-        mesh_normal_consistency,
-    )
+from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Meshes, Pointclouds
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from monoforce.cloudproc import hm_to_cloud
-from monoforce.datasets.data import DepthDEMDataVis, DepthDEMData, TravData, TravDataVis
-from monoforce.datasets.data import seq_paths
+from monoforce.cloudproc import hm_to_cloud, filter_grid, filter_box
+from monoforce.datasets.data import TravData, explore_data, DEMPathData
+from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
-from monoforce.models.lss.tools import ego_to_cam, get_only_in_img_mask
 from monoforce.transformations import transform_cloud
-from monoforce.utils import read_yaml
+from monoforce.utils import read_yaml, position
 from monoforce.models.lss.model import compile_model
-import matplotlib as mpl
 import open3d as o3d
-# mpl.use('Qt5Agg')
-
+from scipy import interpolate
+from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Slerp
+from scipy.spatial import cKDTree
+from monoforce.vis import draw_coord_frame, draw_coord_frames
+from mayavi import mlab
 
 torch.set_default_dtype(torch.float32)
 
-def explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False):
-    assert os.path.exists(path)
-
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    ds = DepthDEMDataVis(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
-    # ds = OmniDEMDataVis(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
-
-    H, W = data_aug_conf['H'], data_aug_conf['W']
-    cams = data_aug_conf['cams']
-    rat = H / W
-    val = 10.1
-
-    sample_range = [0]
-
-    for sample_i in sample_range:
-        fig = plt.figure(figsize=(val + val/3*2*rat*3, val/3*2*rat))
-        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 1, 2 * rat, 2 * rat))
-        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-
-        sample = ds[sample_i]
-        sample = [s[np.newaxis] for s in sample]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, pts = sample
-
-        img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
-
-        for si in range(imgs.shape[0]):
-            plt.clf()
-            final_ax = plt.subplot(gs[:, 4:5])
-            for imgi, img in enumerate(imgs[si]):
-                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                mask = get_only_in_img_mask(ego_pts, H, W)
-                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
-
-                ax = plt.subplot(gs[imgi // 2, imgi % 2])
-                showimg = img.permute((1, 2, 0))
-
-                plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, alpha=0.9)
-                plt.axis('off')
-                # camera name as text on image
-                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
-                         horizontalalignment='center', verticalalignment='top',
-                         transform=ax.transAxes, fontsize=10)
-
-                plt.sca(final_ax)
-                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
-                         label=cams[imgi].replace('_', ' '))
-
-            plt.legend(loc='upper right')
-            final_ax.set_aspect('equal')
-            plt.xlim((-cfg.d_max, cfg.d_max))
-            plt.ylim((-cfg.d_max, cfg.d_max))
-
-            ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(hm_lidar[si][0].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.colorbar()
-
-            # plot point cloud in 2D
-            ax = plt.subplot(gs[:, 3:4])
-            plt.scatter(pts[si][0, :], pts[si][1, :], s=1, c=pts[si][2, :], cmap='Greys', vmin=-1., vmax=1.)
-
-            plt.show()
-
-def feed_depth():
-    path = '/home/ruslan/data/bags/husky_sim/depth/husky_simcity_2024-01-16-11-23-56_depth_trav/'
-    # path = seq_paths[0]
+def feed_data():
+    # path = '/media/ruslan/data/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
+    # path = '/media/ruslan/data/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/'
+    path = robingas_husky_seq_paths[1]
 
     # lss model
     cfg = Config()
     cfg.from_yaml('../config/cfg.yaml')
-    cfg.hm_interp_method = 'nearest'
 
     # load LSS config
     lss_config = read_yaml('../config/lss.yaml')
     grid_conf, data_aug_conf = lss_config['grid_conf'], lss_config['data_aug_conf']
-    explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False)
 
-    ds = DepthDEMData(path, data_aug_conf, is_train=False, cfg=cfg)
-    # ds = OmniDEMData(path, data_aug_conf, is_train=False, cfg=cfg)
-    loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=False)
+    ds = TravData(path, data_aug_conf, is_train=False, cfg=cfg)
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     model.train()
     model.to(cfg.device)
 
-    # imgs, rots, trans, intrins, post_rots, post_trans, height = ds[0]
-    # inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-    # inputs = [s[np.newaxis] for s in inputs]
-    # imgs, rots, trans, intrins, post_rots, post_trans = inputs
-
-    # height = model(*inputs)
-    # print(height.shape)
-
-    # with torch.no_grad():
-    #     img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
-    #     cam_feats = model.get_cam_feats(imgs)
-    #     B, N, C, H, W = imgs.shape
-    #     depth = model.camencode.get_depth_feat(imgs.view((B*N, C, H, W)))[0]
-    #     print(img_pts.shape, cam_feats.shape, depth.shape)
-    #     pts_vis = img_pts.reshape([-1, 3]).cpu().numpy()
-    #     # colors = cam_feats.reshape([-1, 64]).cpu().numpy()[..., 0]
-    #     colors = depth.reshape([-1]).cpu().numpy()
-    #     show_cloud(pts_vis, colors)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    criterion = torch.nn.MSELoss()
     max_grad_norm = 5.0
+
+    def criterion(height_pred, height_gt, weights=None):
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        return torch.mean(weights * (height_pred - height_gt) ** 2)
 
     # train on a single example
     sample_i = np.random.randint(len(ds))
-    imgs, rots, trans, intrins, post_rots, post_trans, hm = ds[sample_i]
+    # sample_i = 64
+    print('Sample index:', sample_i)
+    explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False, sample_range=[sample_i])
+    imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[sample_i]
     inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-    inputs = [s[np.newaxis] for s in inputs]
-    inputs = [torch.as_tensor(i, device=cfg.device) for i in inputs]
+    inputs = [s[np.newaxis].to(cfg.device) for s in inputs]
 
-    hm = torch.as_tensor(hm[np.newaxis], device=cfg.device)
-    height_gt, mask = hm[:, 0:1], hm[:, 1:2]
+    hm_lidar = torch.as_tensor(hm_lidar[np.newaxis], device=cfg.device)
+    height_lidar, mask_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
 
-    losses = []
-    for i in range(101):
-        height_pred = model(*inputs)
-        loss = criterion(height_pred[mask.bool()], height_gt[mask.bool()])
+    hm_traj = torch.as_tensor(hm_traj[np.newaxis], device=cfg.device)
+    height_traj, mask_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
 
-        print(loss.item())
-        losses.append(loss.item())
+    losses = {'lidar': [], 'traj': [], 'total': [], 'hdiff': []}
+    n_iters = 1001
+    vis_step = 50
+    for i in tqdm(range(n_iters)):
+        voxel_feats = model.get_voxels(*inputs)
+        height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
+        height_pred_rigid = height_pred_geom - height_pred_diff
+
+        weights_obstacles = 1.0 + torch.abs(height_lidar[mask_lidar.bool()] - height_lidar[mask_lidar.bool()].mean())
+        loss_lidar = criterion(height_pred_geom[mask_lidar.bool()], height_lidar[mask_lidar.bool()], weights_obstacles)
+        loss_traj = 10.*criterion(height_pred_rigid[mask_traj.bool()], height_traj[mask_traj.bool()])
+        loss_hdif = 1e-4*height_pred_diff.std()
+
+        loss = loss_lidar + loss_traj + loss_hdif
+
+        print('loss lidar: %f, loss traj: %f, loss reg: %f, total loss: %f' %
+              (loss_lidar.item(), loss_traj.item(), loss_hdif.item(), loss.item()))
+        losses['lidar'].append(loss_lidar.item())
+        losses['traj'].append(loss_traj.item())
+        losses['hdiff'].append(loss_hdif.item())
+        losses['total'].append(loss.item())
 
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
         optimizer.step()
 
-        if i % 50 == 0:
+        if i % vis_step == 0:
             # plot the result
-            plt.figure(figsize=(20, 5))
-            plt.subplot(1, 4, 1)
-            plt.title('Ground truth')
-            plt.imshow(height_gt[0, 0].cpu().numpy(), cmap='jet', vmin=-1, vmax=1)
+            plt.figure(figsize=(20, 10))
+            plt.subplot(2, 3, 1)
+            plt.title('Lidar HM')
+            plt.imshow(height_lidar[0, 0].cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
             plt.colorbar()
 
-            plt.subplot(1, 4, 2)
-            plt.title('Prediction')
-            plt.imshow(height_pred[0, 0].detach().cpu().numpy(), cmap='jet', vmin=-1, vmax=1)
+            plt.subplot(2, 3, 2)
+            plt.title('Traj HM')
+            plt.imshow(height_traj[0, 0].cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
             plt.colorbar()
 
-            plt.subplot(1, 4, 3)
-            plt.title('Difference')
-            plt.imshow((height_pred[0, 0] - height_gt[0, 0]).detach().cpu().numpy(), cmap='jet', vmin=-1, vmax=1)
-            plt.colorbar()
-
-            plt.subplot(1, 4, 4)
+            plt.subplot(2, 3, 3)
             plt.title('Loss')
-            plt.plot(losses)
-            plt.show()
+            for k, v in losses.items():
+                plt.plot(v[-vis_step:], label=k)
+            plt.legend()
 
-    # # training loop
-    # for imgs, rots, trans, intrins, post_rots, post_trans, hm in loader:
-    #     inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-    #     inputs = [torch.as_tensor(i, device=cfg.device) for i in inputs]
-    #     height_pred = model(*inputs)
-    #
-    #     hm = torch.as_tensor(hm, device=cfg.device)
-    #     height_gt, mask = hm[:, 0:1], hm[:, 1:2]
-    #     loss = criterion(height_pred[mask.bool()], height_gt[mask.bool()])
-    #
-    #     optimizer.zero_grad()
-    #     loss.backward()
-    #     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-    #     optimizer.step()
-    #
-    #     print(loss.item())
+            plt.subplot(2, 3, 4)
+            plt.title('Prediction Geom')
+            plt.imshow(height_pred_geom[0, 0].detach().cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+            plt.colorbar()
+
+            plt.subplot(2, 3, 5)
+            plt.title('Prediction Diff')
+            plt.imshow(height_pred_diff[0, 0].detach().cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+            plt.colorbar()
+
+            plt.subplot(2, 3, 6)
+            plt.title('Prediction Rigid')
+            plt.imshow(height_pred_rigid[0, 0].detach().cpu().numpy().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+            plt.colorbar()
+
+            plt.show()
+            plt.close()
 
 
 def map_consistency():
@@ -215,7 +147,7 @@ def map_consistency():
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravData(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
     loader = DataLoader(ds, batch_size=16, shuffle=False)
     # ds.global_cloud(vis=True)
     ds.global_hm_cloud(vis=True)
@@ -270,7 +202,7 @@ def data_slicing():
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = TravData(seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = TravData(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
     ds_slice = ds[150:200]
     print("Full dataset contains samples", ds.ids)
     print("Sliced dataset contains samples", ds_slice.ids)
@@ -279,10 +211,271 @@ def data_slicing():
     ds_slice.global_hm_cloud(vis=True)
 
 
+def create_global_gloud_map():
+    """
+    Create global heightmap cloud from the sequence of point clouds
+    """
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    for path in robingas_husky_seq_paths:
+        print('Processing sequence:', path)
+        ds = TravData(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+
+        # create global cloud
+        poses = ds.get_poses()
+        dist_th = 0.1
+        global_cloud = None
+        for i in tqdm(range(len(ds))):
+            cloud = ds.get_cloud(i)
+            T = poses[i]
+            cloud = transform_cloud(cloud, T)
+            points = position(cloud)
+            points = filter_grid(points, ds.cfg.grid_res, keep='first', log=False)
+            if i == 0:
+                global_cloud = points
+            else:
+                tree = cKDTree(global_cloud)
+                dists, idxs = tree.query(points, k=1)
+                new_pts_mask = dists > dist_th
+                new_points = points[new_pts_mask]
+                global_cloud = np.vstack((global_cloud, new_points))
+
+                print('Adding new points:', len(new_points))
+                print('Global cloud size:', len(global_cloud))
+                # pcd_new = o3d.geometry.PointCloud()
+                # pcd_new.points = o3d.utility.Vector3dVector(new_points)
+                # pcd_new.paint_uniform_color([0, 1, 0])
+                #
+                # pcd_global = o3d.geometry.PointCloud()
+                # pcd_global.points = o3d.utility.Vector3dVector(global_cloud)
+                # pcd_global.paint_uniform_color([0, 0, 1])
+                #
+                # o3d.visualization.draw_geometries([pcd_global, pcd_new])
+
+        # visualize global cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(global_cloud)
+
+        pcd_poses = o3d.geometry.PointCloud()
+        pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
+        pcd_poses.paint_uniform_color([1, 0, 0])
+
+        # save global cloud
+        o3d.io.write_point_cloud(os.path.join(path, 'global_map.pcd'), pcd)
+        o3d.visualization.draw_geometries([pcd, pcd_poses])
+
+def visualize_point_cloud_map():
+    """
+    Visualize point cloud map and trajectory point cloud
+    """
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    paths = robingas_husky_seq_paths
+    # paths = oru_seq_paths
+
+    for path in paths:
+        ds = TravData(path, data_aug_conf=data_aug_conf, cfg=cfg)
+        poses = ds.get_poses()
+
+        map_path = os.path.join(path, 'global_map.pcd')
+        assert os.path.exists(map_path)
+        pcd = o3d.io.read_point_cloud(map_path)
+        # pcd = o3d.geometry.PointCloud()
+        # map_points = ds.global_cloud(vis=False)
+        # pcd.points = o3d.utility.Vector3dVector(map_points)
+
+        pcd_poses = o3d.geometry.PointCloud()
+        pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
+        pcd_poses.paint_uniform_color([1, 0, 0])
+
+        o3d.visualization.draw_geometries([pcd, pcd_poses])
+
+
+def interpolate_poses(pose_timestamps, abs_poses, requested_timestamps, origin_timestamp):
+    """Interpolate between absolute poses.
+
+    Args:
+        pose_timestamps (list[int]): Timestamps of supplied poses. Must be in ascending order.
+        abs_poses (list[numpy.matrixlib.defmatrix.matrix]): SE3 matrices representing poses at the timestamps specified.
+        requested_timestamps (list[int]): Timestamps for which interpolated timestamps are required.
+        origin_timestamp (int): UNIX timestamp of origin frame. Poses will be reported relative to this frame.
+
+    Returns:
+        list[numpy.matrixlib.defmatrix.matrix]: Interpolated poses at the requested timestamps.
+    """
+    if len(pose_timestamps) != len(abs_poses):
+        raise ValueError('pose_timestamps and abs_poses must be the same length')
+
+    if pose_timestamps != sorted(pose_timestamps):
+        raise ValueError('pose_timestamps must be in ascending order')
+
+    # convert to numpy array
+    pose_timestamps = np.asarray(pose_timestamps)
+    abs_poses = np.asarray(abs_poses)
+
+    # convert to relative timestamps
+    rel_timestamps = pose_timestamps - origin_timestamp
+    requested_timestamps = np.asarray(requested_timestamps) - origin_timestamp
+
+    # interpolate using spherical linear interpolation
+    slerp = Slerp(rel_timestamps, Rotation.from_matrix(abs_poses[:, :3, :3]))
+    interp_rotations = slerp(requested_timestamps)
+
+    # interpolate translations
+    interp_translations = []
+    for i in range(3):
+        interp_translations.append(interpolate.interp1d(pose_timestamps, abs_poses[:, i, 3])(requested_timestamps))
+
+    interp_poses = []
+    for r, t in zip(interp_rotations, interp_translations):
+        pose = np.eye(4)
+        pose[:3, :3] = r.as_matrix()
+        pose[:3, 3] = t
+        interp_poses.append(pose)
+
+    return interp_poses
+
+
+def check_interpolate_poses():
+    from monoforce.vis import draw_coord_frame, draw_coord_frames
+    from mayavi import mlab
+
+    pose_timestamps = np.arange(0, 10, 1).tolist()
+
+    pose0 = np.eye(4)
+    abs_poses = [pose0]
+    for i in range(1, len(pose_timestamps)):
+        # pose = np.eye(4)
+        # pose[:3, 3] += i * np.asarray([1, 0, 0])
+        # pose[:3, :3] = Rotation.from_euler('xyz', [0, 0, i * np.pi / 4]).as_matrix()
+
+        # spiral trajectory
+        pose = np.eye(4)
+        pose[:3, 3] += i * np.asarray([np.cos(i), np.sin(i), 1.])
+        pose[:3, :3] = Rotation.from_euler('xyz', [0, 0, i * np.pi / len(pose_timestamps)]).as_matrix()
+
+        abs_poses.append(pose)
+    abs_poses = np.asarray(abs_poses)
+
+    requested_timestamps = np.arange(0.5, 9.5, 1).tolist()
+    print('Pose timestamps:', pose_timestamps)
+    print('Requested timestamps:', requested_timestamps)
+    # print('Absolute poses', abs_poses)
+
+    origin_timestamp = 0.
+    interp_poses = interpolate_poses(pose_timestamps, abs_poses, requested_timestamps, origin_timestamp)
+    interp_poses = np.asarray(interp_poses)
+    print('Interpolated poses', interp_poses)
+
+    # visualize
+    draw_coord_frames(abs_poses, scale=0.2)
+    draw_coord_frames(interp_poses, scale=0.1)
+    mlab.show()
+
+
+def vis_camera_poses():
+    for path in robingas_husky_seq_paths:
+        assert os.path.exists(path)
+
+        cfg = Config()
+        ds = DEMPathData(path, cfg=cfg)
+
+        robot_pose = np.eye(4)
+        robot_frame = 'base_link'
+        camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
+
+        cam_poses = []
+        for cam_frame in camera_frames:
+
+            T_robot_cam = ds.calib['transformations'][f'T_{robot_frame}__{cam_frame}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+
+            cam_poses.append(T_robot_cam[np.newaxis])
+        cam_poses = np.concatenate(cam_poses, axis=0)
+
+        # draw coordinate frames
+        mlab.figure(size=(800, 800))
+        draw_coord_frame(robot_pose, scale=0.5)
+        draw_coord_frames(cam_poses, scale=0.1)
+        mlab.show()
+
+
+def vis_trajectory():
+    from monoforce.losses import translation_difference, rotation_difference
+
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    paths = robingas_husky_seq_paths
+    # paths = oru_seq_paths
+
+    for path in paths:
+        ds = TravData(path, data_aug_conf=data_aug_conf, cfg=cfg)
+        poses = ds.get_poses()
+        cam_poses = ds.get_poses_at_camera_stamps('camera_front')
+        assert len(poses) == len(cam_poses)
+        trans_diff = translation_difference(torch.as_tensor(poses[:, :3, 3:4]), torch.as_tensor(cam_poses[:, :3, 3:4]))
+        rot_diff = rotation_difference(torch.as_tensor(poses[:, :3, :3]), torch.as_tensor(cam_poses[:, :3, :3]))
+        print('Translation difference:', trans_diff)
+        print('Rotation difference:', rot_diff)
+
+        mlab.figure(size=(800, 800))
+        draw_coord_frames(poses[::5], scale=0.5)
+        draw_coord_frames(cam_poses[::5], scale=1)
+        mlab.show()
+
+
+def sample_heightmap_at_img_pose():
+    cfg = Config()
+    cfg.from_yaml('../config/cfg.yaml')
+
+    lss_cfg = read_yaml('../config/lss.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
+    path = robingas_husky_seq_paths[2]
+
+    ds = TravData(path, data_aug_conf=data_aug_conf, cfg=cfg)
+    poses = ds.get_poses_at_camera_stamps('camera_front')
+    global_cloud = ds.global_cloud(vis=False)
+    pose = poses[10]
+
+    # sample heightmap at pose
+    box_size = [2*cfg.d_max, 2*cfg.d_max, 2*cfg.h_max]
+    cloud = filter_box(global_cloud, box_size=box_size, box_pose=pose)
+    # cloud = transform_cloud(cloud, np.linalg.inv(pose))
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(global_cloud)
+
+    pcd_pose = o3d.geometry.PointCloud()
+    pcd_pose.points = o3d.utility.Vector3dVector(cloud)
+    pcd_pose.paint_uniform_color([1, 0, 0])
+
+    o3d.visualization.draw_geometries([pcd, pcd_pose])
+
+
+
 def main():
-    # feed_depth()
-    map_consistency()
+    # feed_data()
+    # map_consistency()
     # data_slicing()
+    # visualize_point_cloud_map()
+    # create_global_gloud_map()
+    # check_interpolate_poses()
+    # vis_camera_poses()
+    # vis_trajectory()
+    sample_heightmap_at_img_pose()
 
 
 if __name__ == '__main__':

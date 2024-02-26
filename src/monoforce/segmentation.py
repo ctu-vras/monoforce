@@ -13,6 +13,17 @@ import numpy as np
 from tf.transformations import euler_matrix, quaternion_matrix
 
 
+__all__ = [
+    'affine',
+    'inverse',
+    'Body',
+    'Bodies',
+    'Box',
+    'Sphere',
+    'Cylinder',
+]
+
+
 def affine(tf, x):
     """Apply an affine transform to points."""
     tf = np.asarray(tf)

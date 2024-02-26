@@ -3,24 +3,21 @@
     <arg name="cloud" default="ouster/points"/>
     <arg name="robot_frame" default="base_link"/>
     <arg name="odom_frame" default="odom"/>
+    <arg name="lidar_beams" default="128"/>
+    <arg name="params" default="$(dirname)/../config/slam/mapper_node_$(arg lidar_beams).params"/>
 
-    <node pkg="norlab_icp_mapper_ros" type="mapper_node" name="mapper_node" output="screen" >
-		<remap from="points_in" to="/point_cloud_deskewed"/>
-		<param name="robot_frame" value="$(arg robot_frame)"/>
-		<param name="odom_frame" value="$(arg odom_frame)"/>
-		<param name="icp_config" value="$(dirname)/../config/slam/realtime_icp_config.yaml"/>
-		<param name="input_filters_config" value="$(dirname)/../config/slam/realtime_input_filters.yaml"/>
-		<param name="map_post_filters_config" value="$(dirname)/../config/slam/realtime_post_filters.yaml"/>
-		<param name="map_update_condition" value="delay"/>
-		<param name="map_update_delay" value="1.5"/>
-		<param name="sensor_max_range" value="60"/>
-		<param name="min_dist_new_point" value="0.15"/>
-		<param name="compute_prob_dynamic" value="true"/>
-		<param name="map_tf_publish_rate" value="100"/>
-	</node>
-	
-	<node  name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
-    		<remap from="input_point_cloud" to="$(arg cloud)" />
-    		<remap from="output_point_cloud" to="/point_cloud_deskewed" />
-	</node>
+    <!-- ICP mapper node -->
+    <node pkg="norlab_icp_mapper_ros" type="mapper_node" name="mapper_node" output="screen">
+        <rosparam command="load" file="$(arg params)"/>
+        <rosparam subst_value="true">
+            robot_frame: $(arg robot_frame)
+            odom_frame: $(arg odom_frame)
+            icp_config: $(dirname)/../config/slam/icp_config_$(arg lidar_beams).yaml
+            input_filters_config: $(dirname)/../config/slam/input_filters_$(arg lidar_beams).yaml
+            map_post_filters_config: $(dirname)/../config/slam/map_post_filters_$(arg lidar_beams).yaml
+        </rosparam>
+
+        <remap from="points_in" to="$(arg cloud)"/>
+    </node>
+
 </launch>

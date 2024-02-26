@@ -29,7 +29,13 @@
             zero_valid: false
         </rosparam>
         <remap from="input" to="$(arg input)_in_range"/>
-        <remap from="output" to="$(arg output)"/>
+        <remap from="output" to="$(arg input)_voxel"/>
     </node>
+
+    <!-- Point cloud deskewing -->
+    <node name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
+        <remap from="input_point_cloud" to="$(arg input)_voxel" />
+        <remap from="output_point_cloud" to="$(arg output)" />
+	</node>
 
 </launch>
