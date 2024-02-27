@@ -13,21 +13,23 @@ from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.config import Config
-from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
+from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.utils import read_yaml
 from monoforce.control import pose_control
-from monoforce.losses import translation_difference, rotation_difference, traj_dist
-from monoforce.transformations import rot2rpy, transform_cloud
+from monoforce.losses import translation_difference, rotation_difference
+from monoforce.transformations import rot2rpy
 from monoforce.vis import draw_coord_frames, animate_trajectory, setup_visualization
 
 torch.random.manual_seed(0)
 
 class Evaluator:
-    def __init__(self, model_path, config_path, lss_config_path, data_paths):
+    def __init__(self, dphys_config_path, lss_config_path, data_paths, model_path=None, model_name=None):
         self.model_path = model_path
-        assert os.path.isfile(model_path), 'Model file %s does not exist' % model_path
-        self.config_path = config_path
-        assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+        assert model_path is None or os.path.isfile(model_path), 'Model file %s does not exist' % model_path
+        self.model_name = model_name
+        assert model_name is None or isinstance(model_name, str), 'Invalid model name'
+        self.config_path = dphys_config_path
+        assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
         self.lss_config_path = lss_config_path
         assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
         self.data_paths = data_paths
@@ -35,18 +37,42 @@ class Evaluator:
             assert os.path.isdir(path), 'Data path %s does not exist' % path
 
         self.cfg = Config()
-        self.cfg.from_yaml(config_path)
+        self.cfg.from_yaml(dphys_config_path)
 
         self.lss_config = read_yaml(lss_config_path)
         self.grid_conf = self.lss_config['grid_conf']
         self.data_aug_conf = self.lss_config['data_aug_conf']
 
-        self.model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
-        print('Loading', self.model_path)
-        self.model.load_state_dict(torch.load(self.model_path))
-        self.model.to(self.cfg.device)
+        self.model = self.load_model(self.model_name)
 
         self.loss_fn = torch.nn.MSELoss()
+
+        self.metrics = {'trans_diff': [],
+                        'rot_diff': [],
+                        'flip_over_counts': 0.}
+
+    def load_model(self, model_name):
+        if model_name == 'lss':
+            print('Loading LSS model')
+            model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
+            print('Loading', self.model_path)
+            model.load_state_dict(torch.load(self.model_path))
+            model.to(self.cfg.device)
+        elif model_name == 'kkt':
+            print('Loading KKT model')
+            # import kkt model
+            import sys
+            sys.path.append('../../pose-consistency-KKT-loss/scripts/')
+            import network_s2d
+            model = network_s2d.Net()
+            model.load_state_dict(torch.load(self.model_path))
+            model.eval()
+            model.to(self.cfg.device)
+        elif model_name == 'wayfast':
+            raise NotImplementedError('Model %s is not supported yet' % model_name)
+        else:
+            model = None
+        return model
 
     def hm_to_imgs_projection(self, seq_path, bsz=1, nworkers=10):
         device = 'cpu'
@@ -159,16 +185,19 @@ class Evaluator:
 
         return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
-    def get_data(self, i: int, ds: TravData, model=None):
+    def get_data(self, i: int, ds: TravData):
         """
         Get ground truth data sample from the dataset
 
         :param i: index of the sample
         :param ds: dataset of type TravData
-        :param model: model to use for height map prediction
+        :param model: name of the model to be used for height map prediction
 
         :return: states_true, height
         """
+        assert i < len(ds), 'Index out of range'
+        assert isinstance(ds, TravData), 'Invalid dataset type'
+
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[i]
         traj = ds.get_traj(i)
         poses = traj['poses']
@@ -204,14 +233,21 @@ class Evaluator:
         states_true = tuple([s.to(self.cfg.device) for s in states_true])
 
         # get height map
-        if model is None:
+        if self.model_name is None:
             height = hm_lidar[0]
-        else:
+        elif self.model_name == 'lss':
             with torch.no_grad():
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
                 inputs = [torch.as_tensor(i[None], dtype=torch.float64, device=self.cfg.device) for i in inputs]
-                height_pred = model(*inputs)
+                height_pred = self.model(*inputs)
                 height = height_pred.squeeze().cpu()
+        elif self.model_name == 'kkt':
+            with torch.no_grad():
+                input = torch.as_tensor(hm_lidar[None], dtype=torch.float64, device=self.cfg.device)
+                hm_pred = self.model(input)
+                height = hm_pred.squeeze().cpu()[0]
+        else:
+            raise ValueError('Invalid model name %s' % self.model_name)
 
         return states_true, height
 
@@ -267,7 +303,7 @@ class Evaluator:
 
             if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
                 print('Robot is upside down, skipping evaluation')
-                return None, None, None, None
+                return None, None
 
             goal_pose = torch.eye(4, device=self.cfg.device)
             goal_pose[:3, 3:4] = xyz_true[i + 1]
@@ -316,8 +352,6 @@ class Evaluator:
 
         loss_trans_sum /= (n_true_states - 1)
         loss_rot_sum /= (n_true_states - 1)
-        print('Loss translation at waypoints: %.2f [m]' % loss_trans_sum.item())
-        print('Loss rotation at waypoints: %.2f [deg]' % (loss_rot_sum.item() * 180 / np.pi))
 
         # visualize trajectory
         if vis:
@@ -328,29 +362,54 @@ class Evaluator:
 
         return loss_trans_sum, loss_rot_sum
 
-    def evaluate(self):
-        for model in [None, self.model]:
-            # print(f'Using model: {model}')
-            for path in self.data_paths:
-                print(f'Evaluation on {os.path.basename(path)}...')
-                ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-                for i in range(len(ds)):
-                    states_true, height = self.get_data(i, ds, model)
-                    with torch.no_grad():
-                        loss_trans_sum, loss_rot_sum = self.eval_diff_physics(height, states_true, vis=False)
+    def evaluate(self, vis=False):
+        for path in self.data_paths:
+            print(f'Evaluation on {os.path.basename(path)}...')
+            ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            for i in tqdm(range(len(ds))):
+                states_true, height = self.get_data(i, ds)
+                with torch.no_grad():
+                    trans_diff, rot_diff = self.eval_diff_physics(height, states_true, vis=vis)
+                    if rot_diff is not None:
+                        # print('Loss translation at waypoints: %.2f [m]' % trans_diff)
+                        # print('Loss rotation at waypoints: %.2f [deg]' % (rot_diff * 180 / np.pi))
+                        self.metrics['trans_diff'].append(trans_diff.item())
+                        self.metrics['rot_diff'].append(rot_diff.item())
+                    else:
+                        self.metrics['flip_over_counts'] += 1
+                # break
+            # break
+
+        trans_diff_final = np.mean(self.metrics['trans_diff'])
+        rot_diff_final = np.mean(self.metrics['rot_diff'])
+        flip_over_rate_final = self.metrics['flip_over_counts'] / (len(self.metrics['trans_diff']) + self.metrics['flip_over_counts'])
+
+        print(f'Average loss translation: %.2f [m]' % trans_diff_final)
+        print(f'Average loss rotation: %.2f [deg]' % (rot_diff_final * 180 / np.pi))
+        print(f'Flip over rate: %.2f' % flip_over_rate_final)
 
 
 def main():
-    model_path = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
-    config_path = '../config/cfg.yaml'
+    # model_path = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
+    # model_name = 'lss'
+    model_path = None
+    model_name = None
+    # model_path = '../../pose-consistency-KKT-loss/weights/network_weights_s2d'
+    # model_name = 'kkt'
+    dphys_config_path = '../config/cfg.yaml'
     lss_config_path = '../config/lss.yaml'
     data_paths = robingas_husky_seq_paths
     # data_paths = oru_seq_paths
+    vis = True
 
-    evaluator = Evaluator(model_path, config_path, lss_config_path, data_paths)
+    evaluator = Evaluator(dphys_config_path=dphys_config_path,
+                          lss_config_path=lss_config_path,
+                          data_paths=data_paths,
+                          model_path=model_path,
+                          model_name=model_name)
     # evaluator.eval_terrain_encoder(bsz=4)
     # evaluator.hm_to_imgs_projection(data_paths[0])
-    evaluator.evaluate()
+    evaluator.evaluate(vis=vis)
 
 
 if __name__ == '__main__':
