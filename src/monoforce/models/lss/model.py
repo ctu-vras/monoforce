@@ -90,9 +90,8 @@ class BevEncode(nn.Module):
     def __init__(self, inC, outC):
         super(BevEncode, self).__init__()
 
-        trunk = resnet18(pretrained=False, zero_init_residual=True)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
+        trunk = resnet18(zero_init_residual=True)
+        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = trunk.bn1
         self.relu = trunk.relu
 
@@ -101,16 +100,23 @@ class BevEncode(nn.Module):
         self.layer3 = trunk.layer3
 
         self.up1 = Up(64+256, 256, scale_factor=4)
-        self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
+        self.up_geom = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
+        self.up_diff = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0),
+            nn.ReLU(inplace=True),
+        )
 
-    def forward(self, x):
+    def backbone(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -120,9 +126,25 @@ class BevEncode(nn.Module):
         x = self.layer3(x)
 
         x = self.up1(x, x1)
-        x = self.up2(x)
 
         return x
+
+    def geom_head(self, x):
+        x = self.up_geom(x)
+
+        return x
+
+    def diff_head(self, x):
+        x = self.up_diff(x)
+
+        return x
+
+    def forward(self, x):
+        hm_feat = self.backbone(x)
+        hm_geom = self.geom_head(hm_feat)
+        hm_diff = self.diff_head(hm_feat)
+
+        return hm_geom, hm_diff
 
 
 class LiftSplatShoot(nn.Module):
@@ -243,14 +265,15 @@ class LiftSplatShoot(nn.Module):
     def get_voxels(self, x, rots, trans, intrins, post_rots, post_trans):
         geom = self.get_geometry(rots, trans, intrins, post_rots, post_trans)
         x = self.get_cam_feats(x)
-
         x = self.voxel_pooling(geom, x)
-
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
         x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans)
-        x = self.bevencode(x)
+        x_geom, x_diff = self.bevencode(x)
+        assert x_geom.shape == x_diff.shape
+        assert x_diff.min() >= 0.
+        x = x_geom - x_diff
         return x
 
 

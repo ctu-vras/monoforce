@@ -2,6 +2,6 @@
 
 # This script is used to filter the map to odom transform from a bag file
 INPUT_BAG=$1
-OUTPUT_BAG=$2
+OUTPUT_BAG=map2odom.bag
 
 rosbag filter "${INPUT_BAG}" ${OUTPUT_BAG} "topic == '/tf' and m.transforms[0].header.frame_id == 'map' and m.transforms[0].child_frame_id == 'odom'"

@@ -4,7 +4,7 @@
     <arg name="diffphys" default="false" doc="Whether to run the diff physics node or not"/>
     <arg name="slam" default="false" doc="Whether to run the SLAM node or not"/>
     <arg name="lss_debug" default="false"/>
-    <arg name="weights" default="$(dirname)/../config/weights/lss/train_lss.pt"/>
+    <arg name="weights" default="$(dirname)/../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt"/>
 
 <!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag"/> -->
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
@@ -16,18 +16,7 @@
                                              '/camera_left/camera_info',
                                              '/camera_rear/camera_info',
                                              '/camera_right/camera_info']"/>
-    <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44_trav/calibration/"/>
-
-<!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/> -->
-<!--     <arg name="img_topics" default="['/camera_fisheye_front/image_color/compressed', -->
-<!--                                      '/camera_left/image_color/compressed', -->
-<!--                                      '/camera_right/image_color/compressed', -->
-<!--                                      '/camera_fisheye_rear/image_color/compressed']"/> -->
-<!--     <arg name="camera_info_topics" default="['/camera_fisheye_front/camera_info', -->
-<!--                                              '/camera_left/camera_info', -->
-<!--                                              '/camera_right/camera_info', -->
-<!--                                              '/camera_fisheye_rear/camera_info']"/> -->
-<!--     <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/calibration/"/> -->
+    <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/calibration/"/>
 
     <!-- Robot data: from bag file -->
     <include file="$(dirname)/play_bag.launch">

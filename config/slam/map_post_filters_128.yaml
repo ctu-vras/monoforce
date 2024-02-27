@@ -1,0 +1,7 @@
+- SurfaceNormalDataPointsFilter:
+    knn: 9
+    epsilon: 0
+    keepNormals: 1
+
+- OrientNormalsDataPointsFilter:
+    towardCenter: 1

@@ -3,23 +3,78 @@
 import os
 import torch
 import numpy as np
-from torch.utils.data import ConcatDataset
-from monoforce.models.lss.tools import denormalize_img
+from torch.utils.data import ConcatDataset, DataLoader, Subset
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.structures import Pointclouds
+from monoforce.cloudproc import hm_to_cloud
+from monoforce.transformations import transform_cloud
+from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import TravData, explore_data
+from monoforce.datasets.data import TravData, TravDataCamSynch, TravDataVis, TravDataCamSynchVis, explore_data
 from monoforce.config import Config
-from monoforce.utils import read_yaml, write_to_yaml, normalize
-from monoforce.datasets import seq_paths, sim_seq_paths
-from monoforce.losses import RMSE
+from monoforce.utils import read_yaml, write_to_yaml
+from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import matplotlib.pyplot as plt
+import argparse
 
 torch.set_default_dtype(torch.float32)
 
 
+torch.random.manual_seed(0)
+np.random.seed(0)
+
+
+def str2bool(v):
+    return v.lower() in ('1', 'yes', 'true', 't', 'y')
+
+
+def arg_parser():
+    parser = argparse.ArgumentParser(description='Train LSS model')
+    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
+    parser.add_argument('--nworkers', type=int, default=10, help='Number of workers for dataloaders')
+    parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
+    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
+    parser.add_argument('--map_consistency', type=str2bool, default=False, help='Enable map consistency loss')
+    parser.add_argument('--data_paths', type=str, nargs='+', default=robingas_husky_seq_paths, help='Paths to training datasets')
+    parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
+    parser.add_argument('--log_dir', type=str,
+                        default=os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")),
+                        help='Path to log directory')
+    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
+    parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
+    parser.add_argument('--lidar_hm_weight', type=float, default=1.0, help='Weight for lidar heightmap loss')
+    parser.add_argument('--traj_hm_weight', type=float, default=10.0, help='Weight for trajectory heightmap loss')
+    parser.add_argument('--hdiff_weight', type=float, default=0.0001, help='Weight for height difference loss')
+
+    return parser.parse_args()
+
 class Trainer:
+    """
+    Trainer for LSS terrain encoder model
+
+    Args:
+    data_paths: list of str, paths to training datasets
+    cfg: Config, configuration object
+    data_aug_conf: dict, data augmentation configuration
+    grid_conf: dict, grid configuration
+    bsz: int, batch size
+    nworkers: int, number of workers for dataloaders
+    lr: float, learning rate
+    weight_decay: float, weight decay
+    nepochs: int, number of epochs
+    map_consistency: bool, enable map consistency loss
+    pretrained_model_path: str, path to pretrained model
+    log_dir: str, path to log directory
+    debug: bool, debug mode: use small datasets
+    vis: bool, visualize training samples
+    lidar_hm_weight: float, weight for lidar heightmap loss
+    traj_hm_weight: float, weight for trajectory heightmap loss
+    hdiff_weight: float, weight for height difference loss
+    """
     def __init__(self,
                  data_paths,
                  cfg,
@@ -29,29 +84,31 @@ class Trainer:
                  nworkers=10,
                  lr=1e-3,
                  weight_decay=1e-7,
-                 nepochs=500,
-                 save_model=True,
+                 nepochs=1000,
+                 map_consistency=True,
                  pretrained_model_path=None,
                  log_dir='./runs',
                  debug=False,
-                 vis=False):
+                 vis=False,
+                 lidar_hm_weight=1.0,
+                 traj_hm_weight=50.0,
+                 hdiff_weight=0.0001):
 
             self.cfg = cfg
             self.data_aug_conf = data_aug_conf
             self.grid_conf = grid_conf
             self.data_paths = data_paths
             self.nepochs = nepochs
-            self.save_model = save_model
+            self.map_consistency = map_consistency
             self.log_dir = log_dir
 
-            self.train_ds, self.val_ds = self.create_datasets(debug=debug, vis=vis)
-            self.trainloader = torch.utils.data.DataLoader(self.train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
-            self.valloader = torch.utils.data.DataLoader(self.val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+            self.train_loaders, self.val_loaders = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
 
             self.model = self.load_model(modelf=pretrained_model_path)
 
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-            self.loss_fn = RMSE(reduction='none')
+            self.loss_fn = torch.nn.MSELoss(reduction='none')
+            # self.loss_fn = RMSE(reduction='none')
 
             self.writer = SummaryWriter(log_dir=log_dir)
             # save configs to log dir
@@ -64,6 +121,10 @@ class Trainer:
             self.train_counter = 0
             self.val_counter = 0
 
+            self.lidar_hm_weight = lidar_hm_weight
+            self.traj_hm_weight = traj_hm_weight
+            self.hdiff_weight = hdiff_weight
+
     def load_model(self, modelf=None):
         model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
         if modelf is not None:
@@ -73,124 +134,180 @@ class Trainer:
         model.train()
         return model
 
-    def create_datasets(self, val_fraction=0.1, debug=False, vis=False):
-        # random seed to have consistent train/val split
-        np.random.seed(0)
-
+    def create_dataloaders(self, val_fraction=0.1, bsz=1, nworkers=1, debug=False, vis=False):
         # create dataset for LSS model training
         train_datasets = []
         val_datasets = []
         print('Data paths:', self.data_paths)
         for path in self.data_paths:
             assert os.path.exists(path)
-            train_ds = TravData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-
-            # randomly select a subset of the dataset
-            val_ds_size = int(val_fraction * len(train_ds))
-            train_ds_size = len(train_ds) - val_ds_size
-            train_ids = np.random.choice(len(train_ds), train_ds_size, replace=False)
-            val_ids = np.setdiff1d(np.arange(len(train_ds)), train_ids)
-            assert len(train_ids) + len(val_ids) == len(train_ds)
-            # check that there is no overlap between train and val ids
-            assert len(np.intersect1d(train_ids, val_ids)) == 0
-
-            train_ds = torch.utils.data.Subset(train_ds, train_ids)
-            val_ds = torch.utils.data.Subset(val_ds, val_ids)
-
             # print(f'Train dataset from path {path} size is {len(ds)}')
+            Data = TravDataCamSynch
+            DataVis = TravDataCamSynchVis
             if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, save=False, is_train=True)
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
+                             save=False, is_train=True, DataClass=DataVis)
+
+            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+
+            if debug:
+                print('Debug mode: using small datasets')
+                # randomly sample from the dataset
+                train_ids = np.random.choice(len(train_ds), int(0.1 * len(train_ds)), replace=False)
+                val_ids = np.random.choice(len(val_ds), int(0.05 * len(val_ds)), replace=False)
+            else:
+                # randomly select a subset of the dataset
+                val_ds_size = int(val_fraction * len(train_ds))
+                # if map consistency is enabled, use a sequential part of the dataset
+                val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False) if not self.map_consistency\
+                    else range(len(train_ds) // 2, len(train_ds) // 2 + val_ds_size)
+                train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
+                assert len(train_ids) + len(val_ids) == len(train_ds)
+                # check that there is no overlap between train and val ids
+                assert len(np.intersect1d(train_ids, val_ids)) == 0
+
+            train_ds = train_ds[train_ids]
+            val_ds = val_ds[val_ids]
+            print(f'Train dataset from path {path} size is {len(train_ds)}')
+            print(f'Validation dataset from path {path} size is {len(val_ds)}')
+
             train_datasets.append(train_ds)
             val_datasets.append(val_ds)
 
-        train_ds = ConcatDataset(train_datasets)
-        val_ds = ConcatDataset(val_datasets)
+        # concatenate datasets if map consistency is disabled
+        if not self.map_consistency:
+            train_datasets = [ConcatDataset(train_datasets)]
+            val_datasets = [ConcatDataset(val_datasets)]
 
-        if debug:
-            print('Debug mode: using small datasets')
-            train_ds = torch.utils.data.Subset(train_ds, np.random.choice(len(train_ds), 32, replace=False))
-            val_ds = torch.utils.data.Subset(val_ds, np.random.choice(len(val_ds), 8, replace=False))
-        print('Training dataset size:', len(train_ds))
-        print('Validation dataset size:', len(val_ds))
+        # create dataloaders
+        train_loaders = []
+        for ds in train_datasets:
+            train_loader = DataLoader(ds, batch_size=bsz,
+                                      shuffle=False if self.map_consistency else True,
+                                      num_workers=nworkers)
+            train_loaders.append(train_loader)
+        val_loaders = []
+        for ds in val_datasets:
+            val_loader = DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+            val_loaders.append(val_loader)
 
-        return train_ds, val_ds
+        return train_loaders, val_loaders
 
-    def compute_loss(self, height_pred, hm_gt, sigma=None, optimized_hm=False,):
-        # hm_gt is a tensor of size Bx2xHxW (first channel is height, second channel is mask)
-        # height_pred is a tensor of size Bx1xHxW
-        B, D, H, W = hm_gt.shape
-        assert D == 2
-        assert height_pred.shape == (B, 1, H, W)
-        # get height and mask from heightmap: weights_m is measurement mask
-        height_gt, weights_m = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-        weights = weights_m.clone()
+    def lidar_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
 
-        if sigma is not None:
-            # apply gaussian weights based on distance from the center of the height map
-            assert isinstance(sigma, (float, int))
-            assert sigma > 0.0
-            # create 2D gaussian weights with the size of the height map and center at (0, 0)
-            x_grid = torch.linspace(-1.0, 1.0, W, device=self.cfg.device)
-            y_grid = torch.linspace(-1.0, 1.0, H, device=self.cfg.device)
-            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-            weights_gaus = torch.exp(-((x_grid ** 2 + y_grid ** 2) / (2 * sigma ** 2)))
-            weights_gaus = weights_gaus.view(1, 1, H, W).repeat(B, 1, 1, 1)
-            # apply weights
-            weights = weights * weights_gaus
-
-        if optimized_hm:
-            # mask of valid labels
-            mask_valid = ~torch.isnan(height_gt)
-            # apply mask
-            height_gt = height_gt[mask_valid]
-            height_pred = height_pred[mask_valid]
-            weights = weights[mask_valid]
-        else:
-            # handle imbalanced height distribution (increase weights for higher heights / obstacles)
-            h_mean = height_gt[weights_m.bool()].mean()
-            # the higher the difference from mean the higher the weight
-            weights_h = 1.0 + torch.abs(height_gt - h_mean)
-            # apply height difference weights
-            weights = weights * weights_h
+        # handle imbalanced height distribution (increase weights for higher heights / obstacles)
+        h_mean = height_gt[weights.bool()].mean()
+        # the higher the difference from mean the higher the weight
+        weights_h = 1.0 + torch.abs(height_gt - h_mean)
+        # apply height difference weights
+        weights = weights * weights_h
 
         # compute weighted loss
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
         return loss
 
+    def traj_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+
+        # mask of valid labels
+        mask_valid = ~torch.isnan(height_gt)
+        # apply mask
+        height_gt = height_gt[mask_valid]
+        height_pred = height_pred[mask_valid]
+        weights = weights[mask_valid]
+
+        # compute weighted loss
+        loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
+        return loss
+
+    def map_consistency_loss(self, height, map_pose, vis=False):
+        assert len(height) == len(map_pose), 'Heightmaps and map poses must have the same length'
+        assert len(height) > 1, 'Map consistency loss requires at least 2 heightmaps'
+
+        clouds = []
+        for p, h in zip(map_pose, height):
+            hm_cloud = hm_to_cloud(h.squeeze(), self.cfg)
+            hm_cloud = transform_cloud(hm_cloud, p)
+            clouds.append(hm_cloud)
+
+        # pytorch3d pointcloud
+        src_cloud = Pointclouds(points=[torch.cat(clouds[::2])])
+        tgt_cloud = Pointclouds(points=[torch.cat(clouds[1::2])])
+        # chamfer distance
+        chamfer_dist, _ = chamfer_distance(src_cloud, tgt_cloud)
+
+        if vis:
+            import open3d as o3d
+            with torch.no_grad():
+                global_hm_cloud = torch.cat(clouds, dim=0)
+                # plot global cloud with open3d
+                hm_pcd = o3d.geometry.PointCloud()
+                hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud.cpu().numpy())
+                o3d.visualization.draw_geometries([hm_pcd])
+
+        return chamfer_dist
+
     def epoch(self, train=True):
-        loader = self.trainloader if train else self.valloader
+        assert len(self.train_loaders) == len(self.val_loaders), 'Train and val loaders must have the same length'
+        loaders = self.train_loaders if train else self.val_loaders
         counter = self.train_counter if train else self.val_counter
 
         epoch_loss = 0.0
         max_grad_norm = 5.0
 
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm, hm_opt, map_pose) \
-                in tqdm(enumerate(loader), total=len(loader)):
+        for loader in loaders:
+            loader_loss = 0.0
+            for batch in tqdm(loader, total=len(loader)):
+                batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
+                imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+                height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+                height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
 
-            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, device=self.cfg.device) for i in inputs]
-            height_pred = self.model(*inputs)
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                voxel_feats = self.model.get_voxels(*inputs)
+                height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+                height_pred_rigid = height_pred_geom - height_pred_diff
 
-            hm = torch.as_tensor(hm, device=self.cfg.device)
-            hm_opt = torch.as_tensor(hm_opt, device=self.cfg.device)
-            loss_geom = self.compute_loss(height_pred, hm, optimized_hm=False)
-            loss_rigid = self.compute_loss(height_pred, hm_opt, optimized_hm=True)
-            loss = loss_geom + 100. * loss_rigid
+                loss_lidar = self.lidar_hm_loss(height_pred_geom, height_lidar, weights_lidar)
+                loss_traj = self.traj_hm_loss(height_pred_rigid, height_traj, weights_traj)
 
-            if train:
-                self.optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
-                self.optimizer.step()
-            epoch_loss += loss.item()
+                # add height difference loss
+                loss_hdiff = height_pred_diff.std()
 
-            counter += 1
-            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
-            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_rigid, counter)
-            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
+                loss = self.lidar_hm_weight * loss_lidar + self.traj_hm_weight * loss_traj + self.hdiff_weight * loss_hdiff
+                if self.map_consistency and len(height_pred_rigid) > 1:
+                    loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
+                    loss += 0.1*loss_map
+                else:
+                    loss_map = torch.tensor(np.nan, device=self.cfg.device)
 
-        epoch_loss /= len(loader)
+                if train:
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
+                    self.optimizer.step()
+                loader_loss += loss.item()
+
+                counter += 1
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_lidar, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_traj, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
+                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
+
+            if len(loader) > 0:
+                loader_loss /= len(loader)
+            epoch_loss += loader_loss
+        if len(loaders) > 0:
+            epoch_loss /= len(loaders)
 
         return epoch_loss, counter
 
@@ -201,13 +318,13 @@ class Trainer:
             print('Epoch:', e, 'Train loss:', train_loss)
             self.writer.add_scalar('train/epoch_loss', train_loss, e)
 
-            if self.save_model and train_loss < self.min_train_loss:
+            if train_loss < self.min_train_loss:
                 self.min_train_loss = train_loss
                 print('Saving train model...')
                 torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
 
                 # visualize training predictions
-                fig = self.vis_pred(self.trainloader)
+                fig = self.vis_pred(self.train_loaders[0])
                 self.writer.add_figure('train/prediction', fig, e)
 
             # validation epoch
@@ -215,7 +332,7 @@ class Trainer:
                 val_loss, self.val_counter = self.epoch(train=False)
                 print('Epoch:', e, 'Validation loss:', val_loss)
                 self.writer.add_scalar('val/epoch_loss', val_loss, e)
-                if self.save_model and val_loss < self.min_loss:
+                if val_loss < self.min_loss:
                     self.min_loss = val_loss
                     self.model.eval()
                     print('Saving model...')
@@ -223,80 +340,108 @@ class Trainer:
                     self.model.train()
 
                     # visualize validation predictions
-                    fig = self.vis_pred(self.valloader)
+                    fig = self.vis_pred(self.val_loaders[0])
                     self.writer.add_figure('val/prediction', fig, e)
 
     def vis_pred(self, loader):
-        model = self.model
-        grid_conf = self.grid_conf
-        device = self.cfg.device
+        fig = plt.figure(figsize=(20, 12))
+        ax1 = fig.add_subplot(341)
+        ax2 = fig.add_subplot(342)
+        ax3 = fig.add_subplot(343)
+        ax4 = fig.add_subplot(344)
+        ax5 = fig.add_subplot(345)
+        ax6 = fig.add_subplot(346)
+        ax7 = fig.add_subplot(347)
+        ax8 = fig.add_subplot(348)
+        ax9 = fig.add_subplot(349)
+        ax10 = fig.add_subplot(3, 4, 10)
+        ax11 = fig.add_subplot(3, 4, 11)
+        ax12 = fig.add_subplot(3, 4, 12)
 
-        fig = plt.figure(figsize=(20, 10))
-        ax1 = fig.add_subplot(231)
-        ax2 = fig.add_subplot(232, projection='3d')
-        ax3 = fig.add_subplot(233, projection='3d')
-        ax4 = fig.add_subplot(234)
-        ax5 = fig.add_subplot(235)
-        ax6 = fig.add_subplot(236)
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
+        for ax in axes:
+            ax.clear()
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_gt, hm_opt_gt, map_pose = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32, device=device) for i in inputs]
-            hm_gt = torch.as_tensor(hm_gt, dtype=torch.float32, device=device)
-            height_pred = model(*inputs)
+            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.cfg.device) for i in inputs]
+            hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32)
+            voxel_feats = self.model.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+            height_pred = height_pred_geom - height_pred_diff
 
-            for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
-                ax.clear()
+            batchi = 0
+            height_pred = height_pred[batchi, 0].cpu()
+            height_pred_geom = height_pred_geom[batchi, 0].cpu()
+            height_pred_diff = height_pred_diff[batchi, 0].cpu()
+            height_lidar = hm_lidar[batchi, 0].cpu()
+            height_traj = hm_traj[batchi, 0].cpu()
+            mask_measured = hm_lidar[batchi, 1].bool().cpu()
 
-            # plot image
-            img = denormalize_img(imgs[0][0])
-            ax1.imshow(img)
+            # get height map points
+            z_grid = height_pred
+            x_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+            hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+            hm_points = hm_points[mask_measured]
+            hm_points = hm_points.view(-1, 3).T
 
-            # plot prediction as surface
-            ax2.set_title('Pred Surface')
-            height = height_pred[0][0].cpu().numpy()
-            height_gt = hm_gt[0][0].cpu().numpy()
-            mask = hm_gt[0][1].bool().cpu().numpy()
-            x_grid = np.arange(grid_conf['xbound'][0], grid_conf['xbound'][1], grid_conf['xbound'][2])
-            y_grid = np.arange(grid_conf['ybound'][0], grid_conf['ybound'][1], grid_conf['ybound'][2])
-            x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-            ax2.plot_surface(x_grid, y_grid, height, cmap='jet', vmin=-1.0, vmax=1.0)
-            ax2.set_zlim(-1.0, 1.0)
-            ax2.set_xlabel('x [m]')
-            ax2.set_ylabel('y [m]')
-            ax2.set_zlabel('z [m]')
-
-            # plot ground truth as surface
-            ax3.set_title('Lidar Surface')
-            ax3.plot_surface(x_grid, y_grid, height_gt, cmap='jet', vmin=-1.0, vmax=1.0)
-            ax3.set_zlim(-1.0, 1.0)
-            ax3.set_xlabel('x [m]')
-            ax3.set_ylabel('y [m]')
-            ax3.set_zlabel('z [m]')
+            # plot images with projected height map points
+            for imgi in range(imgs.shape[1])[:4]:
+                ax = axes[imgi]
+                img = imgs[batchi, imgi]
+                img = denormalize_img(img)
+                ego_pts = ego_to_cam(hm_points, rots[batchi, imgi], trans[batchi, imgi], intrins[batchi, imgi])
+                img_H, img_W = self.data_aug_conf['H'], self.data_aug_conf['W']
+                mask_img = get_only_in_img_mask(ego_pts, img_H, img_W)
+                plot_pts = post_rots[batchi, imgi].matmul(ego_pts) + post_trans[batchi, imgi].unsqueeze(1)
+                ax.imshow(img)
+                ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
+                           cmap='jet', vmin=-1.0, vmax=1.0)
+                ax.axis('off')
 
             # plot prediction as image
-            ax4.set_title('Prediction')
-            ax4.imshow(height.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax5.set_title('Prediction')
+            ax5.imshow(height_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax5.set_title('Masked Prediction')
-            height_vis = np.zeros_like(height)
-            height_vis[mask] = height[mask]
-            ax5.imshow(height_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.set_title('Masked Prediction')
+            height_pred_vis = np.zeros_like(height_pred)
+            height_pred_vis[mask_measured] = height_pred[mask_measured]
+            ax6.imshow(height_pred_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax6.set_title('Ground truth')
-            ax6.imshow(height_gt.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax7.set_title('Lidar')
+            ax7.imshow(height_lidar.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax8.set_title('Traj')
+            ax8.imshow(height_traj.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # predicted geometric height
+            ax9.set_title('Geom Pred')
+            ax9.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # masked predicted geometric height
+            ax10.set_title('Masked Geom Pred')
+            height_pred_geom_vis = np.zeros_like(height_pred)
+            height_pred_geom_vis[mask_measured] = height_pred_geom[mask_measured]
+            ax10.imshow(height_pred_geom_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # predicted diff height
+            ax11.set_title('Diff Pred')
+            ax11.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            # masked predicted diff height
+            ax12.set_title('Masked Diff Pred')
+            height_pred_diff_vis = np.zeros_like(height_pred)
+            height_pred_diff_vis[mask_measured] = height_pred_diff[mask_measured]
+            ax12.imshow(height_pred_diff_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 
 
 def main():
-    bsz = 24
-    nworkers = 12
-    nepochs = 500
-    save_model = True
-
     cfg = Config()
     config_path = '../config/cfg.yaml'
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
@@ -310,21 +455,18 @@ def main():
     grid_conf = lss_config['grid_conf']
     data_aug_conf = lss_config['data_aug_conf']
 
-    log_dir = os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
-    pretrained_model_path = '../config/weights/lss/train_lss.pt'
-    # pretrained_model_path = None
-    debug = False
-    vis = False
+    args = arg_parser()
+    print(args)
 
-    ds_paths = seq_paths[:3]
-    # ds_paths = sim_seq_paths
-    # ds_paths = ['/media/ruslan/SSD/data/bags/husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/']
-
-    trainer = Trainer(data_paths=ds_paths,
+    trainer = Trainer(data_paths=args.data_paths,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
-                      bsz=bsz, nworkers=nworkers, nepochs=nepochs,
-                      save_model=save_model, pretrained_model_path=pretrained_model_path,
-                      log_dir=log_dir, debug=debug, vis=vis)
+                      bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
+                      lr=args.lr, weight_decay=args.weight_decay,
+                      pretrained_model_path=args.pretrained_model_path,
+                      map_consistency=args.map_consistency,
+                      log_dir=args.log_dir, debug=args.debug, vis=args.vis,
+                      lidar_hm_weight=args.lidar_hm_weight, traj_hm_weight=args.traj_hm_weight,
+                      hdiff_weight=args.hdiff_weight)
     trainer.train()
 
 

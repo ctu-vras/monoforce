@@ -2,9 +2,9 @@
 
 from rosbag import Compression, Bag
 from tqdm import tqdm
-from monoforce.datasets import seq_paths, sim_seq_paths
+from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths
 
-paths = seq_paths + sim_seq_paths
+paths = robingas_husky_seq_paths + sim_seq_paths
 
 for path in paths:
     input_bag_path = path.replace('_trav', '.bag')

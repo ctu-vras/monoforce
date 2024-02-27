@@ -6,7 +6,7 @@ import torch
 
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import OmniDEMDataVis, OmniRigidDEMDataVis, seq_paths
+from monoforce.datasets import OmniDEMDataVis, OmniRigidDEMDataVis, robingas_husky_seq_paths
 from monoforce.config import Config
 from monoforce.ros import height_map_to_gridmap_msg, to_path
 from monoforce.models.lss.tools import denormalize_img
@@ -40,7 +40,7 @@ def main():
     modelf = rospy.get_param('~lss_weights', None)
 
     # Load traversability data
-    path = seq_paths[rospy.get_param('~seq_i', 0)]
+    path = robingas_husky_seq_paths[rospy.get_param('~seq_i', 0)]
     assert os.path.exists(path)
     Data = OmniRigidDEMDataVis if opt_terrain else OmniDEMDataVis
     ds = Data(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
