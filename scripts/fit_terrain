@@ -6,7 +6,7 @@ import numpy as np
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.datasets import DEMPathData, robingas_husky_seq_paths
 from monoforce.config import Config
-from monoforce.vis import setup_visualization, animate_trajectory, mlab_imshow, draw_coord_frames
+from monoforce.vis import setup_visualization, animate_trajectory, draw_coord_frames
 from monoforce.losses import translation_difference, rotation_difference, total_variation, traj_dist
 from monoforce.control import pose_control, cmd_vel_from_goal
 from monoforce.transformations import rot2rpy

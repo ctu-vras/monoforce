@@ -270,7 +270,7 @@ class DEMPathData(Dataset):
     def global_cloud(self, vis=False):
         path = os.path.join(self.path, 'global_map.pcd')
         if os.path.exists(path):
-            print('Loading global cloud from file...')
+            # print('Loading global cloud from file...')
             pcd = o3d.io.read_point_cloud(path)
             global_cloud = np.asarray(pcd.points, dtype=np.float32)
         else:
