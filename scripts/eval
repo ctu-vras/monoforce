@@ -3,181 +3,166 @@
 import os
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data, TravDataCamSynchVis, TravDataVis, \
-    TravData
+from monoforce.datasets.data import TravData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
-from monoforce.losses import RMSE
 from monoforce.utils import read_yaml
 from tqdm import tqdm
 
 torch.set_default_dtype(torch.float32)
+torch.random.manual_seed(0)
 
+class Evaluator:
+    def __init__(self, model_path, config_path, lss_config_path, data_paths):
+        self.model_path = model_path
+        assert os.path.isfile(model_path), 'Model file %s does not exist' % model_path
+        self.config_path = config_path
+        assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+        self.lss_config_path = lss_config_path
+        assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+        self.data_paths = data_paths
+        for path in self.data_paths:
+            assert os.path.isdir(path), 'Data path %s does not exist' % path
 
-def hm_to_imgs_projection_demo(seq_path, data_aug_conf, grid_conf, cfg, modelf, bsz=1, nworkers=10):
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    print('loading', modelf)
-    model.load_state_dict(torch.load(modelf))
-    model.to(cfg.device)
-    model.eval()
+        self.cfg = Config()
+        self.cfg.from_yaml(config_path)
 
-    ds = OmniDEMDataVis(seq_path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
-    loader = torch.utils.data.DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+        self.lss_config = read_yaml(lss_config_path)
+        self.grid_conf = self.lss_config['grid_conf']
+        self.data_aug_conf = self.lss_config['data_aug_conf']
 
-    loss_fn = RMSE()
+        self.model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
+        print('Loading', self.model_path)
+        self.model.load_state_dict(torch.load(self.model_path))
+        self.model.to(self.cfg.device)
 
-    fig = plt.figure(figsize=(20, 10))
-    gs = mpl.gridspec.GridSpec(3, 6)
-    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-    with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_gt, points) in tqdm(enumerate(loader), total=len(loader)):
-            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32, device=cfg.device) for i in inputs]
-            height_pred = model(*inputs)
+        self.loss_fn = torch.nn.MSELoss()
 
-            # compute loss
-            hm_gt = hm_gt.to(cfg.device)
-            B, D, H, W = hm_gt.shape
-            height_gt, mask_measured = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-            mask_measured = mask_measured.bool()
-            loss = loss_fn(height_pred[mask_measured], height_gt[mask_measured])
+    def eval_terrain_encoder(self, bsz=1, nworkers=10):
+        all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss = 0.0, 0.0
+        for path in self.data_paths:
+            print(f'Evaluation on {os.path.basename(path)}...')
+            # explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, self.model_path, save=False)
 
-            # figure title
-            fig.suptitle(f'Loss: {loss.item():.3f}')
+            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
-            # clear grid axes
-            plt.clf()
+            # validation epoch
+            with torch.no_grad():
+                eval_geom_loss, eval_rigid_loss = 0.0, 0.0
+                for batch in tqdm(valloader, total=len(valloader)):
+                    batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
+                    imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+                    height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+                    height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+                    inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
 
-            # create height map grid
-            z_grid = height_pred[0, 0].cpu()
-            # z_grid = height_gt[0, 0].cpu()
-            x_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-            y_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-            hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
-            # filter out height map points that are not measured by lidar
-            hm_points = hm_points[mask_measured[0, 0].cpu()]
-            hm_points = hm_points.view(-1, 3).T
-            # hm_points = points[0].cpu()[:, ::2]
+                    # compute loss
+                    voxel_feats = self.model.get_voxels(*inputs)
+                    height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+                    height_pred_rigid = height_pred_geom - height_pred_diff
 
-            # plot images and height map points
-            for img_gs_ids, imgi in zip([(1, 2), (0, 1), (1, 0), (2, 1)], range(imgs.shape[1])):
-                i, j = img_gs_ids
-                ax = plt.subplot(gs[i, j])
-                si = 0
-                img = imgs[si, imgi]
-                img = denormalize_img(img)
-                # project height map points to image
-                ego_pts = ego_to_cam(hm_points, rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                img_H, img_W = data_aug_conf['H'], data_aug_conf['W']
-                mask = get_only_in_img_mask(ego_pts, img_H, img_W)
-                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
-                ax.imshow(img)
-                ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=hm_points[2, mask],
-                           cmap='jet', vmin=-1.0, vmax=1.0)
-                ax.axis('off')
-            
-            # plot prediction as image
-            ax = plt.subplot(gs[1, 1])
-            ax.imshow(z_grid.T, cmap='jet', vmin=-1.0, vmax=1.0, origin='lower')
+                    loss_geom = self.loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
+                    loss_rigid = self.loss_fn(height_pred_rigid[weights_traj.bool()], height_traj[weights_traj.bool()])
 
-            # plot prediction as surface
-            ax = plt.subplot(gs[:, 3:6], projection='3d')
-            ax.plot_surface(x_grid, y_grid, z_grid, cmap='jet', vmin=-1.0, vmax=1.0)
-            ax.set_zlim(-2.0, 2.0)
-            # set up view
-            ax.view_init(elev=60., azim=-80.)
-            ax.set_xlabel('x [m]')
-            ax.set_ylabel('y [m]')
-            ax.set_zlabel('z [m]')
-            
-            plt.pause(1.)
-            plt.draw()
+                    eval_geom_loss += loss_geom.item()
+                    eval_rigid_loss += loss_rigid.item()
+                eval_geom_loss /= len(valloader)
+                eval_rigid_loss /= len(valloader)
 
+            print(f'For seq {os.path.basename(path)} mean geom loss: {eval_geom_loss:.3f}, '
+                  f'mean rigid loss: {eval_rigid_loss:.3f}')
+            all_seqs_mean_geom_loss += eval_geom_loss
+            all_seqs_mean_rigid_loss += eval_rigid_loss
+        all_seqs_mean_geom_loss /= len(self.data_paths)
+        all_seqs_mean_rigid_loss /= len(self.data_paths)
+        print(f'Average evaluation geom loss: {all_seqs_mean_geom_loss:.3f}, '
+              f'average evaluation rigid loss: {all_seqs_mean_rigid_loss:.3f}')
 
-def eval_terrain_encoder(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    if modelf is not None:
-        print('loading', modelf)
-        model.load_state_dict(torch.load(modelf))
-    model.to(cfg.device)
-    model.eval()
+        return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
-    loss_fn = torch.nn.MSELoss()
+    def hm_to_imgs_projection(self, seq_path, bsz=1, nworkers=10):
+        device = 'cpu'
+        self.model.to(device)
+        self.model.eval()
 
-    all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss = 0.0, 0.0
-    for path in paths:
-        print(f'Evaluation on {os.path.basename(path)}...')
-        # explore_data(path, grid_conf, data_aug_conf, cfg, modelf, save=False)
+        ds = TravData(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+        loader = torch.utils.data.DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
-        val_ds = TravData(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
-        valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
-
-        # validation epoch
+        fig = plt.figure(figsize=(20, 10))
+        gs = mpl.gridspec.GridSpec(3, 6)
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
         with torch.no_grad():
-            eval_geom_loss, eval_rigid_loss = 0.0, 0.0
-            for batch in tqdm(valloader, total=len(valloader)):
-                batch = [torch.as_tensor(b, dtype=torch.float32, device=cfg.device) for b in batch]
+            for batch in tqdm(loader, total=len(loader)):
+                batch = [torch.as_tensor(b, dtype=torch.float32, device=device) for b in batch]
                 imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
-                height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-                height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+                # height_lidar, mask_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2].bool()
+                # height_traj, mask_traj = hm_traj[:, 0:1], hm_traj[:, 1:2].bool()
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                height_pred = self.model(*inputs)
 
-                # compute loss
-                voxel_feats = model.get_voxels(*inputs)
-                height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
-                height_pred_rigid = height_pred_geom - height_pred_diff
+                # clear grid axes
+                plt.clf()
 
-                loss_geom = loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-                loss_rigid = loss_fn(height_pred_rigid[weights_traj.bool()], height_traj[weights_traj.bool()])
+                # create height map grid
+                z_grid = height_pred[0, 0]
+                x_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+                y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+                x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+                hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+                hm_points = hm_points.view(-1, 3).T
 
-                eval_geom_loss += loss_geom.item()
-                eval_rigid_loss += loss_rigid.item()
-            eval_geom_loss /= len(valloader)
-            eval_rigid_loss /= len(valloader)
+                # plot images and height map points
+                for img_gs_ids, imgi in zip([(1, 2), (0, 1), (1, 0), (2, 1)], range(imgs.shape[1])):
+                    i, j = img_gs_ids
+                    ax = plt.subplot(gs[i, j])
+                    si = 0
+                    img = imgs[si, imgi]
+                    img = denormalize_img(img)
+                    # project height map points to image
+                    ego_pts = ego_to_cam(hm_points, rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                    img_H, img_W = self.data_aug_conf['H'], self.data_aug_conf['W']
+                    mask = get_only_in_img_mask(ego_pts, img_H, img_W)
+                    plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+                    ax.imshow(img)
+                    ax.scatter(plot_pts[0, mask], plot_pts[1, mask], s=0.5, c=hm_points[2, mask],
+                               cmap='jet', vmin=-1.0, vmax=1.0)
+                    ax.axis('off')
 
-        print(f'For seq {os.path.basename(path)} mean geom loss: {eval_geom_loss:.3f}, '
-              f'mean rigid loss: {eval_rigid_loss:.3f}')
-        all_seqs_mean_geom_loss += eval_geom_loss
-        all_seqs_mean_rigid_loss += eval_rigid_loss
-    all_seqs_mean_geom_loss /= len(paths)
-    all_seqs_mean_rigid_loss /= len(paths)
-    print(f'Average evaluation geom loss: {all_seqs_mean_geom_loss:.3f}, '
-          f'average evaluation rigid loss: {all_seqs_mean_rigid_loss:.3f}')
+                # plot prediction as image
+                ax = plt.subplot(gs[1, 1])
+                ax.imshow(z_grid.T, cmap='jet', vmin=-1.0, vmax=1.0, origin='lower')
 
+                # plot prediction as surface
+                ax = plt.subplot(gs[:, 3:6], projection='3d')
+                ax.plot_surface(x_grid, y_grid, z_grid, cmap='jet', vmin=-1.0, vmax=1.0)
+                ax.set_zlim(-2.0, 2.0)
+                # set up view
+                ax.view_init(elev=60., azim=-80.)
+                ax.set_xlabel('x [m]')
+                ax.set_ylabel('y [m]')
+                ax.set_zlabel('z [m]')
+
+                plt.pause(1.)
+                plt.draw()
+
+        # put model back to original device
+        self.model.to(self.cfg.device)
 
 def main():
-    cfg = Config()
+    model_path = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
     config_path = '../config/cfg.yaml'
-    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    cfg.from_yaml(config_path)
-
-    # load LSS config
     lss_config_path = '../config/lss.yaml'
-    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
-    lss_config = read_yaml(lss_config_path)
-    grid_conf = lss_config['grid_conf']
-    data_aug_conf = lss_config['data_aug_conf']
+    data_paths = robingas_husky_seq_paths
+    # data_paths = oru_seq_paths
 
-    # modelf = '../config/weights/lss/lss.pt'
-    modelf = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
-    # modelf = '../config/weights/lss/lss_sim.pt'
-    # modelf = None
-
-    paths = robingas_husky_seq_paths
-    # paths = sim_seq_paths
-    # paths = oru_seq_paths
-
-    eval_terrain_encoder(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
-    # for path in paths:
-    #     explore_data(path, grid_conf, data_aug_conf, cfg,
-    #                  save=False, is_train=False, sample_range='random', DataClass=TravDataCamSynchVis)
-    #     hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
+    evaluator = Evaluator(model_path, config_path, lss_config_path, data_paths)
+    evaluator.eval_terrain_encoder(bsz=4)
+    evaluator.hm_to_imgs_projection(data_paths[0])
 
 
 if __name__ == '__main__':
