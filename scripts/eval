@@ -8,7 +8,8 @@ import torch
 from torch.utils.data import ConcatDataset
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data, TravDataCamSynchVis, TravDataVis
+from monoforce.datasets.data import OmniDEMData, OmniDEMDataVis, explore_data, TravDataCamSynchVis, TravDataVis, \
+    TravData
 from monoforce.config import Config
 from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from monoforce.losses import RMSE
@@ -99,7 +100,7 @@ def hm_to_imgs_projection_demo(seq_path, data_aug_conf, grid_conf, cfg, modelf, 
             plt.draw()
 
 
-def eval(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
+def eval_terrain_encoder(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     if modelf is not None:
         print('loading', modelf)
@@ -107,38 +108,47 @@ def eval(paths, data_aug_conf, grid_conf, cfg, modelf=None, bsz=2, nworkers=10):
     model.to(cfg.device)
     model.eval()
 
-    loss_fn = RMSE()
+    loss_fn = torch.nn.MSELoss()
 
-    all_seqs_mean_loss = 0.0
+    all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss = 0.0, 0.0
     for path in paths:
         print(f'Evaluation on {os.path.basename(path)}...')
         # explore_data(path, grid_conf, data_aug_conf, cfg, modelf, save=False)
 
-        val_ds = OmniDEMData(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
+        val_ds = TravData(path, is_train=False, data_aug_conf=data_aug_conf, cfg=cfg)
         valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
         # validation epoch
         with torch.no_grad():
-            eval_loss = 0.0
-            for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, hm_gt)\
-                    in tqdm(enumerate(valloader), total=len(valloader)):
+            eval_geom_loss, eval_rigid_loss = 0.0, 0.0
+            for batch in tqdm(valloader, total=len(valloader)):
+                batch = [torch.as_tensor(b, dtype=torch.float32, device=cfg.device) for b in batch]
+                imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+                height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+                height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                inputs = [torch.as_tensor(i, dtype=torch.float32, device=cfg.device) for i in inputs]
-                height_pred = model(*inputs)
 
                 # compute loss
-                hm_gt = hm_gt.to(cfg.device)
-                B, D, H, W = hm_gt.shape
-                height_gt, mask_measured = hm_gt[:, 0].view(B, 1, H, W), hm_gt[:, 1].view(B, 1, H, W)
-                loss = loss_fn(height_pred[mask_measured.bool()], height_gt[mask_measured.bool()])
+                voxel_feats = model.get_voxels(*inputs)
+                height_pred_geom, height_pred_diff = model.bevencode(voxel_feats)
+                height_pred_rigid = height_pred_geom - height_pred_diff
 
-                eval_loss += loss.item()
-            eval_loss /= len(valloader)
+                loss_geom = loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
+                loss_rigid = loss_fn(height_pred_rigid[weights_traj.bool()], height_traj[weights_traj.bool()])
 
-        print(f'For seq {os.path.basename(path)} mean loss: {eval_loss:.3f}')
-        all_seqs_mean_loss += eval_loss
-    all_seqs_mean_loss /= len(paths)
-    print(f'Average evaluation loss: {all_seqs_mean_loss:.3f}')
+                eval_geom_loss += loss_geom.item()
+                eval_rigid_loss += loss_rigid.item()
+            eval_geom_loss /= len(valloader)
+            eval_rigid_loss /= len(valloader)
+
+        print(f'For seq {os.path.basename(path)} mean geom loss: {eval_geom_loss:.3f}, '
+              f'mean rigid loss: {eval_rigid_loss:.3f}')
+        all_seqs_mean_geom_loss += eval_geom_loss
+        all_seqs_mean_rigid_loss += eval_rigid_loss
+    all_seqs_mean_geom_loss /= len(paths)
+    all_seqs_mean_rigid_loss /= len(paths)
+    print(f'Average evaluation geom loss: {all_seqs_mean_geom_loss:.3f}, '
+          f'average evaluation rigid loss: {all_seqs_mean_rigid_loss:.3f}')
 
 
 def main():
@@ -163,11 +173,11 @@ def main():
     # paths = sim_seq_paths
     # paths = oru_seq_paths
 
-    # eval(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
-    for path in paths:
-        explore_data(path, grid_conf, data_aug_conf, cfg,
-                     save=True, is_train=False, sample_range='all', DataClass=TravDataCamSynchVis)
-        # hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
+    eval_terrain_encoder(paths, data_aug_conf, grid_conf, cfg, modelf, bsz=1)
+    # for path in paths:
+    #     explore_data(path, grid_conf, data_aug_conf, cfg,
+    #                  save=False, is_train=False, sample_range='random', DataClass=TravDataCamSynchVis)
+    #     hm_to_imgs_projection_demo(path, data_aug_conf, grid_conf, cfg, modelf)
 
 
 if __name__ == '__main__':
