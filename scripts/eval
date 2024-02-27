@@ -3,17 +3,23 @@
 import os
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from mayavi import mlab
+from tqdm import tqdm
+import numpy as np
 import torch
 from torch.utils.data import ConcatDataset
+from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets.data import TravData, explore_data
 from monoforce.config import Config
 from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from monoforce.utils import read_yaml
-from tqdm import tqdm
+from monoforce.control import pose_control
+from monoforce.losses import translation_difference, rotation_difference, traj_dist
+from monoforce.transformations import rot2rpy, transform_cloud
+from monoforce.vis import draw_coord_frames, animate_trajectory, setup_visualization
 
-torch.set_default_dtype(torch.float32)
 torch.random.manual_seed(0)
 
 class Evaluator:
@@ -41,49 +47,6 @@ class Evaluator:
         self.model.to(self.cfg.device)
 
         self.loss_fn = torch.nn.MSELoss()
-
-    def eval_terrain_encoder(self, bsz=1, nworkers=10):
-        all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss = 0.0, 0.0
-        for path in self.data_paths:
-            print(f'Evaluation on {os.path.basename(path)}...')
-            # explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, self.model_path, save=False)
-
-            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
-
-            # validation epoch
-            with torch.no_grad():
-                eval_geom_loss, eval_rigid_loss = 0.0, 0.0
-                for batch in tqdm(valloader, total=len(valloader)):
-                    batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
-                    imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
-                    height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-                    height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
-                    inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-
-                    # compute loss
-                    voxel_feats = self.model.get_voxels(*inputs)
-                    height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
-                    height_pred_rigid = height_pred_geom - height_pred_diff
-
-                    loss_geom = self.loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-                    loss_rigid = self.loss_fn(height_pred_rigid[weights_traj.bool()], height_traj[weights_traj.bool()])
-
-                    eval_geom_loss += loss_geom.item()
-                    eval_rigid_loss += loss_rigid.item()
-                eval_geom_loss /= len(valloader)
-                eval_rigid_loss /= len(valloader)
-
-            print(f'For seq {os.path.basename(path)} mean geom loss: {eval_geom_loss:.3f}, '
-                  f'mean rigid loss: {eval_rigid_loss:.3f}')
-            all_seqs_mean_geom_loss += eval_geom_loss
-            all_seqs_mean_rigid_loss += eval_rigid_loss
-        all_seqs_mean_geom_loss /= len(self.data_paths)
-        all_seqs_mean_rigid_loss /= len(self.data_paths)
-        print(f'Average evaluation geom loss: {all_seqs_mean_geom_loss:.3f}, '
-              f'average evaluation rigid loss: {all_seqs_mean_rigid_loss:.3f}')
-
-        return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
     def hm_to_imgs_projection(self, seq_path, bsz=1, nworkers=10):
         device = 'cpu'
@@ -153,6 +116,230 @@ class Evaluator:
         # put model back to original device
         self.model.to(self.cfg.device)
 
+    def eval_terrain_encoder(self, bsz=1, nworkers=10):
+        all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss = 0.0, 0.0
+        for path in self.data_paths:
+            print(f'Evaluation on {os.path.basename(path)}...')
+            # explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, self.model_path, save=False)
+
+            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
+
+            # validation epoch
+            with torch.no_grad():
+                eval_geom_loss, eval_rigid_loss = 0.0, 0.0
+                for batch in tqdm(valloader, total=len(valloader)):
+                    batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
+                    imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+                    height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+                    height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+                    inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+
+                    # compute loss
+                    voxel_feats = self.model.get_voxels(*inputs)
+                    height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+                    height_pred_rigid = height_pred_geom - height_pred_diff
+
+                    loss_geom = self.loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
+                    loss_rigid = self.loss_fn(height_pred_rigid[weights_traj.bool()], height_traj[weights_traj.bool()])
+
+                    eval_geom_loss += loss_geom.item()
+                    eval_rigid_loss += loss_rigid.item()
+                eval_geom_loss /= len(valloader)
+                eval_rigid_loss /= len(valloader)
+
+            print(f'For seq {os.path.basename(path)} mean geom loss: {eval_geom_loss:.3f}, '
+                  f'mean rigid loss: {eval_rigid_loss:.3f}')
+            all_seqs_mean_geom_loss += eval_geom_loss
+            all_seqs_mean_rigid_loss += eval_rigid_loss
+        all_seqs_mean_geom_loss /= len(self.data_paths)
+        all_seqs_mean_rigid_loss /= len(self.data_paths)
+        print(f'Average evaluation geom loss: {all_seqs_mean_geom_loss:.3f}, '
+              f'average evaluation rigid loss: {all_seqs_mean_rigid_loss:.3f}')
+
+        return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
+
+    def get_data(self, i: int, ds: TravData, model=None):
+        """
+        Get ground truth data sample from the dataset
+
+        :param i: index of the sample
+        :param ds: dataset of type TravData
+        :param model: model to use for height map prediction
+
+        :return: states_true, height
+        """
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[i]
+        traj = ds.get_traj(i)
+        poses = traj['poses']
+        # transform poses to the same coordinate frame as the height map
+        Tr = np.linalg.inv(poses[0])
+        poses = np.asarray([np.matmul(Tr, p) for p in poses])
+        # count time from 0
+        tstamps = traj['stamps']
+        tstamps = tstamps - tstamps[0]
+
+        xyz_true = torch.as_tensor(poses[:, :3, 3])
+        rot_true = torch.as_tensor(poses[:, :3, :3])
+
+        n_true_states = len(xyz_true)
+        tt_true = torch.tensor(tstamps)[None].T
+
+        dps = torch.diff(xyz_true, dim=0)
+        dt = torch.diff(tt_true, dim=0)
+        theta_true = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
+        theta_true = torch.cat([theta_true[:1], theta_true], dim=0)
+
+        vel_true = torch.zeros_like(xyz_true)
+        vel_true[:-1] = dps / dt
+        omega_true = torch.zeros_like(xyz_true)
+        omega_true[:-1, 2:3] = torch.diff(theta_true, dim=0) / dt  # + torch.diff(angles_true, dim=0)[:, 2:3] / dt
+
+        forces_true = torch.zeros((n_true_states, 3, 10))
+        states_true = (xyz_true.view(n_true_states, 3, 1),
+                       rot_true.view(n_true_states, 3, 3),
+                       vel_true.view(n_true_states, 3, 1),
+                       omega_true.view(n_true_states, 3, 1),
+                       forces_true.view(n_true_states, 3, 10))
+        states_true = tuple([s.to(self.cfg.device) for s in states_true])
+
+        # get height map
+        if model is None:
+            height = hm_lidar[0]
+        else:
+            with torch.no_grad():
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                inputs = [torch.as_tensor(i[None], dtype=torch.float64, device=self.cfg.device) for i in inputs]
+                height_pred = model(*inputs)
+                height = height_pred.squeeze().cpu()
+
+        return states_true, height
+
+    def eval_diff_physics(self, height, states_true, vis=False):
+        """
+        Simulate the system with P control.
+        Robot visits a set of waypoints.
+        Diff-drive (controlled with X-linear and Z-angular velocities) robot motion model is used.
+        """
+        xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
+        n_true_states = len(xyz_true)
+
+        """ Create robot-terrain interaction models """
+        system = RigidBodySoftTerrain(height=torch.as_tensor(height, dtype=torch.float64),
+                                      grid_res=self.cfg.grid_res,
+                                      friction=self.cfg.friction, mass=self.cfg.robot_mass,
+                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.], device=self.cfg.device).view(xyz_true[0].shape),
+                                                  rot=rot_true[0],
+                                                  vel=vel_true[0],
+                                                  omega=omega_true[0],
+                                                  device=self.cfg.device),
+                                      device=self.cfg.device, use_ode=False,
+                                      interaction_model='diffdrive')
+
+        # put models with their params to self.cfg.device
+        system = system.to(self.cfg.device)
+        s0 = system.state
+        tt = torch.linspace(0, self.cfg.total_sim_time, self.cfg.n_samples).to(self.cfg.device)
+
+        if vis:
+            states = system.sim(s0, tt)
+            """ Set-up visualization """
+            vis_cfg = setup_visualization(system=system,
+                                          states=states,
+                                          states_true=states_true,
+                                          cfg=self.cfg)
+
+        """ Navigation loop """
+        state = system.state
+        states = []
+        dt = (tt[1:] - tt[:-1]).mean()
+        loss_trans_sum = torch.tensor(0., device=self.cfg.device)
+        loss_rot_sum = torch.tensor(0., device=self.cfg.device)
+        poses_eval = []
+        for i in range(n_true_states - 1):
+            # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
+            time_interval = tt[i * self.cfg.n_samples // (n_true_states - 1):(i + 1) * self.cfg.n_samples // (n_true_states - 1)]
+
+            pos_x, pos_R, vel_x, vel_omega, forces = state
+            pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
+
+            roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
+
+            if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
+                print('Robot is upside down, skipping evaluation')
+                return None, None, None, None
+
+            goal_pose = torch.eye(4, device=self.cfg.device)
+            goal_pose[:3, 3:4] = xyz_true[i + 1]
+            goal_pose[:3, :3] = rot_true[i + 1]
+
+            for t in time_interval[1:]:
+                v, w = pose_control(state, goal_pose, allow_backwards=True,
+                                    Kp_rho=2., Kp_theta=4., Kp_yaw=4., dist_reached=0.01)
+                state[2][0] = v
+                state[3][2] = w
+
+                dstate = system.forward(t, state)
+                state = state.update(dstate, dt)
+
+                pos_x.append(state[0])
+                pos_R.append(state[1])
+                vel_x.append(state[2])
+                vel_omega.append(state[3])
+                forces.append(state[4])
+            # print('Reached waypoint with accuracy: %.2f [m]' % dist.item())
+
+            states_interval = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega),
+                               torch.stack(forces)]
+            states.append(states_interval)
+
+            # compute loss
+            loss_trans = translation_difference(pos_x[-1].view(1, 3, 1), states_true[0][i + 1].view(1, 3, 1))
+            loss_rot = rotation_difference(pos_R[-1].view(1, 3, 3), states_true[1][i + 1].view(1, 3, 3))
+
+            loss_trans_sum += loss_trans
+            loss_rot_sum += loss_rot
+
+            # log poses at the end of each interval for which we compute loss
+            pose_eval = torch.eye(4)
+            pose_eval[:3, 3:4] = pos_x[-1].view(3, 1)
+            pose_eval[:3, :3] = pos_R[-1].view(3, 3)
+            poses_eval.append(pose_eval)
+
+        pos_x = torch.cat([x[0] for x in states], dim=0)
+        pos_R = torch.cat([x[1] for x in states], dim=0)
+        vel_x = torch.cat([x[2] for x in states], dim=0)
+        vel_omega = torch.cat([x[3] for x in states], dim=0)
+        forces = torch.cat([x[4] for x in states], dim=0)
+
+        states = (pos_x, pos_R, vel_x, vel_omega, forces)
+
+        loss_trans_sum /= (n_true_states - 1)
+        loss_rot_sum /= (n_true_states - 1)
+        print('Loss translation at waypoints: %.2f [m]' % loss_trans_sum.item())
+        print('Loss rotation at waypoints: %.2f [deg]' % (loss_rot_sum.item() * 180 / np.pi))
+
+        # visualize trajectory
+        if vis:
+            system.update_trajectory(states=states)
+            draw_coord_frames(torch.stack(poses_eval).cpu().numpy(), scale=0.1)
+            animate_trajectory(system, vis_cfg)
+            mlab.show()
+
+        return loss_trans_sum, loss_rot_sum
+
+    def evaluate(self):
+        for model in [None, self.model]:
+            # print(f'Using model: {model}')
+            for path in self.data_paths:
+                print(f'Evaluation on {os.path.basename(path)}...')
+                ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+                for i in range(len(ds)):
+                    states_true, height = self.get_data(i, ds, model)
+                    with torch.no_grad():
+                        loss_trans_sum, loss_rot_sum = self.eval_diff_physics(height, states_true, vis=False)
+
+
 def main():
     model_path = '../config/tb_runs/lss_2024_02_23_18_16_02/train_lss.pt'
     config_path = '../config/cfg.yaml'
@@ -161,8 +348,9 @@ def main():
     # data_paths = oru_seq_paths
 
     evaluator = Evaluator(model_path, config_path, lss_config_path, data_paths)
-    evaluator.eval_terrain_encoder(bsz=4)
-    evaluator.hm_to_imgs_projection(data_paths[0])
+    # evaluator.eval_terrain_encoder(bsz=4)
+    # evaluator.hm_to_imgs_projection(data_paths[0])
+    evaluator.evaluate()
 
 
 if __name__ == '__main__':
