@@ -195,7 +195,7 @@ def valid_point_mask(arr, discard_tf=None, discard_model=None):
 
 def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_interp_method='nearest',
                        fill_value=0., robot_size=1.0, return_filtered_points=False,
-                       map_pose=np.eye(4), grass_range=None):
+                       map_pose=np.eye(4)):
     assert points.ndim == 2
     assert points.shape[1] >= 3  # (N x 3)
     assert len(points) > 0
@@ -208,7 +208,6 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     assert robot_size is None or isinstance(robot_size, (float, int)) and robot_size > 0.
     assert isinstance(return_filtered_points, bool)
     assert map_pose.shape == (4, 4)
-    assert grass_range is None or isinstance(grass_range, (tuple, list)) and len(grass_range) == 2
 
     # remove invalid points
     mask_valid = np.isfinite(points).all(axis=1)
@@ -218,12 +217,6 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     roll, pitch, yaw = rot2rpy(map_pose[:3, :3])
     R = rpy2rot(roll, pitch, 0.).cpu().numpy()
     points_grav = points @ R.T
-
-    # filter ground (points in a height range from 0 to 0.5 m)
-    if grass_range is not None:
-        mask_grass = np.logical_and(points[:, 2] >= grass_range[0], points[:, 2] <= grass_range[1])
-    else:
-        mask_grass = np.zeros(len(points), dtype=bool)
 
     # height above ground
     mask_h = points_grav[:, 2] <= h_max
@@ -238,8 +231,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
         mask_cyl = np.zeros(len(points), dtype=bool)
 
     # combine and apply masks
-    mask = np.logical_and(~mask_grass, mask_h)
-    mask = np.logical_and(mask, mask_sq)
+    mask = np.logical_and(mask_h, mask_sq)
     mask = np.logical_and(mask, ~mask_cyl)
     points = points[mask]
     if len(points) == 0:

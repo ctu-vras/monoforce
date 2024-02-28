@@ -5,8 +5,8 @@
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
     <arg name="model_weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
-    <arg name="config_path" default="$(dirname)/../config/cfg.yaml"/>
-    <arg name="lss_config_path" default="$(dirname)/../config/lss.yaml"/>
+    <arg name="config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
+    <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg.yaml"/>
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_stale_msg_delay" default="0.2"/>
     <arg name="calib_path" default="''"/>

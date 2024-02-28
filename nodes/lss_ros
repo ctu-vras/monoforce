@@ -438,12 +438,12 @@ def main():
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
     cfg = Config()
-    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
 
     # load LSS config
-    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss.yaml'))
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss_cfg.yaml'))
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']

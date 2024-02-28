@@ -112,9 +112,9 @@ class Trainer:
 
             self.writer = SummaryWriter(log_dir=log_dir)
             # save configs to log dir
-            write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'cfg.yaml'))
+            write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'dphys_cfg.yaml'))
             lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
-            write_to_yaml(lss_cfg, os.path.join(log_dir, 'lss.yaml'))
+            write_to_yaml(lss_cfg, os.path.join(log_dir, 'lss_cfg.yaml'))
 
             self.min_loss = np.inf
             self.min_train_loss = np.inf
@@ -443,13 +443,13 @@ class Trainer:
 
 def main():
     cfg = Config()
-    config_path = '../config/cfg.yaml'
+    config_path = '../config/dphys_cfg.yaml'
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
     cfg.hm_interp_method = None
 
     # load LSS config
-    lss_config_path = '../config/lss.yaml'
+    lss_config_path = '../config/lss_cfg.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']

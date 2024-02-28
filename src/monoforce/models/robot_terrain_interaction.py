@@ -7,8 +7,6 @@ from ..utils import skew_symmetric
 from ..config import Config
 from ..control import pose_control
 
-torch.set_default_dtype(torch.float64)
-
 
 class State:
     def __init__(self,
@@ -88,7 +86,7 @@ class RigidBodySoftTerrain(nn.Module):
                  grid_res=0.1,
                  damping=10.0, elasticity=10.0, friction=0.9,
                  mass=10.0, gravity=9.8,
-                 inertia=5. * np.eye(3),
+                 inertia=5.0 * np.eye(3),
                  state=State(),
                  vel_tracks=np.zeros(2),
                  adjoint=False,
@@ -129,7 +127,7 @@ class RigidBodySoftTerrain(nn.Module):
         self.init_forces = nn.Parameter(torch.zeros_like(self.robot_points))
 
         self.mass = nn.Parameter(torch.tensor([mass]))
-        self.inertia = torch.tensor(inertia, device=self.device)
+        self.inertia = torch.tensor(inertia, dtype=self.height.dtype, device=self.device)
         self.inertia_inv = torch.inverse(self.inertia)
         # self.vel_tracks = nn.Parameter(torch.tensor(vel_tracks, device=self.device))
         self.vel_tracks = torch.tensor(vel_tracks, device=self.device)
@@ -490,7 +488,6 @@ def main():
 
     OUTPUT_PATH = '/home/ruslan/workspaces/traversability_ws/src/differentiable_physics/data/output'
     CREATE_MOVIE = 1
-    torch.set_default_dtype(torch.float64)
 
     height = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                        [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],

@@ -130,7 +130,7 @@ def main():
     rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.DEBUG)
 
     cfg = Config()
-    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
     cfg.hm_interp_method = rospy.get_param('~hm_interp_method', 'nearest')

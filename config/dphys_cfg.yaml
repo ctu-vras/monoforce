@@ -9,7 +9,6 @@ elasticity: 0.0
 friction: 0.9
 grid_res: 0.1
 h_max: 1.5
-grass_range: null
 hm_interp_method: null
 lr: 0.001
 weight_decay: 1e-7

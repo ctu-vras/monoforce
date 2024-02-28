@@ -1218,7 +1218,7 @@ def traversed_height_map():
     assert os.path.exists(path)
 
     cfg = Config()
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'dphys_cfg.yaml'))
     # cfg.d_min = 1.
 
     ds = DEMPathData(path, cfg=cfg)
@@ -1256,7 +1256,7 @@ def traversed_height_map():
 def vis_train_sample():
     cfg = Config()
     path = np.random.choice(robingas_husky_seq_paths)
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'cfg.yaml'))
+    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'dphys_cfg.yaml'))
 
     ds = MonoDEMData(path=path, cfg=cfg)
     i = np.random.choice(range(len(ds)))

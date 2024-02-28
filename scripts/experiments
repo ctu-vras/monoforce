@@ -22,7 +22,6 @@ from scipy.spatial import cKDTree
 from monoforce.vis import draw_coord_frame, draw_coord_frames
 from mayavi import mlab
 
-torch.set_default_dtype(torch.float32)
 
 def feed_data():
     # path = '/media/ruslan/data/husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
@@ -31,10 +30,10 @@ def feed_data():
 
     # lss model
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
 
     # load LSS config
-    lss_config = read_yaml('../config/lss.yaml')
+    lss_config = read_yaml('../config/lss_cfg.yaml')
     grid_conf, data_aug_conf = lss_config['grid_conf'], lss_config['data_aug_conf']
 
     ds = TravData(path, data_aug_conf, is_train=False, cfg=cfg)
@@ -131,8 +130,8 @@ def feed_data():
 
 
 def map_consistency():
-    cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/cfg.yaml'
-    lss_cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/lss.yaml'
+    cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/dphys_cfg.yaml'
+    lss_cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/lss_cfg.yaml'
     model_path = '../config/tb_runs/lss_2024_01_26_15_07_31/train_lss.pt'
 
     cfg = Config()
@@ -196,9 +195,9 @@ def map_consistency():
 
 def data_slicing():
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
 
-    lss_cfg = read_yaml('../config/lss.yaml')
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
@@ -216,9 +215,9 @@ def create_global_gloud_map():
     Create global heightmap cloud from the sequence of point clouds
     """
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
 
-    lss_cfg = read_yaml('../config/lss.yaml')
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
 
     for path in robingas_husky_seq_paths:
@@ -261,9 +260,9 @@ def visualize_point_cloud_map():
     Visualize point cloud map and trajectory point cloud
     """
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
 
-    lss_cfg = read_yaml('../config/lss.yaml')
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
 
     paths = robingas_husky_seq_paths
@@ -400,9 +399,9 @@ def vis_trajectory():
     from monoforce.losses import translation_difference, rotation_difference
 
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
 
-    lss_cfg = read_yaml('../config/lss.yaml')
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
 
     paths = robingas_husky_seq_paths
@@ -426,9 +425,9 @@ def vis_trajectory():
 
 def sample_heightmap_at_img_pose():
     cfg = Config()
-    cfg.from_yaml('../config/cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
 
-    lss_cfg = read_yaml('../config/lss.yaml')
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
 
     path = robingas_husky_seq_paths[0]

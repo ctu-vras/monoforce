@@ -278,8 +278,8 @@ def save_result(system, output_name, log, cfg):
     fig.savefig(os.path.join(train_log_path, output_name.replace('.npy', '.png')))
 
     # save config in yaml file
-    # if not os.path.exists(os.path.join(train_log_path, 'cfg.yaml')):
-    cfg.to_yaml(os.path.join(train_log_path, 'cfg.yaml'))
+    # if not os.path.exists(os.path.join(train_log_path, 'dphys_cfg.yaml')):
+    cfg.to_yaml(os.path.join(train_log_path, 'dphys_cfg.yaml'))
 
     # # save learned trajectory
     # states = (system.pos_x, system.pos_R, system.vel_x, system.vel_omega, system.forces)
