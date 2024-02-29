@@ -11,16 +11,21 @@ from torch.utils.data import ConcatDataset
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import TravData, explore_data
+from monoforce.datasets.data import explore_data, TravDataVis
 from monoforce.config import Config
-from monoforce.cloudproc import estimate_heightmap
+from monoforce.cloudproc import estimate_heightmap, hm_to_cloud
 from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.utils import read_yaml, position
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference
 from monoforce.transformations import rot2rpy
-from monoforce.vis import draw_coord_frames, animate_trajectory, setup_visualization
+from monoforce.vis import draw_coord_frames, animate_trajectory, setup_visualization, show_cloud
 
+
+def show_height_as_cloud(height, cfg, mask=None):
+    assert height.ndim == 2
+    points = hm_to_cloud(height, cfg, mask)
+    show_cloud(points)
 
 class Evaluator:
     def __init__(self, dphys_config_path, lss_config_path, data_paths, model_path=None):
@@ -53,13 +58,13 @@ class Evaluator:
         return None
 
     def hm_to_imgs_projection(self, seq_path):
-        ds = TravData(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+        ds = TravDataVis(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
         fig = plt.figure(figsize=(20, 10))
         gs = mpl.gridspec.GridSpec(3, 6)
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
         for i in tqdm(range(len(ds)), total=len(ds)):
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = ds[i]
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[i]
             height = self.get_height(i, ds)
 
             # clear grid axes
@@ -74,7 +79,7 @@ class Evaluator:
             hm_points = hm_points.view(-1, 3).T
 
             # plot images and height map points
-            for img_gs_ids, imgi in zip([(1, 2), (0, 1), (1, 0), (2, 1)], range(imgs.shape[1])):
+            for img_gs_ids, imgi in zip([(1, 2), (0, 1), (1, 0), (2, 1)], range(len(imgs))):
                 i, j = img_gs_ids
                 ax = plt.subplot(gs[i, j])
                 img = imgs[imgi]
@@ -107,7 +112,13 @@ class Evaluator:
             plt.draw()
 
     def compute_losses(self, batch):
-        loss_geom, loss_rigid = 0.0, np.nan
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
+        height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+
+        loss_geom = self.loss_fn(height_lidar[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
+        loss_rigid = self.loss_fn(height_lidar[weights_traj.bool()], height_traj[weights_traj.bool()])
+
         return loss_geom, loss_rigid
 
     def eval_terrain_encoder(self, bsz=1, nworkers=10):
@@ -116,16 +127,15 @@ class Evaluator:
             print(f'Evaluation on {os.path.basename(path)}...')
             # explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, self.model_path, save=False)
 
-            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = TravDataVis(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
             # validation epoch
             eval_geom_loss, eval_rigid_loss = 0.0, 0.0
             for batch in tqdm(valloader, total=len(valloader)):
                 loss_geom, loss_rigid = self.compute_losses(batch)
-
-                eval_geom_loss = eval_geom_loss + loss_geom
-                eval_rigid_loss = eval_rigid_loss + loss_rigid
+                eval_geom_loss += loss_geom
+                eval_rigid_loss += loss_rigid
             eval_geom_loss /= len(valloader)
             eval_rigid_loss /= len(valloader)
 
@@ -140,13 +150,13 @@ class Evaluator:
 
         return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
-    def get_height(self, i: int, ds: TravData):
+    def get_height(self, i: int, ds: TravDataVis):
         sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
         height = hm_lidar[0]
         return height
     
-    def get_states(self, i: int, ds: TravData):
+    def get_states(self, i: int, ds: TravDataVis):
         traj = ds.get_traj(i)
         poses = traj['poses']
         # transform poses to the same coordinate frame as the height map
@@ -185,24 +195,25 @@ class Evaluator:
         return states
 
 
-    def get_data(self, i: int, ds: TravData):
+    def get_data(self, i: int, ds: TravDataVis):
         """
         Get ground truth data sample from the dataset
 
         :param i: index of the sample
-        :param ds: dataset of type TravData
+        :param ds: dataset of type TravDataVis
 
-        :return: states_true, height
+        :return: states, height
         """
         assert i < len(ds), 'Index out of range'
-        assert isinstance(ds, TravData), 'Invalid dataset type'
+        assert isinstance(ds, TravDataVis), 'Invalid dataset type'
 
-        states_true = self.get_states(i, ds)
+        # get states
+        states = self.get_states(i, ds)
 
         # get height map
         height = self.get_height(i, ds)
 
-        return states_true, height
+        return states, height
 
     def eval_diff_physics(self, height, states_true, vis=False):
         """
@@ -218,7 +229,8 @@ class Evaluator:
                                       grid_res=self.cfg.grid_res,
                                       friction=self.cfg.friction, mass=self.cfg.robot_mass,
                                       state=State(
-                                          xyz=xyz_true[0] + torch.tensor([0., 0., 1.], device=self.cfg.device).view(xyz_true[0].shape),
+                                          xyz=xyz_true[0] + torch.tensor([0., 0., 1.],
+                                                                         device=self.cfg.device).view(xyz_true[0].shape),
                                           rot=rot_true[0],
                                           vel=vel_true[0],
                                           omega=omega_true[0],
@@ -320,18 +332,17 @@ class Evaluator:
     def evaluate(self, vis=False):
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
-            ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            ds = TravDataVis(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             for i in tqdm(range(len(ds))):
                 states_true, height = self.get_data(i, ds)
-                with torch.no_grad():
-                    trans_diff, rot_diff = self.eval_diff_physics(height, states_true, vis=vis)
-                    if rot_diff is not None:
-                        # print('Loss translation at waypoints: %.2f [m]' % trans_diff)
-                        # print('Loss rotation at waypoints: %.2f [deg]' % (rot_diff * 180 / np.pi))
-                        self.metrics['trans_diff'].append(trans_diff.item())
-                        self.metrics['rot_diff'].append(rot_diff.item())
-                    else:
-                        self.metrics['flip_over_counts'] += 1
+                trans_diff, rot_diff = self.eval_diff_physics(height, states_true, vis=vis)
+                if rot_diff is not None:
+                    # print('Loss translation at waypoints: %.2f [m]' % trans_diff)
+                    # print('Loss rotation at waypoints: %.2f [deg]' % (rot_diff * 180 / np.pi))
+                    self.metrics['trans_diff'].append(trans_diff.item())
+                    self.metrics['rot_diff'].append(rot_diff.item())
+                else:
+                    self.metrics['flip_over_counts'] += 1
                 # break
             # break
 
@@ -344,6 +355,8 @@ class Evaluator:
         print(f'Average loss rotation: %.2f [deg]' % (rot_diff_final * 180 / np.pi))
         print(f'Flip over rate: %.2f' % flip_over_rate_final)
 
+    def __str__(self):
+        return f'Evaluator: {self.__class__.__name__} with the Model: {self.model.__class__.__name__}'
 
 class EvaluatorLSS(Evaluator):
     def __init__(self, dphys_config_path, lss_config_path, data_paths,
@@ -359,9 +372,9 @@ class EvaluatorLSS(Evaluator):
         model.to(self.cfg.device)
         return model
 
-    def get_height(self, i: int, ds: TravData):
+    def get_height(self, i: int, ds: TravDataVis):
         sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         inputs = [torch.as_tensor(i[None], device=self.cfg.device) for i in inputs]
         height_pred = self.model(*inputs)
@@ -370,7 +383,7 @@ class EvaluatorLSS(Evaluator):
 
     def compute_losses(self, batch):
         batch = [torch.as_tensor(b, device=self.cfg.device) for b in batch]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
         height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
         height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -401,24 +414,27 @@ class EvaluatorKKT(Evaluator):
         model.to(self.cfg.device)
         return model
 
-    def get_height(self, i: int, ds: TravData):
+    def get_height(self, i: int, ds: TravDataVis):
         sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
         input = torch.as_tensor(hm_lidar[None], device=self.cfg.device)
         hm_pred = self.model(input)
         height = hm_pred.squeeze().cpu()[0]
         return height
 
     def compute_losses(self, batch):
-        batch = [torch.as_tensor(b, device=self.cfg.device) for b in batch]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
+        hm_lidar = torch.as_tensor(hm_lidar, device=self.cfg.device)
+        hm_traj = torch.as_tensor(hm_traj, device=self.cfg.device)
+
         height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
 
         hm_pred = self.model(hm_lidar)
-        height_pred_geom = hm_pred[:, 0:1]
+        height_pred = hm_pred[:, 0:1]
 
-        loss_geom = self.loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-        loss_rigid = np.nan
+        loss_geom = self.loss_fn(height_pred[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
+        loss_rigid = self.loss_fn(height_pred[weights_traj.bool()], height_traj[weights_traj.bool()])
         return loss_geom, loss_rigid
 
 
@@ -434,18 +450,19 @@ class EvaluatorSemSeg(Evaluator):
         model.to(self.cfg.device)
         return model
 
-    def get_height(self, i: int, ds: TravData):
-        points = position(ds.get_cloud(i))
-        points = points.reshape([128, 1024, 3])[::2, ::4]
+    def points_to_height(self, points, vis=False):
+        assert points.ndim == 2
+        assert points.shape[1] == 3
         points = torch.as_tensor(points, device=self.cfg.device)
-        range_img = torch.linalg.norm(points, ord=2, dim=-1)
-        pred = self.model(range_img[None, None])['out']
+        points = points.reshape([128, 1024, 3])[::2, ::4]
+        range_img = torch.linalg.norm(points[None, None], ord=2, dim=-1)
+        pred = self.model(range_img)['out']
         pred_prob = torch.softmax(pred.squeeze(0), dim=0)
         pred_obs = torch.argmax(pred_prob, dim=0)
         points_trav = points[pred_obs == 0]
         points_trav = points_trav.reshape(-1, 3).cpu().numpy()
-        # import monoforce.vis
-        # monoforce.vis.show_cloud(points_trav)
+        if vis:
+            show_cloud(points_trav)
         hm = estimate_heightmap(points_trav,
                                 grid_res=self.cfg.grid_res,
                                 d_min=self.cfg.d_min, d_max=self.cfg.d_max,
@@ -454,25 +471,49 @@ class EvaluatorSemSeg(Evaluator):
         height = torch.as_tensor(hm['z'])
         return height
 
+    def get_height(self, i: int, ds: TravDataVis):
+        points = position(ds.get_cloud(i))
+        height = self.points_to_height(points)
+        return height
+
+    def compute_losses(self, batch):
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
+        height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
+        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+
+        heights_pred = []
+        for points in lidar_pts:
+            points = points.T
+            height_pred = self.points_to_height(points)
+            heights_pred.append(height_pred)
+        height_pred = torch.stack(heights_pred).unsqueeze(1)
+        assert height_pred.shape == height_lidar.shape
+        assert height_pred.shape == height_traj.shape
+
+        loss_geom = self.loss_fn(height_pred[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
+        loss_rigid = self.loss_fn(height_pred[weights_traj.bool()], height_traj[weights_traj.bool()])
+        return loss_geom, loss_rigid
+
 
 def main():
     dphys_config_path = '../config/dphys_cfg.yaml'
     lss_config_path = '../config/lss_cfg.yaml'
     data_paths = robingas_husky_seq_paths
     # data_paths = oru_seq_paths
-    vis = True
 
-    # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT]
-    # evals = [EvaluatorLSS]
-    evals = [EvaluatorSemSeg]
+    # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT, EvaluatorSemSeg]
+    evals = [EvaluatorLSS]
+    # evals = [EvaluatorSemSeg]
 
-    for Eval in evals:
-        evaluator = Eval(dphys_config_path=dphys_config_path,
-                         lss_config_path=lss_config_path,
-                         data_paths=data_paths)
-        # evaluator.eval_terrain_encoder(bsz=4)
-        # evaluator.hm_to_imgs_projection(data_paths[2])
-        evaluator.evaluate(vis=vis)
+    with torch.no_grad():
+        for Eval in evals:
+            evaluator = Eval(dphys_config_path=dphys_config_path,
+                             lss_config_path=lss_config_path,
+                             data_paths=data_paths)
+            print(evaluator)
+            # evaluator.eval_terrain_encoder(bsz=4)
+            evaluator.hm_to_imgs_projection(data_paths[0])
+            evaluator.evaluate(vis=True)
 
 
 if __name__ == '__main__':
