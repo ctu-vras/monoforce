@@ -559,9 +559,9 @@ class MonoDEMData(DEMPathData):
         inputs = [i.unsqueeze(0) for i in inputs]
         img, rot, tran, intrin, post_rot, post_tran = inputs
         # lidar height map
-        hm_lidar = self.get_lidar_height_map(i, cached=False, robot_radius=1.0)
+        hm_lidar = self.get_lidar_height_map(i, robot_radius=1.0)
         # trajectory height map
-        hm_traj = self.get_traj_height_map(i, method='footprint', cached=False)
+        hm_traj = self.get_traj_height_map(i, method='footprint')
         # crop height map to observation area defined by square grid
         hm_lidar_cam = self.crop_front_height_map(hm_lidar)
         hm_traj_cam = self.crop_front_height_map(hm_traj)
@@ -599,9 +599,9 @@ class MonoDEMDataVis(MonoDEMData):
         inputs = [i.unsqueeze(0) for i in inputs]
         img, rot, tran, intrin, post_rot, post_tran = inputs
         # lidar height map
-        hm_lidar = self.get_lidar_height_map(i, cached=False, robot_radius=1.0)
+        hm_lidar = self.get_lidar_height_map(i,robot_radius=1.0)
         # trajectory height map
-        hm_traj = self.get_traj_height_map(i, method='footprint', cached=False)
+        hm_traj = self.get_traj_height_map(i, method='footprint')
         # crop height map to observation area defined by square grid
         hm_lidar_cam = self.crop_front_height_map(hm_lidar)
         hm_traj_cam = self.crop_front_height_map(hm_traj)
