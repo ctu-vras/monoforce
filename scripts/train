@@ -10,7 +10,10 @@ from monoforce.cloudproc import hm_to_cloud
 from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import TravData, TravDataCamSynch, TravDataVis, TravDataCamSynchVis, explore_data
+from monoforce.datasets.data import (TravData, TravDataCamSynch,
+                                     TravDataVis, TravDataCamSynchVis,
+                                     MonoDEMData, MonoDEMDataVis,
+                                     explore_data)
 from monoforce.config import Config
 from monoforce.utils import read_yaml, write_to_yaml
 from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
@@ -142,8 +145,12 @@ class Trainer:
         for path in self.data_paths:
             assert os.path.exists(path)
             # print(f'Train dataset from path {path} size is {len(ds)}')
-            Data = TravDataCamSynch
-            DataVis = TravDataCamSynchVis
+            Data = MonoDEMData
+            DataVis = MonoDEMDataVis
+            # Data = TravData
+            # DataVis = TravDataVis
+            # Data = TravDataCamSynch
+            # DataVis = TravDataCamSynchVis
             if vis:
                 explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
                              save=False, is_train=True, DataClass=DataVis)
@@ -382,8 +389,10 @@ class Trainer:
 
             # get height map points
             z_grid = height_pred
-            x_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
-            y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            # x_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            # y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            x_grid = torch.arange(0, self.cfg.d_max, self.cfg.grid_res)
+            y_grid = torch.arange(-self.cfg.d_max/2., self.cfg.d_max/2., self.cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
             hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
             hm_points = hm_points[mask_measured]
@@ -449,7 +458,8 @@ def main():
     cfg.hm_interp_method = None
 
     # load LSS config
-    lss_config_path = '../config/lss_cfg.yaml'
+    # lss_config_path = '../config/lss_cfg.yaml'
+    lss_config_path = '../config/lss_cfg_mono.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
