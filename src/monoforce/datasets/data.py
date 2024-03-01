@@ -119,9 +119,9 @@ class DEMPathData(Dataset):
             - ...
 
     A sample of the dataset contains:
-    - point cloud (N x 3), TODO: describe fields
+    - point cloud (N x 3), where N is the number of points
     - height map (H x W)
-    - trajectory (T x 4 x 4)
+    - trajectory (T x 4 x 4), where T is the number of poses
     """
 
     def __init__(self, path, cfg=Config()):
@@ -142,7 +142,6 @@ class DEMPathData(Dataset):
         self.calib = load_cam_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.poses = self.get_poses()
-        self.hm_interp_method = self.cfg.hm_interp_method
 
     def get_ids(self):
         ids = [f[:-4] for f in os.listdir(self.cloud_path)]
@@ -298,7 +297,7 @@ class DEMPathData(Dataset):
         # estimate heightmap from point cloud
         height = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
                                     grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
-                                    hm_interp_method=self.hm_interp_method, **kwargs)
+                                    hm_interp_method=self.cfg.hm_interp_method, **kwargs)
         return height
 
     def __getitem__(self, i, visualize=False):
@@ -342,11 +341,9 @@ class MonoDEMData(DEMPathData):
                  path,
                  cameras=None,
                  is_train=False,
-                 random_camera_selection_prob=0.2,
                  cfg=Config()):
         super(MonoDEMData, self).__init__(path, cfg)
         self.img_size = cfg.img_size
-        self.random_camera_selection_prob = random_camera_selection_prob
         self.is_train = is_train
 
         if cameras is None:
@@ -401,225 +398,85 @@ class MonoDEMData(DEMPathData):
         img = self.resize_crop_img(img_raw)
         if self.is_train:
             img = self.img_augs(image=img)['image']
-        return img
+        # convert to CHW format
+        img_CHW = img.transpose((2, 0, 1))
+        return img_CHW
 
-    def __getitem__(self, i, visualize=False):
-        camera = 'camera_fisheye_front' if 'marv' in self.path else 'camera_front'
-        # randomly choose a camera other than front camera
-        if np.random.random() < self.random_camera_selection_prob and len(self.cameras) > 1 and self.is_train:
-            cameras = self.cameras.copy()
-            cameras.remove(camera)
-            camera = np.random.choice(cameras)
+    def get_lidar_height_map(self, i, cached=True, **kwargs):
+        # height map from point cloud (!!! assumes points are in robot frame)
+        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
+        dir_path = os.path.join(self.path, 'terrain', 'lidar', interpolation)
+        # if height map was estimated before - load it
+        if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
+            # print('Loading height map from file...')
+            xyz_mask = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
+        # otherwise - estimate it
+        else:
+            # print('Estimating and saving height map...')
+            cloud = self.get_cloud(i)
+            points = position(cloud)
+            xyz_mask = self.estimate_heightmap(points, **kwargs)
+            # save height map as numpy array
+            result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
+                              dtype=[(key, np.float32) for key in xyz_mask.keys()])
+            for key in xyz_mask.keys():
+                result[key] = xyz_mask[key]
+            os.makedirs(dir_path, exist_ok=True)
+            np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
 
-        lidar = 'os_sensor'
+        heightmap = torch.stack([torch.as_tensor(xyz_mask[i]) for i in ['z', 'mask']])
+        heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
 
-        traj = self.get_traj(i)
+        return heightmap
 
-        points_raw = position(self.get_raw_cloud(i))
-        points = position(self.get_cloud(i))
-        poses = traj['poses']
-
-        img_front, K = self.get_image(i, camera.split('_')[-1])
-
-        if visualize:
-            # find transformation between camera and lidar
-            lidar_to_camera = self.calib['transformations']['T_%s__%s' % (lidar, camera)]['data']
-            lidar_to_camera = np.asarray(lidar_to_camera, dtype=float).reshape((4, 4))
-
-            # transform point points to camera frame
-            points_cam = transform_cloud(points_raw, lidar_to_camera)
-
-            # project points to image
-            points_fov, colors_view, fov_mask = project_cloud_to_image(points_cam, img_front, K, return_mask=True, debug=False)
-
-            # set colors from a particular camera viewpoint
-            colors = np.zeros_like(points_raw)
-            colors[fov_mask] = colors_view[fov_mask]
+    def __getitem__(self, i):
+        camera = self.cameras[0]
+        poses = self.get_traj(i)['poses']
+        img_front, K = self.get_image(i, camera)
+        # resize and normalize image
+        img_CHW = self.preprocess_img(img_front)
 
         # square defining observation area on the ground
         square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.cfg.d_max / 2
-        if 'front' in camera:
-            offset = np.asarray([self.cfg.d_max / 2, 0, 0])
-        elif 'left' in camera:
-            offset = np.asarray([0, self.cfg.d_max / 2, 0])
-        elif 'right' in camera:
-            offset = np.asarray([0, -self.cfg.d_max / 2, 0])
-        elif 'rear' in camera:
-            offset = np.asarray([-self.cfg.d_max / 2, 0, 0])
-        else:
-            offset = np.asarray([0, 0, 0])
-        square = square + offset  # move to robot frame
+        offset = np.asarray([0, self.cfg.d_max / 2, 0])
+        square = square + offset
 
-        # height map from point cloud (!!! assumes points are in robot frame)
-        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
-        dir_path = os.path.join(self.path, 'terrain', 'estimated', interpolation)
-        # if height map was estimated before - load it
-        if False and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
-            # print('Loading height map from file...')
-            heightmap = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
-        # otherwise - estimate it
-        else:
-            # print('Estimating height map...')
-            heightmap = self.estimate_heightmap(points, fill_value=poses[0][2, 3])
-            # save height map as numpy array
-            result = np.zeros((heightmap['z'].shape[0], heightmap['z'].shape[1]), dtype=[(key, np.float64) for key in heightmap.keys()])
-            for key in heightmap.keys():
-                result[key] = heightmap[key]
-            os.makedirs(dir_path, exist_ok=True)
-            np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
-        # estimated height map
-        height_est = heightmap['z']
+        # lidar height map
+        heightmap = self.get_lidar_height_map(i, cached=False, robot_radius=1.0)
+        height_lidar, weights_lidar = heightmap[0], heightmap[1]
 
-        # optimized height map
-        height_traj = self.get_traj_dphyics_terrain(i)
+        # trajectory height map
+        # height_traj = self.get_traj_dphyics_terrain(i)
+        height_traj = self.get_traj_footprint_terrain(i)
 
-        # crop height map to observation area defined by square grid
-        h, w = height_est.shape
+        h, w = height_lidar.shape
         square_grid = square[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
-        height_est_cam = height_est[int(square_grid[0, 1]):int(square_grid[2, 1]),
-                                    int(square_grid[0, 0]):int(square_grid[2, 0])]
-        height_traj_cam = height_traj[int(square_grid[0, 1]):int(square_grid[2, 1]),
-                                    int(square_grid[0, 0]):int(square_grid[2, 0])]
+
         # poses in grid coordinates
         poses_grid = poses[:, :2, 3] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
-        # crop poses to observation area defined by square grid
-        poses_grid_cam = poses_grid[(poses_grid[:, 0] > square_grid[0, 0]) & (poses_grid[:, 0] < square_grid[2, 0]) &
-                                    (poses_grid[:, 1] > square_grid[0, 1]) & (poses_grid[:, 1] < square_grid[2, 1])]
-        poses_grid_cam -= np.asarray([square_grid[0, 0], square_grid[0, 1]])
+        # make sure poses are within the grid
+        poses_grid = np.clip(poses_grid, 0, np.array([w, h]) - 1).astype(np.int32)
 
         # visited by poses dilated height map area mask
-        H, W = height_traj_cam.shape
+        H, W = height_traj.shape
         kernel = np.ones((3, 3), dtype=np.uint8)
-        weights_traj_cam = np.zeros((H, W), dtype=np.uint8)
-        poses_grid_cam = poses_grid_cam.astype(np.uint32)
-        weights_traj_cam[poses_grid_cam[:, 1], poses_grid_cam[:, 0]] = 1
-        weights_traj_cam = cv2.dilate(weights_traj_cam, kernel, iterations=5)
-        weights_traj_cam = weights_traj_cam.astype(bool)
+        weights_traj = np.zeros((H, W), dtype=np.uint8)
+        poses_grid = poses_grid.astype(np.uint32)
+        weights_traj[poses_grid[:, 0], poses_grid[:, 1]] = 1
+        weights_traj = cv2.dilate(weights_traj, kernel, iterations=3)
 
-        # circle mask: all points within a circle of radius 1 m are valid
-        x_grid = np.arange(0, self.cfg.d_max, self.cfg.grid_res)
-        y_grid = np.arange(-self.cfg.d_max / 2., self.cfg.d_max / 2., self.cfg.grid_res)
-        x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-        # distances from the center
-        radius = self.cfg.d_max / 2.
-        dist = np.sqrt(x_grid ** 2 + y_grid ** 2)
-        # gaussian mask
-        weights_est_cam = np.exp(-dist ** 2 / (2. * radius ** 2))
+        # crop height map to observation area defined by square grid
+        height_lidar_cam = height_lidar[int(square_grid[0, 1]):int(square_grid[2, 1]),
+                                        int(square_grid[0, 0]):int(square_grid[2, 0])]
+        weights_lidar_cam = weights_lidar[int(square_grid[0, 1]):int(square_grid[2, 1]),
+                                          int(square_grid[0, 0]):int(square_grid[2, 0])]
+        height_traj_cam = height_traj[int(square_grid[0, 1]):int(square_grid[2, 1]),
+                                      int(square_grid[0, 0]):int(square_grid[2, 0])]
+        weights_traj_cam = weights_traj[int(square_grid[0, 1]):int(square_grid[2, 1]),
+                                        int(square_grid[0, 0]):int(square_grid[2, 0])]
 
-        # rotate height maps and poses depending on camera orientation
-        if 'left' in camera:
-            height_est_cam = np.rot90(height_est_cam, 1)
-            height_traj_cam = np.rot90(height_traj_cam, 1)
-            weights_traj_cam = np.rot90(weights_traj_cam, 1)
-        elif 'right' in camera:
-            height_est_cam = np.rot90(height_est_cam, -1)
-            height_traj_cam = np.rot90(height_traj_cam, -1)
-            weights_traj_cam = np.rot90(weights_traj_cam, -1)
-        elif 'rear' in camera:
-            height_est_cam = np.rot90(height_est_cam, 2)
-            height_traj_cam = np.rot90(height_traj_cam, 2)
-            weights_traj_cam = np.rot90(weights_traj_cam, 2)
-
-        # rotate heightmaps to have robot position at the bottom
-        height_traj_cam = np.rot90(height_traj_cam, axes=(0, 1))
-        height_est_cam = np.rot90(height_est_cam, axes=(0, 1))
-        weights_traj_cam = np.rot90(weights_traj_cam, axes=(0, 1))
-        weights_est_cam = np.rot90(weights_est_cam, axes=(0, 1))
-        # flip heightmaps to have robot position at the bottom
-        # we do copy, because of this issue:
-        # https://stackoverflow.com/questions/72550211/valueerror-at-least-one-stride-in-the-given-numpy-array-is-negative-and-tensor
-        height_traj_cam = np.fliplr(height_traj_cam).copy()
-        height_est_cam = np.fliplr(height_est_cam).copy()
-        weights_traj_cam = np.fliplr(weights_traj_cam).copy()
-        weights_est_cam = np.fliplr(weights_est_cam).copy()
-        
-        if visualize:
-            # draw point cloud with mayavi
-            color_n = np.arange(len(points))
-            lut = np.zeros((len(color_n), 4))
-            lut[:, :3] = colors
-            lut[:, 3] = 255
-
-            mlab.figure(size=(1000, 1000), bgcolor=(1, 1, 1))
-            # draw point cloud
-            p3d = mlab.points3d(points[:, 0], points[:, 1], points[:, 2], color_n, mode='point', opacity=0.5, scale_factor=0.1)
-            p3d.module_manager.scalar_lut_manager.lut.number_of_colors = len(lut)
-            p3d.module_manager.scalar_lut_manager.lut.table = lut
-            # draw poses
-            mlab.points3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(1, 0, 0), scale_factor=0.4)
-            draw_coord_frame(poses[0], scale=2.)
-            draw_coord_frames(poses, scale=0.5)
-            mlab.plot3d(square[:, 0], square[:, 1], square[:, 2], color=(0, 1, 0), line_width=5, tube_radius=0.1)
-            mlab.view(azimuth=0, elevation=0, distance=2 * self.cfg.d_max)
-
-            plt.figure(figsize=(20, 20))
-            plt.subplot(241)
-            plt.title('RGB image')
-            plt.imshow(img_front)
-            plt.axis('off')
-
-            plt.subplot(242)
-            plt.title('Estimated heightmap')
-            plt.imshow(height_est, cmap='jet', alpha=0.8, origin='lower')
-            # plot trajectory
-            plt.plot(poses_grid[:, 0], poses_grid[:, 1], 'ro', markersize=2)
-            # plot square
-            plt.plot(square_grid[:, 0], square_grid[:, 1], 'y--', linewidth=2)
-            # plt.grid()
-            # plt.colorbar()
-
-            plt.subplot(243)
-            plt.title('Estimated heightmap in camera frame')
-            plt.imshow(height_est_cam, cmap='jet', alpha=1.)
-            # plt.imshow(weights_est_cam, cmap='gray', alpha=0.5)
-            plt.colorbar()
-
-            plt.subplot(244)
-            plt.title('Estimated heightmap weights')
-            plt.imshow(weights_est_cam, cmap='gray', alpha=1.)
-
-            plt.subplot(245)
-            # plot point cloud
-            points_filtered = filter_range(points, self.cfg.d_min, self.cfg.d_max)
-            points_filtered = filter_grid(points_filtered, 0.2)
-            points_grid = points_filtered[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
-            plt.plot(points_grid[:, 0], points_grid[:, 1], 'k.', markersize=1, alpha=0.5)
-            plt.axis('equal')
-
-            plt.subplot(246)
-            plt.title('Optimized heightmap')
-            plt.imshow(height_traj, cmap='jet', alpha=0.8, origin='lower')
-            plt.plot(poses_grid[:, 0], poses_grid[:, 1], 'ro', markersize=2)
-            plt.plot(square_grid[:, 0], square_grid[:, 1], 'y--', linewidth=2)
-            # plt.colorbar()
-
-            plt.subplot(247)
-            plt.title('Optimized heightmap in camera frame')
-            plt.imshow(height_traj_cam, cmap='jet', alpha=1.)
-            plt.colorbar()
-
-            plt.subplot(248)
-            plt.title('Optimized heightmap weights')
-            plt.imshow(weights_traj_cam, cmap='gray', alpha=1.)
-
-            # mlab.show()
-            plt.show()
-
-        # resize and normalize image
-        img_front = self.preprocess_img(img_front)
-
-        # flip image and heightmaps from left to right with 50% probability
-        if self.is_train and np.random.random() > 0.5:
-            img_front = np.fliplr(img_front).copy()
-            height_traj_cam = np.fliplr(height_traj_cam).copy()
-            height_est_cam = np.fliplr(height_est_cam).copy()
-            weights_traj_cam = np.fliplr(weights_traj_cam).copy()
-            weights_est_cam = np.fliplr(weights_est_cam).copy()
-
-        # convert to CHW format
-        img_front_CHW = img_front.transpose((2, 0, 1))
-
-        return img_front_CHW, height_traj_cam[None], height_est_cam[None], weights_traj_cam[None], weights_est_cam[None]
+        return (img_CHW, height_lidar[None], weights_lidar[None], height_traj[None], weights_traj[None],
+                height_lidar_cam[None], weights_lidar_cam[None], height_traj_cam[None], weights_traj_cam[None])
 
 
 class OmniDEMData(MonoDEMData):
@@ -722,36 +579,6 @@ class OmniDEMData(MonoDEMData):
         outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
 
         return outputs
-
-    def get_lidar_height_map(self, i, cached=True):
-        # height map from point cloud (!!! assumes points are in robot frame)
-        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
-        dir_path = os.path.join(self.path, 'terrain', 'lidar', interpolation)
-        # if height map was estimated before - load it
-        if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
-            # print('Loading height map from file...')
-            xyz_mask = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
-        # otherwise - estimate it
-        else:
-            # print('Estimating and saving height map...')
-            cloud = self.get_cloud(i)
-            points = position(cloud)
-            xyz_mask = estimate_heightmap(points,
-                                          d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                          grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
-                                          hm_interp_method=self.hm_interp_method)
-            # save height map as numpy array
-            result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
-                              dtype=[(key, np.float32) for key in xyz_mask.keys()])
-            for key in xyz_mask.keys():
-                result[key] = xyz_mask[key]
-            os.makedirs(dir_path, exist_ok=True)
-            np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
-
-        heightmap = torch.stack([torch.as_tensor(xyz_mask[i]) for i in ['z', 'mask']])
-        heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
-
-        return heightmap
 
     def global_hm_cloud(self, vis=False):
         poses = self.poses
@@ -1253,33 +1080,6 @@ def traversed_height_map():
     plt.show()
 
 
-def vis_train_sample():
-    cfg = Config()
-    path = np.random.choice(robingas_husky_seq_paths)
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'dphys_cfg.yaml'))
-
-    ds = MonoDEMData(path=path, cfg=cfg)
-    i = np.random.choice(range(len(ds)))
-    # i = 0
-    print(f'Visualizing sample {i}...')
-    img, height_traj, height_est, weights_traj, weights_est = ds.__getitem__(i, visualize=True)
-    # img, height_traj, height_est, weights_traj = ds[i]
-    img = img.transpose(1, 2, 0)
-
-    plt.figure(figsize=(20, 7))
-    plt.subplot(1, 3, 1)
-    plt.title('Input Image')
-    plt.imshow(img)
-    plt.subplot(1, 3, 2)
-    plt.title('Height Label')
-    plt.imshow(height_traj.squeeze(), cmap='jet')
-    plt.imshow(weights_traj.squeeze(), alpha=0.5, cmap='gray')
-    plt.subplot(1, 3, 3)
-    plt.title('Height Regularization')
-    plt.imshow(height_est.squeeze(), cmap='jet')
-    plt.show()
-
-
 def vis_hm_weights():
     cfg = Config()
 
@@ -1340,22 +1140,8 @@ def vis_img_augs():
                      is_train=True,
                      cfg=cfg)
     i = 0
-    # img_raw = ds.get_image(i, 'front')
     img_raw, _ = ds.get_image(i, 'front')
-    # ds.img_augs = A.Compose([
-    #     # A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=True),
-    #     # A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, always_apply=True),
-    #     # A.RandomGamma(gamma_limit=(80, 120), always_apply=True),
-    #     # A.Blur(blur_limit=7, always_apply=True),
-    #     # A.GaussNoise(var_limit=(10, 50), always_apply=True),
-    #     # A.MotionBlur(blur_limit=7, always_apply=True),
-    #     # A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200)),
-    #     # A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2),
-    #     # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5),
-    #     A.RandomToneCurve(scale=0.1, always_apply=True),
-    # ])
-    # img = ds.img_augs(image=img_raw)["image"]
-    img, height_traj, height_est, weights_traj, weights_est = ds[i]
+    img = ds[i][0]
     img = img.transpose(1, 2, 0)
 
     plt.figure(figsize=(20, 7))

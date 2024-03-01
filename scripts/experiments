@@ -453,6 +453,55 @@ def sample_heightmap_at_img_pose():
     o3d.visualization.draw_geometries([pcd, pcd_synch])
 
 
+def vis_mono_dem_data():
+    from monoforce.datasets.data import MonoDEMData
+
+    cfg = Config()
+    cfg.from_yaml('../config/dphys_cfg.yaml')
+
+    paths = robingas_husky_seq_paths + oru_seq_paths
+
+    for path in paths:
+        ds = MonoDEMData(path=path, cfg=cfg)
+        i = np.random.choice(range(len(ds)))
+        print(f'Visualizing sample {i} from {os.path.basename(path)}...')
+
+        img_CHW, height_lidar, weights_lidar, height_traj, weights_traj, \
+            height_lidar_cam, weights_lidar_cam, height_traj_cam, weights_traj_cam = ds[i]
+        img = img_CHW.transpose(1, 2, 0)
+
+        plt.figure(figsize=(20, 10))
+        plt.subplot(2, 5, 1)
+        plt.title('Input Image')
+        plt.imshow(img)
+        plt.subplot(2, 5, 2)
+        plt.title('Height Trajectory')
+        plt.imshow(height_traj.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+        plt.subplot(2, 5, 3)
+        plt.title('Weights Trajectory')
+        plt.imshow(weights_traj.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
+        plt.subplot(2, 5, 4)
+        plt.title('Height Lidar')
+        plt.imshow(height_lidar.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+        plt.subplot(2, 5, 5)
+        plt.title('Weights Lidar')
+        plt.imshow(weights_lidar.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
+
+        plt.subplot(2, 5, 7)
+        plt.title('Height Trajectory Cam')
+        plt.imshow(height_traj_cam.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+        plt.subplot(2, 5, 8)
+        plt.title('Weights Trajectory Cam')
+        plt.imshow(weights_traj_cam.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
+        plt.subplot(2, 5, 9)
+        plt.title('Height Lidar Cam')
+        plt.imshow(height_lidar_cam.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
+        plt.subplot(2, 5, 10)
+        plt.title('Weights Lidar Cam')
+        plt.imshow(weights_lidar_cam.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
+        plt.show()
+
+
 def main():
     # feed_data()
     # map_consistency()
@@ -462,7 +511,8 @@ def main():
     # check_interpolate_poses()
     # vis_camera_poses()
     # vis_trajectory()
-    sample_heightmap_at_img_pose()
+    # sample_heightmap_at_img_pose()
+    vis_mono_dem_data()
 
 
 if __name__ == '__main__':

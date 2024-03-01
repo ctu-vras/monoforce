@@ -495,11 +495,23 @@ class EvaluatorSemSeg(Evaluator):
         return loss_geom, loss_rigid
 
 
-def main():
+def vis_data(data_paths):
     dphys_config_path = '../config/dphys_cfg.yaml'
     lss_config_path = '../config/lss_cfg.yaml'
-    data_paths = robingas_husky_seq_paths
-    # data_paths = oru_seq_paths
+
+    for path in data_paths:
+        assert os.path.isdir(path), 'Data path %s does not exist' % path
+        lss_config = read_yaml(lss_config_path)
+        grid_conf = lss_config['grid_conf']
+        data_aug_conf = lss_config['data_aug_conf']
+        cfg = Config()
+        cfg.from_yaml(dphys_config_path)
+        explore_data(path, grid_conf, data_aug_conf, cfg, sample_range='random', save=False)
+
+
+def evaluate(data_paths):
+    dphys_config_path = '../config/dphys_cfg.yaml'
+    lss_config_path = '../config/lss_cfg.yaml'
 
     # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT, EvaluatorSemSeg]
     evals = [EvaluatorLSS]
@@ -514,6 +526,13 @@ def main():
             # evaluator.eval_terrain_encoder(bsz=4)
             evaluator.hm_to_imgs_projection(data_paths[0])
             evaluator.evaluate(vis=True)
+
+
+def main():
+    data_paths = oru_seq_paths + robingas_husky_seq_paths
+
+    vis_data(data_paths)
+    # evaluate(data_paths)
 
 
 if __name__ == '__main__':
