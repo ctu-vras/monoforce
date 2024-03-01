@@ -4,7 +4,7 @@
 # It saves point clouds and trajectories from a bag file
 # It also adds calibrations: camera info and transforms
 
-INPUT_STEP=20
+INPUT_STEP=10
 VIS=False
 SAVE=True
 

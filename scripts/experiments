@@ -11,6 +11,7 @@ from monoforce.cloudproc import hm_to_cloud, filter_grid, filter_box
 from monoforce.datasets.data import TravData, explore_data, DEMPathData, TravDataCamSynch
 from monoforce.datasets.data import robingas_husky_seq_paths, oru_seq_paths
 from monoforce.config import Config
+from monoforce.models.lss.tools import denormalize_img
 from monoforce.transformations import transform_cloud
 from monoforce.utils import read_yaml, position
 from monoforce.models.lss.model import compile_model
@@ -459,46 +460,39 @@ def vis_mono_dem_data():
     cfg = Config()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
+    data_aug_conf = lss_cfg['data_aug_conf']
+
     paths = robingas_husky_seq_paths + oru_seq_paths
 
     for path in paths:
-        ds = MonoDEMData(path=path, cfg=cfg)
+        ds = MonoDEMData(path=path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
         i = np.random.choice(range(len(ds)))
         print(f'Visualizing sample {i} from {os.path.basename(path)}...')
 
-        img_CHW, height_lidar, weights_lidar, height_traj, weights_traj, \
-            height_lidar_cam, weights_lidar_cam, height_traj_cam, weights_traj_cam = ds[i]
-        img = img_CHW.transpose(1, 2, 0)
+        img, rot, tran, intrin, post_rot, post_tran, hm_lidar, hm_traj = ds[i]
+        img = denormalize_img(img)
 
-        plt.figure(figsize=(20, 10))
-        plt.subplot(2, 5, 1)
+        height_lidar, weights_lidar = hm_lidar[0], hm_lidar[1]
+        height_traj, weights_traj = hm_traj[0], hm_traj[1]
+
+        plt.figure(figsize=(20, 4))
+        plt.subplot(1, 5, 1)
         plt.title('Input Image')
         plt.imshow(img)
-        plt.subplot(2, 5, 2)
+        plt.subplot(1, 5, 2)
         plt.title('Height Trajectory')
         plt.imshow(height_traj.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
-        plt.subplot(2, 5, 3)
+        plt.subplot(1, 5, 3)
         plt.title('Weights Trajectory')
         plt.imshow(weights_traj.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
-        plt.subplot(2, 5, 4)
+        plt.subplot(1, 5, 4)
         plt.title('Height Lidar')
         plt.imshow(height_lidar.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
-        plt.subplot(2, 5, 5)
+        plt.subplot(1, 5, 5)
         plt.title('Weights Lidar')
         plt.imshow(weights_lidar.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
 
-        plt.subplot(2, 5, 7)
-        plt.title('Height Trajectory Cam')
-        plt.imshow(height_traj_cam.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
-        plt.subplot(2, 5, 8)
-        plt.title('Weights Trajectory Cam')
-        plt.imshow(weights_traj_cam.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
-        plt.subplot(2, 5, 9)
-        plt.title('Height Lidar Cam')
-        plt.imshow(height_lidar_cam.squeeze().T, cmap='jet', vmin=-1, vmax=1, origin='lower')
-        plt.subplot(2, 5, 10)
-        plt.title('Weights Lidar Cam')
-        plt.imshow(weights_lidar_cam.squeeze().T, alpha=0.5, cmap='gray', origin='lower')
         plt.show()
 
 
