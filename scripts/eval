@@ -11,7 +11,7 @@ from torch.utils.data import ConcatDataset
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import explore_data, TravDataVis
+from monoforce.datasets.data import explore_data, TravDataVis, MonoDEMDataVis
 from monoforce.config import Config
 from monoforce.cloudproc import estimate_heightmap, hm_to_cloud
 from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths
@@ -506,7 +506,8 @@ def vis_data(data_paths):
         data_aug_conf = lss_config['data_aug_conf']
         cfg = Config()
         cfg.from_yaml(dphys_config_path)
-        explore_data(path, grid_conf, data_aug_conf, cfg, sample_range='random', save=False)
+        explore_data(path, grid_conf, data_aug_conf, cfg,
+                     sample_range='random', save=False, is_train=True, DataClass=MonoDEMDataVis)
 
 
 def evaluate(data_paths):

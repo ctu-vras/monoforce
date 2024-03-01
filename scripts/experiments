@@ -470,8 +470,8 @@ def vis_mono_dem_data():
         i = np.random.choice(range(len(ds)))
         print(f'Visualizing sample {i} from {os.path.basename(path)}...')
 
-        img, rot, tran, intrin, post_rot, post_tran, hm_lidar, hm_traj = ds[i]
-        img = denormalize_img(img)
+        img, rot, tran, intrin, post_rot, post_tran, hm_lidar, hm_traj, map_pose = ds[i]
+        img = denormalize_img(img.squeeze())
 
         height_lidar, weights_lidar = hm_lidar[0], hm_lidar[1]
         height_traj, weights_traj = hm_traj[0], hm_traj[1]

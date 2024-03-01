@@ -25,6 +25,7 @@ from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
 import pandas as pd
+
 try:
     mpl.use('TkAgg')
 except:
@@ -37,8 +38,6 @@ except:
 __all__ = [
     'DEMPathData',
     'MonoDEMData',
-    'DepthDEMData',
-    'DepthDEMDataVis',
     'TravData',
     'TravDataVis',
     'robingas_husky_seq_paths',
@@ -554,73 +553,77 @@ class MonoDEMData(DEMPathData):
                          int(square_grid[0, 0]):int(square_grid[2, 0])]
         return hm_front
 
-    def __getitem__(self, i):
-        img, rot, tran, intrin, post_rot, post_tran = self.get_image_data(i)
-
+    def get_sample(self, i):
+        # get image data
+        inputs = self.get_image_data(i)
+        inputs = [i.unsqueeze(0) for i in inputs]
+        img, rot, tran, intrin, post_rot, post_tran = inputs
         # lidar height map
         hm_lidar = self.get_lidar_height_map(i, cached=False, robot_radius=1.0)
-
         # trajectory height map
         hm_traj = self.get_traj_height_map(i, method='footprint', cached=False)
-
         # crop height map to observation area defined by square grid
         hm_lidar_cam = self.crop_front_height_map(hm_lidar)
         hm_traj_cam = self.crop_front_height_map(hm_traj)
+        map_pose = torch.as_tensor(self.get_pose(i))
+        return img, rot, tran, intrin, post_rot, post_tran, hm_lidar_cam, hm_traj_cam, map_pose
 
-        return img, rot, tran, intrin, post_rot, post_tran, hm_lidar_cam, hm_traj_cam
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = MonoDEMData(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
 
 
-class DepthDEMData(MonoDEMData):
+class MonoDEMDataVis(MonoDEMData):
     def __init__(self,
                  path,
                  data_aug_conf,
-                 is_train=True,
+                 is_train=False,
                  cfg=Config()
                  ):
-        super(DepthDEMData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+        super(MonoDEMDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
-    def get_raw_image(self, i, camera='realsense_front'):
-        if camera in ['front', 'rear', 'left', 'right']:
-            prefix = 'realsense_'
-            camera = prefix + camera
-        ind = self.ids[i]
-        img_path = os.path.join(self.path, 'depths/visuals', '%s_%s.png' % (ind, camera))
-        assert os.path.exists(img_path), f'Image path {img_path} does not exist'
-        img = Image.open(img_path)
-        img = np.asarray(img)
-        return img
-
-    def get_cloud(self, i):
-        cloud = self.get_raw_cloud(i)
-        cloud = filter_grid(cloud, self.cfg.grid_res)
-        # cloud = filter_range(cloud, self.cfg.d_min, self.cfg.d_max)
-        # move points to robot frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
-        Tr = np.linalg.inv(Tr)
-        cloud = transform_cloud(cloud, Tr)
-        return cloud
-
-    def __getitem__(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i, normalize=False)
-        height = self.get_lidar_height_map(i)
-        return imgs, rots, trans, intrins, post_rots, post_trans, height
-
-
-class DepthDEMDataVis(DepthDEMData):
-    def __init__(self,
-                 path,
-                 data_aug_conf,
-                 is_train=True,
-                 cfg=Config()
-                 ):
-        super(DepthDEMDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
-
-    def __getitem__(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i, normalize=False)
-        height = self.get_lidar_height_map(i)
+    def get_sample(self, i):
+        # get image data
+        inputs = self.get_image_data(i)
+        inputs = [i.unsqueeze(0) for i in inputs]
+        img, rot, tran, intrin, post_rot, post_tran = inputs
+        # lidar height map
+        hm_lidar = self.get_lidar_height_map(i, cached=False, robot_radius=1.0)
+        # trajectory height map
+        hm_traj = self.get_traj_height_map(i, method='footprint', cached=False)
+        # crop height map to observation area defined by square grid
+        hm_lidar_cam = self.crop_front_height_map(hm_lidar)
+        hm_traj_cam = self.crop_front_height_map(hm_traj)
+        map_pose = torch.as_tensor(self.get_pose(i))
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, height, lidar_pts
+        sample = (img, rot, tran, intrin, post_rot, post_tran, hm_lidar_cam, hm_traj_cam, map_pose, lidar_pts)
+        return sample
+
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = MonoDEMDataVis(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
 
 
 class TravData(MonoDEMData):
