@@ -84,4 +84,4 @@ class Config:
 
 if __name__ == '__main__':
     cfg = Config()
-    cfg.to_yaml('../../config/cfg.yaml')
+    cfg.to_yaml('../../config/dphys_cfg.yaml')

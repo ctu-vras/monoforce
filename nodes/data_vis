@@ -3,10 +3,9 @@
 import os
 import numpy as np
 import torch
-
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import OmniDEMDataVis, OmniRigidDEMDataVis, robingas_husky_seq_paths
+from monoforce.datasets import TravDataVis, robingas_husky_seq_paths
 from monoforce.config import Config
 from monoforce.ros import height_map_to_gridmap_msg, to_path
 from monoforce.models.lss.tools import denormalize_img
@@ -23,13 +22,13 @@ def main():
     rospy.init_node('data_vis', anonymous=True, log_level=rospy.DEBUG)
     cfg = Config()
     pkg_path = rospkg.RosPack().get_path('monoforce')
-    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
     cfg.from_rosparams(node_name='data_vis')
 
     # load LSS config
-    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss.yaml'))
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss_cfg.yaml'))
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
@@ -42,8 +41,7 @@ def main():
     # Load traversability data
     path = robingas_husky_seq_paths[rospy.get_param('~seq_i', 0)]
     assert os.path.exists(path)
-    Data = OmniRigidDEMDataVis if opt_terrain else OmniDEMDataVis
-    ds = Data(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
+    ds = TravDataVis(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
     rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), path))
 
     # Load model
@@ -56,10 +54,11 @@ def main():
     # Choose data sample
     i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
     rospy.loginfo('Using sample %d' % i)
-    imgs, rots, trans, intrins, post_rots, post_trans, heightmap, lidar_pts = ds[i]
+    imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[i]
     traj = ds.get_traj(i)
     poses = traj['poses']
     points = lidar_pts.numpy().T
+    heightmap = hm_traj if opt_terrain else hm_lidar
     if modelf is not None:
         # get heightmap prediction
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]

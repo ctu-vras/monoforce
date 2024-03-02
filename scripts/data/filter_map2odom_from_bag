@@ -4,4 +4,4 @@
 INPUT_BAG=$1
 OUTPUT_BAG=map2odom.bag
 
-rosbag filter "${INPUT_BAG}" ${OUTPUT_BAG} "topic == '/tf' and m.transforms[0].header.frame_id == 'map' and m.transforms[0].child_frame_id == 'odom'"
+rosbag filter "${INPUT_BAG}" ${OUTPUT_BAG} "topic == 'tf' and m.transforms[0].header.frame_id == 'map' and m.transforms[0].child_frame_id == 'odom'"

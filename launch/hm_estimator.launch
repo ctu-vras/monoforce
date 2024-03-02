@@ -7,7 +7,7 @@
         <rosparam subst_value="true">
             pts_topics: $(arg pts_topics)
             robot_frame: base_link
-            config_path: $(dirname)/../config/cfg.yaml
+            config_path: $(dirname)/../config/dphys_cfg.yaml
         </rosparam>
     </node>
 </launch>

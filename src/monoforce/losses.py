@@ -402,8 +402,6 @@ def control_loss(system, states_true, tt, cfg, return_states=False, log=False):
 def test_loss_functions():
     from matplotlib import pyplot as plt
 
-    torch.set_default_dtype(torch.float64)
-
     system_true = RigidBodySoftTerrain(height=np.zeros((10, 10)),
                                        grid_res=1.,
                                        damping=10.0, elasticity=10.0, friction=1., mass=10.0,
@@ -481,7 +479,6 @@ def test_closest_points():
     from .datasets.utils import get_robingas_data, get_kkt_data
     from .vis import set_axes_equal
 
-    torch.set_default_dtype(torch.float64)
     cfg = Config()
     cfg.total_sim_time = 3.
 

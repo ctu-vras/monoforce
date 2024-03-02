@@ -205,7 +205,7 @@ def main():
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
     cfg = Config()
-    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/cfg.yaml'))
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
     cfg.total_sim_time = rospy.get_param('~total_sim_time', 5.)
