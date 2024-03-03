@@ -152,8 +152,8 @@ class Trainer:
             if debug:
                 print('Debug mode: using small datasets')
                 # randomly sample from the dataset
-                train_ids = np.random.choice(len(train_ds), int(0.1 * len(train_ds)), replace=False)
-                val_ids = np.random.choice(len(val_ds), int(0.05 * len(val_ds)), replace=False)
+                train_ids = np.random.choice(len(train_ds), int(0.02 * len(train_ds)), replace=False)
+                val_ids = np.random.choice(len(val_ds), int(0.01 * len(val_ds)), replace=False)
             else:
                 # randomly select a subset of the dataset
                 val_ds_size = int(val_fraction * len(train_ds))
@@ -384,7 +384,6 @@ class Trainer:
             y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
             hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
-            hm_points = hm_points[mask_measured]
             hm_points = hm_points.view(-1, 3).T
 
             # plot images with projected height map points

@@ -52,7 +52,8 @@ robingas_husky_seq_paths = [
     os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57/'),
     os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15/'),
     os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'),
-    # os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31/'),
+    os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31/'),
+    os.path.join(data_dir, 'robingas/data/22-06-30-cimicky_haj/husky_2022-06-30-15-58-37'),
 ]
 robingas_husky_seq_paths = [os.path.normpath(path) for path in robingas_husky_seq_paths]
 
@@ -318,7 +319,7 @@ class DEMPathData(Dataset):
     def get_lidar_height_map(self, i, cached=True, **kwargs):
         # height map from point cloud (!!! assumes points are in robot frame)
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
-        dir_path = os.path.join(self.path, 'terrain', 'lidar', interpolation)
+        dir_path = os.path.join(self.path, 'terrain', 'lidar', 'omni', interpolation)
         # if height map was estimated before - load it
         if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
@@ -369,7 +370,7 @@ class DEMPathData(Dataset):
             mask = cv2.dilate(mask, kernel, iterations=2)
         else:
             assert method == 'footprint'
-            file_path = os.path.join(self.path, 'terrain', 'traj', 'footprint', f'{self.ids[i]}.npy')
+            file_path = os.path.join(self.path, 'terrain', 'traj', 'omni', 'footprint', f'{self.ids[i]}.npy')
             if cached and os.path.exists(file_path):
                 traj_hm = np.load(file_path, allow_pickle=True).item()
             else:
@@ -433,11 +434,7 @@ class MonoDEMData(DEMPathData):
         self.is_train = is_train
 
         # get camera names
-        cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
-        cams = [cam.replace('.yaml', '') for cam in cams_yaml]
-        if 'camera_up' in cams:
-            cams.remove('camera_up')
-        self.cameras = sorted(cams)
+        self.cameras = self.get_camera_names()
 
         # initialize image augmentations
         self.data_aug_conf = data_aug_conf
@@ -455,6 +452,13 @@ class MonoDEMData(DEMPathData):
             # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
             A.RandomToneCurve(scale=0.1, p=0.5),
         ]) if self.is_train else None
+
+    def get_camera_names(self):
+        cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
+        cams = [cam.replace('.yaml', '') for cam in cams_yaml]
+        if 'camera_up' in cams:
+            cams.remove('camera_up')
+        return sorted(cams)
 
     def get_image(self, i, cam, undistort=False):
         img = self.get_raw_image(i, cam)

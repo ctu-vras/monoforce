@@ -7,7 +7,7 @@ from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths
 paths = robingas_husky_seq_paths + sim_seq_paths
 
 for path in paths:
-    input_bag_path = path.replace('_trav', '.bag')
+    input_bag_path = path + '.bag'
     print('Processing', input_bag_path)
     output_bag_path = input_bag_path[:-4] + '_synch.bag'
     print('Saving to', output_bag_path)
