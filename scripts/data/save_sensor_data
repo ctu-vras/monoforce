@@ -490,6 +490,10 @@ def process(bag_paths, cloud_topics, lidar_frame, camera_topics, camera_info_top
                                         output_path=output_path, output_bag_path=output_bag_path, output_traj_path=output_traj_path,
                                         output_global_poses_path=output_global_poses_path, output_topic=output_topic, output_period=output_period,
                                         visualize=visualize, save_data=save_data, tf_buffer=tf_buffer)
+    # seq_path = os.path.join(os.path.dirname(bag_paths[0]), os.path.basename(bag_paths[0]).replace('.bag', ''))
+    # clouds_path = os.path.join(seq_path, 'clouds')
+    # cloud_stamps = os.listdir(clouds_path)
+    # cloud_stamps = [rospy.Time(int(s.split('_')[0]), int(s.split('_')[1].split('.')[0])) for s in cloud_stamps]
     print('Saving images...')
     img_stamps = save_images(bag_paths, camera_topics, cloud_stamps, output_img_path, time_step=time_step, save=save_data)
     # save cloud and image timestamps in the following format: lidar_stamp, camera1_stamp, camera2_stamp, ...
