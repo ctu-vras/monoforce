@@ -484,11 +484,16 @@ def append_transformation(bag_paths, source_frame, target_frame, save=True, tf_b
 
         if matrix_name is None:
             matrix_name = f'T_{source_frame}__{target_frame}'
-        new_yaml_data_dict = {matrix_name:
-                                  {'rows': 4,
-                                   'cols': 4,
-                                   'data': ['%.3f' % x for x in Tr.reshape(-1)]}}
-        append_to_yaml(output_path, new_yaml_data_dict)
+        yaml_data_dict = {matrix_name:
+                              {'rows': 4,
+                               'cols': 4,
+                               'data': ['%.3f' % x for x in Tr.reshape(-1)]}}
+        # q = transform.transform.rotation
+        # t = transform.transform.translation
+        # yaml_data_dict = {f'{source_frame}__{target_frame}':
+        #                     {'q': {'x': q.x, 'y': q.y, 'z': q.z, 'w': q.w},
+        #                      't': {'x': t.x, 'y': t.y, 'z': t.z}}}
+        append_to_yaml(output_path, yaml_data_dict)
 
 
 def append_to_yaml(yaml_path, data_dict):

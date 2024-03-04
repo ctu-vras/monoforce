@@ -21,30 +21,9 @@ __all__ = [
     'read_yaml',
     'write_to_yaml',
     'str2bool',
+    'position',
+    'color',
 ]
-
-color_palette = {
-    0: {"color": [0, 0, 0], "name": "void"},
-    1: {"color": [108, 64, 20], "name": "dirt"},
-    3: {"color": [0, 102, 0], "name": "grass"},
-    4: {"color": [0, 255, 0], "name": "tree"},
-    5: {"color": [0, 153, 153], "name": "pole"},
-    6: {"color": [0, 128, 255], "name": "water"},
-    7: {"color": [0, 0, 255], "name": "sky"},
-    8: {"color": [255, 255, 0], "name": "vehicle"},
-    9: {"color": [255, 0, 127], "name": "object"},
-    10: {"color": [64, 64, 64], "name": "asphalt"},
-    12: {"color": [255, 0, 0], "name": "building"},
-    15: {"color": [102, 0, 0], "name": "log"},
-    17: {"color": [204, 153, 255], "name": "person"},
-    18: {"color": [102, 0, 204], "name": "fence"},
-    19: {"color": [255, 153, 204], "name": "bush"},
-    23: {"color": [170, 170, 170], "name": "concrete"},
-    27: {"color": [41, 121, 255], "name": "barrier"},
-    31: {"color": [134, 255, 239], "name": "puddle"},
-    33: {"color": [99, 66, 34], "name": "mud"},
-    34: {"color": [110, 22, 138], "name": "rubble"}
-}
 
 
 def slots(msg):
@@ -178,28 +157,6 @@ def filter_camera_points(points, img_width, img_height, K, RT, give_mask=False):
     if give_mask:
         return points_res, color, mask
     return points_res, color
-
-
-def read_semseg(path, label_size=None):
-    def convert_label(label, inverse=False):
-        temp = label.copy()
-        if inverse:
-            for v, k in color_palette.items():
-                label[temp == k["color"]] = v
-        else:
-            label = np.zeros(temp.shape + (3,))
-            for k, v in color_palette.items():
-                label[temp == k, :] = v["color"]
-        return label
-
-    semseg = Image.open(path)
-    if label_size is not None:
-        if label_size[0] != semseg.size[0] or label_size[1] != semseg.size[1]:
-            semseg = semseg.resize((label_size[1], label_size[0]), Image.NEAREST)
-            semseg = np.array(semseg)[:, :, 0]
-    semseg = np.array(semseg, dtype=np.uint8)
-    semseg = convert_label(semseg, False)
-    return np.array(semseg, dtype=np.uint8)
 
 
 def normalize(x, qlow=0., qhigh=1., eps=1e-6, ):

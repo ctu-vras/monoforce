@@ -36,6 +36,7 @@ except:
     pass
 
 __all__ = [
+    'data_dir',
     'DEMPathData',
     'MonoDEMData',
     'TravData',
@@ -174,9 +175,6 @@ class DEMPathData(Dataset):
         if os.path.exists(csv_path):
             data = np.loadtxt(csv_path, delimiter=',', skiprows=1)
             stamps, poses = data[:, 0], data[:, 1:13]
-            # TODO: vels and omegas from data set are not ready yet to be used
-            # vels, omegas = data[:, 13:16], data[:, 16:19]
-            # accs, betas = data[:, 19:22], data[:, 22:25]
             poses = np.asarray([self.pose2mat(pose) for pose in poses])
         else:
             poses = np.load(os.path.join(self.traj_path, '%s.npz' % ind))['traj']
@@ -185,8 +183,6 @@ class DEMPathData(Dataset):
 
         traj = {
             'stamps': stamps, 'poses': poses,
-            # 'vels': np.zeros_like(poses), 'omegas': np.zeros_like(poses),
-            # 'accs': np.zeros_like(poses), 'betas': np.zeros_like(poses)
         }
 
         # transform to robot frame
