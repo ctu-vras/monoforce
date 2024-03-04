@@ -4,7 +4,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from ..utils import position
 from ..transformations import transform_cloud
-from ..cloudproc import filter_grid
+from ..cloudproc import filter_grid, estimate_heightmap, hm_to_cloud
+from ..config import Config
 from .data import data_dir
 from copy import copy
 import torch
@@ -14,6 +15,7 @@ from numpy.lib.recfunctions import unstructured_to_structured
 from scipy.spatial.transform import Rotation
 import open3d as o3d
 from tqdm import tqdm
+from scipy.spatial import cKDTree
 
 
 __all__ = [
@@ -109,7 +111,7 @@ def read_extrinsics(path, key='os1_cloud_node-pylon_camera_node'):
 
 
 class Rellis3D(torch.utils.data.Dataset):
-    def __init__(self, seq=None, path=None):
+    def __init__(self, seq, path=None):
         """Rellis-3D dataset: https://unmannedlab.github.io/research/RELLIS-3D.
 
         :param seq: Sequence number (from 0 to 4).
@@ -138,6 +140,7 @@ class Rellis3D(torch.utils.data.Dataset):
             'P': P,
             'lid2cam': read_extrinsics(self.lidar2cam_path(), key='os1_cloud_node-pylon_camera_node'),
             'robot2lidar': read_extrinsics(self.robot2lidar_path(), key='base_link-os1_cloud_node'),
+            'clearance': 0.254,  # [m], reference: https://clearpathrobotics.com/warthog-unmanned-ground-vehicle-robot/
             'dist_coeff': np.array([-0.134313, -0.025905, 0.002181, 0.00084, 0]),
             'img_width': 1920,
             'img_height': 1200,
@@ -247,13 +250,68 @@ class Rellis3D(torch.utils.data.Dataset):
         i = np.clip(i, 0, len(self.ids_rgb) - 1)
         return read_rgb(self.image_path(self.ids_rgb[i]))
 
+class Rellis3DTrav(Rellis3D):
+    def __init__(self, seq, path=None, cfg=Config()):
+        super().__init__(seq, path)
+        self.cfg = cfg
 
-def lidar_map_demo():
+    def get_traj(self, id, n_frames=100):
+        i = self.ids.index(id)
+        i0 = np.clip(i, 0, len(self.ids) - n_frames)
+        i1 = i0 + n_frames
+        poses = copy(self.poses[i0:i1])
+        # transform to robot frame
+        poses = np.linalg.inv(poses[0]) @ poses
+        # take into account robot's clearance
+        poses[:, 2, 3] -= self.calib['clearance']
+        footprint_poses = poses
+        # time stamps
+        stamps = copy(self.ts_lid[i0:i1])
+        traj = {'poses': footprint_poses, 'stamps': stamps}
+        return traj
+
+    def estimated_footprint_traj_points(self, id, robot_size=(1.38, 1.52)):
+        traj = self.get_traj(id)
+        poses = traj['poses'].copy()
+
+        # robot footprint points grid
+        width, length = robot_size
+        x = np.arange(-length / 2, length / 2, self.cfg.grid_res)
+        y = np.arange(-width / 2, width / 2, self.cfg.grid_res)
+        x, y = np.meshgrid(x, y)
+        z = np.zeros_like(x)
+        footprint0 = np.stack([x, y, z], axis=-1).reshape((-1, 3))
+
+        Tr_base_link__base_footprint = np.eye(4)
+        Tr_base_link__base_footprint[0, 3] = -self.calib['clearance']
+
+        trajectory_footprint = None
+        for pose in poses:
+            Tr = pose @ Tr_base_link__base_footprint
+            footprint = transform_cloud(footprint0, Tr)
+            if trajectory_footprint is None:
+                trajectory_footprint = footprint
+            else:
+                tree = cKDTree(trajectory_footprint)
+                d, _ = tree.query(footprint)
+                footprint = footprint[d > self.cfg.grid_res]
+                trajectory_footprint = np.concatenate([trajectory_footprint, footprint], axis=0)
+        return trajectory_footprint
+
+    def estimate_heightmap(self, points, **kwargs):
+        # estimate heightmap from point cloud
+        height = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+                                    grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
+                                    hm_interp_method=self.cfg.hm_interp_method, **kwargs)
+        return height
+
+
+def global_map_demo():
     for seq_name in seq_names:
         ds = Rellis3D(seq=seq_name)
 
         plt.figure()
-        plt.title('Trajectory')
+        plt.title('Route %s' % seq_name)
         plt.axis('equal')
         plt.plot(ds.poses[:, 0, 3], ds.poses[:, 1, 3], '.')
         plt.grid()
@@ -279,8 +337,43 @@ def lidar_map_demo():
         o3d.visualization.draw_geometries([cloud_pcd, poses_pcd])
 
 
+def traversed_cloud_demo():
+    cfg = Config()
+    config_path = os.path.join(data_dir, '../config/dphys_cfg.yaml')
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
+
+    seq_name = np.random.choice(seq_names)
+    ds = Rellis3DTrav(seq=seq_name, cfg=cfg)
+
+    # id = ds.ids[0]
+    id = np.random.choice(ds.ids)
+    cloud = ds.get_cloud(id)
+    points = position(cloud)
+
+    traj = ds.get_traj(id, n_frames=100)
+    poses = traj['poses']
+
+    footprint_traj = ds.estimated_footprint_traj_points(id)
+    print(cloud.shape, poses.shape, footprint_traj.shape)
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+
+    pcd_poses = o3d.geometry.PointCloud()
+    pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
+    pcd_poses.paint_uniform_color([0, 1, 0])
+
+    pcd_footprint = o3d.geometry.PointCloud()
+    pcd_footprint.points = o3d.utility.Vector3dVector(footprint_traj)
+    pcd_footprint.paint_uniform_color([1, 0, 0])
+
+    o3d.visualization.draw_geometries([pcd, pcd_poses, pcd_footprint])
+
+
 def main():
-    lidar_map_demo()
+    # global_map_demo()
+    traversed_cloud_demo()
 
 
 if __name__ == '__main__':
