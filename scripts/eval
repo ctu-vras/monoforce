@@ -213,6 +213,13 @@ class Evaluator:
         # get height map
         height = self.get_height(i, ds)
 
+        # evaluate the states that are inside the height map
+        xyz = states[0]
+        mask = (xyz[:, 0] > -self.cfg.d_max) & (xyz[:, 0] < self.cfg.d_max) & \
+               (xyz[:, 1] > -self.cfg.d_max) & (xyz[:, 1] < self.cfg.d_max)
+        mask = mask.view(-1)
+        states = tuple([s[mask] for s in states])
+
         return states, height
 
     def eval_diff_physics(self, height, states_true, vis=False):
@@ -269,7 +276,7 @@ class Evaluator:
             roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
 
             if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
-                print('Robot is upside down, skipping evaluation')
+                print('Robot is upside down')
                 return None, None
 
             goal_pose = torch.eye(4, device=self.cfg.device)
@@ -354,6 +361,14 @@ class Evaluator:
         print(f'Average loss translation: %.2f [m]' % trans_diff_final)
         print(f'Average loss rotation: %.2f [deg]' % (rot_diff_final * 180 / np.pi))
         print(f'Flip over rate: %.2f' % flip_over_rate_final)
+
+        # write to file
+        fname = f'eval_metrics_{self.__class__.__name__}.csv'
+        data = [['ATE', 'ARE', 'FOR'],
+                [trans_diff_final, rot_diff_final, flip_over_rate_final]]
+        with open(fname, 'w') as f:
+            for line in data:
+                f.write(','.join([str(x) for x in line]) + '\n')
 
     def __str__(self):
         return f'Evaluator: {self.__class__.__name__} with the Model: {self.model.__class__.__name__}'
@@ -515,8 +530,8 @@ def evaluate(data_paths):
     lss_config_path = '../config/lss_cfg.yaml'
 
     # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT, EvaluatorSemSeg]
-    evals = [EvaluatorLSS]
-    # evals = [EvaluatorSemSeg]
+    evals = [Evaluator, EvaluatorLSS, EvaluatorKKT]
+    # evals = [EvaluatorLSS]
 
     with torch.no_grad():
         for Eval in evals:
@@ -525,15 +540,16 @@ def evaluate(data_paths):
                              data_paths=data_paths)
             print(evaluator)
             # evaluator.eval_terrain_encoder(bsz=4)
-            evaluator.hm_to_imgs_projection(data_paths[0])
-            evaluator.evaluate(vis=True)
+            # evaluator.hm_to_imgs_projection(data_paths[0])
+            evaluator.evaluate(vis=False)
 
 
 def main():
-    data_paths = oru_seq_paths + robingas_husky_seq_paths
+    # data_paths = oru_seq_paths + robingas_husky_seq_paths
+    data_paths = robingas_husky_seq_paths
 
-    vis_data(data_paths)
-    # evaluate(data_paths)
+    # vis_data(data_paths)
+    evaluate(data_paths)
 
 
 if __name__ == '__main__':
