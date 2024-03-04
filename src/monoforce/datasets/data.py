@@ -315,7 +315,7 @@ class DEMPathData(Dataset):
     def get_lidar_height_map(self, i, cached=True, **kwargs):
         # height map from point cloud (!!! assumes points are in robot frame)
         interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
-        dir_path = os.path.join(self.path, 'terrain', 'lidar', 'omni', interpolation)
+        dir_path = os.path.join(self.path, 'terrain', 'lidar', 'mono', interpolation)
         # if height map was estimated before - load it
         if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
             # print('Loading height map from file...')
@@ -366,7 +366,7 @@ class DEMPathData(Dataset):
             mask = cv2.dilate(mask, kernel, iterations=2)
         else:
             assert method == 'footprint'
-            file_path = os.path.join(self.path, 'terrain', 'traj', 'omni', 'footprint', f'{self.ids[i]}.npy')
+            file_path = os.path.join(self.path, 'terrain', 'traj', 'mono', 'footprint', f'{self.ids[i]}.npy')
             if cached and os.path.exists(file_path):
                 traj_hm = np.load(file_path, allow_pickle=True).item()
             else:
