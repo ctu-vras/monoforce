@@ -1,12 +1,14 @@
 from __future__ import absolute_import
 import os
 import numpy as np
+import torchvision
 from matplotlib import pyplot as plt
-from ..utils import position
+from ..models.lss.tools import img_transform, normalize_img
+from ..utils import position, read_yaml
 from ..transformations import transform_cloud
 from ..cloudproc import filter_grid, estimate_heightmap, hm_to_cloud
 from ..config import Config
-from .data import data_dir
+from .data import data_dir, explore_data
 from copy import copy
 import torch
 import yaml
@@ -198,8 +200,7 @@ class Rellis3D(torch.utils.data.Dataset):
     def robot2lidar_path(self):
         return os.path.join(self.path, 'calibration', 'base_link2os_lidar.yaml')
 
-    def get_sample(self, i):
-        id = self.ids[i]
+    def get_sample(self, id):
         cloud = self.get_cloud(id)
         pose = self.get_cloud_pose(id)
         img = self.get_image(id)
@@ -210,14 +211,15 @@ class Rellis3D(torch.utils.data.Dataset):
         return len(self.ids)
 
     def __getitem__(self, item):
-        if isinstance(item, int):
-            return self.get_sample(item)
+        if isinstance(item, (int, np.int64)):
+            id = self.ids[item]
+            return self.get_sample(id)
 
         ds = copy(self)
         if isinstance(item, (list, tuple)):
             ds.ids = [self.ids[i] for i in item]
         else:
-            assert isinstance(item, slice)
+            assert isinstance(item, (slice, range))
             ds.ids = self.ids[item]
         return ds
 
@@ -251,9 +253,11 @@ class Rellis3D(torch.utils.data.Dataset):
         return read_rgb(self.image_path(self.ids_rgb[i]))
 
 class Rellis3DTrav(Rellis3D):
-    def __init__(self, seq, path=None, cfg=Config()):
+    def __init__(self, seq, data_aug_conf, path=None, cfg=Config(), is_train=False):
         super().__init__(seq, path)
         self.cfg = cfg
+        self.data_aug_conf = data_aug_conf
+        self.is_train = is_train
 
     def get_traj(self, id, n_frames=100):
         i = self.ids.index(id)
@@ -305,6 +309,124 @@ class Rellis3DTrav(Rellis3D):
                                     hm_interp_method=self.cfg.hm_interp_method, **kwargs)
         return height
 
+    def get_lidar_height_map(self, id, cached=True, **kwargs):
+        # height map from point cloud (!!! assumes points are in robot frame)
+        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
+        dir_path = os.path.join(self.path, self.seq, 'terrain', 'lidar', interpolation)
+        file_path = os.path.join(dir_path, '%05d.npy' % self.ids.index(id))
+        # if height map was estimated before - load it
+        if cached and os.path.exists(file_path):
+            # print('Loading height map from file...')
+            xyz_mask = np.load(file_path)
+        # otherwise - estimate it
+        else:
+            # print('Estimating and saving height map...')
+            cloud = self.get_cloud(id)
+            points = position(cloud)
+            xyz_mask = self.estimate_heightmap(points, **kwargs)
+            # save height map as numpy array
+            result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
+                              dtype=[(key, np.float32) for key in xyz_mask.keys()])
+            for key in xyz_mask.keys():
+                result[key] = xyz_mask[key]
+            os.makedirs(dir_path, exist_ok=True)
+            np.save(file_path, result)
+        heightmap = np.stack([xyz_mask[i] for i in ['z', 'mask']])
+        heightmap = np.asarray(heightmap, dtype=np.float32)
+        return heightmap
+
+    def get_traj_height_map(self, id, cached=True):
+        file_path = os.path.join(self.path, self.seq, 'terrain', 'traj', 'footprint', '%05d.npy' % self.ids.index(id))
+        if cached and os.path.exists(file_path):
+            traj_hm = np.load(file_path, allow_pickle=True).item()
+        else:
+            traj_points = self.estimated_footprint_traj_points(id)
+            traj_hm = self.estimate_heightmap(traj_points, robot_radius=None)
+            # save height map as numpy array
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            np.save(file_path, traj_hm)
+        height = traj_hm['z']
+        mask = traj_hm['mask']
+        heightmap = np.stack([height, mask])
+        return heightmap
+
+    def sample_augmentation(self):
+        H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        fH, fW = self.data_aug_conf['final_dim']
+        if self.is_train:
+            resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
+            resize_dims = (int(W * resize), int(H * resize))
+            newW, newH = resize_dims
+            crop_h = int((1 - np.random.uniform(*self.data_aug_conf['bot_pct_lim'])) * newH) - fH
+            crop_w = int(np.random.uniform(0, max(0, newW - fW)))
+            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+            flip = False
+            if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
+                flip = True
+            rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
+        else:
+            resize = max(fH / H, fW / W)
+            resize_dims = (int(W * resize), int(H * resize))
+            newW, newH = resize_dims
+            crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim'])) * newH) - fH
+            crop_w = int(max(0, newW - fW) / 2)
+            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+            flip = False
+            rotate = 0
+        return resize, resize_dims, crop, flip, rotate
+
+    def get_image_data(self, id, normalize=True):
+        img = self.get_image(id)
+        K = self.calib['K']
+        # if self.is_train:
+        #     img = self.img_augs(image=img)['image']
+
+        post_rot = torch.eye(2)
+        post_tran = torch.zeros(2)
+
+        # augmentation (resize, crop, horizontal flip, rotate)
+        resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
+        img, post_rot2, post_tran2 = img_transform(Image.fromarray(img), post_rot, post_tran,
+                                                   resize=resize,
+                                                   resize_dims=resize_dims,
+                                                   crop=crop,
+                                                   flip=flip,
+                                                   rotate=rotate)
+        # for convenience, make augmentation matrices 3x3
+        post_tran = torch.zeros(3)
+        post_rot = torch.eye(3)
+        post_tran[:2] = post_tran2
+        post_rot[:2, :2] = post_rot2
+
+        # rgb and intrinsics
+        if normalize:
+            img = normalize_img(img)
+        else:
+            img = torchvision.transforms.ToTensor()(img)
+        K = torch.as_tensor(K)
+
+        # extrinsics
+        T_robot_lidar = self.calib['robot2lidar']
+        T_lidar_cam = self.calib['lid2cam']
+        T_robot_cam = T_robot_lidar @ T_lidar_cam
+        rot = torch.as_tensor(T_robot_cam[:3, :3])
+        tran = torch.as_tensor(T_robot_cam[:3, 3])
+
+        outputs = [img, rot, tran, K, post_rot, post_tran]
+        outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
+
+        return outputs
+
+    def get_sample(self, id):
+        inputs = self.get_image_data(id)
+        inputs = [i.unsqueeze(0) for i in inputs]
+        img, rot, tran, K, post_rot, post_tran = inputs
+        hm_lidar = torch.as_tensor(self.get_lidar_height_map(id))
+        hm_traj = torch.as_tensor(self.get_traj_height_map(id))
+        lidar_pts = torch.as_tensor(position(self.get_cloud(id))).T
+        map_pose = torch.as_tensor(self.get_cloud_pose(id))
+        return img, rot, tran, K, post_rot, post_tran, hm_lidar, hm_traj, map_pose, lidar_pts
+
 
 def global_map_demo():
     for seq_name in seq_names:
@@ -318,8 +440,8 @@ def global_map_demo():
         plt.show()
 
         clouds = []
-        for data in tqdm(ds[::100]):
-            cloud, pose, img, K = data
+        for i in tqdm(range(0, len(ds), 100)):
+            cloud, pose, img, K = ds[i]
             cloud = filter_grid(cloud, grid_res=0.5)
             cloud = position(cloud)
             cloud = transform_cloud(cloud, pose)
@@ -343,10 +465,14 @@ def traversed_cloud_demo():
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
 
-    seq_name = np.random.choice(seq_names)
-    ds = Rellis3DTrav(seq=seq_name, cfg=cfg)
+    lss_cfg_path = os.path.join(data_dir, '../config/lss_cfg.yaml')
+    assert os.path.isfile(lss_cfg_path)
+    lss_cfg = read_yaml(lss_cfg_path)
+    data_aug_conf = lss_cfg['data_aug_conf']
 
-    # id = ds.ids[0]
+    seq_name = np.random.choice(seq_names)
+    ds = Rellis3DTrav(seq=seq_name, cfg=cfg, data_aug_conf=data_aug_conf)
+
     id = np.random.choice(ds.ids)
     cloud = ds.get_cloud(id)
     points = position(cloud)
@@ -371,9 +497,33 @@ def traversed_cloud_demo():
     o3d.visualization.draw_geometries([pcd, pcd_poses, pcd_footprint])
 
 
+def heightmap_demo():
+    cfg = Config()
+    p = os.path.join(data_dir, '../config/dphys_cfg.yaml')
+    assert os.path.isfile(p), 'Config file %s does not exist' % p
+    cfg.from_yaml(p)
+
+    p = os.path.join(data_dir, '../config/lss_cfg.yaml')
+    lss_cfg = read_yaml(p)
+    data_aug_conf = lss_cfg['data_aug_conf']
+    grid_conf = lss_cfg['grid_conf']
+
+    seq_name = np.random.choice(seq_names)
+    ds = Rellis3DTrav(seq=seq_name, cfg=cfg, data_aug_conf=data_aug_conf)
+
+    i = np.random.choice(len(ds))
+    sample = ds[i]
+    for s in sample:
+        print(s.shape)
+
+    ds_path = os.path.join(data_dir, 'Rellis3D', seq_name)
+    explore_data(ds_path, grid_conf, data_aug_conf, cfg, is_train=False, DataClass=Rellis3DTrav)
+
+
 def main():
     # global_map_demo()
-    traversed_cloud_demo()
+    # traversed_cloud_demo()
+    heightmap_demo()
 
 
 if __name__ == '__main__':
