@@ -559,13 +559,17 @@ def evaluate(data_paths):
                              data_paths=data_paths)
             print(evaluator)
             # evaluator.eval_terrain_encoder(bsz=4)
-            # evaluator.hm_to_imgs_projection(data_paths[0])
-            evaluator.evaluate(vis=False)
+            # evaluator.hm_to_imgs_projection()
+            evaluator.quantitative_evaluation([robingas_husky_seq_paths[0],
+                                               robingas_husky_seq_paths[4]],
+                                              sample_ranges=[[446], [10, 118]], save=True)
+            # evaluator.evaluate(vis=False)
 
 
 def main():
     # data_paths = oru_seq_paths + robingas_husky_seq_paths
     data_paths = robingas_husky_seq_paths
+    # data_paths = rellis3d_seq_paths
 
     # vis_data(data_paths)
     evaluate(data_paths)

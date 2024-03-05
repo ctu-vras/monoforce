@@ -452,13 +452,13 @@ class Trainer:
 
 def main():
     cfg = Config()
-    config_path = '../config/dphys_cfg.yaml'
+    config_path = '../config/dphys_cfg_rellis3d.yaml'
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
     cfg.hm_interp_method = None
 
     # load LSS config
-    lss_config_path = '../config/lss_cfg_mono.yaml'
+    lss_config_path = '../config/lss_cfg_rellis3d.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']
