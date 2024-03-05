@@ -56,7 +56,7 @@ robingas_husky_seq_paths = [
     os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15/'),
     os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'),
     os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31/'),
-    os.path.join(data_dir, 'robingas/data/22-06-30-cimicky_haj/husky_2022-06-30-15-58-37'),
+    os.path.join(data_dir, 'robingas/data/22-06-30-cimicky_haj/husky_2022-06-30-15-58-37/'),
 ]
 robingas_husky_seq_paths = [os.path.normpath(path) for path in robingas_husky_seq_paths]
 
@@ -1084,11 +1084,19 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
         sample = [s[np.newaxis] for s in sample]
         # print('sample', sample_i, 'id', ds.ids[sample_i])
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
+        height_lidar, mask_lidar = hm_lidar[:, 0], hm_lidar[:, 1]
+        height_traj, mask_traj = hm_traj[:, 0], hm_traj[:, 1]
         if modelf is not None:
             with torch.no_grad():
+                # replace height maps with model output
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
                 inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                hm_lidar = model(*inputs)
+                voxel_feats = model.get_voxels(*inputs)
+                height_lidar, height_diff = model.bevencode(voxel_feats)
+                height_traj = height_lidar - height_diff
+                # replace lidar cloud with model height map output
+                pts = hm_to_cloud(height_traj.squeeze(), cfg).T
+                pts = pts.unsqueeze(0)
 
         img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
@@ -1105,7 +1113,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
 
                 plt.imshow(showimg)
                 plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
-                            s=1, alpha=0.2, cmap='jet', vmin=-1, vmax=1)
+                            s=1, alpha=0.5, cmap='jet', vmin=-1, vmax=1)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
@@ -1122,17 +1130,17 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
             plt.ylim((-cfg.d_max, cfg.d_max))
 
             ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(hm_lidar[si][0].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             plt.axis('off')
             plt.colorbar()
 
             ax = plt.subplot(gs[:, 3:4])
-            plt.imshow(hm_traj[si][0].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             plt.axis('off')
             plt.colorbar()
 
             if save:
-                save_dir = os.path.join(path, 'visuals')
+                save_dir = os.path.join(path, 'visuals_pred' if modelf is not None else 'visuals')
                 os.makedirs(save_dir, exist_ok=True)
                 imname = f'{ds.ids[sample_i]}.jpg'
                 imname = os.path.join(save_dir, imname)

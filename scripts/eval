@@ -11,10 +11,10 @@ from torch.utils.data import ConcatDataset
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import explore_data, TravDataVis, MonoDEMDataVis
+from monoforce.datasets.data import explore_data, TravDataVis, MonoDEMDataVis, TravData
 from monoforce.config import Config
 from monoforce.cloudproc import estimate_heightmap, hm_to_cloud
-from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths
+from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths
 from monoforce.utils import read_yaml, position
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference
@@ -57,18 +57,33 @@ class Evaluator:
     def load_model(self):
         return None
 
-    def hm_to_imgs_projection(self, seq_path):
+    def quantitative_evaluation(self, paths=None, sample_ranges=None, save=False):
+        if paths is None:
+            paths = [self.data_paths[0]]
+        if sample_ranges is None:
+            sample_ranges = [[0]] * len(paths)
+        assert len(paths) == len(sample_ranges)
+
+        for path, sample_range in zip(paths, sample_ranges):
+            self.hm_to_imgs_projection(path, sample_range, save=save, dt=5)
+
+    def hm_to_imgs_projection(self, seq_path=None, sample_range=None, save=False, dt=1):
+        if seq_path is None:
+            seq_path = self.data_paths[0]
+
         ds = TravDataVis(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+        if sample_range is None:
+            sample_range = range(len(ds))
 
         fig = plt.figure(figsize=(20, 10))
         gs = mpl.gridspec.GridSpec(3, 6)
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-        for i in tqdm(range(len(ds)), total=len(ds)):
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[i]
-            height = self.get_height(i, ds)
-
+        for i in tqdm(sample_range, total=len(sample_range)):
             # clear grid axes
             plt.clf()
+
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[i]
+            height = self.get_height(i, ds)
 
             # create height map grid
             z_grid = height
@@ -80,8 +95,8 @@ class Evaluator:
 
             # plot images and height map points
             for img_gs_ids, imgi in zip([(1, 2), (0, 1), (1, 0), (2, 1)], range(len(imgs))):
-                i, j = img_gs_ids
-                ax = plt.subplot(gs[i, j])
+                grid_i, grid_j = img_gs_ids
+                ax = plt.subplot(gs[grid_i, grid_j])
                 img = imgs[imgi]
                 img = denormalize_img(img)
                 # project height map points to image
@@ -108,8 +123,11 @@ class Evaluator:
             ax.set_ylabel('y [m]')
             ax.set_zlabel('z [m]')
 
-            plt.pause(1.)
-            plt.draw()
+            if save:
+                plt.savefig(f'{self}_hm_projection_{i}.png')
+            else:
+                plt.pause(dt)
+                plt.draw()
 
     def compute_losses(self, batch):
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
@@ -513,6 +531,7 @@ class EvaluatorSemSeg(Evaluator):
 def vis_data(data_paths):
     dphys_config_path = '../config/dphys_cfg.yaml'
     lss_config_path = '../config/lss_cfg.yaml'
+    modelf = '../config/tb_runs/lss_2024_02_27_09_17_36/train_lss.pt'
 
     for path in data_paths:
         assert os.path.isdir(path), 'Data path %s does not exist' % path
@@ -521,8 +540,8 @@ def vis_data(data_paths):
         data_aug_conf = lss_config['data_aug_conf']
         cfg = Config()
         cfg.from_yaml(dphys_config_path)
-        explore_data(path, grid_conf, data_aug_conf, cfg,
-                     sample_range='random', save=False, is_train=True, DataClass=MonoDEMDataVis)
+        explore_data(path, grid_conf, data_aug_conf, cfg, modelf=modelf,
+                     sample_range='all', save=True, is_train=False, DataClass=TravDataVis)
 
 
 def evaluate(data_paths):
@@ -530,8 +549,8 @@ def evaluate(data_paths):
     lss_config_path = '../config/lss_cfg.yaml'
 
     # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT, EvaluatorSemSeg]
-    evals = [Evaluator, EvaluatorLSS, EvaluatorKKT]
-    # evals = [EvaluatorLSS]
+    # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT]
+    evals = [EvaluatorLSS]
 
     with torch.no_grad():
         for Eval in evals:
