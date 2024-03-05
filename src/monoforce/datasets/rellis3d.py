@@ -23,6 +23,9 @@ from scipy.spatial import cKDTree
 __all__ = [
     'seq_names',
     'Rellis3D',
+    'Rellis3DTrav',
+    'Rellis3DTravVis',
+    'rellis3d_seq_paths',
 ]
 
 seq_names = [
@@ -31,6 +34,10 @@ seq_names = [
     '00002',
     '00003',
     '00004',
+]
+
+rellis3d_seq_paths = [
+    os.path.join(data_dir, 'Rellis3D', seq_name) for seq_name in seq_names
 ]
 
 
@@ -216,7 +223,7 @@ class Rellis3D(torch.utils.data.Dataset):
             return self.get_sample(id)
 
         ds = copy(self)
-        if isinstance(item, (list, tuple)):
+        if isinstance(item, (list, tuple, np.ndarray)):
             ds.ids = [self.ids[i] for i in item]
         else:
             assert isinstance(item, (slice, range))
@@ -260,9 +267,9 @@ class Rellis3DTrav(Rellis3D):
         self.is_train = is_train
 
     def get_traj(self, id, n_frames=100):
-        i = self.ids.index(id)
-        i0 = np.clip(i, 0, len(self.ids) - n_frames)
+        i0 = self.ids.index(id)
         i1 = i0 + n_frames
+        i1 = np.clip(i1, 0, len(self.ids))
         poses = copy(self.poses[i0:i1])
         # transform to robot frame
         poses = np.linalg.inv(poses[0]) @ poses
@@ -350,6 +357,19 @@ class Rellis3DTrav(Rellis3D):
         heightmap = np.stack([height, mask])
         return heightmap
 
+    def crop_front_height_map(self, hm):
+        # square defining observation area on the ground
+        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.cfg.d_max / 2
+        offset = np.asarray([0, self.cfg.d_max / 2, 0])
+        square = square + offset
+        h, w = hm.shape[1], hm.shape[2]
+        square_grid = square[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
+
+        # crop height map to observation area defined by square grid
+        hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
+                         int(square_grid[0, 0]):int(square_grid[2, 0])]
+        return hm_front
+
     def sample_augmentation(self):
         H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
         fH, fW = self.data_aug_conf['final_dim']
@@ -423,6 +443,26 @@ class Rellis3DTrav(Rellis3D):
         img, rot, tran, K, post_rot, post_tran = inputs
         hm_lidar = torch.as_tensor(self.get_lidar_height_map(id))
         hm_traj = torch.as_tensor(self.get_traj_height_map(id))
+        # crop height map to observation area defined by square grid
+        hm_lidar = self.crop_front_height_map(hm_lidar)
+        hm_traj = self.crop_front_height_map(hm_traj)
+        map_pose = torch.as_tensor(self.get_cloud_pose(id))
+        return img, rot, tran, K, post_rot, post_tran, hm_lidar, hm_traj, map_pose
+
+
+class Rellis3DTravVis(Rellis3DTrav):
+    def __init__(self, seq, data_aug_conf, path=None, cfg=Config(), is_train=False):
+        super().__init__(seq, data_aug_conf, path, cfg, is_train)
+
+    def get_sample(self, id):
+        inputs = self.get_image_data(id, normalize=False)
+        inputs = [i.unsqueeze(0) for i in inputs]
+        img, rot, tran, K, post_rot, post_tran = inputs
+        hm_lidar = torch.as_tensor(self.get_lidar_height_map(id))
+        hm_traj = torch.as_tensor(self.get_traj_height_map(id))
+        # crop height map to observation area defined by square grid
+        hm_lidar = self.crop_front_height_map(hm_lidar)
+        hm_traj = self.crop_front_height_map(hm_traj)
         lidar_pts = torch.as_tensor(position(self.get_cloud(id))).T
         map_pose = torch.as_tensor(self.get_cloud_pose(id))
         return img, rot, tran, K, post_rot, post_tran, hm_lidar, hm_traj, map_pose, lidar_pts
@@ -503,7 +543,7 @@ def heightmap_demo():
     assert os.path.isfile(p), 'Config file %s does not exist' % p
     cfg.from_yaml(p)
 
-    p = os.path.join(data_dir, '../config/lss_cfg.yaml')
+    p = os.path.join(data_dir, '../config/lss_cfg_mono.yaml')
     lss_cfg = read_yaml(p)
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
@@ -517,12 +557,12 @@ def heightmap_demo():
         print(s.shape)
 
     ds_path = os.path.join(data_dir, 'Rellis3D', seq_name)
-    explore_data(ds_path, grid_conf, data_aug_conf, cfg, is_train=False, DataClass=Rellis3DTrav)
+    explore_data(ds_path, grid_conf, data_aug_conf, cfg, is_train=False, DataClass=Rellis3DTravVis)
 
 
 def main():
     # global_map_demo()
-    # traversed_cloud_demo()
+    traversed_cloud_demo()
     heightmap_demo()
 
 

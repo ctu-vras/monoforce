@@ -10,10 +10,11 @@ from monoforce.cloudproc import hm_to_cloud
 from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import MonoDEMData, explore_data, MonoDEMDataVis
+from monoforce.datasets import MonoDEMData, explore_data, MonoDEMDataVis
+from monoforce.datasets import Rellis3DTrav, Rellis3DTravVis
+from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths, rellis3d_seq_paths
 from monoforce.config import Config
 from monoforce.utils import read_yaml, write_to_yaml
-from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -39,6 +40,9 @@ def arg_parser():
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--map_consistency', type=str2bool, default=False, help='Enable map consistency loss')
+    # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
+    # parser.add_argument('--data_paths', type=str, nargs='+', default=rellis3d_seq_paths, help='Paths to training datasets')
+    parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     parser.add_argument('--data_paths', type=str, nargs='+', default=robingas_husky_seq_paths, help='Paths to training datasets')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--log_dir', type=str,
@@ -77,6 +81,7 @@ class Trainer:
     """
     def __init__(self,
                  data_paths,
+                 dataset,
                  cfg,
                  data_aug_conf,
                  grid_conf,
@@ -98,6 +103,7 @@ class Trainer:
             self.data_aug_conf = data_aug_conf
             self.grid_conf = grid_conf
             self.data_paths = data_paths
+            self.dataset = dataset
             self.nepochs = nepochs
             self.map_consistency = map_consistency
             self.log_dir = log_dir
@@ -142,12 +148,20 @@ class Trainer:
         for path in self.data_paths:
             assert os.path.exists(path)
             # print(f'Train dataset from path {path} size is {len(ds)}')
+            if self.dataset == 'rellis3d':
+                Data = Rellis3DTrav
+                DataVis = Rellis3DTravVis
+            elif self.dataset == 'robingas':
+                Data = MonoDEMData
+                DataVis = MonoDEMDataVis
+            else:
+                raise ValueError(f'Unknown dataset: {self.dataset}. Supported datasets are rellis3d and robingas.')
             if vis:
                 explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
-                             save=False, is_train=True, DataClass=MonoDEMDataVis)
+                             save=False, is_train=True, DataClass=DataVis)
 
-            train_ds = MonoDEMData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            val_ds = MonoDEMData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
             if debug:
                 print('Debug mode: using small datasets')
@@ -456,6 +470,7 @@ def main():
     print(args)
 
     trainer = Trainer(data_paths=args.data_paths,
+                      dataset=args.dataset,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,

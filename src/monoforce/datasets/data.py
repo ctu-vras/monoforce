@@ -39,11 +39,13 @@ __all__ = [
     'data_dir',
     'DEMPathData',
     'MonoDEMData',
+    'MonoDEMDataVis',
     'TravData',
     'TravDataVis',
     'robingas_husky_seq_paths',
     'sim_seq_paths',
     'oru_seq_paths',
+    'explore_data',
 ]
 
 IGNORE_LABEL = 255
