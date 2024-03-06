@@ -3,28 +3,23 @@
 import os
 import torch
 import numpy as np
-from torch.utils.data import ConcatDataset, DataLoader, Subset
+from torch.utils.data import ConcatDataset, DataLoader
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Pointclouds
 from monoforce.cloudproc import hm_to_cloud
 from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import TravData, explore_data, TravDataVis
+from monoforce.datasets import RobinGas, explore_data, RobinGasVis
+from monoforce.datasets import Rellis3D, Rellis3DVis
+from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths
 from monoforce.config import Config
 from monoforce.utils import read_yaml, write_to_yaml
-from monoforce.datasets import robingas_husky_seq_paths, sim_seq_paths, oru_seq_paths
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import matplotlib.pyplot as plt
 import argparse
-
-torch.set_default_dtype(torch.float32)
-
-
-torch.random.manual_seed(0)
-np.random.seed(0)
 
 
 def str2bool(v):
@@ -39,16 +34,14 @@ def arg_parser():
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--map_consistency', type=str2bool, default=False, help='Enable map consistency loss')
-    parser.add_argument('--data_paths', type=str, nargs='+', default=robingas_husky_seq_paths, help='Paths to training datasets')
+    parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
+    # parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
-    parser.add_argument('--log_dir', type=str,
-                        default=os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")),
-                        help='Path to log directory')
-    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
+    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--lidar_hm_weight', type=float, default=1.0, help='Weight for lidar heightmap loss')
-    parser.add_argument('--traj_hm_weight', type=float, default=10.0, help='Weight for trajectory heightmap loss')
-    parser.add_argument('--hdiff_weight', type=float, default=0.0001, help='Weight for height difference loss')
+    parser.add_argument('--traj_hm_weight', type=float, default=100.0, help='Weight for trajectory heightmap loss')
+    parser.add_argument('--hdiff_weight', type=float, default=0.01, help='Weight for height difference loss')
 
     return parser.parse_args()
 
@@ -57,7 +50,7 @@ class Trainer:
     Trainer for LSS terrain encoder model
 
     Args:
-    data_paths: list of str, paths to training datasets
+    dataset: str, dataset name
     cfg: Config, configuration object
     data_aug_conf: dict, data augmentation configuration
     grid_conf: dict, grid configuration
@@ -76,7 +69,7 @@ class Trainer:
     hdiff_weight: float, weight for height difference loss
     """
     def __init__(self,
-                 data_paths,
+                 dataset,
                  cfg,
                  data_aug_conf,
                  grid_conf,
@@ -87,7 +80,6 @@ class Trainer:
                  nepochs=1000,
                  map_consistency=True,
                  pretrained_model_path=None,
-                 log_dir='./runs',
                  debug=False,
                  vis=False,
                  lidar_hm_weight=1.0,
@@ -97,10 +89,11 @@ class Trainer:
             self.cfg = cfg
             self.data_aug_conf = data_aug_conf
             self.grid_conf = grid_conf
-            self.data_paths = data_paths
+            self.dataset = dataset
             self.nepochs = nepochs
             self.map_consistency = map_consistency
-            self.log_dir = log_dir
+            self.log_dir = os.path.join('../config/tb_runs',
+                                        f'lss_{dataset}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
             self.train_loaders, self.val_loaders = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
 
@@ -108,13 +101,12 @@ class Trainer:
 
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
             self.loss_fn = torch.nn.MSELoss(reduction='none')
-            # self.loss_fn = RMSE(reduction='none')
 
-            self.writer = SummaryWriter(log_dir=log_dir)
+            self.writer = SummaryWriter(log_dir=self.log_dir)
             # save configs to log dir
-            write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'dphys_cfg.yaml'))
+            write_to_yaml(cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
             lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
-            write_to_yaml(lss_cfg, os.path.join(log_dir, 'lss_cfg.yaml'))
+            write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
             self.min_loss = np.inf
             self.min_train_loss = np.inf
@@ -138,16 +130,26 @@ class Trainer:
         # create dataset for LSS model training
         train_datasets = []
         val_datasets = []
-        print('Data paths:', self.data_paths)
-        for path in self.data_paths:
+        if self.dataset == 'rellis3d':
+            Data = Rellis3D
+            DataVis = Rellis3DVis
+            data_paths = rellis3d_seq_paths
+        elif self.dataset == 'robingas':
+            Data = RobinGas
+            DataVis = RobinGasVis
+            data_paths = robingas_husky_seq_paths
+        else:
+            raise ValueError(f'Unknown dataset: {self.dataset}. Supported datasets are rellis3d and robingas.')
+        print('Data paths:', data_paths)
+        for path in data_paths:
             assert os.path.exists(path)
             # print(f'Train dataset from path {path} size is {len(ds)}')
             if vis:
                 explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
-                             save=False, is_train=True, DataClass=TravDataVis)
+                             save=False, is_train=True, DataClass=DataVis)
 
-            train_ds = TravData(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            val_ds = TravData(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
 
             if debug:
                 print('Debug mode: using small datasets')
@@ -455,13 +457,13 @@ def main():
     args = arg_parser()
     print(args)
 
-    trainer = Trainer(data_paths=args.data_paths,
+    trainer = Trainer(dataset=args.dataset,
                       cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,
                       map_consistency=args.map_consistency,
-                      log_dir=args.log_dir, debug=args.debug, vis=args.vis,
+                      debug=args.debug, vis=args.vis,
                       lidar_hm_weight=args.lidar_hm_weight, traj_hm_weight=args.traj_hm_weight,
                       hdiff_weight=args.hdiff_weight)
     trainer.train()

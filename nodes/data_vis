@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import TravDataVis, robingas_husky_seq_paths
+from monoforce.datasets import RobinGasVis, robingas_husky_seq_paths
 from monoforce.config import Config
 from monoforce.ros import height_map_to_gridmap_msg, to_path
 from monoforce.models.lss.tools import denormalize_img
@@ -41,7 +41,7 @@ def main():
     # Load traversability data
     path = robingas_husky_seq_paths[rospy.get_param('~seq_i', 0)]
     assert os.path.exists(path)
-    ds = TravDataVis(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
+    ds = RobinGasVis(path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
     rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), path))
 
     # Load model

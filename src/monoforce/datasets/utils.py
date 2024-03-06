@@ -21,7 +21,7 @@ __all__ = [
 def get_robingas_data(cfg: Config(),
                       path='/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
                       i=None):
-    from monoforce.datasets.data import DEMPathData
+    from monoforce.datasets.robingas import DEMPathData
     # Load traversability data
     assert os.path.exists(path)
     ds = DEMPathData(path, cfg=cfg)
