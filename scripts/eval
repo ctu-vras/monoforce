@@ -11,7 +11,7 @@ from torch.utils.data import ConcatDataset
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.data import explore_data, TravDataVis, MonoDEMDataVis, TravData
+from monoforce.datasets.robingas import explore_data, RobinGasVis, RobinGas
 from monoforce.config import Config
 from monoforce.cloudproc import estimate_heightmap, hm_to_cloud
 from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths
@@ -71,7 +71,7 @@ class Evaluator:
         if seq_path is None:
             seq_path = self.data_paths[0]
 
-        ds = TravDataVis(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+        ds = RobinGasVis(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
         if sample_range is None:
             sample_range = range(len(ds))
 
@@ -145,7 +145,7 @@ class Evaluator:
             print(f'Evaluation on {os.path.basename(path)}...')
             # explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, self.model_path, save=False)
 
-            val_ds = TravDataVis(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            val_ds = RobinGasVis(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
             # validation epoch
@@ -168,13 +168,13 @@ class Evaluator:
 
         return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
-    def get_height(self, i: int, ds: TravDataVis):
+    def get_height(self, i: int, ds: RobinGasVis):
         sample = ds[i]
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
         height = hm_lidar[0]
         return height
     
-    def get_states(self, i: int, ds: TravDataVis):
+    def get_states(self, i: int, ds: RobinGasVis):
         traj = ds.get_traj(i)
         poses = traj['poses']
         # transform poses to the same coordinate frame as the height map
@@ -213,7 +213,7 @@ class Evaluator:
         return states
 
 
-    def get_data(self, i: int, ds: TravDataVis):
+    def get_data(self, i: int, ds: RobinGasVis):
         """
         Get ground truth data sample from the dataset
 
@@ -223,7 +223,7 @@ class Evaluator:
         :return: states, height
         """
         assert i < len(ds), 'Index out of range'
-        assert isinstance(ds, TravDataVis), 'Invalid dataset type'
+        assert isinstance(ds, RobinGasVis), 'Invalid dataset type'
 
         # get states
         states = self.get_states(i, ds)
@@ -357,7 +357,7 @@ class Evaluator:
     def evaluate(self, vis=False):
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
-            ds = TravDataVis(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            ds = RobinGasVis(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
             for i in tqdm(range(len(ds))):
                 states_true, height = self.get_data(i, ds)
                 trans_diff, rot_diff = self.eval_diff_physics(height, states_true, vis=vis)
@@ -405,7 +405,7 @@ class EvaluatorLSS(Evaluator):
         model.to(self.cfg.device)
         return model
 
-    def get_height(self, i: int, ds: TravDataVis):
+    def get_height(self, i: int, ds: RobinGasVis):
         sample = ds[i]
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -447,7 +447,7 @@ class EvaluatorKKT(Evaluator):
         model.to(self.cfg.device)
         return model
 
-    def get_height(self, i: int, ds: TravDataVis):
+    def get_height(self, i: int, ds: RobinGasVis):
         sample = ds[i]
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
         input = torch.as_tensor(hm_lidar[None], device=self.cfg.device)
@@ -504,7 +504,7 @@ class EvaluatorSemSeg(Evaluator):
         height = torch.as_tensor(hm['z'])
         return height
 
-    def get_height(self, i: int, ds: TravDataVis):
+    def get_height(self, i: int, ds: RobinGasVis):
         points = position(ds.get_cloud(i))
         height = self.points_to_height(points)
         return height
@@ -541,7 +541,7 @@ def vis_data(data_paths):
         cfg = Config()
         cfg.from_yaml(dphys_config_path)
         explore_data(path, grid_conf, data_aug_conf, cfg, modelf=modelf,
-                     sample_range='all', save=True, is_train=False, DataClass=TravDataVis)
+                     sample_range='random', save=False, is_train=False, DataClass=RobinGasVis)
 
 
 def evaluate(data_paths):
@@ -562,7 +562,7 @@ def evaluate(data_paths):
             # evaluator.hm_to_imgs_projection()
             evaluator.quantitative_evaluation([robingas_husky_seq_paths[0],
                                                robingas_husky_seq_paths[4]],
-                                              sample_ranges=[[446], [10, 118]], save=True)
+                                              sample_ranges=[[446], [10, 118]], save=False)
             # evaluator.evaluate(vis=False)
 
 
@@ -571,7 +571,7 @@ def main():
     data_paths = robingas_husky_seq_paths
     # data_paths = rellis3d_seq_paths
 
-    # vis_data(data_paths)
+    vis_data(data_paths)
     evaluate(data_paths)
 
 

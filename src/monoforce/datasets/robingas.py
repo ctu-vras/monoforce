@@ -1,3 +1,4 @@
+import copy
 import os
 import matplotlib as mpl
 import numpy as np
@@ -38,10 +39,10 @@ except:
 __all__ = [
     'data_dir',
     'DEMPathData',
-    'MonoDEMData',
-    'MonoDEMDataVis',
-    'TravData',
-    'TravDataVis',
+    'RobinGas',
+    'RobinGasVis',
+    'RobinGas',
+    'RobinGasVis',
     'robingas_husky_seq_paths',
     'sim_seq_paths',
     'oru_seq_paths',
@@ -256,11 +257,6 @@ class DEMPathData(Dataset):
         trajectory_footprint = np.concatenate(trajectory_footprint, axis=0)
         return trajectory_footprint
 
-    def get_traj_footprint_terrain(self, i, robot_size=(0.7, 1.0)):
-        traj_points = self.estimated_footprint_traj_points(i, robot_size=robot_size)
-        traj_hm = self.estimate_heightmap(traj_points)['z']
-        return traj_hm
-
     def global_cloud(self, vis=False):
         path = os.path.join(self.path, 'global_map.pcd')
         if os.path.exists(path):
@@ -314,35 +310,43 @@ class DEMPathData(Dataset):
                                     hm_interp_method=self.cfg.hm_interp_method, **kwargs)
         return height
 
-    def get_lidar_height_map(self, i, cached=True, **kwargs):
-        # height map from point cloud (!!! assumes points are in robot frame)
-        interpolation = self.cfg.hm_interp_method if self.cfg.hm_interp_method is not None else 'no_interp'
-        dir_path = os.path.join(self.path, 'terrain', 'lidar', 'mono', interpolation)
-        # if height map was estimated before - load it
-        if cached and os.path.exists(os.path.join(dir_path, '%s.npy' % self.ids[i])):
-            # print('Loading height map from file...')
-            xyz_mask = np.load(os.path.join(dir_path, '%s.npy' % self.ids[i]))
-        # otherwise - estimate it
+    def get_lidar_height_map(self, i, cached=True, dir_name=None, **kwargs):
+        """
+        Get height map from lidar point cloud.
+        :param i: index of the sample
+        :param cached: if True, load height map from file if it exists, otherwise estimate it
+        :param dir_name: directory to save/load height map
+        :param kwargs: additional arguments for height map estimation
+        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
+        """
+        if dir_name is None:
+            dir_name = os.path.join(self.path, 'terrain', 'lidar')
+        file_path = os.path.join(dir_name, f'{self.ids[i]}')
+        if cached and os.path.exists(file_path):
+            lidar_hm = np.load(file_path, allow_pickle=True).item()
         else:
-            # print('Estimating and saving height map...')
             cloud = self.get_cloud(i)
             points = position(cloud)
-            xyz_mask = self.estimate_heightmap(points, **kwargs)
-            # save height map as numpy array
-            result = np.zeros((xyz_mask['z'].shape[0], xyz_mask['z'].shape[1]),
-                              dtype=[(key, np.float32) for key in xyz_mask.keys()])
-            for key in xyz_mask.keys():
-                result[key] = xyz_mask[key]
-            os.makedirs(dir_path, exist_ok=True)
-            np.save(os.path.join(dir_path, '%s.npy' % self.ids[i]), result)
-
-        heightmap = torch.stack([torch.as_tensor(xyz_mask[i]) for i in ['z', 'mask']])
-        heightmap = torch.as_tensor(heightmap, dtype=torch.float32)
-
+            lidar_hm = self.estimate_heightmap(points, **kwargs)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            np.save(file_path, lidar_hm)
+        height = torch.from_numpy(lidar_hm['z'])
+        mask = torch.from_numpy(lidar_hm['mask'])
+        heightmap = torch.stack([height, mask])
         return heightmap
 
-    def get_traj_height_map(self, i, method='footprint', cached=True):
+    def get_traj_height_map(self, i, method='footprint', cached=True, dir_name=None):
+        """
+        Get height map from trajectory points.
+        :param i: index of the sample
+        :param method: method to estimate height map from trajectory points
+        :param cached: if True, load height map from file if it exists, otherwise estimate it
+        :param dir_name: directory to save/load height map
+        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
+        """
         assert method in ['dphysics', 'footprint']
+        if dir_name is None:
+            dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
         if method == 'dphysics':
             height = self.get_traj_dphyics_terrain(i)
             # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
@@ -351,7 +355,7 @@ class DEMPathData(Dataset):
             h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
             # select only the h x w area from the center of the height map
             height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
-                     int(W // 2 - w // 2):int(W // 2 + w // 2)]
+                            int(W // 2 - w // 2):int(W // 2 + w // 2)]
 
             # poses in grid coordinates
             poses = self.get_traj(i)['poses']
@@ -368,24 +372,22 @@ class DEMPathData(Dataset):
             mask = cv2.dilate(mask, kernel, iterations=2)
         else:
             assert method == 'footprint'
-            file_path = os.path.join(self.path, 'terrain', 'traj', 'mono', 'footprint', f'{self.ids[i]}.npy')
+            file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
             if cached and os.path.exists(file_path):
                 traj_hm = np.load(file_path, allow_pickle=True).item()
             else:
                 traj_points = self.estimated_footprint_traj_points(i)
                 traj_hm = self.estimate_heightmap(traj_points, robot_radius=None)
-                # save height map as numpy array
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 np.save(file_path, traj_hm)
             height = traj_hm['z']
             mask = traj_hm['mask']
-
         height = torch.from_numpy(height)
         mask = torch.from_numpy(mask)
         heightmap = torch.stack([height, mask])
         return heightmap
 
-    def __getitem__(self, i, visualize=False):
+    def get_sample(self, i, visualize=False):
         cloud = self.get_cloud(i)
         if os.path.exists(self.cloud_color_path):
             color = self.get_cloud_color(i)
@@ -402,6 +404,21 @@ class DEMPathData(Dataset):
 
         return cloud, traj, height
 
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = copy.deepcopy(self)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
+
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
@@ -410,46 +427,56 @@ class DEMPathData(Dataset):
         return len(self.ids)
 
 
-class MonoDEMData(DEMPathData):
+class RobinGas(DEMPathData):
     """
-    A dataset for monocular traversability map estimation.
+    A dataset for traversability estimation from camera and lidar data.
 
     A sample of the dataset contains:
-    - image from a front camera (3 x H x W)
-    - traversed height map from a front camera (1 x H x W)
-    - lidar height map from a front camera (1 x H x W)
-    - weights for traversed height map from a front camera (1 x H x W)
-    - weights for lidar height map from a front camera (1 x H x W)
+    - image (3 x H x W)
+    - rotation matrix (3 x 3)
+    - translation vector (3)
+    - intrinsic matrix (3 x 3)
+    - post rotation matrix (3 x 3)
+    - post translation vector (3)
+    - lidar height map (2 x H x W)
+    - trajectory height map (2 x H x W)
+    - map pose (4 x 4)
     """
 
     def __init__(self,
                  path,
                  data_aug_conf,
                  is_train=False,
+                 only_front_hm=False,
                  cfg=Config()):
-        super(MonoDEMData, self).__init__(path, cfg)
-        self.img_size = cfg.img_size
+        super(RobinGas, self).__init__(path, cfg)
         self.is_train = is_train
-
+        self.only_front_hm = only_front_hm
         # get camera names
-        self.cameras = self.get_camera_names()
+        self.cameras = self.get_camera_names()[:1] if only_front_hm else self.get_camera_names()
 
         # initialize image augmentations
         self.data_aug_conf = data_aug_conf
-        self.img_augs = A.Compose([
-            A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
-            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-            A.RandomGamma(gamma_limit=(80, 120), p=0.5),
-            A.Blur(blur_limit=7, p=0.5),
-            A.GaussNoise(var_limit=(10, 50), p=0.5),
-            A.MotionBlur(blur_limit=7, p=0.5),
-            A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200),
-                         p=0.5),
-            # A.RandomShadow(num_shadows_lower=1, num_shadows_upper=2, shadow_dimension=5, shadow_roi=(0, 0.5, 1, 1), p=0.5),
-            A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
-            # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
-            A.RandomToneCurve(scale=0.1, p=0.5),
-        ]) if self.is_train else None
+        self.img_augs = self.get_img_augs()
+
+    def get_img_augs(self):
+        if self.is_train:
+            return A.Compose([
+                    A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
+                    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+                    A.RandomGamma(gamma_limit=(80, 120), p=0.5),
+                    A.Blur(blur_limit=7, p=0.5),
+                    A.GaussNoise(var_limit=(10, 50), p=0.5),
+                    A.MotionBlur(blur_limit=7, p=0.5),
+                    A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200),
+                                 p=0.5),
+                    # A.RandomShadow(num_shadows_lower=1, num_shadows_upper=2, shadow_dimension=5, shadow_roi=(0, 0.5, 1, 1), p=0.5),
+                    A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
+                    # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
+                    A.RandomToneCurve(scale=0.1, p=0.5),
+            ])
+        else:
+            return None
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -497,153 +524,7 @@ class MonoDEMData(DEMPathData):
             flip = False
             rotate = 0
         return resize, resize_dims, crop, flip, rotate
-
-    def get_image_data(self, i, cam=None, normalize=True):
-        if cam is None:
-            cam = self.cameras[0]
-
-        img, K = self.get_image(i, cam, undistort=False)
-        if self.is_train:
-            img = self.img_augs(image=img)['image']
-
-        post_rot = torch.eye(2)
-        post_tran = torch.zeros(2)
-
-        # augmentation (resize, crop, horizontal flip, rotate)
-        resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
-        img, post_rot2, post_tran2 = img_transform(Image.fromarray(img), post_rot, post_tran,
-                                                   resize=resize,
-                                                   resize_dims=resize_dims,
-                                                   crop=crop,
-                                                   flip=flip,
-                                                   rotate=rotate)
-
-        # for convenience, make augmentation matrices 3x3
-        post_tran = torch.zeros(3)
-        post_rot = torch.eye(3)
-        post_tran[:2] = post_tran2
-        post_rot[:2, :2] = post_rot2
-
-        # rgb and intrinsics
-        if normalize:
-            img = normalize_img(img)
-        else:
-            img = torchvision.transforms.ToTensor()(img)
-        K = torch.as_tensor(K)
-
-        # extrinsics
-        T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
-        T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
-        rot = torch.as_tensor(T_robot_cam[:3, :3])
-        tran = torch.as_tensor(T_robot_cam[:3, 3])
-
-        outputs = [img, rot, tran, K, post_rot, post_tran]
-        outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
-
-        return outputs
-
-    def crop_front_height_map(self, hm):
-        # square defining observation area on the ground
-        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.cfg.d_max / 2
-        offset = np.asarray([0, self.cfg.d_max / 2, 0])
-        square = square + offset
-        h, w = hm.shape[1], hm.shape[2]
-        square_grid = square[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
-
-        # crop height map to observation area defined by square grid
-        hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
-                         int(square_grid[0, 0]):int(square_grid[2, 0])]
-        return hm_front
-
-    def get_sample(self, i):
-        # get image data
-        inputs = self.get_image_data(i)
-        inputs = [i.unsqueeze(0) for i in inputs]
-        img, rot, tran, intrin, post_rot, post_tran = inputs
-        # lidar height map
-        hm_lidar = self.get_lidar_height_map(i, robot_radius=1.0)
-        # trajectory height map
-        hm_traj = self.get_traj_height_map(i, method='footprint')
-        # crop height map to observation area defined by square grid
-        hm_lidar_cam = self.crop_front_height_map(hm_lidar)
-        hm_traj_cam = self.crop_front_height_map(hm_traj)
-        map_pose = torch.as_tensor(self.get_pose(i))
-        return img, rot, tran, intrin, post_rot, post_tran, hm_lidar_cam, hm_traj_cam, map_pose
-
-    def __getitem__(self, i):
-        if isinstance(i, (int, np.int64)):
-            sample = self.get_sample(i)
-            return sample
-
-        ds = MonoDEMData(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
-        if isinstance(i, (list, tuple, np.ndarray)):
-            ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
-        else:
-            assert isinstance(i, (slice, range))
-            ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
-        return ds
-
-
-class MonoDEMDataVis(MonoDEMData):
-    def __init__(self,
-                 path,
-                 data_aug_conf,
-                 is_train=False,
-                 cfg=Config()
-                 ):
-        super(MonoDEMDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
-
-    def get_sample(self, i):
-        # get image data
-        inputs = self.get_image_data(i)
-        inputs = [i.unsqueeze(0) for i in inputs]
-        img, rot, tran, intrin, post_rot, post_tran = inputs
-        # lidar height map
-        hm_lidar = self.get_lidar_height_map(i,robot_radius=1.0)
-        # trajectory height map
-        hm_traj = self.get_traj_height_map(i, method='footprint')
-        # crop height map to observation area defined by square grid
-        hm_lidar_cam = self.crop_front_height_map(hm_lidar)
-        hm_traj_cam = self.crop_front_height_map(hm_traj)
-        map_pose = torch.as_tensor(self.get_pose(i))
-        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        sample = (img, rot, tran, intrin, post_rot, post_tran, hm_lidar_cam, hm_traj_cam, map_pose, lidar_pts)
-        return sample
-
-    def __getitem__(self, i):
-        if isinstance(i, (int, np.int64)):
-            sample = self.get_sample(i)
-            return sample
-
-        ds = MonoDEMDataVis(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
-        if isinstance(i, (list, tuple, np.ndarray)):
-            ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
-        else:
-            assert isinstance(i, (slice, range))
-            ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
-        return ds
-
-
-class TravData(MonoDEMData):
-    def __init__(self,
-                 path,
-                 data_aug_conf,
-                 is_train=True,
-                 cfg=Config()
-                 ):
-        super(TravData, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
-        self.poses_at_camera_stamps_path = {cam: os.path.join(self.path, 'poses', f'robot_poses_at_{cam}_timestamps.csv') for cam in self.cameras}
-
-    def get_poses_at_camera_stamps(self, camera):
-        poses = np.loadtxt(self.poses_at_camera_stamps_path[camera], delimiter=',', skiprows=1)
-        stamps, poses = poses[:, 0], poses[:, 1:13]
-        poses = np.asarray([self.pose2mat(pose) for pose in poses], dtype=np.float32)
-        return poses
-
+    
     def get_images_data(self, i, normalize=True):
         imgs = []
         rots = []
@@ -653,7 +534,40 @@ class TravData(MonoDEMData):
         intrins = []
 
         for cam in self.cameras:
-            img, rot, tran, K, post_rot, post_tran = self.get_image_data(i, cam, normalize=normalize)
+            img, K = self.get_image(i, cam, undistort=False)
+            if self.is_train:
+                img = self.img_augs(image=img)['image']
+
+            post_rot = torch.eye(2)
+            post_tran = torch.zeros(2)
+
+            # augmentation (resize, crop, horizontal flip, rotate)
+            resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
+            img, post_rot2, post_tran2 = img_transform(Image.fromarray(img), post_rot, post_tran,
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate)
+
+            # for convenience, make augmentation matrices 3x3
+            post_tran = torch.zeros(3)
+            post_rot = torch.eye(3)
+            post_tran[:2] = post_tran2
+            post_rot[:2, :2] = post_rot2
+
+            # rgb and intrinsics
+            if normalize:
+                img = normalize_img(img)
+            else:
+                img = torchvision.transforms.ToTensor()(img)
+            K = torch.as_tensor(K)
+
+            # extrinsics
+            T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+            rot = torch.as_tensor(T_robot_cam[:3, :3])
+            tran = torch.as_tensor(T_robot_cam[:3, 3])
 
             imgs.append(img)
             rots.append(rot)
@@ -668,74 +582,63 @@ class TravData(MonoDEMData):
 
         return outputs
 
+    def crop_front_height_map(self, hm):
+        # square defining observation area on the ground
+        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.cfg.d_max / 2
+        offset = np.asarray([0, self.cfg.d_max / 2, 0])
+        square = square + offset
+        h, w = hm.shape[1], hm.shape[2]
+        square_grid = square[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
+        # crop height map to observation area defined by square grid
+        hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
+                         int(square_grid[0, 0]):int(square_grid[2, 0])]
+        return hm_front
+
     def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_lidar = self.get_lidar_height_map(i)
-        hm_traj = self.get_traj_height_map(i)
+        img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
+        hm_lidar = self.get_lidar_height_map(i, robot_radius=1.0)
+        hm_traj = self.get_traj_height_map(i, method='footprint')
+        if self.only_front_hm:
+            hm_lidar = self.crop_front_height_map(hm_lidar)
+            hm_traj = self.crop_front_height_map(hm_traj)
         map_pose = torch.as_tensor(self.get_pose(i))
-        sample = (imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose)
-        return sample
-
-    def __getitem__(self, i):
-        if isinstance(i, (int, np.int64)):
-            sample = self.get_sample(i)
-            return sample
-
-        ds = TravData(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
-        if isinstance(i, (list, tuple, np.ndarray)):
-            ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
-        else:
-            assert isinstance(i, (slice, range))
-            ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
-        return ds
+        return img, rot, tran, intrin, post_rot, post_tran, hm_lidar, hm_traj, map_pose
 
 
-class TravDataVis(TravData):
-    def __init__(self,
-                 path,
-                 data_aug_conf,
-                 is_train=True,
-                 cfg=Config()
-                 ):
-        super(TravDataVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+class RobinGasVis(RobinGas):
+    def __init__(self, path, data_aug_conf, is_train=True, cfg=Config()):
+        super(RobinGasVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_lidar = self.get_lidar_height_map(i)
-        hm_traj = self.get_traj_height_map(i)
+        height_lidar = self.get_lidar_height_map(i)
+        height_traj = self.get_traj_height_map(i)
+        if self.only_front_hm:
+            height_lidar = self.crop_front_height_map(height_lidar)
+            height_traj = self.crop_front_height_map(height_traj)
         map_pose = torch.as_tensor(self.get_pose(i))
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        sample = (imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts)
-        return sample
-
-    def __getitem__(self, i):
-        if isinstance(i, (int, np.int64)):
-            sample = self.get_sample(i)
-            return sample
-
-        ds = TravDataVis(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
-        if isinstance(i, (list, tuple, np.ndarray)):
-            ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
-        else:
-            assert isinstance(i, (slice, range))
-            ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
-        return ds
+        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
 
 
-class TravDataCamSynch(TravData):
+class RobinGasCamSynch(RobinGas):
     def __init__(self,
                  path,
                  data_aug_conf,
                  is_train=True,
                  cfg=Config(),
-                 camera_to_synchronize_to='camera_rear'
+                 camera_to_synchronize_to='camera_front'
                  ):
-        super(TravDataCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+        super(RobinGasCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
         self.camera_to_synchronize_to = camera_to_synchronize_to
+        self.poses_at_camera_stamps_path = {
+            cam: os.path.join(self.path, 'poses', f'robot_poses_at_{cam}_timestamps.csv') for cam in self.cameras}
+
+    def get_poses_at_camera_stamps(self, camera):
+        poses = np.loadtxt(self.poses_at_camera_stamps_path[camera], delimiter=',', skiprows=1)
+        stamps, poses = poses[:, 0], poses[:, 1:13]
+        poses = np.asarray([self.pose2mat(pose) for pose in poses], dtype=np.float32)
+        return poses
 
     def get_timestamps(self):
         path = os.path.join(self.path, 'timestamps.csv')
@@ -770,15 +673,15 @@ class TravDataCamSynch(TravData):
         return cloud_sampled
 
 
-class TravDataCamSynchVis(TravDataCamSynch):
+class RobinGasCamSynchVis(RobinGasCamSynch):
     def __init__(self,
                  path,
                  data_aug_conf,
                  is_train=True,
                  cfg=Config(),
-                 camera_to_synchronize_to='camera_rear'
+                 camera_to_synchronize_to='camera_front'
                  ):
-        super(TravDataCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg,
+        super(RobinGasCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg,
                                                   camera_to_synchronize_to=camera_to_synchronize_to)
 
     def get_sample(self, i):
@@ -787,24 +690,107 @@ class TravDataCamSynchVis(TravDataCamSynch):
         height_traj = self.get_traj_height_map(i)
         map_pose = torch.as_tensor(self.get_pose(i))
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        sample = (imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts)
-        return sample
+        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
 
-    def __getitem__(self, i):
-        if isinstance(i, (int, np.int64)):
-            sample = self.get_sample(i)
-            return sample
 
-        ds = TravDataCamSynchVis(self.path, self.data_aug_conf, is_train=self.is_train, cfg=self.cfg)
-        if isinstance(i, (list, tuple, np.ndarray)):
-            ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
-        else:
-            assert isinstance(i, (slice, range))
-            ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
-        return ds
+def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
+                 sample_range='random', save=False, is_train=False, DataClass=RobinGasVis):
+    assert os.path.exists(path)
 
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+    if modelf is not None:
+        model.load_state_dict(torch.load(modelf))
+        print('Loaded LSS model from', modelf)
+        model.eval()
+
+    ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
+
+    H, W = data_aug_conf['H'], data_aug_conf['W']
+    cams = data_aug_conf['cams']
+    rat = H / W
+    val = 10.1
+
+    if sample_range == 'random':
+        sample_range = [np.random.choice(range(len(ds)))]
+    elif sample_range == 'all':
+        sample_range = tqdm(range(len(ds)), total=len(ds))
+    else:
+        assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
+
+    for sample_i in sample_range:
+        fig = plt.figure(figsize=(val + val / 3 * 2 * rat * 3, val / 3 * 2 * rat))
+        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
+        sample = ds[sample_i]
+        sample = [s[np.newaxis] for s in sample]
+        # print('sample', sample_i, 'id', ds.ids[sample_i])
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
+        height_lidar, mask_lidar = hm_lidar[:, 0], hm_lidar[:, 1]
+        height_traj, mask_traj = hm_traj[:, 0], hm_traj[:, 1]
+        if modelf is not None:
+            with torch.no_grad():
+                # replace height maps with model output
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+                voxel_feats = model.get_voxels(*inputs)
+                height_lidar, height_diff = model.bevencode(voxel_feats)
+                height_traj = height_lidar - height_diff
+                # replace lidar cloud with model height map output
+                pts = hm_to_cloud(height_traj.squeeze(), cfg).T
+                pts = pts.unsqueeze(0)
+
+        img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+        for si in range(imgs.shape[0]):
+            plt.clf()
+            final_ax = plt.subplot(gs[:, 4:5])
+            for imgi, img in enumerate(imgs[si]):
+                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                mask = get_only_in_img_mask(ego_pts, H, W)
+                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+
+                ax = plt.subplot(gs[imgi // 2, imgi % 2])
+                showimg = denormalize_img(img)
+
+                plt.imshow(showimg)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
+                            s=1, alpha=0.5, cmap='jet', vmin=-1, vmax=1)
+                plt.axis('off')
+                # camera name as text on image
+                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
+                         horizontalalignment='center', verticalalignment='top',
+                         transform=ax.transAxes, fontsize=10)
+
+                plt.sca(final_ax)
+                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                         label=cams[imgi].replace('_', ' '))
+
+            plt.legend(loc='upper right')
+            final_ax.set_aspect('equal')
+            plt.xlim((-cfg.d_max, cfg.d_max))
+            plt.ylim((-cfg.d_max, cfg.d_max))
+
+            ax = plt.subplot(gs[:, 2:3])
+            plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
+            plt.colorbar()
+
+            ax = plt.subplot(gs[:, 3:4])
+            plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
+            plt.colorbar()
+
+            if save:
+                save_dir = os.path.join(path, 'visuals_pred' if modelf is not None else 'visuals')
+                os.makedirs(save_dir, exist_ok=True)
+                imname = f'{ds.ids[sample_i]}.jpg'
+                imname = os.path.join(save_dir, imname)
+                # print('saving', imname)
+                plt.savefig(imname)
+                plt.close(fig)
+            else:
+                plt.show()
 
 def heightmap_demo():
     from ..vis import show_cloud_plt
@@ -1049,106 +1035,6 @@ def global_cloud_demo():
     for path in robingas_husky_seq_paths:
         ds = DEMPathData(path=path)
         ds.global_cloud(vis=True)
-
-
-def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
-                 sample_range='random', save=False, is_train=False, DataClass=TravDataVis):
-    assert os.path.exists(path)
-
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    if modelf is not None:
-        model.load_state_dict(torch.load(modelf))
-        print('Loaded LSS model from', modelf)
-        model.eval()
-
-    ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
-
-    H, W = data_aug_conf['H'], data_aug_conf['W']
-    cams = data_aug_conf['cams']
-    rat = H / W
-    val = 10.1
-
-    if sample_range == 'random':
-        sample_range = [np.random.choice(range(len(ds)))]
-    elif sample_range == 'all':
-        sample_range = tqdm(range(len(ds)), total=len(ds))
-    else:
-        assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
-
-    for sample_i in sample_range:
-        fig = plt.figure(figsize=(val + val / 3 * 2 * rat * 3, val / 3 * 2 * rat))
-        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
-        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-
-        sample = ds[sample_i]
-        sample = [s[np.newaxis] for s in sample]
-        # print('sample', sample_i, 'id', ds.ids[sample_i])
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
-        height_lidar, mask_lidar = hm_lidar[:, 0], hm_lidar[:, 1]
-        height_traj, mask_traj = hm_traj[:, 0], hm_traj[:, 1]
-        if modelf is not None:
-            with torch.no_grad():
-                # replace height maps with model output
-                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                voxel_feats = model.get_voxels(*inputs)
-                height_lidar, height_diff = model.bevencode(voxel_feats)
-                height_traj = height_lidar - height_diff
-                # replace lidar cloud with model height map output
-                pts = hm_to_cloud(height_traj.squeeze(), cfg).T
-                pts = pts.unsqueeze(0)
-
-        img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
-
-        for si in range(imgs.shape[0]):
-            plt.clf()
-            final_ax = plt.subplot(gs[:, 4:5])
-            for imgi, img in enumerate(imgs[si]):
-                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                mask = get_only_in_img_mask(ego_pts, H, W)
-                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
-
-                ax = plt.subplot(gs[imgi // 2, imgi % 2])
-                showimg = denormalize_img(img)
-
-                plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
-                            s=1, alpha=0.5, cmap='jet', vmin=-1, vmax=1)
-                plt.axis('off')
-                # camera name as text on image
-                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
-                         horizontalalignment='center', verticalalignment='top',
-                         transform=ax.transAxes, fontsize=10)
-
-                plt.sca(final_ax)
-                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
-                         label=cams[imgi].replace('_', ' '))
-
-            plt.legend(loc='upper right')
-            final_ax.set_aspect('equal')
-            plt.xlim((-cfg.d_max, cfg.d_max))
-            plt.ylim((-cfg.d_max, cfg.d_max))
-
-            ax = plt.subplot(gs[:, 2:3])
-            plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
-            plt.colorbar()
-
-            ax = plt.subplot(gs[:, 3:4])
-            plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
-            plt.colorbar()
-
-            if save:
-                save_dir = os.path.join(path, 'visuals_pred' if modelf is not None else 'visuals')
-                os.makedirs(save_dir, exist_ok=True)
-                imname = f'{ds.ids[sample_i]}.jpg'
-                imname = os.path.join(save_dir, imname)
-                # print('saving', imname)
-                plt.savefig(imname)
-                plt.close(fig)
-            else:
-                plt.show()
 
 
 def trajecory_footprint_heightmap():
