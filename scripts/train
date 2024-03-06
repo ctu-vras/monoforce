@@ -37,14 +37,11 @@ def arg_parser():
     parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     # parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
-    parser.add_argument('--log_dir', type=str,
-                        default=os.path.join('../config/tb_runs', 'lss_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")),
-                        help='Path to log directory')
-    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
+    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--lidar_hm_weight', type=float, default=1.0, help='Weight for lidar heightmap loss')
-    parser.add_argument('--traj_hm_weight', type=float, default=10.0, help='Weight for trajectory heightmap loss')
-    parser.add_argument('--hdiff_weight', type=float, default=0.0001, help='Weight for height difference loss')
+    parser.add_argument('--traj_hm_weight', type=float, default=100.0, help='Weight for trajectory heightmap loss')
+    parser.add_argument('--hdiff_weight', type=float, default=0.01, help='Weight for height difference loss')
 
     return parser.parse_args()
 
@@ -83,7 +80,6 @@ class Trainer:
                  nepochs=1000,
                  map_consistency=True,
                  pretrained_model_path=None,
-                 log_dir='./runs',
                  debug=False,
                  vis=False,
                  lidar_hm_weight=1.0,
@@ -96,7 +92,8 @@ class Trainer:
             self.dataset = dataset
             self.nepochs = nepochs
             self.map_consistency = map_consistency
-            self.log_dir = log_dir
+            self.log_dir = os.path.join('../config/tb_runs',
+                                        f'lss_{dataset}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
             self.train_loaders, self.val_loaders = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
 
@@ -105,11 +102,11 @@ class Trainer:
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
             self.loss_fn = torch.nn.MSELoss(reduction='none')
 
-            self.writer = SummaryWriter(log_dir=log_dir)
+            self.writer = SummaryWriter(log_dir=self.log_dir)
             # save configs to log dir
-            write_to_yaml(cfg.__dict__, os.path.join(log_dir, 'dphys_cfg.yaml'))
+            write_to_yaml(cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
             lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
-            write_to_yaml(lss_cfg, os.path.join(log_dir, 'lss_cfg.yaml'))
+            write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
             self.min_loss = np.inf
             self.min_train_loss = np.inf
@@ -466,7 +463,7 @@ def main():
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,
                       map_consistency=args.map_consistency,
-                      log_dir=args.log_dir, debug=args.debug, vis=args.vis,
+                      debug=args.debug, vis=args.vis,
                       lidar_hm_weight=args.lidar_hm_weight, traj_hm_weight=args.traj_hm_weight,
                       hdiff_weight=args.hdiff_weight)
     trainer.train()
