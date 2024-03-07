@@ -5,7 +5,7 @@ from torch import optim
 import numpy as np
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
-from monoforce.utils import read_yaml
+from monoforce.utils import read_yaml, str2bool
 from monoforce.vis import setup_visualization, animate_trajectory, set_axes_equal
 from monoforce.datasets.utils import visualize_data
 from monoforce.datasets import RobinGas, robingas_husky_seq_paths
@@ -17,24 +17,21 @@ import os
 from copy import deepcopy
 from tqdm import tqdm
 from argparse import ArgumentParser
-
-
-def str2bool(v):
-    return v.lower() in ('1', 'yes', 'true', 't', 'y')
+from torch.utils.tensorboard import SummaryWriter
 
 
 def arg_parser():
     parser = ArgumentParser(epilog="""Path format uses following placeholders:
     """)
     parser.add_argument('--control-model', type=str, default='diffdrive')
-    parser.add_argument('--visualize', type=str2bool, default=True)
+    parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save-data', type=str2bool, default=True)
     parser.add_argument('--dataset-path', type=str, default=robingas_husky_seq_paths[-2])
     parser.add_argument('--vel-tracks', type=float, default=2.)
-    parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--n-train-iters', type=int, default=2)
+    parser.add_argument('--lr', type=float, default=0.02)
+    parser.add_argument('--n-train-iters', type=int, default=100)
     parser.add_argument('--convergence-std', type=float, default=0.001)
-    parser.add_argument('--convergence-n-samples', type=int, default=30)
+    parser.add_argument('--convergence-n-samples', type=int, default=20)
     parser.add_argument('--device', type=str, default='cpu')
     return parser
 
@@ -44,7 +41,7 @@ class Learner:
                  vis=False, save_data=False,
                  convergence_std=0.001, convergence_n_samples=30,
                  lr=0.01, n_train_iters=100,
-                 hm_var_weight=0.1):
+                 hm_var_weight=1.):
         self.data_path = data_path
         self.cfg = cfg
         self.data_aug_config = data_aug_config
@@ -55,6 +52,8 @@ class Learner:
         self.lr = lr
         self.n_train_iters = n_train_iters
         self.hm_var_weight = hm_var_weight
+        self.output_path = os.path.join(self.data_path, 'terrain', 'traj', 'dphysics')
+        self.tb_writer = SummaryWriter(log_dir=os.path.join(self.output_path, 'train_log'))
 
     def create_robot_terrain_interaction_system(self, height, states):
         system = RigidBodySoftTerrain(height=torch.zeros_like(height) + states[0][:, 2].min(),
@@ -103,7 +102,7 @@ class Learner:
             # optimize terrain properties to fit the trajectory
             system_opt = self.optimize_terrain(system, states_true=states_true, tt=tt, vis_cfg=vis_cfg)
             if self.save_data:
-                self.save_result(system_opt, ds.ids[data_i], self.cfg)
+                self.save_result(system_opt, id=ds.ids[data_i], cfg=self.cfg)
 
     def follow_trajectory(self, system, tt, states_true):
         state = system.state
@@ -190,15 +189,22 @@ class Learner:
         for i_n in tqdm(range(self.n_train_iters)):
             optimizer.zero_grad()
             states = self.follow_trajectory(system, tt, states_true)
-            loss = traj_dist(states, states_true, cfg=self.cfg)
+            loss_tran, loss_rot = traj_dist(states, states_true, cfg=self.cfg, return_trans_and_rot=True)
+            loss = loss_tran + loss_rot
             losses.append(loss.item())
-
             if self.hm_var_weight is not None:
-                loss += self.hm_var_weight * total_variation(system.height[None])
-
+                loss_reg = self.hm_var_weight * total_variation(system.height[None])
+                loss += loss_reg
+            else:
+                loss_reg = torch.tensor(np.nan)
             loss.backward()
             optimizer.step()
-            # print('Iter. %i, loss=%.3f' % (i_n, loss.item()))
+
+            # tensorboard logging
+            self.tb_writer.add_scalar('loss/trans', loss_tran.item(), i_n)
+            self.tb_writer.add_scalar('loss/rot', loss_rot.item(), i_n)
+            self.tb_writer.add_scalar('loss/total', loss.item(), i_n)
+            self.tb_writer.add_scalar('loss/reg', loss_reg.item(), i_n)
 
             if system_best is None or loss.item() < loss_min:
                 loss_min = loss.item()
@@ -210,11 +216,10 @@ class Learner:
                 print('Converged')
                 break
 
-            if i_n % 10 == 0:
-                if self.vis:
-                    system.update_trajectory(states=states)
-                    mlab.title("loss = {:.3f}".format(loss.item()), size=0.5)
-                    frame_n = animate_trajectory(system, vis_cfg, frame_n=frame_n)
+            if self.vis and i_n % 10 == 0:
+                system.update_trajectory(states=states)
+                mlab.title("loss = {:.3f}".format(loss.item()), size=0.5)
+                frame_n = animate_trajectory(system, vis_cfg, frame_n=frame_n)
 
         return system_best
 
@@ -236,18 +241,32 @@ class Learner:
         result['elasticity'] = elasticity
         result['damping'] = damping
         # save terrain properties array to file
-        output_path = os.path.join(self.data_path, 'terrain', 'traj', 'dphysics')
-        os.makedirs(output_path, exist_ok=True)
+        os.makedirs(self.output_path, exist_ok=True)
         output_name = '%s.npy' % id
-        print('Saving result to %s' % os.path.join(output_path, output_name))
-        np.save(os.path.join(output_path, output_name), result)
+        print('Saving result to %s' % os.path.join(self.output_path, output_name))
+        np.save(os.path.join(self.output_path, output_name), result)
 
-        # save figure
-        train_log_path = os.path.join(output_path, 'train_log')
-        os.makedirs(train_log_path, exist_ok=True)
+        # create a figure showing terrain properties
+        fig, ax = plt.subplots(1, 5, figsize=(15, 3))
+        ax[0].imshow(height, cmap='terrain')
+        ax[0].set_title('Height map')
+        ax[1].imshow(friction, cmap='terrain')
+        ax[1].set_title('Friction')
+        ax[2].imshow(elasticity, cmap='terrain')
+        ax[2].set_title('Elasticity')
+        ax[3].imshow(damping, cmap='terrain')
+        ax[3].set_title('Damping')
+        ax[4].imshow(height_init, cmap='terrain')
+        ax[4].set_title('Initial height map')
+        for a in ax:
+            a.axis('off')
+        plt.tight_layout()
+        # tensorboard logging of the terrain properties figure
+        self.tb_writer.add_figure('terrain_properties/%s' % id, fig)
+        plt.close(fig)
 
         # save config in yaml file
-        cfg.to_yaml(os.path.join(train_log_path, 'dphys_cfg.yaml'))
+        cfg.to_yaml(os.path.join(self.output_path, 'train_log', 'dphys_cfg.yaml'))
         return result
 
 
