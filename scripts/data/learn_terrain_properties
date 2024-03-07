@@ -180,11 +180,11 @@ class Learner:
             id = 0
 
         optimizer = optim.Adam([
-            {'params': system.height, 'lr': self.cfg.lr},
-            {'params': system.friction, 'lr': self.cfg.lr},
-            {'params': system.elasticity, 'lr': self.cfg.lr},
-            {'params': system.damping, 'lr': self.cfg.lr},
-            # {'params': system.vel_tracks, 'lr': self.cfg.lr},
+            {'params': system.height, 'lr': self.lr},
+            {'params': system.friction, 'lr': self.lr},
+            {'params': system.elasticity, 'lr': self.lr},
+            {'params': system.damping, 'lr': self.lr},
+            # {'params': system.vel_tracks, 'lr': self.lr},
         ])
 
         system_best = None
