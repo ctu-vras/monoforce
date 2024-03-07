@@ -1,9 +1,10 @@
 #!/bin/bash
 
-VIS=True
-SAVE=False
+VIS=False
+SAVE=True
 
-DATA_PATH=/media/ruslan/SSD/data
+#DATA_PATH=/media/ruslan/SSD/data
+DATA_PATH=/media/ruslan/data
 
 # list of sequences to process
 SEQUENCES=(
@@ -21,6 +22,12 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
 # learn and save terrain properties
 for SEQ in "${SEQUENCES[@]}"
 do
+    echo "Processing sequence $SEQ"
     ./learn_terrain_properties --data-path ${DATA_PATH}/$SEQ \
+                               --lr 0.02 --n-train-iters 4 \
+                               --vel-tracks 2.0 \
+                               --device 'cpu' \
+                               --convergence-std 0.001 --convergence-n-samples 20 \
                                --visualize $VIS --save-data $SAVE
 done
+echo "Done learning terrain properties."

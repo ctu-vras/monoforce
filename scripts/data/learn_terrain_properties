@@ -26,7 +26,7 @@ def arg_parser():
     parser.add_argument('--control-model', type=str, default='diffdrive')
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save-data', type=str2bool, default=True)
-    parser.add_argument('--dataset-path', type=str, default=robingas_husky_seq_paths[-2])
+    parser.add_argument('--data-path', type=str, default=robingas_husky_seq_paths[0])
     parser.add_argument('--vel-tracks', type=float, default=2.)
     parser.add_argument('--lr', type=float, default=0.02)
     parser.add_argument('--n-train-iters', type=int, default=100)
@@ -72,9 +72,10 @@ class Learner:
 
     def learn(self):
         ds = RobinGas(path=self.data_path, cfg=self.cfg, data_aug_conf=self.data_aug_config, is_train=False)
-        for data_i in tqdm(range(len(ds))):
+        for data_i in tqdm(range(len(ds)), desc='Learning terrain properties'):
+            print('Processing %s data sample' % ds.ids[data_i])
             if os.path.exists(os.path.join(ds.path, 'terrain/', ds.ids[data_i] + '.npy')):
-                print('Already trained')
+                print('Terrain properties already exist for this sample, skipping')
                 continue
 
             states_true = ds.get_states_traj(data_i, start_from_zero=True)
@@ -186,7 +187,7 @@ class Learner:
         loss_min = np.inf
         frame_n = 0
         losses = []
-        for i_n in tqdm(range(self.n_train_iters)):
+        for i_n in tqdm(range(self.n_train_iters), desc='Optimizing terrain properties'):
             optimizer.zero_grad()
             states = self.follow_trajectory(system, tt, states_true)
             loss_tran, loss_rot = traj_dist(states, states_true, cfg=self.cfg, return_trans_and_rot=True)
@@ -282,7 +283,7 @@ def main():
 
     data_aug_conf = read_yaml('../../config/lss_cfg.yaml')['data_aug_conf']
 
-    learner = Learner(data_path=args.dataset_path, cfg=cfg, data_aug_config=data_aug_conf,
+    learner = Learner(data_path=args.data_path, cfg=cfg, data_aug_config=data_aug_conf,
                       vis=args.visualize, save_data=args.save_data,
                       convergence_std=args.convergence_std, convergence_n_samples=args.convergence_n_samples,
                       lr=args.lr, n_train_iters=args.n_train_iters)
