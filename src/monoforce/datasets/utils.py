@@ -101,15 +101,15 @@ def visualize_data(height, traj, img=None, cfg=Config()):
     # add subplot
     ax = plt.subplot(131)
     ax.set_title('Height map')
-    ax.imshow(height)
+    ax.imshow(height.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
     x, y = traj['poses'][:, 0, 3], traj['poses'][:, 1, 3]
     h, w = height.shape
     x_grid, y_grid = x / cfg.grid_res + w / 2, y / cfg.grid_res + h / 2
-    plt.plot(y_grid, x_grid, 'rx-', label='Robot trajectory')
+    plt.plot(x_grid, y_grid, 'rx-', label='Robot trajectory')
     time_ids = np.linspace(1, len(x_grid), len(x_grid), dtype=int)
     # plot time indices for each waypoint in a trajectory
     for i, txt in enumerate(time_ids):
-        ax.annotate(txt, (y_grid[i], x_grid[i]))
+        ax.annotate(txt, (x_grid[i], y_grid[i]))
     plt.legend()
 
     # visualize heightmap as a surface in 3D
