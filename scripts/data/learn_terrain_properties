@@ -32,6 +32,7 @@ def arg_parser():
     parser.add_argument('--n-train-iters', type=int, default=100)
     parser.add_argument('--convergence-std', type=float, default=0.001)
     parser.add_argument('--convergence-n-samples', type=int, default=20)
+    parser.add_argument('--hm-var-weight', type=float, default=1.)
     parser.add_argument('--device', type=str, default='cpu')
     return parser
 
@@ -101,9 +102,10 @@ class Learner:
                                           cfg=self.cfg) if self.vis else None
 
             # optimize terrain properties to fit the trajectory
-            system_opt = self.optimize_terrain(system, states_true=states_true, tt=tt, vis_cfg=vis_cfg)
+            id = ds.ids[data_i]
+            system_opt = self.optimize_terrain(system, states_true=states_true, tt=tt, vis_cfg=vis_cfg, id=id)
             if self.save_data:
-                self.save_result(system_opt, id=ds.ids[data_i], cfg=self.cfg)
+                self.save_result(system_opt, id=id, cfg=self.cfg)
 
     def follow_trajectory(self, system, tt, states_true):
         state = system.state
@@ -173,7 +175,9 @@ class Learner:
 
         return states
 
-    def optimize_terrain(self, system, states_true, tt, vis_cfg=None):
+    def optimize_terrain(self, system, states_true, tt, vis_cfg=None, id=None):
+        if id is None:
+            id = 0
 
         optimizer = optim.Adam([
             {'params': system.height, 'lr': self.cfg.lr},
@@ -202,10 +206,10 @@ class Learner:
             optimizer.step()
 
             # tensorboard logging
-            self.tb_writer.add_scalar('loss/trans', loss_tran.item(), i_n)
-            self.tb_writer.add_scalar('loss/rot', loss_rot.item(), i_n)
-            self.tb_writer.add_scalar('loss/total', loss.item(), i_n)
-            self.tb_writer.add_scalar('loss/reg', loss_reg.item(), i_n)
+            self.tb_writer.add_scalar(f'sample_{id}/loss/trans', loss_tran.item(), i_n)
+            self.tb_writer.add_scalar(f'sample_{id}/loss/rot', loss_rot.item(), i_n)
+            self.tb_writer.add_scalar(f'sample_{id}/loss/total', loss.item(), i_n)
+            self.tb_writer.add_scalar(f'sample_{id}/loss/reg', loss_reg.item(), i_n)
 
             if system_best is None or loss.item() < loss_min:
                 loss_min = loss.item()

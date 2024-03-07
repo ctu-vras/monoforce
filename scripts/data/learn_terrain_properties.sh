@@ -4,7 +4,8 @@ VIS=False
 SAVE=True
 
 #DATA_PATH=/media/ruslan/SSD/data
-DATA_PATH=/media/ruslan/data
+#DATA_PATH=/media/ruslan/data
+DATA_PATH=/mnt/personal/agishrus/data
 
 # list of sequences to process
 SEQUENCES=(
@@ -24,10 +25,11 @@ for SEQ in "${SEQUENCES[@]}"
 do
     echo "Processing sequence $SEQ"
     ./learn_terrain_properties --data-path ${DATA_PATH}/$SEQ \
-                               --lr 0.02 --n-train-iters 4 \
+                               --lr 0.1 --n-train-iters 100 \
                                --vel-tracks 2.0 \
                                --device 'cpu' \
                                --convergence-std 0.001 --convergence-n-samples 20 \
+			       --hm-var-weight 5. \
                                --visualize $VIS --save-data $SAVE
 done
 echo "Done learning terrain properties."
