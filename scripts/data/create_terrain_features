@@ -5,22 +5,19 @@ from torch import optim
 import numpy as np
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
+from monoforce.utils import read_yaml
 from monoforce.vis import setup_visualization, animate_trajectory, set_axes_equal
 from monoforce.datasets.utils import visualize_data
-from monoforce.datasets import DEMPathData
+from monoforce.datasets import RobinGas, robingas_husky_seq_paths
 from monoforce.config import Config
 from monoforce.control import pose_control
-from monoforce.transformations import transform_cloud
 from mayavi import mlab
 from matplotlib import pyplot as plt
-import rospy
 import os
 from copy import deepcopy
 from tqdm import tqdm
 from argparse import ArgumentParser
 
-
-torch.set_default_dtype(torch.float64)
 
 def str2bool(v):
     return v.lower() in ('1', 'yes', 'true', 't', 'y')
@@ -31,21 +28,13 @@ def arg_parser():
     parser.add_argument('--control-model', type=str, default='diffdrive')
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save-data', type=str2bool, default=True)
-    parser.add_argument('--dataset-path', type=str)
-    parser.add_argument('--grid-res', type=float, default=0.1)
-    parser.add_argument('--d-min', type=float, default=1.)
-    parser.add_argument('--d-max', type=float, default=12.8)
-    parser.add_argument('--total-sim-time', type=float, default=10.)
-    parser.add_argument('--n-samples', type=int, default=1000)
+    parser.add_argument('--dataset-path', type=str, default=robingas_husky_seq_paths[-1])
     parser.add_argument('--vel-tracks', type=float, default=2.)
-    parser.add_argument('--robot-mass', type=float, default=10.)
-    parser.add_argument('--robot-inertia', type=float, default=5.)
     parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--n-train-iters', type=int, default=200)
-    parser.add_argument('--device', type=str, default='cpu')
-    parser.add_argument('--friction', type=float, default=0.9)
+    parser.add_argument('--n-train-iters', type=int, default=100)
     parser.add_argument('--convergence-std', type=float, default=0.001)
     parser.add_argument('--convergence-n-samples', type=int, default=30)
+    parser.add_argument('--device', type=str, default='cpu')
     return parser
 
 
@@ -130,7 +119,7 @@ def evaluate(system, states_true, tt, cfg, return_states=False, regularization=T
         return loss
 
 
-def learn_terrain(system, states_true, tt, tt_true, cfg, vis_cfg, vis=False):
+def learn_terrain(system, states_true, tt, cfg, vis_cfg, vis=False):
     optimizer = optim.Adam([
                             {'params': system.height, 'lr': cfg.lr},
                             {'params': system.friction, 'lr': cfg.lr},
@@ -157,17 +146,14 @@ def learn_terrain(system, states_true, tt, tt_true, cfg, vis_cfg, vis=False):
     system_best = None
     log = {'losses': losses, 'converged': False}
 
-    for i_n in tqdm(range(cfg.n_train_iters), desc='Learning terrain from SLAM trajectory', leave='False'):
-        if rospy.is_shutdown():
-            break
-
+    for i_n in tqdm(range(100)):
         optimizer.zero_grad()
         # loss, states = control_loss(system, states_true, tt, cfg, return_states=True)
         loss, states = evaluate(system, states_true, tt, cfg, return_states=True, regularization=True)
 
         loss.backward()
         optimizer.step()
-        print('Iter. %i, loss=%.3f' % (i_n, loss.item()))
+        # print('Iter. %i, loss=%.3f' % (i_n, loss.item()))
         losses.append(loss.item())
 
         if system_best is None or loss.item() < losses[-2]:
@@ -253,22 +239,23 @@ def save_result(system, output_name, log, cfg):
     # save damping
     damping = system.damping.detach().cpu().numpy()
     # create structured array
-    result = np.zeros((height.shape[0], height.shape[1]), dtype=[('height_init', np.float64),
-                                                                       ('height', np.float64),
-                                                                       ('friction', np.float64),
-                                                                       ('elasticity', np.float64),
-                                                                       ('damping', np.float64)])
+    result = np.zeros((height.shape[0], height.shape[1]), dtype=[('height_init', np.float32),
+                                                                        ('height', np.float32),
+                                                                        ('friction', np.float32),
+                                                                        ('elasticity', np.float32),
+                                                                        ('damping', np.float32)])
     result['height_init'] = height_init
     result['height'] = height
     result['friction'] = friction
     result['elasticity'] = elasticity
     result['damping'] = damping
     # save terrain properties array to file
-    output_path = os.path.join(cfg.dataset_path, 'terrain', 'traj', 'dphysics')
+    output_path = os.path.join(robingas_husky_seq_paths[-1], 'terrain', 'traj', 'dphysics')
     os.makedirs(output_path, exist_ok=True)
     # output_name = '%s_loss_%.3f_loss0_%.3f_train_iter_%i.npy' % \
     #               (output_name, log['losses'][np.argmin(log['losses'])], log['losses'][0], np.argmin(log['losses']).item())
     output_name = '%s.npy' % output_name
+    print('Saving result to %s' % os.path.join(output_path, output_name))
     np.save(os.path.join(output_path, output_name), result)
 
     # save figure
@@ -290,66 +277,40 @@ def save_result(system, output_name, log, cfg):
     return result
 
 
-def train(ds, cfg=Config(), vis=False, save_data=False):
+def train(ds, cfg=Config(),
+          vis=False, save_data=False,
+          convergence_std=0.001, convergence_n_samples=30,
+          lr=0.01, n_train_iters=100):
 
-    # shuffle indices list
-    ids = np.arange(len(ds))
-    for data_i in tqdm(ids, desc='Data samples'):
-        print('Selected data sample %i/%i' % (data_i, len(ds)))
+    for data_i in tqdm(range(len(ds))):
+        # print('Selected data sample %i/%i' % (data_i, len(ds)))
         if os.path.exists(os.path.join(ds.path, 'terrain/', ds.ids[data_i]+'.npy')):
             print('Already trained')
             continue
-        sample = ds[data_i]
-        cloud, traj, heightmap = sample
-        height = heightmap['z']
-        traj['stamps'] = traj['stamps'] - traj['stamps'][0]
-        img = ds.get_image(data_i, camera='front')
+
+        states_true = ds.get_states_traj(data_i, start_from_zero=True)
+        states_true = tuple([x.to(cfg.device) for x in states_true])
+        xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
+
+        hm_lidar = ds.get_lidar_height_map(data_i)
+        height = hm_lidar[0]
+
+        traj = ds.get_traj(data_i)
         poses = traj['poses']
-        t_stamps = traj['stamps']
-
-        # transform point cloud and poses to robot frame
-        Tr = np.linalg.inv(poses[0])
-        cloud = transform_cloud(cloud, Tr)
-        poses = np.asarray([Tr @ pose for pose in poses])
-
-        xyz_true = torch.as_tensor(poses[:, :3, 3])
-        rot_true = torch.as_tensor(poses[:, :3, :3])
-
-        N = len(xyz_true)
-        tt_true = torch.tensor(t_stamps)[None].T
-
-        dps = torch.diff(xyz_true, dim=0)
-        dt = torch.diff(tt_true, dim=0)
-        theta_true = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
-        theta_true = torch.cat([theta_true[:1], theta_true], dim=0)
-
-        vel_true = torch.zeros_like(xyz_true)
-        vel_true[:-1] = dps / dt
-        omega_true = torch.zeros_like(xyz_true)
-        omega_true[:-1, 2:3] = torch.diff(theta_true, dim=0) / dt  # + torch.diff(angles_true, dim=0)[:, 2:3] / dt
-
-        n_robot_pts = 10  # TODO: 10 is a hack, 10 is the number of contact points
-        forces_true = torch.zeros((N, 3, n_robot_pts))
-
-        states_true = (xyz_true.view(-1, 3, 1),
-                       rot_true.view(-1, 3, 3),
-                       vel_true.view(-1, 3, 1),
-                       omega_true.view(-1, 3, 1),
-                       forces_true.view(-1, 3, n_robot_pts))
+        img, _ = ds.get_image(data_i)
 
         if vis:
-            img_vis = img[..., (2, 1, 0)] if img is not None else None
-            visualize_data(heightmap, traj, img=img_vis, cfg=cfg)
+            visualize_data(height, traj, img=img, cfg=cfg)
 
         """ Create robot-terrain interaction models """
         system = RigidBodySoftTerrain(height=np.zeros_like(height) + poses[:, 2, 3].min(),
                                       grid_res=cfg.grid_res,
                                       friction=cfg.friction, mass=cfg.robot_mass,
-                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
+                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.], device=cfg.device).view(xyz_true[0].shape),
                                                   rot=rot_true[0],
                                                   vel=vel_true[0],
                                                   omega=omega_true[0],
-                                                  forces=forces_true[0]),
+                                                  forces=forces_true[0], device=cfg.device),
                                       device=cfg.device, use_ode=False,
                                       interaction_model=cfg.robot_terrain_interaction_model)
 
@@ -363,8 +324,7 @@ def train(ds, cfg=Config(), vis=False, save_data=False):
         vis_cfg = setup_visualization(system=system, states=states, states_true=states_true, cfg=cfg) if vis else None
         # mlab.show()
         """ Train """
-        system_opt, log = learn_terrain(system, states_true=states_true,
-                                        tt=tt, tt_true=tt_true,
+        system_opt, log = learn_terrain(system, states_true=states_true, tt=tt,
                                         cfg=cfg, vis_cfg=vis_cfg, vis=vis)
         if save_data:
             output_name = '%s' % ds.ids[data_i]
@@ -376,32 +336,18 @@ def main():
     print(args)
 
     cfg = Config()
-    # cfg.dataset_path = '/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'
-    # cfg.dataset_path = '/home/ruslan/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'
-    # cfg.dataset_path = '/mnt/personal/agishrus/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'
-    # cfg.dataset_path = '/mnt/personal/agishrus/data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'
-    cfg.dataset_path = args.dataset_path
-    cfg.grid_res = args.grid_res
-    cfg.d_min = args.d_min  # robot points removal
-    cfg.d_max = 12.8  # for Monolayout training
-    cfg.total_sim_time = args.total_sim_time
-    cfg.n_samples = 100 * int(cfg.total_sim_time)
+    cfg.from_yaml('../../config/dphys_cfg.yaml')
     cfg.vel_tracks = args.vel_tracks * np.asarray([1., 1.])
-    cfg.robot_mass = args.robot_mass
-    cfg.robot_inertia = np.eye(3) * args.robot_inertia
-    cfg.lr = args.lr
-    cfg.n_train_iters = args.n_train_iters
-    cfg.device = args.device
-    cfg.friction = args.friction
-    cfg.convergence_std = args.convergence_std
-    cfg.convergence_n_samples = args.convergence_n_samples
-    # cfg.robot_terrain_interaction_model = 'rigid_layer'
-    # cfg.robot_terrain_interaction_model = 'rigid_soft_layers'
-    # cfg.robot_terrain_interaction_model = 'diffdrive'
     cfg.robot_terrain_interaction_model = args.control_model
+    cfg.device = args.device
 
-    ds = DEMPathData(path=cfg.dataset_path, cfg=cfg)
-    train(ds, cfg=cfg, vis=args.visualize, save_data=args.save_data)
+    data_aug_conf = read_yaml('../../config/lss_cfg.yaml')['data_aug_conf']
+
+    ds = RobinGas(path=args.dataset_path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
+    train(ds, cfg=cfg,
+          vis=args.visualize, save_data=args.save_data,
+          convergence_std=args.convergence_std, convergence_n_samples=args.convergence_n_samples,
+          lr=args.lr, n_train_iters=args.n_train_iters)
 
 
 if __name__ == '__main__':

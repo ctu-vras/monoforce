@@ -19,7 +19,7 @@ __all__ = [
 
 
 def get_robingas_data(cfg: Config(),
-                      path='/home/ruslan/data/bags/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34_trav/',
+                      path='/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/',
                       i=None):
     from monoforce.datasets.robingas import DEMPathData
     # Load traversability data
@@ -94,9 +94,9 @@ def get_simple_data(cfg: Config):
     return height, traj
 
 
-def visualize_data(heightmap, traj, img=None, cfg=Config()):
-    height = heightmap['z']
-
+def visualize_data(height, traj, img=None, cfg=Config()):
+    assert len(height.shape) == 2, 'Height map should be 2D'
+    assert len(traj['poses'].shape) == 3, 'Trajectory should be 3D'
     plt.figure(figsize=(20, 10))
     # add subplot
     ax = plt.subplot(131)
@@ -113,8 +113,12 @@ def visualize_data(heightmap, traj, img=None, cfg=Config()):
     plt.legend()
 
     # visualize heightmap as a surface in 3D
+    X = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+    Y = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+    X, Y = np.meshgrid(X, Y)
+    Z = height
     ax = plt.subplot(132, projection='3d')
-    ax.plot_surface(heightmap['x'], heightmap['y'], heightmap['z'], rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
     ax.set_title('Height map')
     set_axes_equal(ax)
 
@@ -160,8 +164,8 @@ if __name__ == '__main__':
     cfg.d_min, cfg.d_max = -8., 8.
     cfg.grid_res = 0.2
 
-    height, traj = get_robingas_data(cfg)
-    visualize_data(height, traj, cfg)
+    hm, traj = get_robingas_data(cfg)
+    visualize_data(hm['z'], traj, cfg)
     # height, traj = get_kkt_data(cfg)
     # visualize_data(height, traj, cfg)
     # height, traj = get_simple_data(cfg)

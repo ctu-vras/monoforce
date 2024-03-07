@@ -27,6 +27,7 @@ def show_height_as_cloud(height, cfg, mask=None):
     points = hm_to_cloud(height, cfg, mask)
     show_cloud(points)
 
+
 class Evaluator:
     def __init__(self, dphys_config_path, lss_config_path, data_paths, model_path=None):
         self.model_path = model_path
@@ -169,49 +170,9 @@ class Evaluator:
         return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
     def get_height(self, i: int, ds: RobinGasVis):
-        sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
+        hm_lidar = ds.get_lidar_height_map(i)
         height = hm_lidar[0]
         return height
-    
-    def get_states(self, i: int, ds: RobinGasVis):
-        traj = ds.get_traj(i)
-        poses = traj['poses']
-        # transform poses to the same coordinate frame as the height map
-        Tr = np.linalg.inv(poses[0])
-        poses = np.asarray([np.matmul(Tr, p) for p in poses])
-        # count time from 0
-        tstamps = traj['stamps']
-        tstamps = tstamps - tstamps[0]
-
-        poses = np.asarray(poses, dtype=np.float32)
-        tstamps = np.asarray(tstamps, dtype=np.float32)
-
-        xyz = torch.as_tensor(poses[:, :3, 3])
-        rot = torch.as_tensor(poses[:, :3, :3])
-
-        n_states = len(xyz)
-        tt = torch.tensor(tstamps)[None].T
-
-        dps = torch.diff(xyz, dim=0)
-        dt = torch.diff(tt, dim=0)
-        theta = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
-        theta = torch.cat([theta[:1], theta], dim=0)
-
-        vel = torch.zeros_like(xyz)
-        vel[:-1] = dps / dt
-        omega = torch.zeros_like(xyz)
-        omega[:-1, 2:3] = torch.diff(theta, dim=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
-
-        forces = torch.zeros((n_states, 3, 10))
-        states = (xyz.view(n_states, 3, 1),
-                  rot.view(n_states, 3, 3),
-                  vel.view(n_states, 3, 1),
-                  omega.view(n_states, 3, 1),
-                  forces.view(n_states, 3, 10))
-        states = tuple([s.to(self.cfg.device) for s in states])
-        return states
-
 
     def get_data(self, i: int, ds: RobinGasVis):
         """
@@ -226,7 +187,7 @@ class Evaluator:
         assert isinstance(ds, RobinGasVis), 'Invalid dataset type'
 
         # get states
-        states = self.get_states(i, ds)
+        states = ds.get_states_traj(i, start_from_zero=True)
 
         # get height map
         height = self.get_height(i, ds)
@@ -246,11 +207,13 @@ class Evaluator:
         Robot visits a set of waypoints.
         Diff-drive (controlled with X-linear and Z-angular velocities) robot motion model is used.
         """
+        height = torch.as_tensor(height, device=self.cfg.device)
+        states_true = tuple([s.to(self.cfg.device) for s in states_true])
         xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
         n_true_states = len(xyz_true)
 
         """ Create robot-terrain interaction models """
-        system = RigidBodySoftTerrain(height=torch.as_tensor(height),
+        system = RigidBodySoftTerrain(height=height,
                                       grid_res=self.cfg.grid_res,
                                       friction=self.cfg.friction, mass=self.cfg.robot_mass,
                                       state=State(
@@ -393,7 +356,7 @@ class Evaluator:
 
 class EvaluatorLSS(Evaluator):
     def __init__(self, dphys_config_path, lss_config_path, data_paths,
-                 model_path='../config/tb_runs/lss_2024_02_27_09_17_36/train_lss.pt'):
+                 model_path='../config/tb_runs/lss_2024_03_04_09_42_47/train_lss.pt'):
         super().__init__(dphys_config_path, lss_config_path, data_paths, model_path)
 
     def load_model(self):
@@ -531,7 +494,7 @@ class EvaluatorSemSeg(Evaluator):
 def vis_data(data_paths):
     dphys_config_path = '../config/dphys_cfg.yaml'
     lss_config_path = '../config/lss_cfg.yaml'
-    modelf = '../config/tb_runs/lss_2024_02_27_09_17_36/train_lss.pt'
+    modelf = '../config/tb_runs/lss_2024_03_04_09_42_47/train_lss.pt'
 
     for path in data_paths:
         assert os.path.isdir(path), 'Data path %s does not exist' % path

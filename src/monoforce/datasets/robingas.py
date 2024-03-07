@@ -195,6 +195,45 @@ class DEMPathData(Dataset):
 
         return traj
 
+    def get_states_traj(self, i, start_from_zero=False):
+        traj = self.get_traj(i)
+        poses = traj['poses']
+
+        if start_from_zero:
+            # transform poses to the same coordinate frame as the height map
+            Tr = np.linalg.inv(poses[0])
+            poses = np.asarray([np.matmul(Tr, p) for p in poses])
+            # count time from 0
+            tstamps = traj['stamps']
+            tstamps = tstamps - tstamps[0]
+
+        poses = np.asarray(poses, dtype=np.float32)
+        tstamps = np.asarray(tstamps, dtype=np.float32)
+
+        xyz = torch.as_tensor(poses[:, :3, 3])
+        rot = torch.as_tensor(poses[:, :3, :3])
+
+        n_states = len(xyz)
+        tt = torch.tensor(tstamps)[None].T
+
+        dps = torch.diff(xyz, dim=0)
+        dt = torch.diff(tt, dim=0)
+        theta = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
+        theta = torch.cat([theta[:1], theta], dim=0)
+
+        vel = torch.zeros_like(xyz)
+        vel[:-1] = dps / dt
+        omega = torch.zeros_like(xyz)
+        omega[:-1, 2:3] = torch.diff(theta, dim=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
+
+        forces = torch.zeros((n_states, 3, 10))
+        states = (xyz.view(n_states, 3, 1),
+                  rot.view(n_states, 3, 3),
+                  vel.view(n_states, 3, 1),
+                  omega.view(n_states, 3, 1),
+                  forces.view(n_states, 3, 10))
+        return states
+
     def get_raw_cloud(self, i):
         ind = self.ids[i]
         cloud_path = os.path.join(self.cloud_path, '%s.npz' % ind)
@@ -485,7 +524,9 @@ class RobinGas(DEMPathData):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_image(self, i, cam, undistort=False):
+    def get_image(self, i, cam=None, undistort=False):
+        if cam is None:
+            cam = self.cameras[0]
         img = self.get_raw_image(i, cam)
         for key in self.calib.keys():
             if cam in key:

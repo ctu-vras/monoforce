@@ -13,6 +13,7 @@ from monoforce.transformations import rot2rpy
 from mayavi import mlab
 from scipy.spatial.transform import Rotation
 
+
 torch.set_default_dtype(torch.float64)
 
 cfg = Config()

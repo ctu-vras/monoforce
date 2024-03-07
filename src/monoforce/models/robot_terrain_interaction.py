@@ -8,6 +8,8 @@ from ..config import Config
 from ..control import pose_control
 
 
+torch.set_default_dtype(torch.float32)
+
 class State:
     def __init__(self,
                  xyz=torch.zeros((3, 1)),
