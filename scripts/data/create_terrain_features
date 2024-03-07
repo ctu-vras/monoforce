@@ -22,313 +22,233 @@ from argparse import ArgumentParser
 def str2bool(v):
     return v.lower() in ('1', 'yes', 'true', 't', 'y')
 
+
 def arg_parser():
     parser = ArgumentParser(epilog="""Path format uses following placeholders:
     """)
     parser.add_argument('--control-model', type=str, default='diffdrive')
-    parser.add_argument('--visualize', type=str2bool, default=False)
+    parser.add_argument('--visualize', type=str2bool, default=True)
     parser.add_argument('--save-data', type=str2bool, default=True)
-    parser.add_argument('--dataset-path', type=str, default=robingas_husky_seq_paths[-1])
+    parser.add_argument('--dataset-path', type=str, default=robingas_husky_seq_paths[-2])
     parser.add_argument('--vel-tracks', type=float, default=2.)
     parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--n-train-iters', type=int, default=100)
+    parser.add_argument('--n-train-iters', type=int, default=2)
     parser.add_argument('--convergence-std', type=float, default=0.001)
     parser.add_argument('--convergence-n-samples', type=int, default=30)
     parser.add_argument('--device', type=str, default='cpu')
     return parser
 
 
-def evaluate(system, states_true, tt, cfg, return_states=False, regularization=True, max_vel=np.inf, max_omega=np.inf):
-    state = system.state
-    n_true_states = len(states_true[0])
-    xyz_true, rot_true = states_true[0], states_true[1]
-    dt = (tt[1:] - tt[:-1]).mean()
+class Learner:
+    def __init__(self, data_path, cfg, data_aug_config,
+                 vis=False, save_data=False,
+                 convergence_std=0.001, convergence_n_samples=30,
+                 lr=0.01, n_train_iters=100,
+                 hm_var_weight=0.1):
+        self.data_path = data_path
+        self.cfg = cfg
+        self.data_aug_config = data_aug_config
+        self.vis = vis
+        self.save_data = save_data
+        self.convergence_std = convergence_std
+        self.convergence_n_samples = convergence_n_samples
+        self.lr = lr
+        self.n_train_iters = n_train_iters
+        self.hm_var_weight = hm_var_weight
 
-    loss_trans_sum = torch.tensor(0., device=cfg.device)
-    loss_rot_sum = torch.tensor(0., device=cfg.device)
-    states = []
-    tracks_distance = system.robot_points[1].max() - system.robot_points[1].min()
+    def create_robot_terrain_interaction_system(self, height, states):
+        system = RigidBodySoftTerrain(height=torch.zeros_like(height) + states[0][:, 2].min(),
+                                      grid_res=self.cfg.grid_res,
+                                      friction=self.cfg.friction, mass=self.cfg.robot_mass,
+                                      state=State(
+                                          xyz=states[0][0] + torch.tensor([0., 0., 1.], device=self.cfg.device).view(
+                                              states[0][0].shape),
+                                          rot=states[1][0],
+                                          vel=states[2][0],
+                                          omega=states[3][0],
+                                          forces=states[4][0], device=self.cfg.device),
+                                      device=self.cfg.device, use_ode=False,
+                                      interaction_model=self.cfg.robot_terrain_interaction_model)
+        return system
 
-    for i_s in range(n_true_states - 1):
-        # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i_s + 1].squeeze()))
-        time_interval = tt[i_s * cfg.n_samples // (n_true_states - 1):(i_s + 1) * cfg.n_samples // (n_true_states - 1)]
+    def learn(self):
+        ds = RobinGas(path=self.data_path, cfg=self.cfg, data_aug_conf=self.data_aug_config, is_train=False)
+        for data_i in tqdm(range(len(ds))):
+            if os.path.exists(os.path.join(ds.path, 'terrain/', ds.ids[data_i] + '.npy')):
+                print('Already trained')
+                continue
 
-        pos_x, pos_R, vel_x, vel_omega, forces = state
-        pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
-        for t in time_interval[1:]:
-            goal_pose = torch.eye(4)
-            goal_pose[:3, 3:4] = xyz_true[i_s + 1]
-            goal_pose[:3, :3] = rot_true[i_s + 1]
+            states_true = ds.get_states_traj(data_i, start_from_zero=True)
+            states_true = tuple([x.to(self.cfg.device) for x in states_true])
 
-            v, w = pose_control(state, goal_pose, allow_backwards=True,
-                                Kp_rho=1.5, Kp_theta=20., Kp_yaw=0.5)
+            hm_lidar = ds.get_lidar_height_map(data_i)
+            height = hm_lidar[0]
 
-            if cfg.robot_terrain_interaction_model in ['rigid_layer', 'rigid_soft_layers']:
-                # two tracks (flippers) robot model
-                u1 = v - w * tracks_distance / 4.
-                u2 = v + w * tracks_distance / 4.
-                system.vel_tracks = torch.clip(torch.tensor([u1, u2]), min=-max_vel, max=max_vel)
-            else:
-                v = torch.clip(torch.as_tensor(v), -max_vel, max_vel)
-                w = torch.clip(torch.as_tensor(w), -max_omega, max_omega)
-                state[2][0] = v
-                state[3][2] = w
+            traj = ds.get_traj(data_i)
+            img, _ = ds.get_image(data_i)
 
-            dstate = system.forward(t, state)
-            state = state.update(dstate, dt)
+            if self.vis:
+                visualize_data(height, traj, img=img, cfg=self.cfg)
 
-            pos_x.append(state[0])
-            pos_R.append(state[1])
-            vel_x.append(state[2])
-            vel_omega.append(state[3])
-            forces.append(state[4])
+            # create robot-terrain interaction model
+            system = self.create_robot_terrain_interaction_system(height, states_true)
+            system = system.to(self.cfg.device)
 
-        states_interval = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega),
-                           torch.stack(forces)]
+            t0, s0 = 0., system.state
+            tt = torch.linspace(float(t0), float(t0) + self.cfg.total_sim_time, self.cfg.n_samples)
+            states = system.sim(s0, tt)
+            vis_cfg = setup_visualization(system=system, states=states, states_true=states_true,
+                                          cfg=self.cfg) if self.vis else None
 
-        # compute loss
-        loss_trans = translation_difference(pos_x[-1].view(1, 3, 1), states_true[0][i_s + 1].view(1, 3, 1))
-        loss_rot = rotation_difference(pos_R[-1].view(1, 3, 3), states_true[1][i_s + 1].view(1, 3, 3))
+            # optimize terrain properties to fit the trajectory
+            system_opt = self.optimize_terrain(system, states_true=states_true, tt=tt, vis_cfg=vis_cfg)
+            if self.save_data:
+                self.save_result(system_opt, ds.ids[data_i], self.cfg)
 
-        loss_trans_sum += loss_trans
-        loss_rot_sum += loss_rot
+    def follow_trajectory(self, system, tt, states_true):
+        state = system.state
+        n_true_states = len(states_true[0])
+        xyz_true, rot_true = states_true[0], states_true[1]
+        dt = (tt[1:] - tt[:-1]).mean()
 
-        states.append(states_interval)
+        loss_trans_sum = torch.tensor(0., device=self.cfg.device)
+        loss_rot_sum = torch.tensor(0., device=self.cfg.device)
+        states = []
+        tracks_distance = system.robot_points[1].max() - system.robot_points[1].min()
 
-    # concatenate states from all time intervals
-    pos_x = torch.cat([x[0] for x in states], dim=0)
-    pos_R = torch.cat([x[1] for x in states], dim=0)
-    vel_x = torch.cat([x[2] for x in states], dim=0)
-    vel_omega = torch.cat([x[3] for x in states], dim=0)
-    forces = torch.cat([x[4] for x in states], dim=0)
-    states = (pos_x, pos_R, vel_x, vel_omega, forces)
+        for i_s in range(n_true_states - 1):
+            # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i_s + 1].squeeze()))
+            time_interval = tt[i_s * self.cfg.n_samples // (n_true_states - 1):(i_s + 1) * self.cfg.n_samples // (
+                    n_true_states - 1)]
 
-    # compute loss
-    # loss_rot_sum /= n_true_states
-    # loss_trans_sum /= n_true_states
-    # loss = loss_trans_sum + loss_rot_sum
+            pos_x, pos_R, vel_x, vel_omega, forces = state
+            pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
+            for t in time_interval[1:]:
+                goal_pose = torch.eye(4)
+                goal_pose[:3, 3:4] = xyz_true[i_s + 1]
+                goal_pose[:3, :3] = rot_true[i_s + 1]
 
-    loss = traj_dist(states, states_true, cfg=cfg)
+                v, w = pose_control(state, goal_pose, allow_backwards=True,
+                                    Kp_rho=1.5, Kp_theta=20., Kp_yaw=0.5)
 
-    if regularization:
-        loss += total_variation(system.height[None])
+                if self.cfg.robot_terrain_interaction_model in ['rigid_layer', 'rigid_soft_layers']:
+                    # two tracks (flippers) robot model
+                    u1 = v - w * tracks_distance / 4.
+                    u2 = v + w * tracks_distance / 4.
+                    system.vel_tracks = torch.clip(torch.tensor([u1, u2]), min=-self.cfg.max_vel, max=self.cfg.max_vel)
+                else:
+                    v = torch.clip(torch.as_tensor(v), -self.cfg.max_vel, self.cfg.max_vel)
+                    w = torch.clip(torch.as_tensor(w), -self.cfg.max_omega, self.cfg.max_omega)
+                    state[2][0] = v
+                    state[3][2] = w
 
-    if return_states:
-        return loss, states
-    else:
-        return loss
+                dstate = system.forward(t, state)
+                state = state.update(dstate, dt)
 
+                pos_x.append(state[0])
+                pos_R.append(state[1])
+                vel_x.append(state[2])
+                vel_omega.append(state[3])
+                forces.append(state[4])
 
-def learn_terrain(system, states_true, tt, cfg, vis_cfg, vis=False):
-    optimizer = optim.Adam([
-                            {'params': system.height, 'lr': cfg.lr},
-                            {'params': system.friction, 'lr': cfg.lr},
-                            {'params': system.elasticity, 'lr': cfg.lr},
-                            {'params': system.damping, 'lr': cfg.lr},
-                            # {'params': system.vel_tracks, 'lr': cfg.lr},
-    ])
+            states_interval = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega),
+                               torch.stack(forces)]
 
-    k = 0
-    fig = plt.figure(figsize=(10, 10))
-    ax1 = plt.subplot(221)
-    ax1.set_title('Trajectories loss')
-    ax1.grid()
-    ax1.set_xlabel('Iterations')
-    ax1.set_ylabel('Loss')
+            # compute loss
+            loss_trans = translation_difference(pos_x[-1].view(1, 3, 1), states_true[0][i_s + 1].view(1, 3, 1))
+            loss_rot = rotation_difference(pos_R[-1].view(1, 3, 3), states_true[1][i_s + 1].view(1, 3, 3))
 
-    ax2 = plt.subplot(222)
-    ax2.set_title('Terrain properties Deltas')
-    ax2.grid()
-    ax2.set_xlabel('Iterations')
-    ax2.set_ylabel('Delta terrain properties')
+            loss_trans_sum += loss_trans
+            loss_rot_sum += loss_rot
 
-    losses = []
-    system_best = None
-    log = {'losses': losses, 'converged': False}
+            states.append(states_interval)
 
-    for i_n in tqdm(range(100)):
-        optimizer.zero_grad()
-        # loss, states = control_loss(system, states_true, tt, cfg, return_states=True)
-        loss, states = evaluate(system, states_true, tt, cfg, return_states=True, regularization=True)
+        # concatenate states from all time intervals
+        pos_x = torch.cat([x[0] for x in states], dim=0)
+        pos_R = torch.cat([x[1] for x in states], dim=0)
+        vel_x = torch.cat([x[2] for x in states], dim=0)
+        vel_omega = torch.cat([x[3] for x in states], dim=0)
+        forces = torch.cat([x[4] for x in states], dim=0)
+        states = (pos_x, pos_R, vel_x, vel_omega, forces)
 
-        loss.backward()
-        optimizer.step()
-        # print('Iter. %i, loss=%.3f' % (i_n, loss.item()))
-        losses.append(loss.item())
+        return states
 
-        if system_best is None or loss.item() < losses[-2]:
-            system.update_trajectory(states=states)
-            system_best = deepcopy(system)
+    def optimize_terrain(self, system, states_true, tt, vis_cfg=None):
 
-        # # if converged: loss history does not change much, break
-        # if len(losses) > cfg.convergence_n_samples and np.std(losses[-cfg.convergence_n_samples:]) < cfg.convergence_std:
-        #     print('Converged')
-        #     log['converged'] = True
-        #     break
+        optimizer = optim.Adam([
+            {'params': system.height, 'lr': self.cfg.lr},
+            {'params': system.friction, 'lr': self.cfg.lr},
+            {'params': system.elasticity, 'lr': self.cfg.lr},
+            {'params': system.damping, 'lr': self.cfg.lr},
+            # {'params': system.vel_tracks, 'lr': self.cfg.lr},
+        ])
 
-        if i_n % 10 == 0:
-            if vis:
+        system_best = None
+        loss_min = np.inf
+        frame_n = 0
+        losses = []
+        for i_n in tqdm(range(self.n_train_iters)):
+            optimizer.zero_grad()
+            states = self.follow_trajectory(system, tt, states_true)
+            loss = traj_dist(states, states_true, cfg=self.cfg)
+            losses.append(loss.item())
+
+            if self.hm_var_weight is not None:
+                loss += self.hm_var_weight * total_variation(system.height[None])
+
+            loss.backward()
+            optimizer.step()
+            # print('Iter. %i, loss=%.3f' % (i_n, loss.item()))
+
+            if system_best is None or loss.item() < loss_min:
+                loss_min = loss.item()
                 system.update_trajectory(states=states)
-                mlab.title("loss = {:.3f}".format(loss.item()), size=0.5)
-                k = animate_trajectory(system, vis_cfg, frame_n=k)
+                system_best = deepcopy(system)
 
-        # visualize loss vs iterations
-        ax1.plot(i_n, loss.item(), 'r.')
+            # if converged: loss history does not change much, break
+            if i_n > self.convergence_n_samples and np.std(losses[-self.convergence_n_samples:]) < self.convergence_std:
+                print('Converged')
+                break
 
-        # visualize mean terrain properties vs iterations
-        if i_n == 0:
-            mean_friction0 = system.friction.mean().item()
-            mean_elasticity0 = system.elasticity.mean().item()
-            mean_damping0 = system.damping.mean().item()
-        ax2.plot(i_n, system.friction.mean().item() - mean_friction0, 'g.')
-        ax2.plot(i_n, system.elasticity.mean().item() - mean_elasticity0, 'b.')
-        ax2.plot(i_n, system.damping.mean().item() - mean_damping0, 'k.')
-        ax2.legend(['Friction', 'Elasticity', 'Damping'])
-        # ax2.legend(['Friction'])
+            if i_n % 10 == 0:
+                if self.vis:
+                    system.update_trajectory(states=states)
+                    mlab.title("loss = {:.3f}".format(loss.item()), size=0.5)
+                    frame_n = animate_trajectory(system, vis_cfg, frame_n=frame_n)
 
-        # print('Mean terrain properties: height=%.3f, friction=%.3f, elasticity=%.3f, damping=%.3f' %
-        #       (system.height.mean().item(), system.friction.mean().item(), system.elasticity.mean().item(),
-        #        system.damping.mean().item()))
+        return system_best
 
-        if vis:
-            plt.pause(0.01)
+    def save_result(self, system, id, cfg):
+        # save resultant height map, friction, elasticity, damping as structured np array with corresponding field names
+        height_init = system.height0.detach().cpu().numpy()
+        height = system.height.detach().cpu().numpy()
+        friction = system.friction.detach().cpu().numpy()
+        elasticity = system.elasticity.detach().cpu().numpy()
+        damping = system.damping.detach().cpu().numpy()
+        result = np.zeros((height.shape[0], height.shape[1]), dtype=[('height_init', np.float32),
+                                                                     ('height', np.float32),
+                                                                     ('friction', np.float32),
+                                                                     ('elasticity', np.float32),
+                                                                     ('damping', np.float32)])
+        result['height_init'] = height_init
+        result['height'] = height
+        result['friction'] = friction
+        result['elasticity'] = elasticity
+        result['damping'] = damping
+        # save terrain properties array to file
+        output_path = os.path.join(self.data_path, 'terrain', 'traj', 'dphysics')
+        os.makedirs(output_path, exist_ok=True)
+        output_name = '%s.npy' % id
+        print('Saving result to %s' % os.path.join(output_path, output_name))
+        np.save(os.path.join(output_path, output_name), result)
 
-    ax = plt.subplot(223)
-    height = system.height.detach().cpu().numpy()
-    ax.set_title('Learned height map')
-    ax.imshow(height, cmap='viridis')
-    # GT trajectory
-    x, y = states_true[0][:, 0], states_true[0][:, 1]
-    h, w = height.shape
-    x_grid, y_grid = x / cfg.grid_res + w / 2, y / cfg.grid_res + h / 2
-    plt.plot(y_grid, x_grid, 'r-', label='Robot GT trajectory')
-    # learned trajectory
-    x, y = system_best.pos_x[:, 0], system_best.pos_x[:, 1]
-    x_grid, y_grid = x / cfg.grid_res + w / 2, y / cfg.grid_res + h / 2
-    plt.plot(y_grid, x_grid, 'g-', label='Robot learned trajectory')
-    plt.legend()
+        # save figure
+        train_log_path = os.path.join(output_path, 'train_log')
+        os.makedirs(train_log_path, exist_ok=True)
 
-    # visualize heightmap as a surface in 3D
-    x, y = np.meshgrid(np.arange(height.shape[0]), np.arange(height.shape[1]))
-    z = height[x, y]
-    ax = plt.subplot(224, projection='3d')
-    ax.plot_surface(x, y, z, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    ax.set_title('Learned height map surface')
-    set_axes_equal(ax)
-
-    if vis:
-        plt.show()
-        mlab.show()
-
-    log['losses'] = losses
-    log['train_fig'] = fig
-
-    return system_best, log
-
-
-def save_result(system, output_name, log, cfg):
-    # save resultant height map, friction, elasticity, damping as structured np array with corresponding field names
-    # save initial height map
-    height_init = system.height0.detach().cpu().numpy()
-    # save height map
-    height = system.height.detach().cpu().numpy()
-    # save friction
-    friction = system.friction.detach().cpu().numpy()
-    # save elasticity
-    elasticity = system.elasticity.detach().cpu().numpy()
-    # save damping
-    damping = system.damping.detach().cpu().numpy()
-    # create structured array
-    result = np.zeros((height.shape[0], height.shape[1]), dtype=[('height_init', np.float32),
-                                                                        ('height', np.float32),
-                                                                        ('friction', np.float32),
-                                                                        ('elasticity', np.float32),
-                                                                        ('damping', np.float32)])
-    result['height_init'] = height_init
-    result['height'] = height
-    result['friction'] = friction
-    result['elasticity'] = elasticity
-    result['damping'] = damping
-    # save terrain properties array to file
-    output_path = os.path.join(robingas_husky_seq_paths[-1], 'terrain', 'traj', 'dphysics')
-    os.makedirs(output_path, exist_ok=True)
-    # output_name = '%s_loss_%.3f_loss0_%.3f_train_iter_%i.npy' % \
-    #               (output_name, log['losses'][np.argmin(log['losses'])], log['losses'][0], np.argmin(log['losses']).item())
-    output_name = '%s.npy' % output_name
-    print('Saving result to %s' % os.path.join(output_path, output_name))
-    np.save(os.path.join(output_path, output_name), result)
-
-    # save figure
-    train_log_path = os.path.join(output_path, 'train_log')
-    os.makedirs(train_log_path, exist_ok=True)
-    fig = log['train_fig']
-    fig.savefig(os.path.join(train_log_path, output_name.replace('.npy', '.png')))
-
-    # save config in yaml file
-    # if not os.path.exists(os.path.join(train_log_path, 'dphys_cfg.yaml')):
-    cfg.to_yaml(os.path.join(train_log_path, 'dphys_cfg.yaml'))
-
-    # # save learned trajectory
-    # states = (system.pos_x, system.pos_R, system.vel_x, system.vel_omega, system.forces)
-    # states = [x.detach().cpu().numpy() for x in states]
-    # states = np.stack(states, axis=1)
-    # np.save(os.path.join(train_log_path, output_name.replace('.npy', '_states.npy')), states)
-
-    return result
-
-
-def train(ds, cfg=Config(),
-          vis=False, save_data=False,
-          convergence_std=0.001, convergence_n_samples=30,
-          lr=0.01, n_train_iters=100):
-
-    for data_i in tqdm(range(len(ds))):
-        # print('Selected data sample %i/%i' % (data_i, len(ds)))
-        if os.path.exists(os.path.join(ds.path, 'terrain/', ds.ids[data_i]+'.npy')):
-            print('Already trained')
-            continue
-
-        states_true = ds.get_states_traj(data_i, start_from_zero=True)
-        states_true = tuple([x.to(cfg.device) for x in states_true])
-        xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
-
-        hm_lidar = ds.get_lidar_height_map(data_i)
-        height = hm_lidar[0]
-
-        traj = ds.get_traj(data_i)
-        poses = traj['poses']
-        img, _ = ds.get_image(data_i)
-
-        if vis:
-            visualize_data(height, traj, img=img, cfg=cfg)
-
-        """ Create robot-terrain interaction models """
-        system = RigidBodySoftTerrain(height=np.zeros_like(height) + poses[:, 2, 3].min(),
-                                      grid_res=cfg.grid_res,
-                                      friction=cfg.friction, mass=cfg.robot_mass,
-                                      state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.], device=cfg.device).view(xyz_true[0].shape),
-                                                  rot=rot_true[0],
-                                                  vel=vel_true[0],
-                                                  omega=omega_true[0],
-                                                  forces=forces_true[0], device=cfg.device),
-                                      device=cfg.device, use_ode=False,
-                                      interaction_model=cfg.robot_terrain_interaction_model)
-
-        # put models with their params to device
-        system = system.to(cfg.device)
-
-        t0, s0 = 0., system.state
-        tt = torch.linspace(float(t0), float(t0) + cfg.total_sim_time, cfg.n_samples)
-        states = system.sim(s0, tt)
-
-        vis_cfg = setup_visualization(system=system, states=states, states_true=states_true, cfg=cfg) if vis else None
-        # mlab.show()
-        """ Train """
-        system_opt, log = learn_terrain(system, states_true=states_true, tt=tt,
-                                        cfg=cfg, vis_cfg=vis_cfg, vis=vis)
-        if save_data:
-            output_name = '%s' % ds.ids[data_i]
-            save_result(system_opt, output_name, log, cfg)
+        # save config in yaml file
+        cfg.to_yaml(os.path.join(train_log_path, 'dphys_cfg.yaml'))
+        return result
 
 
 def main():
@@ -343,11 +263,11 @@ def main():
 
     data_aug_conf = read_yaml('../../config/lss_cfg.yaml')['data_aug_conf']
 
-    ds = RobinGas(path=args.dataset_path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
-    train(ds, cfg=cfg,
-          vis=args.visualize, save_data=args.save_data,
-          convergence_std=args.convergence_std, convergence_n_samples=args.convergence_n_samples,
-          lr=args.lr, n_train_iters=args.n_train_iters)
+    learner = Learner(data_path=args.dataset_path, cfg=cfg, data_aug_config=data_aug_conf,
+                      vis=args.visualize, save_data=args.save_data,
+                      convergence_std=args.convergence_std, convergence_n_samples=args.convergence_n_samples,
+                      lr=args.lr, n_train_iters=args.n_train_iters)
+    learner.learn()
 
 
 if __name__ == '__main__':

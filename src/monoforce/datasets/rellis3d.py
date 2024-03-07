@@ -18,6 +18,7 @@ from scipy.spatial.transform import Rotation
 import open3d as o3d
 from tqdm import tqdm
 from scipy.spatial import cKDTree
+import albumentations as A
 
 
 __all__ = [
@@ -254,9 +255,29 @@ class Rellis3D(Rellis3DBase):
     def __init__(self, path, data_aug_conf, cfg=Config(), is_train=False, only_front_hm=False):
         super().__init__(path)
         self.cfg = cfg
-        self.data_aug_conf = data_aug_conf
         self.is_train = is_train
+        self.data_aug_conf = data_aug_conf
+        self.img_augs = self.get_img_augs()
         self.only_front_hm = only_front_hm
+
+    def get_img_augs(self):
+        if self.is_train:
+            return A.Compose([
+                    A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
+                    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+                    A.RandomGamma(gamma_limit=(80, 120), p=0.5),
+                    A.Blur(blur_limit=7, p=0.5),
+                    A.GaussNoise(var_limit=(10, 50), p=0.5),
+                    A.MotionBlur(blur_limit=7, p=0.5),
+                    A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200),
+                                 p=0.5),
+                    A.RandomShadow(num_shadows_lower=1, num_shadows_upper=2, shadow_dimension=5, shadow_roi=(0, 0.5, 1, 1), p=0.5),
+                    A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
+                    A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
+                    A.RandomToneCurve(scale=0.1, p=0.5),
+            ])
+        else:
+            return None
 
     def get_traj(self, id, n_frames=100):
         i0 = self.ids.index(id)
@@ -404,8 +425,9 @@ class Rellis3D(Rellis3DBase):
     def get_image_data(self, id, normalize=True):
         img = self.get_image(id)
         K = self.calib['K']
-        # if self.is_train:
-        #     img = self.img_augs(image=img)['image']
+
+        if self.is_train:
+            img = self.img_augs(image=img)['image']
 
         post_rot = torch.eye(2)
         post_tran = torch.zeros(2)
