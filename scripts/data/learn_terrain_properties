@@ -253,15 +253,15 @@ class Learner:
 
         # create a figure showing terrain properties
         fig, ax = plt.subplots(1, 5, figsize=(15, 3))
-        ax[0].imshow(height, cmap='terrain')
+        ax[0].imshow(height.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
         ax[0].set_title('Height map')
-        ax[1].imshow(friction, cmap='terrain')
+        ax[1].imshow(friction.T, cmap='jet', origin='lower')
         ax[1].set_title('Friction')
-        ax[2].imshow(elasticity, cmap='terrain')
+        ax[2].imshow(elasticity.T, cmap='jet', origin='lower')
         ax[2].set_title('Elasticity')
-        ax[3].imshow(damping, cmap='terrain')
+        ax[3].imshow(damping.T, cmap='jet', origin='lower')
         ax[3].set_title('Damping')
-        ax[4].imshow(height_init, cmap='terrain')
+        ax[4].imshow(height_init.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
         ax[4].set_title('Initial height map')
         for a in ax:
             a.axis('off')
