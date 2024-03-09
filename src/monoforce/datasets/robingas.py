@@ -374,7 +374,7 @@ class DEMPathData(Dataset):
         heightmap = torch.stack([height, mask])
         return heightmap
 
-    def get_traj_height_map(self, i, method='footprint', cached=True, dir_name=None):
+    def get_traj_height_map(self, i, method='dphysics', cached=True, dir_name=None):
         """
         Get height map from trajectory points.
         :param i: index of the sample
@@ -388,14 +388,14 @@ class DEMPathData(Dataset):
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
         if method == 'dphysics':
             height = self.get_traj_dphyics_terrain(i)
+            h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
             # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
             H, W = height.shape
-            assert H == W == 256, f'Height map shape is {H} x {W}. Expected 256 x 256.'
-            h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
-            # select only the h x w area from the center of the height map
-            height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
-                            int(W // 2 - w // 2):int(W // 2 + w // 2)]
-
+            if H == 256 and W == 256:
+                # print(f'Height map shape is {H} x {W}). Cropping to 128 x 128')
+                # select only the h x w area from the center of the height map
+                height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
+                                int(W // 2 - w // 2):int(W // 2 + w // 2)]
             # poses in grid coordinates
             poses = self.get_traj(i)['poses']
             poses_grid = poses[:, :2, 3] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
@@ -638,7 +638,7 @@ class RobinGas(DEMPathData):
     def get_sample(self, i):
         img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
         hm_lidar = self.get_lidar_height_map(i, robot_radius=1.0)
-        hm_traj = self.get_traj_height_map(i, method='footprint')
+        hm_traj = self.get_traj_height_map(i)
         if self.only_front_hm:
             hm_lidar = self.crop_front_height_map(hm_lidar)
             hm_traj = self.crop_front_height_map(hm_traj)

@@ -73,8 +73,9 @@ class Learner:
 
     def learn(self):
         ds = RobinGas(path=self.data_path, cfg=self.cfg, data_aug_conf=self.data_aug_config, is_train=False)
-        for data_i in tqdm(range(len(ds)), desc='Learning terrain properties'):
-            print('Processing %s data sample' % ds.ids[data_i])
+        for data_i in range(len(ds)):
+        # for data_i in tqdm(range(len(ds)), desc='Learning terrain properties'):
+            # print('Processing %s data sample' % ds.ids[data_i])
             if os.path.exists(os.path.join(ds.path, 'terrain/', ds.ids[data_i] + '.npy')):
                 print('Terrain properties already exist for this sample, skipping')
                 continue

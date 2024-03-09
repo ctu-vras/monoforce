@@ -494,7 +494,8 @@ class EvaluatorSemSeg(Evaluator):
 def vis_data(data_paths):
     dphys_config_path = '../config/dphys_cfg.yaml'
     lss_config_path = '../config/lss_cfg.yaml'
-    modelf = '../config/tb_runs/lss_2024_03_04_09_42_47/train_lss.pt'
+    # modelf = '../config/tb_runs/lss_2024_03_04_09_42_47/train_lss.pt'
+    modelf = None
 
     for path in data_paths:
         assert os.path.isdir(path), 'Data path %s does not exist' % path
