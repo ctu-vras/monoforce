@@ -4,14 +4,13 @@ import numpy as np
 import yaml
 
 
-class Config:
+class DPhysConfig:
     def __init__(self):
         # height map parameters
         self.grid_res = 0.1
         self.d_min = 1.0
         self.d_max = 6.4
         self.h_max = 1.0  # above robot frame (base_link)
-        self.grass_range = [0.1, 0.5]  # [m], [min, max] possible grass height
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9
@@ -20,33 +19,19 @@ class Config:
         # robot parameters
         self.vel_tracks = [0., 0.]
         self.robot_mass = 10.
-        self.num_robot_points = 5
         self.robot_inertia = (5. * np.eye(3)).tolist()
         self.robot_init_xyz = [0., 0., 1.]
         self.robot_init_q = [0., 0., 0., 1.]
 
         # training parameters
-        self.use_terrain_cnn = False
-        self.device = 'cpu'
-        self.lr = 0.001
-        self.weight_decay = 0.0
         self.total_sim_time = 10.0
         self.n_samples = 100 * int(self.total_sim_time)
         self.sample_len = 10
-        self.n_train_iters = 100
-        self.convergence_std = 1e-3
-        self.convergence_n_samples = 10
-        self.dataset_path = ''
-        self.trans_cost_weight = 1.
-        self.rot_cost_weight = 1.
 
         # control parameters
         self.robot_terrain_interaction_model = 'diffdrive'
         self.max_vel = 2.  # m/s
         self.max_omega = 2.  # rad/s
-
-        # MonoDem parameters
-        self.img_size = (512, 512)
 
     def __str__(self):
         return str(self.__dict__)
@@ -83,5 +68,5 @@ class Config:
 
 
 if __name__ == '__main__':
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.to_yaml('../../config/dphys_cfg.yaml')

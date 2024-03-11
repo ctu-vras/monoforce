@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from .models import RigidBodySoftTerrain, State
-from .config import Config
+from .config import DPhysConfig
 from pytorch3d.transforms import quaternion_to_matrix, matrix_to_quaternion
 from pytorch3d.ops.knn import knn_points
 from scipy.spatial.transform import Rotation
@@ -153,7 +153,8 @@ def find_time_correspondences(tt1, tt2):
     return ids
 
 
-def traj_dist(states, states_true, tt=None, tt_true=None, cfg=Config(), return_trans_and_rot=False):
+def traj_dist(states, states_true, tt=None, tt_true=None, return_trans_and_rot=False,
+              trans_cost_weight=1., rot_cost_weight=1.):
     """
     Computes the distance between the predicted trajectory
     by the robot-terrain interaction system and the true trajectory.
@@ -165,7 +166,8 @@ def traj_dist(states, states_true, tt=None, tt_true=None, cfg=Config(), return_t
     @param states_true: ground truth states
     @param tt: time points of the predicted trajectory
     @param tt_true: time points of the true trajectory
-    @param cfg: Config object
+    @param trans_cost_weight: weight of the translation distance
+    @param rot_cost_weight: weight of the rotation distance
     @param return_trans_and_rot: if True, returns translation and rotation distances separately
     @return: weighted sum of translation and rotation distances
     """
@@ -187,14 +189,15 @@ def traj_dist(states, states_true, tt=None, tt_true=None, cfg=Config(), return_t
 
     loss_tran = translation_difference(x1=xyz[ids], x2=xyz_true)
     loss_rot = rotation_difference(R1=R[ids], R2=R_true)
-    loss = cfg.trans_cost_weight * loss_tran + cfg.rot_cost_weight * loss_rot
+    loss = trans_cost_weight * loss_tran + rot_cost_weight * loss_rot
     if return_trans_and_rot:
         return loss_tran, loss_rot
 
     return loss
 
 
-def sampled_traj_dist(system, states_true, tt, tt_true=None, cfg=Config(), norm_loss=False):
+def sampled_traj_dist(system, states_true, tt, tt_true=None, norm_loss=False,
+                      trans_cost_weight=1., rot_cost_weight=1.):
     assert isinstance(system, RigidBodySoftTerrain)
     states_true = tuple([x.detach() for x in states_true])
 
@@ -223,7 +226,7 @@ def sampled_traj_dist(system, states_true, tt, tt_true=None, cfg=Config(), norm_
         loss_tran = translation_difference(x1=states[0][-1][None], x2=xyz_true[i+1][None])
         loss_rot = rotation_difference(R1=states[1][-1][None], R2=R_true[i+1][None])
 
-        loss = cfg.trans_cost_weight * loss_tran + cfg.rot_cost_weight * loss_rot
+        loss = trans_cost_weight * loss_tran + rot_cost_weight * loss_rot
         loss_total += loss.clone()
 
     if norm_loss:
@@ -479,7 +482,7 @@ def test_closest_points():
     from .datasets.utils import get_robingas_data, get_kkt_data
     from .vis import set_axes_equal
 
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.total_sim_time = 3.
 
     # pts1 = np.random.uniform(-1, 1, (10, 3))

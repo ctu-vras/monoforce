@@ -8,7 +8,7 @@ from scipy.spatial.transform import Rotation
 from tf.transformations import quaternion_from_matrix, quaternion_matrix
 from geometry_msgs.msg import Transform
 
-paths = robingas_husky_seq_paths
+paths = robingas_husky_seq_paths[2:3]
 
 for path in paths:
     input_bag_path = path + '.bag'

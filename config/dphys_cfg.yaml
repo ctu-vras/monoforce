@@ -1,7 +1,6 @@
 d_max: 6.4
 d_min: 0.6
 damping: 0.0
-device: cuda
 elasticity: 0.0
 friction: 0.9
 grid_res: 0.1

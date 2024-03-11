@@ -9,7 +9,7 @@ from PIL import ImageFile
 import torch
 import open3d as o3d
 from mayavi import mlab
-from .config import Config
+from .config import DPhysConfig
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
@@ -35,7 +35,7 @@ def draw_points_on_image(points, color, image):
 
 
 def setup_visualization(system, states=None, states_true=None,
-                        cfg=Config(), z_margin=0.1, show=False):
+                        cfg=DPhysConfig(), z_margin=0.1, show=False):
     """ Set-up visualization """
     points = system.robot_points.detach().cpu().numpy()
     height = system.height.detach().cpu().numpy()

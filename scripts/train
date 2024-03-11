@@ -13,17 +13,13 @@ from monoforce.models.lss.model import compile_model
 from monoforce.datasets import RobinGas, explore_data, RobinGasVis
 from monoforce.datasets import Rellis3D, Rellis3DVis
 from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths
-from monoforce.config import Config
-from monoforce.utils import read_yaml, write_to_yaml
+from monoforce.config import DPhysConfig
+from monoforce.utils import read_yaml, write_to_yaml, str2bool
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import matplotlib.pyplot as plt
 import argparse
-
-
-def str2bool(v):
-    return v.lower() in ('1', 'yes', 'true', 't', 'y')
 
 
 def arg_parser():
@@ -34,10 +30,10 @@ def arg_parser():
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--map_consistency', type=str2bool, default=False, help='Enable map consistency loss')
-    parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
-    # parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
+    # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
+    parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
-    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
+    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--lidar_hm_weight', type=float, default=1.0, help='Weight for lidar heightmap loss')
     parser.add_argument('--traj_hm_weight', type=float, default=100.0, help='Weight for trajectory heightmap loss')
@@ -45,13 +41,14 @@ def arg_parser():
 
     return parser.parse_args()
 
+
 class Trainer:
     """
     Trainer for LSS terrain encoder model
 
     Args:
     dataset: str, dataset name
-    cfg: Config, configuration object
+    dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     data_aug_conf: dict, data augmentation configuration
     grid_conf: dict, grid configuration
     bsz: int, batch size
@@ -68,9 +65,10 @@ class Trainer:
     traj_hm_weight: float, weight for trajectory heightmap loss
     hdiff_weight: float, weight for height difference loss
     """
+
     def __init__(self,
                  dataset,
-                 cfg,
+                 dphys_cfg,
                  data_aug_conf,
                  grid_conf,
                  bsz=1,
@@ -87,44 +85,45 @@ class Trainer:
                  hdiff_weight=0.0001,
                  map_consistency_weight=0.1):
 
-            self.cfg = cfg
-            self.data_aug_conf = data_aug_conf
-            self.grid_conf = grid_conf
-            self.dataset = dataset
-            self.nepochs = nepochs
-            self.map_consistency = map_consistency
-            self.log_dir = os.path.join('../config/tb_runs',
-                                        f'lss_{dataset}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.dphys_cfg = dphys_cfg
+        self.data_aug_conf = data_aug_conf
+        self.grid_conf = grid_conf
+        self.dataset = dataset
+        self.nepochs = nepochs
+        self.map_consistency = map_consistency
+        self.log_dir = os.path.join('../config/tb_runs',
+                                    f'lss_{dataset}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
-            self.train_loaders, self.val_loaders = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
+        self.train_loaders, self.val_loaders = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
 
-            self.model = self.load_model(modelf=pretrained_model_path)
+        self.model = self.load_model(modelf=pretrained_model_path)
 
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-            self.loss_fn = torch.nn.MSELoss(reduction='none')
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        self.loss_fn = torch.nn.MSELoss(reduction='none')
 
-            self.writer = SummaryWriter(log_dir=self.log_dir)
-            # save configs to log dir
-            write_to_yaml(cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
-            lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
-            write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
+        self.writer = SummaryWriter(log_dir=self.log_dir)
+        # save configs to log dir
+        write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
+        lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
+        write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
-            self.min_loss = np.inf
-            self.min_train_loss = np.inf
-            self.train_counter = 0
-            self.val_counter = 0
+        self.min_loss = np.inf
+        self.min_train_loss = np.inf
+        self.train_counter = 0
+        self.val_counter = 0
 
-            self.lidar_hm_weight = lidar_hm_weight
-            self.traj_hm_weight = traj_hm_weight
-            self.hdiff_weight = hdiff_weight
-            self.map_consistency_weight = map_consistency_weight
+        self.lidar_hm_weight = lidar_hm_weight
+        self.traj_hm_weight = traj_hm_weight
+        self.hdiff_weight = hdiff_weight
+        self.map_consistency_weight = map_consistency_weight
 
     def load_model(self, modelf=None):
         model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
         if modelf is not None:
             print('Loading pretrained LSS model from', modelf)
             model.load_state_dict(torch.load(modelf))
-        model.to(self.cfg.device)
+        model.to(self.device)
         model.train()
         return model
 
@@ -147,11 +146,11 @@ class Trainer:
             assert os.path.exists(path)
             # print(f'Train dataset from path {path} size is {len(ds)}')
             if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg,
+                explore_data(path, self.grid_conf, self.data_aug_conf, self.dphys_cfg,
                              save=False, is_train=True, DataClass=DataVis)
 
-            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
-            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, cfg=self.cfg)
+            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg)
+            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg)
 
             if debug:
                 print('Debug mode: using small datasets')
@@ -162,7 +161,7 @@ class Trainer:
                 # randomly select a subset of the dataset
                 val_ds_size = int(val_fraction * len(train_ds))
                 # if map consistency is enabled, use a sequential part of the dataset
-                val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False) if not self.map_consistency\
+                val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False) if not self.map_consistency \
                     else range(len(train_ds) // 2, len(train_ds) // 2 + val_ds_size)
                 train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
                 assert len(train_ids) + len(val_ids) == len(train_ds)
@@ -236,7 +235,7 @@ class Trainer:
 
         clouds = []
         for p, h in zip(map_pose, height):
-            hm_cloud = hm_to_cloud(h.squeeze(), self.cfg)
+            hm_cloud = hm_to_cloud(h.squeeze(), self.dphys_cfg)
             hm_cloud = transform_cloud(hm_cloud, p)
             clouds.append(hm_cloud)
 
@@ -273,7 +272,7 @@ class Trainer:
         for loader in loaders:
             loader_loss = 0.0
             for batch in tqdm(loader, total=len(loader)):
-                batch = [torch.as_tensor(b, dtype=torch.float32, device=self.cfg.device) for b in batch]
+                batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
                 imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
                 height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
                 height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
@@ -297,7 +296,7 @@ class Trainer:
                     loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
                     loss += self.map_consistency_weight * loss_map
                 else:
-                    loss_map = torch.tensor(np.nan, device=self.cfg.device)
+                    loss_map = torch.tensor(np.nan, device=self.device)
 
                 if train:
                     loss.backward()
@@ -373,7 +372,7 @@ class Trainer:
         with torch.no_grad():
             imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.cfg.device) for i in inputs]
+            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.device) for i in inputs]
             hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32)
             voxel_feats = self.model.get_voxels(*inputs)
             height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
@@ -389,8 +388,8 @@ class Trainer:
 
             # get height map points
             z_grid = height_pred
-            x_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
-            y_grid = torch.arange(-self.cfg.d_max, self.cfg.d_max, self.cfg.grid_res)
+            x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+            y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
             hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
             hm_points = hm_points.view(-1, 3).T
@@ -448,7 +447,7 @@ class Trainer:
 
 
 def main():
-    cfg = Config()
+    cfg = DPhysConfig()
     config_path = '../config/dphys_cfg.yaml'
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
@@ -465,7 +464,7 @@ def main():
     print(args)
 
     trainer = Trainer(dataset=args.dataset,
-                      cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
+                      dphys_cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,

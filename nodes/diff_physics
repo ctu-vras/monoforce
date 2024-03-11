@@ -4,7 +4,7 @@ import os
 import torch
 import numpy as np
 import rospy
-from monoforce.config import Config
+from monoforce.config import DPhysConfig
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.ros import to_marker, to_path
 from nav_msgs.msg import Path
@@ -18,7 +18,7 @@ from visualization_msgs.msg import MarkerArray
 pkg_path = rospkg.RosPack().get_path('monoforce')
 
 class DiffPhysics:
-    def __init__(self, cfg: Config,
+    def __init__(self, cfg: DPhysConfig,
                  hm_topic='/height_map',
                  hm_frame='base_link',
                  linear_vels=[1.],
@@ -204,7 +204,7 @@ def main():
     rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
-    cfg = Config()
+    cfg = DPhysConfig()
     config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)

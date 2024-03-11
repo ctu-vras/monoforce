@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # This script synchronizes data sequences from a remote server
-#DATA_PATH=/media/ruslan/data
-DATA_PATH=/media/ruslan/SSD/data
+DATA_PATH=/media/ruslan/data
+#DATA_PATH=/media/ruslan/SSD/data
 
 # list of sequences to process
 SEQUENCES=(
@@ -17,20 +17,28 @@ SEQUENCES=(
 #             'husky_sim/husky_back_forth_rigid_soft_cubes_2024-02-15-15-07-56/'
 #             'husky_sim/husky_cubes_random_walk_2024-02-12-15-08-00/'
 )
+BAGS=(
+            'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag'
+            'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15.bag'
+            'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag'
+            'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31.bag'
+            'robingas/data/22-06-30-cimicky_haj/husky_2022-06-30-15-58-37.bag'
+)
 
 USER_NAME=agishrus
 SERVER=login3.rci.cvut.cz
 
 # loop through bag files
-for SEQ in "${SEQUENCES[@]}"
+for BAG in "${BAGS[@]}"
 do
-    SOURCE_PATH=${USER_NAME}@$SERVER:/mnt/personal/agishrus/data/$SEQ
-    TARGET_PATH=${DATA_PATH}/$SEQ
-#    TARGET_PATH=${USER_NAME}@$SERVER:/mnt/personal/agishrus/data/$SEQ
-#    SOURCE_PATH=${DATA_PATH}/$SEQ
+#    SOURCE_PATH=${USER_NAME}@$SERVER:/mnt/personal/agishrus/data/$SEQ
+#    TARGET_PATH=${DATA_PATH}/$SEQ
+    TARGET_PATH=${USER_NAME}@$SERVER:/mnt/personal/agishrus/data/$BAG
+    SOURCE_PATH=${DATA_PATH}/$BAG
     echo "Synchronizing from source path ${SOURCE_PATH}"
     echo "to target path $TARGET_PATH"
 
-    rsync -r --progress --ignore-existing --exclude='*.bag' ${SOURCE_PATH} ${TARGET_PATH}
+    scp $TARGET_PATH $SOURCE_PATH
+#    rsync -r --progress --ignore-existing --exclude='*.bag' ${SOURCE_PATH} ${TARGET_PATH}
 done
 echo "Done synchronizing data."

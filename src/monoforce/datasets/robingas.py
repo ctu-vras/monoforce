@@ -11,7 +11,7 @@ from matplotlib import cm, pyplot as plt
 from mayavi import mlab
 from ..models.lss.tools import ego_to_cam, get_only_in_img_mask, denormalize_img, img_transform, normalize_img
 from ..models.lss.model import compile_model
-from ..config import Config
+from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_box
 from ..utils import position, color
@@ -125,7 +125,7 @@ class DEMPathData(Dataset):
     - trajectory (T x 4 x 4), where T is the number of poses
     """
 
-    def __init__(self, path, cfg=Config()):
+    def __init__(self, path, dphys_cfg=DPhysConfig()):
         super(Dataset, self).__init__()
         self.path = path
         self.name = os.path.basename(os.path.normpath(path))
@@ -139,7 +139,7 @@ class DEMPathData(Dataset):
         # assert os.path.exists(self.traj_path)
         self.calib_path = os.path.join(path, 'calibration')
         # assert os.path.exists(self.calib_path)
-        self.cfg = cfg
+        self.dphys_cfg = dphys_cfg
         self.calib = load_cam_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.poses = self.get_poses()
@@ -260,7 +260,7 @@ class DEMPathData(Dataset):
         color = unstructured_to_structured(rgb, names=['r', 'g', 'b'])
         return color
 
-    def get_raw_image(self, i, camera='front'):
+    def get_raw_image(self, i, camera='camera_front'):
         ind = self.ids[i]
         img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
         assert os.path.exists(img_path), f'Image path {img_path} does not exist'
@@ -280,8 +280,8 @@ class DEMPathData(Dataset):
 
         # robot footprint points grid
         width, length = robot_size
-        x = np.arange(-length / 2, length / 2, self.cfg.grid_res)
-        y = np.arange(-width / 2, width / 2, self.cfg.grid_res)
+        x = np.arange(-length / 2, length / 2, self.dphys_cfg.grid_res)
+        y = np.arange(-width / 2, width / 2, self.dphys_cfg.grid_res)
         x, y = np.meshgrid(x, y)
         z = np.zeros_like(x)
         footprint0 = np.stack([x, y, z], axis=-1).reshape((-1, 3))
@@ -311,7 +311,7 @@ class DEMPathData(Dataset):
                 T = poses[i]
                 cloud = transform_cloud(cloud, T)
                 points = position(cloud)
-                points = filter_grid(points, self.cfg.grid_res, keep='first', log=False)
+                points = filter_grid(points, self.dphys_cfg.grid_res, keep='first', log=False)
                 if i == 0:
                     global_cloud = points
                 else:
@@ -329,7 +329,7 @@ class DEMPathData(Dataset):
         global_hm_cloud = []
         for i in tqdm(range(len(self))):
             hm = self.get_lidar_height_map(i)
-            hm_cloud = hm_to_cloud(hm[0], self.cfg, mask=hm[1])
+            hm_cloud = hm_to_cloud(hm[0], self.dphys_cfg, mask=hm[1])
             hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), poses[i])
             global_hm_cloud.append(hm_cloud)
         global_hm_cloud = np.concatenate(global_hm_cloud, axis=0)
@@ -344,9 +344,9 @@ class DEMPathData(Dataset):
 
     def estimate_heightmap(self, points, **kwargs):
         # estimate heightmap from point cloud
-        height = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                    grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
-                                    hm_interp_method=self.cfg.hm_interp_method, **kwargs)
+        height = estimate_heightmap(points, d_min=self.dphys_cfg.d_min, d_max=self.dphys_cfg.d_max,
+                                    grid_res=self.dphys_cfg.grid_res, h_max=self.dphys_cfg.h_max,
+                                    hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
     def get_lidar_height_map(self, i, cached=True, dir_name=None, **kwargs):
@@ -388,7 +388,7 @@ class DEMPathData(Dataset):
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
         if method == 'dphysics':
             height = self.get_traj_dphyics_terrain(i)
-            h, w = int(2 * self.cfg.d_max // self.cfg.grid_res), int(2 * self.cfg.d_max // self.cfg.grid_res)
+            h, w = int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res), int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res)
             # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
             H, W = height.shape
             if H == 256 and W == 256:
@@ -398,7 +398,7 @@ class DEMPathData(Dataset):
                                 int(W // 2 - w // 2):int(W // 2 + w // 2)]
             # poses in grid coordinates
             poses = self.get_traj(i)['poses']
-            poses_grid = poses[:, :2, 3] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
+            poses_grid = poses[:, :2, 3] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
             poses_grid = poses_grid.astype(int)
             # crop poses to observation area defined by square grid
             poses_grid = poses_grid[(poses_grid[:, 0] > 0) & (poses_grid[:, 0] < w) &
@@ -487,8 +487,8 @@ class RobinGas(DEMPathData):
                  data_aug_conf,
                  is_train=False,
                  only_front_hm=False,
-                 cfg=Config()):
-        super(RobinGas, self).__init__(path, cfg)
+                 dphys_cfg=DPhysConfig()):
+        super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_hm = only_front_hm
         # get camera names
@@ -625,11 +625,11 @@ class RobinGas(DEMPathData):
 
     def crop_front_height_map(self, hm):
         # square defining observation area on the ground
-        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.cfg.d_max / 2
-        offset = np.asarray([0, self.cfg.d_max / 2, 0])
+        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.dphys_cfg.d_max / 2
+        offset = np.asarray([0, self.dphys_cfg.d_max / 2, 0])
         square = square + offset
         h, w = hm.shape[1], hm.shape[2]
-        square_grid = square[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
+        square_grid = square[:, :2] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
         # crop height map to observation area defined by square grid
         hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
                          int(square_grid[0, 0]):int(square_grid[2, 0])]
@@ -647,8 +647,8 @@ class RobinGas(DEMPathData):
 
 
 class RobinGasVis(RobinGas):
-    def __init__(self, path, data_aug_conf, is_train=True, cfg=Config()):
-        super(RobinGasVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+    def __init__(self, path, data_aug_conf, is_train=True, dphys_cfg=DPhysConfig()):
+        super(RobinGasVis, self).__init__(path, data_aug_conf, is_train=is_train, dphys_cfg=dphys_cfg)
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
@@ -667,10 +667,10 @@ class RobinGasCamSynch(RobinGas):
                  path,
                  data_aug_conf,
                  is_train=True,
-                 cfg=Config(),
+                 dphys_cfg=DPhysConfig(),
                  camera_to_synchronize_to='camera_front'
                  ):
-        super(RobinGasCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg)
+        super(RobinGasCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, dphys_cfg=dphys_cfg)
         self.camera_to_synchronize_to = camera_to_synchronize_to
         self.poses_at_camera_stamps_path = {
             cam: os.path.join(self.path, 'poses', f'robot_poses_at_{cam}_timestamps.csv') for cam in self.cameras}
@@ -702,7 +702,7 @@ class RobinGasCamSynch(RobinGas):
 
         # sample cloud from map at the same time as the camera image
         global_cloud = self.global_cloud(vis=False)
-        box_size = [2 * self.cfg.d_max, 2 * self.cfg.d_max, 2 * self.cfg.h_max]
+        box_size = [2 * self.dphys_cfg.d_max, 2 * self.dphys_cfg.d_max, 2 * self.dphys_cfg.h_max]
         cloud_sampled = filter_box(global_cloud, box_size=box_size, box_pose=pose_cam_stamp)
         cloud_sampled = transform_cloud(cloud_sampled, np.linalg.inv(pose_cam_stamp))
 
@@ -719,10 +719,10 @@ class RobinGasCamSynchVis(RobinGasCamSynch):
                  path,
                  data_aug_conf,
                  is_train=True,
-                 cfg=Config(),
+                 dphys_cfg=DPhysConfig(),
                  camera_to_synchronize_to='camera_front'
                  ):
-        super(RobinGasCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, cfg=cfg,
+        super(RobinGasCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, dphys_cfg=dphys_cfg,
                                                   camera_to_synchronize_to=camera_to_synchronize_to)
 
     def get_sample(self, i):
@@ -734,7 +734,7 @@ class RobinGasCamSynchVis(RobinGasCamSynch):
         return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
 
 
-def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
+def explore_data(path, grid_conf, data_aug_conf, dphys_cfg, modelf=None,
                  sample_range='random', save=False, is_train=False, DataClass=RobinGasVis):
     assert os.path.exists(path)
 
@@ -744,7 +744,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
         print('Loaded LSS model from', modelf)
         model.eval()
 
-    ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, dphys_cfg=dphys_cfg)
 
     H, W = data_aug_conf['H'], data_aug_conf['W']
     cams = data_aug_conf['cams']
@@ -778,7 +778,7 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
                 height_lidar, height_diff = model.bevencode(voxel_feats)
                 height_traj = height_lidar - height_diff
                 # replace lidar cloud with model height map output
-                pts = hm_to_cloud(height_traj.squeeze(), cfg).T
+                pts = hm_to_cloud(height_traj.squeeze(), dphys_cfg).T
                 pts = pts.unsqueeze(0)
 
         img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
@@ -809,8 +809,8 @@ def explore_data(path, grid_conf, data_aug_conf, cfg, modelf=None,
 
             plt.legend(loc='upper right')
             final_ax.set_aspect('equal')
-            plt.xlim((-cfg.d_max, cfg.d_max))
-            plt.ylim((-cfg.d_max, cfg.d_max))
+            plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
+            plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
 
             ax = plt.subplot(gs[:, 2:3])
             plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
@@ -841,8 +841,8 @@ def heightmap_demo():
     path = robingas_husky_seq_paths[0]
     assert os.path.exists(path)
 
-    cfg = Config()
-    ds = DEMPathData(path, cfg=cfg)
+    cfg = DPhysConfig()
+    ds = DEMPathData(path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -871,8 +871,8 @@ def extrinsics_demo():
     for path in robingas_husky_seq_paths:
         assert os.path.exists(path)
 
-        cfg = Config()
-        ds = DEMPathData(path, cfg=cfg)
+        cfg = DPhysConfig()
+        ds = DEMPathData(path, dphys_cfg=cfg)
 
         robot_pose = np.eye(4)
         robot_frame = 'base_link'
@@ -915,8 +915,8 @@ def vis_rgb_cloud():
     for path in robingas_husky_seq_paths:
         assert os.path.exists(path)
 
-        cfg = Config()
-        ds = DEMPathData(path, cfg=cfg)
+        cfg = DPhysConfig()
+        ds = DEMPathData(path, dphys_cfg=cfg)
 
         i = np.random.choice(range(len(ds)))
         # i = 10
@@ -982,11 +982,11 @@ def traversed_height_map():
     path = np.random.choice(robingas_husky_seq_paths)
     assert os.path.exists(path)
 
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'dphys_cfg.yaml'))
     # cfg.d_min = 1.
 
-    ds = DEMPathData(path, cfg=cfg)
+    ds = DEMPathData(path, dphys_cfg=cfg)
     i = np.random.choice(range(len(ds)))
 
     # trajectory poses
@@ -1019,7 +1019,7 @@ def traversed_height_map():
 
 
 def vis_hm_weights():
-    cfg = Config()
+    cfg = DPhysConfig()
 
     # circle mask: all points within a circle of radius 1 m are valid
     x_grid = np.arange(0, cfg.d_max, cfg.grid_res)
@@ -1042,7 +1042,7 @@ def vis_hm_weights():
 
 
 def vis_estimated_height_map():
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.grid_res = 0.1
     cfg.d_max = 12.8
     cfg.d_min = 1.
@@ -1051,7 +1051,7 @@ def vis_estimated_height_map():
     cfg.hm_interp_method = 'nearest'
 
     path = np.random.choice(robingas_husky_seq_paths)
-    ds = DEMPathData(path=path, cfg=cfg)
+    ds = DEMPathData(path=path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -1084,8 +1084,8 @@ def trajecory_footprint_heightmap():
     path = robingas_husky_seq_paths[0]
     assert os.path.exists(path)
 
-    cfg = Config()
-    ds = DEMPathData(path, cfg=cfg)
+    cfg = DPhysConfig()
+    ds = DEMPathData(path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     sample = ds[i]

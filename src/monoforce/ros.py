@@ -378,14 +378,6 @@ def get_cams_extrinsics(bag_path, camera_topics, center_frame, tf_buffer, save=T
                                                                       camera_frame,
                                                                       img_msg.header.stamp.to_sec()))
                 Tr = numpify(lidar_to_camera.transform)
-                # TODO: fix the transformation for Husky robot in bag files
-                if 'husky' in bag_path:
-                    print('Fixing the transformation for Husky robot')
-                    Tr_fix = np.eye(4)
-                    R = Rotation.from_euler('x', -np.pi/2, degrees=False).as_matrix()
-                    Tr_fix[:3, :3] = R
-                    Tr = Tr @ Tr_fix
-
                 print('Tr:\n', Tr)
                 transforms[f'T_{center_frame}__{camera_name}'] = Tr
 

@@ -5,7 +5,7 @@ import numpy as np
 import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
-from monoforce.config import Config
+from monoforce.config import DPhysConfig
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.cloudproc import estimate_heightmap, filter_grid, filter_range
 from monoforce.utils import position
@@ -20,7 +20,7 @@ pkg_path = rospkg.RosPack().get_path('monoforce')
 
 
 class HeightMapEstimator:
-    def __init__(self, cfg: Config,
+    def __init__(self, cfg: DPhysConfig,
                  pts_topics=['points'],
                  robot_frame='base_link'):
         self.cfg = cfg
@@ -129,7 +129,7 @@ class HeightMapEstimator:
 def main():
     rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.DEBUG)
 
-    cfg = Config()
+    cfg = DPhysConfig()
     config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)

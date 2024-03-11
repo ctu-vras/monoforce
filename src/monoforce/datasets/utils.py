@@ -2,7 +2,7 @@ import os
 import numpy as np
 import yaml
 
-from ..config import Config
+from ..config import DPhysConfig
 from ..transformations import xyz_rpy_to_matrix
 from ..vis import set_axes_equal
 from matplotlib import pyplot as plt
@@ -18,13 +18,13 @@ __all__ = [
 ]
 
 
-def get_robingas_data(cfg: Config(),
+def get_robingas_data(cfg: DPhysConfig(),
                       path='/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/',
                       i=None):
     from monoforce.datasets.robingas import DEMPathData
     # Load traversability data
     assert os.path.exists(path)
-    ds = DEMPathData(path, cfg=cfg)
+    ds = DEMPathData(path, dphys_cfg=cfg)
     i = np.random.choice(range(len(ds))) if i is None else i
     print('Selected data sample #{}'.format(i))
     sample = ds[i]
@@ -33,7 +33,7 @@ def get_robingas_data(cfg: Config(),
     return height, traj
 
 
-def get_kkt_data(cfg: Config(), i=None,
+def get_kkt_data(cfg: DPhysConfig(), i=None,
                  path='/home/ruslan/workspaces/traversability_ws/src/pose-consistency-KKT-loss/', dt=3.):
     import sys
     sys.path.append(os.path.join(path, 'scripts'))
@@ -78,7 +78,7 @@ def get_kkt_data(cfg: Config(), i=None,
     return height, traj
 
 
-def get_simple_data(cfg: Config):
+def get_simple_data(cfg: DPhysConfig):
     h, w = (cfg.d_max - cfg.d_min) / cfg.grid_res, (cfg.d_max - cfg.d_min) / cfg.grid_res
     h, w = int(h), int(w)
     height = np.zeros((h, w))
@@ -94,7 +94,7 @@ def get_simple_data(cfg: Config):
     return height, traj
 
 
-def visualize_data(height, traj, img=None, cfg=Config()):
+def visualize_data(height, traj, img=None, cfg=DPhysConfig()):
     assert len(height.shape) == 2, 'Height map should be 2D'
     assert len(traj['poses'].shape) == 3, 'Trajectory should be 3D'
     plt.figure(figsize=(20, 10))
@@ -157,7 +157,7 @@ def load_cam_calib(calib_path):
 
 
 if __name__ == '__main__':
-    cfg = Config()
+    cfg = DPhysConfig()
     # cfg.d_min, cfg.d_max = -12.75, 12.85
     # cfg.grid_res = 0.1
 

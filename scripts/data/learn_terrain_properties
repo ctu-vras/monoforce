@@ -9,7 +9,7 @@ from monoforce.utils import read_yaml, str2bool
 from monoforce.vis import setup_visualization, animate_trajectory, set_axes_equal
 from monoforce.datasets.utils import visualize_data
 from monoforce.datasets import RobinGas, robingas_husky_seq_paths
-from monoforce.config import Config
+from monoforce.config import DPhysConfig
 from monoforce.control import pose_control
 from mayavi import mlab
 from matplotlib import pyplot as plt
@@ -72,7 +72,7 @@ class Learner:
         return system
 
     def learn(self):
-        ds = RobinGas(path=self.data_path, cfg=self.cfg, data_aug_conf=self.data_aug_config, is_train=False)
+        ds = RobinGas(path=self.data_path, dphys_cfg=self.cfg, data_aug_conf=self.data_aug_config, is_train=False)
         for data_i in range(len(ds)):
         # for data_i in tqdm(range(len(ds)), desc='Learning terrain properties'):
             # print('Processing %s data sample' % ds.ids[data_i])
@@ -195,7 +195,7 @@ class Learner:
         for i_n in tqdm(range(self.n_train_iters), desc='Optimizing terrain properties'):
             optimizer.zero_grad()
             states = self.follow_trajectory(system, tt, states_true)
-            loss_tran, loss_rot = traj_dist(states, states_true, cfg=self.cfg, return_trans_and_rot=True)
+            loss_tran, loss_rot = traj_dist(states, states_true, return_trans_and_rot=True)
             loss = loss_tran + loss_rot
             losses.append(loss.item())
             if self.hm_var_weight is not None:
@@ -280,7 +280,7 @@ def main():
     args = arg_parser().parse_args()
     print(args)
 
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../../config/dphys_cfg.yaml')
     cfg.vel_tracks = args.vel_tracks * np.asarray([1., 1.])
     cfg.robot_terrain_interaction_model = args.control_model

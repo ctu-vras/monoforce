@@ -7,7 +7,7 @@ from ..models.lss.tools import img_transform, normalize_img
 from ..utils import position, read_yaml
 from ..transformations import transform_cloud
 from ..cloudproc import filter_grid, estimate_heightmap, hm_to_cloud
-from ..config import Config
+from ..config import DPhysConfig
 from .robingas import data_dir, explore_data
 from copy import copy
 import torch
@@ -252,9 +252,9 @@ class Rellis3DBase(torch.utils.data.Dataset):
         return read_rgb(self.image_path(self.ids_rgb[i]))
 
 class Rellis3D(Rellis3DBase):
-    def __init__(self, path, data_aug_conf, cfg=Config(), is_train=False, only_front_hm=False):
+    def __init__(self, path, data_aug_conf, dphys_cfg=DPhysConfig(), is_train=False, only_front_hm=False):
         super().__init__(path)
-        self.cfg = cfg
+        self.dphys_cfg = dphys_cfg
         self.is_train = is_train
         self.data_aug_conf = data_aug_conf
         self.img_augs = self.get_img_augs()
@@ -290,9 +290,48 @@ class Rellis3D(Rellis3DBase):
         poses[:, 2, 3] -= self.calib['clearance']
         footprint_poses = poses
         # time stamps
-        stamps = copy(self.ts_lid[i0:i1])
+        stamps = np.asarray(copy(self.ts_lid[i0:i1]))
         traj = {'poses': footprint_poses, 'stamps': stamps}
         return traj
+
+    def get_states_traj(self, id, start_from_zero=False):
+        traj = self.get_traj(id)
+        poses = traj['poses']
+
+        if start_from_zero:
+            # transform poses to the same coordinate frame as the height map
+            Tr = np.linalg.inv(poses[0])
+            poses = np.asarray([np.matmul(Tr, p) for p in poses])
+            # count time from 0
+            tstamps = traj['stamps']
+            tstamps = tstamps - tstamps[0]
+
+        poses = np.asarray(poses, dtype=np.float32)
+        tstamps = np.asarray(tstamps, dtype=np.float32)
+
+        xyz = torch.as_tensor(poses[:, :3, 3])
+        rot = torch.as_tensor(poses[:, :3, :3])
+
+        n_states = len(xyz)
+        tt = torch.tensor(tstamps)[None].T
+
+        dps = torch.diff(xyz, dim=0)
+        dt = torch.diff(tt, dim=0)
+        theta = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
+        theta = torch.cat([theta[:1], theta], dim=0)
+
+        vel = torch.zeros_like(xyz)
+        vel[:-1] = dps / dt
+        omega = torch.zeros_like(xyz)
+        omega[:-1, 2:3] = torch.diff(theta, dim=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
+
+        forces = torch.zeros((n_states, 3, 10))
+        states = (xyz.view(n_states, 3, 1),
+                  rot.view(n_states, 3, 3),
+                  vel.view(n_states, 3, 1),
+                  omega.view(n_states, 3, 1),
+                  forces.view(n_states, 3, 10))
+        return states
 
     def estimated_footprint_traj_points(self, id, robot_size=(1.38, 1.52)):
         traj = self.get_traj(id)
@@ -300,8 +339,8 @@ class Rellis3D(Rellis3DBase):
 
         # robot footprint points grid
         width, length = robot_size
-        x = np.arange(-length / 2, length / 2, self.cfg.grid_res)
-        y = np.arange(-width / 2, width / 2, self.cfg.grid_res)
+        x = np.arange(-length / 2, length / 2, self.dphys_cfg.grid_res)
+        y = np.arange(-width / 2, width / 2, self.dphys_cfg.grid_res)
         x, y = np.meshgrid(x, y)
         z = np.zeros_like(x)
         footprint0 = np.stack([x, y, z], axis=-1).reshape((-1, 3))
@@ -318,15 +357,15 @@ class Rellis3D(Rellis3DBase):
             else:
                 tree = cKDTree(trajectory_footprint)
                 d, _ = tree.query(footprint)
-                footprint = footprint[d > self.cfg.grid_res]
+                footprint = footprint[d > self.dphys_cfg.grid_res]
                 trajectory_footprint = np.concatenate([trajectory_footprint, footprint], axis=0)
         return trajectory_footprint
 
     def estimate_heightmap(self, points, **kwargs):
         # estimate heightmap from point cloud
-        height = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
-                                    grid_res=self.cfg.grid_res, h_max=self.cfg.h_max,
-                                    hm_interp_method=self.cfg.hm_interp_method, **kwargs)
+        height = estimate_heightmap(points, d_min=self.dphys_cfg.d_min, d_max=self.dphys_cfg.d_max,
+                                    grid_res=self.dphys_cfg.grid_res, h_max=self.dphys_cfg.h_max,
+                                    hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
     def get_lidar_height_map(self, id, cached=True, dir_name=None, **kwargs):
@@ -382,11 +421,11 @@ class Rellis3D(Rellis3DBase):
 
     def crop_front_height_map(self, hm, only_mask=False):
         # square defining observation area on the ground
-        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.cfg.d_max / 2
-        offset = np.asarray([0, self.cfg.d_max / 2, 0])
+        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.dphys_cfg.d_max / 2
+        offset = np.asarray([0, self.dphys_cfg.d_max / 2, 0])
         square = square + offset
         h, w = hm.shape[1], hm.shape[2]
-        square_grid = square[:, :2] / self.cfg.grid_res + np.asarray([w / 2, h / 2])
+        square_grid = square[:, :2] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
         if only_mask:
             mask = np.zeros((h, w), dtype=np.float32)
             mask[int(square_grid[0, 1]):int(square_grid[2, 1]),
@@ -479,8 +518,8 @@ class Rellis3D(Rellis3DBase):
 
 
 class Rellis3DVis(Rellis3D):
-    def __init__(self, path, data_aug_conf, cfg=Config(), is_train=False):
-        super().__init__(path, data_aug_conf, cfg, is_train)
+    def __init__(self, path, data_aug_conf, dphys_cfg=DPhysConfig(), is_train=False):
+        super().__init__(path, data_aug_conf, dphys_cfg, is_train)
 
     def get_sample(self, id):
         inputs = self.get_image_data(id, normalize=False)
@@ -528,7 +567,7 @@ def global_map_demo():
 
 
 def traversed_cloud_demo():
-    cfg = Config()
+    cfg = DPhysConfig()
     config_path = os.path.join(data_dir, '../config/dphys_cfg.yaml')
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     cfg.from_yaml(config_path)
@@ -539,7 +578,7 @@ def traversed_cloud_demo():
     data_aug_conf = lss_cfg['data_aug_conf']
 
     path = np.random.choice(rellis3d_seq_paths)
-    ds = Rellis3D(path=path, cfg=cfg, data_aug_conf=data_aug_conf)
+    ds = Rellis3D(path=path, dphys_cfg=cfg, data_aug_conf=data_aug_conf)
 
     id = np.random.choice(ds.ids)
     cloud = ds.get_cloud(id)
@@ -566,7 +605,7 @@ def traversed_cloud_demo():
 
 
 def heightmap_demo():
-    cfg = Config()
+    cfg = DPhysConfig()
     p = os.path.join(data_dir, '../config/dphys_cfg.yaml')
     assert os.path.isfile(p), 'Config file %s does not exist' % p
     cfg.from_yaml(p)
@@ -579,7 +618,7 @@ def heightmap_demo():
 
     # path = np.random.choice(rellis3d_seq_paths)
     path = rellis3d_seq_paths[0]
-    ds = Rellis3D(path=path, cfg=cfg, data_aug_conf=data_aug_conf)
+    ds = Rellis3D(path=path, dphys_cfg=cfg, data_aug_conf=data_aug_conf)
 
     # i = np.random.choice(len(ds))
     i = 0

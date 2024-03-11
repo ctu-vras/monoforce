@@ -11,7 +11,7 @@ from monoforce.cloudproc import hm_to_cloud, filter_grid, filter_box
 from monoforce.datasets import rellis3d_seq_paths
 from monoforce.datasets.robingas import RobinGas, explore_data, DEMPathData, RobinGasCamSynch
 from monoforce.datasets.robingas import robingas_husky_seq_paths, oru_seq_paths
-from monoforce.config import Config
+from monoforce.config import DPhysConfig
 from monoforce.models.lss.tools import denormalize_img
 from monoforce.transformations import transform_cloud
 from monoforce.utils import read_yaml, position
@@ -31,14 +31,14 @@ def feed_data():
     path = robingas_husky_seq_paths[1]
 
     # lss model
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     # load LSS config
     lss_config = read_yaml('../config/lss_cfg.yaml')
     grid_conf, data_aug_conf = lss_config['grid_conf'], lss_config['data_aug_conf']
 
-    ds = RobinGas(path, data_aug_conf, is_train=False, cfg=cfg)
+    ds = RobinGas(path, data_aug_conf, is_train=False, dphys_cfg=cfg)
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     model.train()
     model.to(cfg.device)
@@ -136,7 +136,7 @@ def map_consistency():
     lss_cfg_path = '../config/tb_runs/lss_2024_01_26_15_07_31/lss_cfg.yaml'
     model_path = '../config/tb_runs/lss_2024_01_26_15_07_31/train_lss.pt'
 
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml(cfg_path)
     cfg.hm_interp_method = None
     cfg.device = 'cuda'
@@ -148,7 +148,7 @@ def map_consistency():
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = RobinGas(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = RobinGas(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
     loader = DataLoader(ds, batch_size=16, shuffle=False)
     # ds.global_cloud(vis=True)
     ds.global_hm_cloud(vis=True)
@@ -196,14 +196,14 @@ def map_consistency():
 
 
 def data_slicing():
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
     grid_conf = lss_cfg['grid_conf']
 
-    ds = RobinGas(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = RobinGas(robingas_husky_seq_paths[0], is_train=True, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
     ds_slice = ds[150:200]
     print("Full dataset contains samples", ds.ids)
     print("Sliced dataset contains samples", ds_slice.ids)
@@ -216,7 +216,7 @@ def create_global_gloud_map():
     """
     Create global heightmap cloud from the sequence of point clouds
     """
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
@@ -224,7 +224,7 @@ def create_global_gloud_map():
 
     for path in robingas_husky_seq_paths:
         print('Processing sequence:', path)
-        ds = RobinGas(path, is_train=True, data_aug_conf=data_aug_conf, cfg=cfg)
+        ds = RobinGas(path, is_train=True, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
 
         # create global cloud
         poses = ds.get_poses()
@@ -235,7 +235,7 @@ def create_global_gloud_map():
             T = poses[i]
             cloud = transform_cloud(cloud, T)
             points = position(cloud)
-            points = filter_grid(points, ds.cfg.grid_res, keep='first', log=False)
+            points = filter_grid(points, ds.dphys_cfg.grid_res, keep='first', log=False)
             if i == 0:
                 global_cloud = points
             else:
@@ -261,7 +261,7 @@ def visualize_point_cloud_map():
     """
     Visualize point cloud map and trajectory point cloud
     """
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
@@ -271,7 +271,7 @@ def visualize_point_cloud_map():
     # paths = oru_seq_paths
 
     for path in paths:
-        ds = RobinGas(path, data_aug_conf=data_aug_conf, cfg=cfg)
+        ds = RobinGas(path, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
         poses = ds.get_poses()
 
         map_path = os.path.join(path, 'global_map.pcd')
@@ -374,8 +374,8 @@ def vis_camera_poses():
     for path in robingas_husky_seq_paths:
         assert os.path.exists(path)
 
-        cfg = Config()
-        ds = DEMPathData(path, cfg=cfg)
+        cfg = DPhysConfig()
+        ds = DEMPathData(path, dphys_cfg=cfg)
 
         robot_pose = np.eye(4)
         robot_frame = 'base_link'
@@ -400,7 +400,7 @@ def vis_camera_poses():
 def vis_trajectory():
     from monoforce.losses import translation_difference, rotation_difference
 
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
@@ -410,7 +410,7 @@ def vis_trajectory():
     # paths = oru_seq_paths
 
     for path in paths:
-        ds = RobinGas(path, data_aug_conf=data_aug_conf, cfg=cfg)
+        ds = RobinGas(path, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
         poses = ds.get_poses()
         cam_poses = ds.get_poses_at_camera_stamps('camera_front')
         assert len(poses) == len(cam_poses)
@@ -426,7 +426,7 @@ def vis_trajectory():
 
 
 def sample_heightmap_at_img_pose():
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
@@ -434,13 +434,13 @@ def sample_heightmap_at_img_pose():
 
     path = robingas_husky_seq_paths[0]
 
-    ds_synch = RobinGasCamSynch(path, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds_synch = RobinGasCamSynch(path, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
     # global_cloud = ds_synch.global_cloud(vis=False)
 
     i = np.random.choice(len(ds_synch))
     cloud_synch = ds_synch.get_cloud(i)
 
-    ds = RobinGas(path, data_aug_conf=data_aug_conf, cfg=cfg)
+    ds = RobinGas(path, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
     cloud = ds.get_cloud(i)
     cloud = position(cloud)
 
@@ -458,7 +458,7 @@ def sample_heightmap_at_img_pose():
 def vis_data():
     from monoforce.datasets import RobinGas, Rellis3D
 
-    cfg = Config()
+    cfg = DPhysConfig()
     cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
@@ -469,7 +469,7 @@ def vis_data():
 
     for path in paths:
         # ds = RobinGas(path=path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
-        ds = Rellis3D(path=path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
+        ds = Rellis3D(path=path, dphys_cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
         i = np.random.choice(range(len(ds)))
         print(f'Visualizing sample {i} from {os.path.basename(path)}...')
 

@@ -4,7 +4,7 @@ import numpy as np
 from torchdiffeq import odeint, odeint_adjoint
 from ..transformations import rot2rpy, rpy2rot
 from ..utils import skew_symmetric
-from ..config import Config
+from ..config import DPhysConfig
 from ..control import pose_control
 
 
@@ -120,12 +120,7 @@ class RigidBodySoftTerrain(nn.Module):
 
         self.state = state
 
-        num_points = 5
-        px = torch.hstack([torch.linspace(-0.5, 0.5, num_points), torch.linspace(-0.5, 0.5, num_points)])  # location of points wrt cog
-        py = torch.hstack([0.3 * torch.ones(num_points), -0.3 * torch.ones(num_points)])  # location of points wrt cog (left/right)
-        pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])  # location of points wrt cog
-
-        self.robot_points = nn.Parameter(torch.stack((px, py, pz)))
+        self.robot_points = nn.Parameter(self.create_robot_model())
         self.init_forces = nn.Parameter(torch.zeros_like(self.robot_points))
 
         self.mass = nn.Parameter(torch.tensor([mass]))
@@ -148,6 +143,21 @@ class RigidBodySoftTerrain(nn.Module):
         self.Kp_rho = nn.Parameter(torch.tensor([Kp_rho], device=self.device))
         self.Kp_theta = nn.Parameter(torch.tensor([Kp_theta], device=self.device))
         self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
+
+    def create_robot_model(self, model='tradr'):
+        if model == 'tradr':
+            px = torch.hstack([torch.linspace(-0.5, 0.5, 5), torch.linspace(-0.5, 0.5, 5)])
+            py = torch.hstack([0.3 * torch.ones(5), -0.3 * torch.ones(5)])
+            pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])
+        elif model == 'husky':
+            raise NotImplementedError
+        elif model == 'warthog':
+            raise NotImplementedError
+        else:
+            print(f'Unknown robot model: {model}')
+            raise NotImplementedError
+        robot_points = torch.stack((px, py, pz))
+        return robot_points
 
     def forward(self, t, state):
         """
@@ -474,7 +484,7 @@ class RigidBodySoftTerrain(nn.Module):
             self.state = State(xyz=state[0], rot=state[1], vel=state[2], omega=state[3], forces=state[4])
 
 
-def make_dphysics_model(height, cfg: Config):
+def make_dphysics_model(height, cfg: DPhysConfig):
     system = RigidBodySoftTerrain(height=height,
                                   grid_res=cfg.grid_res,
                                   damping=cfg.damping, elasticity=cfg.elasticity, friction=cfg.friction,
