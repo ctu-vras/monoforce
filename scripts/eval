@@ -2,7 +2,6 @@
 
 import os
 from typing import Union
-
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mayavi import mlab

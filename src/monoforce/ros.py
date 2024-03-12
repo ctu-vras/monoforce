@@ -130,7 +130,6 @@ def to_tf(pose, frame_id, child_frame_id, stamp=None):
     assert pose.shape == (4, 4)
     if stamp is None:
         stamp = rospy.Time.now()
-
     t = TransformStamped()
     t.header.stamp = stamp
     t.header.frame_id = frame_id
