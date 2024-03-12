@@ -7,6 +7,7 @@ import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasVis, robingas_husky_seq_paths
 from monoforce.config import DPhysConfig
+from monoforce.models import State, RigidBodySoftTerrain
 from monoforce.ros import height_map_to_gridmap_msg, to_path, to_tf
 from monoforce.models.lss.model import compile_model
 from nav_msgs.msg import Path
@@ -34,7 +35,11 @@ class DataVis:
         self.grid_conf = self.lss_config['grid_conf']
         self.data_aug_conf = self.lss_config['data_aug_conf']
 
-        self.rate = rospy.get_param('~rate', 1)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if self.dphys_cfg.n_samples / self.dphys_cfg.total_sim_time != 100:
+            rospy.logwarn('Simulated time and number of predicted trajectory samples'
+                          'do not match the default rate of 100 Hz.')
+        self.rate = rospy.get_param('~rate', self.dphys_cfg.n_samples / self.dphys_cfg.total_sim_time)
         self.map_frame = rospy.get_param('~map_frame', 'map')
         self.robot_initial_frame = rospy.get_param('~robot_initial_frame', 'base_link0')
         self.robot_frame = rospy.get_param('~robot_frame', 'base_link')
@@ -103,17 +108,100 @@ class DataVis:
         grid_msg.info.header.stamp = stamp
         pub.publish(grid_msg)
 
+    def dphysics(self, height, controls, state=None):
+        assert isinstance(height, np.ndarray)
+        assert height.shape[0] == height.shape[1]
+        assert isinstance(controls, dict)
+        assert 'stamps' in controls.keys()
+        assert 'linear_v' in controls.keys()
+        assert 'angular_w' in controls.keys()
+        assert isinstance(state, State) or state is None
+
+        if state is None:
+            state = State(xyz=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
+                          rot=torch.eye(3, device=self.device),
+                          vel=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
+                          omega=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
+                          device=self.device)
+
+        """ Create robot-terrain interaction models """
+        system = RigidBodySoftTerrain(height=height,
+                                      grid_res=self.dphys_cfg.grid_res,
+                                      friction=self.dphys_cfg.friction,
+                                      mass=self.dphys_cfg.robot_mass,
+                                      state=state,
+                                      device=self.device, use_ode=False,
+                                      interaction_model='diffdrive',
+                                      robot_model='husky')
+
+        # put models with their params to self.device
+        system = system.to(self.device)
+        tt = controls['stamps'].to(self.device)
+
+        """ Navigation loop """
+        dt = (tt[1:] - tt[:-1]).mean()
+
+        xyz, Rs, linear_v, angular_w, forces = state
+        xyz, Rs, linear_v, angular_w, forces = [xyz], [Rs], [linear_v], [angular_w], [forces]
+
+        for t in range(len(tt[1:])):
+            v, w = controls['linear_v'][t], controls['angular_w'][t]
+
+            state[2][0] = v
+            state[3][2] = w
+
+            dstate = system.forward(t, state)
+            state = state.update(dstate, dt)
+
+            xyz.append(state[0])
+            Rs.append(state[1])
+            linear_v.append(state[2])
+            angular_w.append(state[3])
+            forces.append(state[4])
+
+        xyz = torch.stack(xyz)
+        Rs = torch.stack(Rs)
+        linear_v = torch.stack(linear_v)
+        angular_w = torch.stack(angular_w)
+        forces = torch.stack(forces)
+
+        states = [xyz, Rs, linear_v, angular_w, forces]
+
+        return states
+
+    def predict_poses(self, height, v, w):
+        with torch.no_grad():
+            # controls
+            tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
+            controls = {
+                'stamps': tt,
+                'linear_v': v * torch.ones(self.dphys_cfg.n_samples),
+                'angular_w': w * torch.ones(self.dphys_cfg.n_samples)
+            }
+            states = self.dphysics(height, controls)
+        xyz = states[0].cpu().numpy()
+        Rs = states[1].cpu().numpy()
+        poses = np.stack([np.eye(4) for _ in range(len(xyz))])
+        poses[:, :3, :3] = Rs
+        poses[:, :3, 3:4] = xyz
+        poses[:, 2, 3] += self.dphys_cfg.robot_clearance + 0.1
+        # poses inside the heightmap
+        mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
+               (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
+        mask = np.asarray(mask, dtype=bool).flatten()
+        poses = poses[mask]
+        return poses
+
     def run(self):
         # choose data sample
-        data_seq = robingas_husky_seq_paths[rospy.get_param('~seq_i', 0)]
+        seq_i = rospy.get_param('~seq_i', np.random.choice(range(len(robingas_husky_seq_paths))))
+        data_seq = robingas_husky_seq_paths[seq_i]
         ds = RobinGasVis(data_seq, dphys_cfg=self.dphys_cfg, data_aug_conf=self.data_aug_conf, is_train=False)
         rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), data_seq))
         sample_i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
         rospy.loginfo('Using sample %d' % sample_i)
 
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[sample_i]
-        traj = ds.get_traj(sample_i)
-        poses = traj['poses']
         points = lidar_pts.numpy().T
 
         imgs_raw = []
@@ -132,20 +220,32 @@ class DataVis:
 
         rate = rospy.Rate(self.rate)
         pose_i = 0
+        poses = None
         while not rospy.is_shutdown():
             stamp = rospy.Time.now()
 
-            # point cloud
-            self.publish_cloud(points, stamp)
-            # grid map
-            self.publish_gridmap(hm_lidar[0], stamp, self.gm_lidar_pub, mask=hm_lidar[1])
-            self.publish_gridmap(hm_traj[0], stamp, self.gm_traj_pub, mask=hm_traj[1])
-            self.publish_gridmap(height_pred, stamp, self.gm_pred_pub)
-            # path
-            path_msg = to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
-            self.path_pub.publish(path_msg)
-            # images
-            self.publish_images(imgs_raw, Ks, stamp)
+            if pose_i == 0:
+                # point cloud
+                self.publish_cloud(points, stamp)
+                # grid map
+                self.publish_gridmap(hm_lidar[0], stamp, self.gm_lidar_pub, mask=hm_lidar[1])
+                self.publish_gridmap(hm_traj[0], stamp, self.gm_traj_pub, mask=hm_traj[1])
+                self.publish_gridmap(height_pred, stamp, self.gm_pred_pub)
+                # images
+                self.publish_images(imgs_raw, Ks, stamp)
+
+                # predict path poses
+                v = np.random.uniform(0.4, 0.8)
+                if np.random.random() > 0.5:
+                    v = -v
+                w = np.random.uniform(-0.2, 0.2)
+                rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
+                poses = self.predict_poses(height_pred, v=v, w=w)
+                rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
+                # publish path
+                path_msg = to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
+                self.path_pub.publish(path_msg)
+
             # robot pose in map frame
             tf = to_tf(map_pose, self.map_frame, self.robot_initial_frame, stamp)
             self.tf_broadcast.sendTransform(tf)
@@ -162,7 +262,6 @@ class DataVis:
             tf = to_tf(robot_traj_pose, self.robot_initial_frame, self.robot_frame, stamp)
             self.tf_broadcast.sendTransform(tf)
 
-            rospy.logdebug('Published data')
             rate.sleep()
 
 def main():

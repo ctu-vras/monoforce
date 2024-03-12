@@ -100,6 +100,7 @@ class RigidBodySoftTerrain(nn.Module):
                  Kp_theta=50.0,  # heading proportional gain
                  Kp_yaw=1.0,  # yaw (at a pose) proportional gain
                  learn_height=True,
+                 robot_model='tradr'
                  ):
         super().__init__()
         self.device = device
@@ -120,7 +121,7 @@ class RigidBodySoftTerrain(nn.Module):
 
         self.state = state
 
-        self.robot_points = nn.Parameter(self.create_robot_model())
+        self.robot_points = nn.Parameter(self.create_robot_model(robot_model))
         self.init_forces = nn.Parameter(torch.zeros_like(self.robot_points))
 
         self.mass = nn.Parameter(torch.tensor([mass]))
@@ -144,13 +145,21 @@ class RigidBodySoftTerrain(nn.Module):
         self.Kp_theta = nn.Parameter(torch.tensor([Kp_theta], device=self.device))
         self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
 
-    def create_robot_model(self, model='tradr'):
+    def create_robot_model(self, model='husky'):
         if model == 'tradr':
-            px = torch.hstack([torch.linspace(-0.5, 0.5, 5), torch.linspace(-0.5, 0.5, 5)])
-            py = torch.hstack([0.3 * torch.ones(5), -0.3 * torch.ones(5)])
+            size = (1.0, 0.6)
+            s_x, s_y = size
+            n_pts = 10
+            px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
+            py = torch.hstack([s_y/2. * torch.ones(n_pts//2), -s_y/2. * torch.ones(n_pts//2)])
             pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])
         elif model == 'husky':
-            raise NotImplementedError
+            size = (0.99, 0.67)
+            s_x, s_y = size
+            n_pts = 10
+            px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
+            py = torch.hstack([s_y / 2. * torch.ones(n_pts // 2), -s_y / 2. * torch.ones(n_pts // 2)])
+            pz = torch.zeros(n_pts)
         elif model == 'warthog':
             raise NotImplementedError
         else:
@@ -523,7 +532,6 @@ def main():
     # states = system_true.sim(state, tt)
 
     pos_x, pos_R, vel_x, vel_omega, aux = states
-    print(pos_x)
     h = system_true.height.detach().cpu().numpy()
     x_grid, y_grid = np.mgrid[0:system_true.height.shape[0], 0:system_true.height.shape[1]]
     points = system_true.robot_points.detach().cpu().numpy()

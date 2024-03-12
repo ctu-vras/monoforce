@@ -138,6 +138,8 @@ def to_tf(pose, frame_id, child_frame_id, stamp=None):
     t.transform.translation.y = pose[1, 3]
     t.transform.translation.z = pose[2, 3]
     q = quaternion_from_matrix(pose)
+    # normalize quaternion
+    q /= np.linalg.norm(q)
     t.transform.rotation.x = q[0]
     t.transform.rotation.y = q[1]
     t.transform.rotation.z = q[2]

@@ -22,6 +22,8 @@ class DPhysConfig:
         self.robot_inertia = (5. * np.eye(3)).tolist()
         self.robot_init_xyz = [0., 0., 1.]
         self.robot_init_q = [0., 0., 0., 1.]
+        self.robot_clearance = 0.132
+        self.robot_size = (1.0, 0.6)
 
         # training parameters
         self.total_sim_time = 10.0
