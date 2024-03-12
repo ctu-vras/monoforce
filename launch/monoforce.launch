@@ -2,7 +2,8 @@
 <launch>
     <arg name="rviz" default="true"/>
     <arg name="seq_i" default="0"/>
-    <arg name="sample_i" default="40"/>
+<!--     <arg name="sample_i" default="341"/> -->
+    <arg name="sample_i" default="429"/>
 
     <arg name="description" default="$(find husky_sim)/urdf/husky.urdf.xacro"/>
     <!-- Load robot description -->
@@ -11,7 +12,7 @@
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
 
-    <node pkg="monoforce" type="demo" name="demo" output="screen">
+    <node pkg="monoforce" type="monoforce" name="monoforce" output="screen">
         <rosparam subst_value="true">
             total_sim_time: 7.0
             n_samples: 700

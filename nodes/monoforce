@@ -10,6 +10,7 @@ from monoforce.config import DPhysConfig
 from monoforce.models import State, RigidBodySoftTerrain
 from monoforce.ros import height_map_to_gridmap_msg, to_path, to_tf
 from monoforce.models.lss.model import compile_model
+from monoforce.transformations import rot2rpy
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
 from grid_map_msgs.msg import GridMap
@@ -20,7 +21,7 @@ import tf2_ros
 
 
 class DataVis:
-    def __init__(self, name='demo'):
+    def __init__(self, name='monoforce'):
         self.dphys_cfg = DPhysConfig()
         self.pkg_path = rospkg.RosPack().get_path('monoforce')
         self.config_path = rospy.get_param('~config_path', os.path.join(self.pkg_path, 'config/dphys_cfg.yaml'))
@@ -153,6 +154,11 @@ class DataVis:
             dstate = system.forward(t, state)
             state = state.update(dstate, dt)
 
+            roll, pitch, yaw = rot2rpy(state[1].squeeze())
+            if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
+                rospy.logwarn('Robot is upside down')
+                break
+
             xyz.append(state[0])
             Rs.append(state[1])
             linear_v.append(state[2])
@@ -265,7 +271,7 @@ class DataVis:
             rate.sleep()
 
 def main():
-    rospy.init_node('demo', anonymous=True, log_level=rospy.DEBUG)
+    rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
     node = DataVis()
     node.run()
 

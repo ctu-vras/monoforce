@@ -374,7 +374,7 @@ class DEMPathData(Dataset):
         heightmap = torch.stack([height, mask])
         return heightmap
 
-    def get_traj_height_map(self, i, method='dphysics', cached=True, dir_name=None):
+    def get_traj_height_map(self, i, method='footprint', cached=True, dir_name=None):
         """
         Get height map from trajectory points.
         :param i: index of the sample
