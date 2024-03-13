@@ -3,7 +3,9 @@
 [![Arxiv](http://img.shields.io/badge/paper-arxiv.2303.01123-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
 [![Slides](http://img.shields.io/badge/presentation-slides-blue.svg?style=plastic)](https://docs.google.com/presentation/d/1pJFHBYVeOULi-w19_mLEbDTqvvk6klcVrrYc796-2Hw/edit?usp=sharing)
 
-Self-supervised learning of physics-aware grey-box model for predicting robot-terrain interaction.
+Robot-terrain interaction prediction from only RGB images as input.
+
+![](./docs/imgs/monoforce.gif)
 
 <img src="docs/imgs/pipeline.png"/>
 
@@ -22,7 +24,7 @@ Run the differentiable physics simulation with a robot model and the provided da
 python scripts/robot_control
 ```
 
-![](./docs/imgs/demo.gif)
+![](./docs/imgs/hm_learning.gif)
 Terrain properties optimization from the ground-truth trajectories followed by the robot:
 ```commandline
 python scripts/fit_terrain
@@ -49,6 +51,11 @@ To train the LSS model, please run:
 cd scripts/
 python train
 ```
+
+### Weights
+
+The pretrained weights for the LSS terrain encoder can be downloaded from
+[train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
 
 ### Data Sample
 
