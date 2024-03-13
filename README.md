@@ -52,6 +52,11 @@ cd scripts/
 python train
 ```
 
+### Weights
+
+The pretrained weights for the LSS terrain encoder can be downloaded from
+[train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
+
 ### Data Sample
 
 The LSS model training data example include:
