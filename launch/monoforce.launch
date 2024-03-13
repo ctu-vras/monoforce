@@ -5,7 +5,7 @@
 <!--     <arg name="sample_i" default="341"/> -->
     <arg name="sample_i" default="429"/>
 
-    <arg name="description" default="$(find husky_sim)/urdf/husky.urdf.xacro"/>
+    <arg name="description" default="$(dirname)/../urdf/husky/husky.urdf.xacro"/>
     <!-- Load robot description -->
     <param name="robot_description" command="$(find xacro)/xacro '$(arg description)'"/>
     <!-- Robot state publisher -->

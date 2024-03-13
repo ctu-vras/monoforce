@@ -37,7 +37,7 @@ def arg_parser():
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--lidar_hm_weight', type=float, default=1.0, help='Weight for lidar heightmap loss')
     parser.add_argument('--traj_hm_weight', type=float, default=100.0, help='Weight for trajectory heightmap loss')
-    parser.add_argument('--hdiff_weight', type=float, default=0.01, help='Weight for height difference loss')
+    parser.add_argument('--hdiff_weight', type=float, default=0.001, help='Weight for height difference loss')
 
     return parser.parse_args()
 
@@ -180,6 +180,7 @@ class Trainer:
         if not self.map_consistency:
             train_datasets = [ConcatDataset(train_datasets)]
             val_datasets = [ConcatDataset(val_datasets)]
+            print('Concatenated datasets length: train %i, valid: %i' % (len(train_datasets[0]), len(val_datasets[0])))
 
         # create dataloaders
         train_loaders = []
