@@ -100,7 +100,7 @@ class RigidBodySoftTerrain(nn.Module):
                  Kp_theta=50.0,  # heading proportional gain
                  Kp_yaw=1.0,  # yaw (at a pose) proportional gain
                  learn_height=True,
-                 robot_model='tradr'
+                 robot_model='marv'
                  ):
         super().__init__()
         self.device = device
@@ -146,7 +146,7 @@ class RigidBodySoftTerrain(nn.Module):
         self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
 
     def create_robot_model(self, model='husky'):
-        if model == 'tradr':
+        if model == 'marv':
             size = (1.0, 0.6)
             s_x, s_y = size
             n_pts = 10
