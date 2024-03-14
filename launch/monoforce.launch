@@ -26,5 +26,5 @@
     </node>
 
     <node if="$(arg rviz)"
-          pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/data.rviz"/>
+          pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/monoforce.rviz"/>
 </launch>

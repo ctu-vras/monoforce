@@ -165,7 +165,7 @@ class RigidBodySoftTerrain(nn.Module):
         else:
             print(f'Unknown robot model: {model}')
             raise NotImplementedError
-        robot_points = torch.stack((px, py, pz))
+        robot_points = torch.stack((px, py, pz)).to(self.device)
         return robot_points
 
     def forward(self, t, state):

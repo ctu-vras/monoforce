@@ -18,6 +18,8 @@ from ros_numpy import msgify
 from monoforce.utils import read_yaml
 import rospkg
 import tf2_ros
+from tf.transformations import quaternion_matrix, quaternion_from_matrix
+from visualization_msgs.msg import Marker, MarkerArray
 
 
 class DataVis:
@@ -52,12 +54,15 @@ class DataVis:
         # publishers
         self.gm_lidar_pub = rospy.Publisher('grid_map_lidar', GridMap, queue_size=1)
         self.gm_traj_pub = rospy.Publisher('grid_map_traj', GridMap, queue_size=1)
-        self.gm_pred_pub = rospy.Publisher('grid_map_pred', GridMap, queue_size=1)
+        self.gm_rigid_pub = rospy.Publisher('grid_map_rigid', GridMap, queue_size=1)
+        self.gm_geom_pub = rospy.Publisher('grid_map_geom', GridMap, queue_size=1)
+        self.gm_diff_pub = rospy.Publisher('grid_map_diff', GridMap, queue_size=1)
         self.cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
         self.path_pub = rospy.Publisher('path', Path, queue_size=1)
         self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
         self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
         self.tf_broadcast = tf2_ros.TransformBroadcaster()
+        self.forces_pub = rospy.Publisher('forces', MarkerArray, queue_size=1)
 
     def load_model(self):
         model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
@@ -173,18 +178,12 @@ class DataVis:
 
         states = [xyz, Rs, linear_v, angular_w, forces]
 
-        return states
+        # robot points
+        robot_points = system.robot_points
 
-    def predict_poses(self, height, v, w):
-        with torch.no_grad():
-            # controls
-            tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
-            controls = {
-                'stamps': tt,
-                'linear_v': v * torch.ones(self.dphys_cfg.n_samples),
-                'angular_w': w * torch.ones(self.dphys_cfg.n_samples)
-            }
-            states = self.dphysics(height, controls)
+        return states, robot_points
+
+    def poses_from_states(self, states):
         xyz = states[0].cpu().numpy()
         Rs = states[1].cpu().numpy()
         poses = np.stack([np.eye(4) for _ in range(len(xyz))])
@@ -197,6 +196,18 @@ class DataVis:
         mask = np.asarray(mask, dtype=bool).flatten()
         poses = poses[mask]
         return poses
+
+    def predict_states(self, height, v, w):
+        with torch.no_grad():
+            # controls
+            tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
+            controls = {
+                'stamps': tt,
+                'linear_v': v * torch.ones(self.dphys_cfg.n_samples),
+                'angular_w': w * torch.ones(self.dphys_cfg.n_samples)
+            }
+            states, robot_points = self.dphysics(height, controls)
+        return states, robot_points.detach()
 
     def run(self):
         # choose data sample
@@ -221,12 +232,19 @@ class DataVis:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            height_pred = self.model(*inputs)
-            height_pred = height_pred.squeeze().cpu().numpy()
+            # height_pred = self.model(*inputs)
+            voxel_feats = self.model.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+            height_pred_rigid = height_pred_geom - height_pred_diff
+            height_pred_rigid = height_pred_rigid.squeeze().cpu().numpy()
+            height_pred_geom = height_pred_geom.squeeze().cpu().numpy()
+            height_pred_diff = height_pred_diff.squeeze().cpu().numpy()
 
         rate = rospy.Rate(self.rate)
         pose_i = 0
         poses = None
+        forces = None
+        robot_points = None
         while not rospy.is_shutdown():
             stamp = rospy.Time.now()
 
@@ -236,18 +254,29 @@ class DataVis:
                 # grid map
                 self.publish_gridmap(hm_lidar[0], stamp, self.gm_lidar_pub, mask=hm_lidar[1])
                 self.publish_gridmap(hm_traj[0], stamp, self.gm_traj_pub, mask=hm_traj[1])
-                self.publish_gridmap(height_pred, stamp, self.gm_pred_pub)
+                self.publish_gridmap(height_pred_rigid, stamp, self.gm_rigid_pub)
+                self.publish_gridmap(height_pred_geom, stamp, self.gm_geom_pub)
+                self.publish_gridmap(height_pred_diff, stamp, self.gm_diff_pub)
                 # images
                 self.publish_images(imgs_raw, Ks, stamp)
 
                 # predict path poses
-                v = np.random.uniform(0.4, 0.8)
-                if np.random.random() > 0.5:
-                    v = -v
-                w = np.random.uniform(-0.2, 0.2)
+                # v = np.random.uniform(0.4, 0.8)
+                # if np.random.random() > 0.5:
+                #     v = -v
+                # w = np.random.uniform(-0.2, 0.2)
+                v = 0.5
+                w = -0.13
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
-                poses = self.predict_poses(height_pred, v=v, w=w)
+                states, robot_points = self.predict_states(height_pred_rigid, v=v, w=w)
+                # states, robot_points = self.predict_poses(hm_lidar[0].cpu().numpy(), v=v, w=w)
+                # states, robot_points = self.predict_poses(height_pred_geom, v=v, w=w)
+                poses = self.poses_from_states(states)
                 rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
+                forces = states[4].cpu().numpy()
+                rospy.loginfo('Predicted forces shape: %s' % str(forces.shape))
+                robot_points = robot_points.cpu().numpy()
+                rospy.loginfo('Robot contact points shape: %s' % str(robot_points.shape))
                 # publish path
                 path_msg = to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
                 self.path_pub.publish(path_msg)
@@ -263,11 +292,47 @@ class DataVis:
                 tf = to_tf(pose, self.robot_initial_frame, cam, stamp)
                 self.tf_broadcast.sendTransform(tf)
 
+            # robot's current pose
             robot_traj_pose = poses[pose_i]
-            pose_i = (pose_i + 1) % len(poses)
+            assert robot_traj_pose.shape == (4, 4)
             tf = to_tf(robot_traj_pose, self.robot_initial_frame, self.robot_frame, stamp)
             self.tf_broadcast.sendTransform(tf)
 
+            # forces affecting the robot
+            robot_traj_forces = forces[pose_i]
+            assert robot_traj_forces.shape == robot_points.shape
+            assert robot_traj_forces.shape[0] == 3
+            # publish forces as arrows with MarkerArray
+            markers = MarkerArray()
+            for i in range(robot_traj_forces.shape[1]):
+                force = robot_traj_forces[:, i]
+                force_robot_xyz = robot_points[:, i]
+                marker = Marker()
+                marker.header.frame_id = self.robot_initial_frame
+                marker.header.stamp = stamp
+                marker.id = i
+                marker.type = Marker.ARROW
+                marker.action = Marker.ADD
+                marker.pose.position.x = robot_traj_pose[0, 3] + force_robot_xyz[0]
+                marker.pose.position.y = robot_traj_pose[1, 3] + force_robot_xyz[1]
+                marker.pose.position.z = robot_traj_pose[2, 3] + force_robot_xyz[2]
+                q = quaternion_from_matrix(robot_traj_pose[:3, :3])
+                q = q / np.linalg.norm(q)
+                marker.pose.orientation.x = q[0]
+                marker.pose.orientation.y = q[1]
+                marker.pose.orientation.z = q[2]
+                marker.pose.orientation.w = q[3]
+                marker.scale.x = force[0] + 0.1  # add 0.1 to make the arrow visible
+                marker.scale.y = force[1] + 0.1
+                marker.scale.z = force[2] / 20.0  # divide by 10 to make the arrow not too long
+                marker.color.a = 1.0
+                marker.color.r = 1.0
+                marker.color.g = 0.0
+                marker.color.b = 0.0
+                markers.markers.append(marker)
+            self.forces_pub.publish(markers)
+
+            pose_i = (pose_i + 1) % len(poses)
             rate.sleep()
 
 def main():
