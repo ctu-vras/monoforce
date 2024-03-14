@@ -302,6 +302,7 @@ class Rellis3D(Rellis3DBase):
             # transform poses to the same coordinate frame as the height map
             Tr = np.linalg.inv(poses[0])
             poses = np.asarray([np.matmul(Tr, p) for p in poses])
+            poses[:, 2, 3] -= self.calib['clearance']
             # count time from 0
             tstamps = traj['stamps']
             tstamps = tstamps - tstamps[0]

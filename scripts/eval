@@ -333,11 +333,14 @@ class EvaluatorGeom:
 
         return loss_trans_sum, loss_rot_sum
 
-    def evaluate(self, vis=False, verbose=False):
+    def evaluate(self, vis=False, verbose=False, random_order=False):
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
             ds = self.DataClass(path, is_train=False, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg)
-            for i in tqdm(range(len(ds))):
+            sample_range = np.arange(0, len(ds))
+            if random_order:
+                np.random.shuffle(sample_range)
+            for i in tqdm(sample_range):
                 states_true, height = self.get_data(i, ds)
                 trans_diff, rot_diff = self.eval_diff_physics(height, states_true, vis=vis)
                 if rot_diff is not None:
@@ -374,7 +377,8 @@ class EvaluatorGeom:
 class EvaluatorLSS(EvaluatorGeom):
     def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset,
                  # model_path='../config/tb_runs/lss_2024_03_04_09_42_47/train_lss.pt'):
-                 model_path='../config/tb_runs/lss_rellis3d_robingas_dphysics_terrain/train_lss.pt'):
+                 # model_path='../config/tb_runs/lss_rellis3d_robingas_dphysics_terrain/train_lss.pt'):
+                 model_path='../config/tb_runs/lss_rellis3d_2024_03_06_16_07_52/train_lss.pt'):
         super().__init__(dphys_config_path, terrain_encoder_config_path, dataset, model_path)
 
     def load_model(self):
@@ -576,8 +580,8 @@ def evaluate(dataset):
 
 
 def main():
-    dataset = 'robingas'
-    # dataset = 'rellis3d'
+    # dataset = 'robingas'
+    dataset = 'rellis3d'
 
     # vis_data(dataset)
     evaluate(dataset)

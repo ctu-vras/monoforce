@@ -152,6 +152,7 @@ def load_cam_calib(calib_path):
         transforms = yaml.load(f, Loader=yaml.FullLoader)
     f.close()
     calib['transformations'] = transforms
+    calib['clearance'] = np.abs(np.asarray(calib['transformations']['T_base_link__base_footprint']['data'], dtype=np.float32).reshape((4, 4))[2, 3])
 
     return calib
 
