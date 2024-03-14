@@ -154,7 +154,7 @@ class RigidBodySoftTerrain(nn.Module):
             py = torch.hstack([s_y/2. * torch.ones(n_pts//2), -s_y/2. * torch.ones(n_pts//2)])
             pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])
         elif model == 'husky':
-            size = (0.99, 0.67)
+            size = (0.9, 0.6)
             s_x, s_y = size
             n_pts = 10
             px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])

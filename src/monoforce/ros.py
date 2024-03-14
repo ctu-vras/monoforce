@@ -501,3 +501,11 @@ def append_to_yaml(yaml_path, data_dict):
 
         with open(yaml_path, 'w') as f:
             yaml.safe_dump(cur_yaml, f)  # Also note the safe_dump
+
+
+def xyz_to_point(xyz):
+    point = Point()
+    point.x = xyz[0]
+    point.y = xyz[1]
+    point.z = xyz[2]
+    return point
