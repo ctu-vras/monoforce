@@ -58,6 +58,7 @@ class DataVis:
         self.gm_diff_pub = rospy.Publisher('grid_map_diff', GridMap, queue_size=1)
         self.cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
         self.path_pub = rospy.Publisher('path', Path, queue_size=1)
+        self.path_gt_pub = rospy.Publisher('path_gt', Path, queue_size=1)
         self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
         self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
         self.tf_broadcast = tf2_ros.TransformBroadcaster()
@@ -249,6 +250,9 @@ class DataVis:
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[sample_i]
         points = lidar_pts.numpy().T
 
+        traj = ds.get_traj(sample_i)
+        poses_gt = traj['poses']
+
         imgs_raw = []
         Ks = []
         for cam in self.camera_frames:
@@ -305,9 +309,11 @@ class DataVis:
                 rospy.loginfo('Predicted forces shape: %s' % str(forces.shape))
                 robot_points = robot_points.cpu().numpy()
                 rospy.loginfo('Robot contact points shape: %s' % str(robot_points.shape))
-                # publish path
+                # publish paths
                 path_msg = to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
+                path_gt_msg = to_path(poses_gt, frame_id=self.robot_initial_frame, stamp=stamp)
                 self.path_pub.publish(path_msg)
+                self.path_gt_pub.publish(path_gt_msg)
 
             # robot pose in map frame
             tf = to_tf(map_pose, self.map_frame, self.robot_initial_frame, stamp)
