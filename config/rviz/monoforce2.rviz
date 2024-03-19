@@ -76,7 +76,7 @@ Visualization Manager:
       Head Length: 0.03999999910593033
       Length: 0.30000001192092896
       Line Style: Billboards
-      Line Width: 0.029999999329447746
+      Line Width: 0.05999999865889549
       Name: Path
       Offset:
         X: 0
@@ -95,7 +95,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 252; 233; 79
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.07999999821186066
       Head Length: 0.03999999910593033
       Length: 0.30000001192092896
@@ -114,8 +114,8 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /path_gt
       Unreliable: false
-      Value: true
-    - Alpha: 0.30000001192092896
+      Value: false
+    - Alpha: 0.20000000298023224
       Autocompute Intensity Bounds: false
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
@@ -157,7 +157,7 @@ Visualization Manager:
       Unreliable: false
       Use Rainbow: false
       Value: false
-    - Alpha: 0.5
+    - Alpha: 0.6000000238418579
       Autocompute Intensity Bounds: false
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
@@ -167,18 +167,18 @@ Visualization Manager:
       Height Layer: elevation
       Height Transformer: GridMapLayer
       History Length: 1
-      Invert Rainbow: true
+      Invert Rainbow: false
       Max Color: 239; 41; 41
-      Max Intensity: 1
+      Max Intensity: 0.5
       Min Color: 138; 226; 52
-      Min Intensity: -1
+      Min Intensity: -0.5
       Name: GridMap Pred Rigid
       Show Grid Lines: true
       Topic: /grid_map_rigid
       Unreliable: false
       Use Rainbow: true
       Value: true
-    - Alpha: 0.5
+    - Alpha: 0.6000000238418579
       Autocompute Intensity Bounds: false
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
@@ -188,18 +188,18 @@ Visualization Manager:
       Height Layer: elevation
       Height Transformer: GridMapLayer
       History Length: 1
-      Invert Rainbow: true
+      Invert Rainbow: false
       Max Color: 239; 41; 41
-      Max Intensity: 1
+      Max Intensity: 0.5
       Min Color: 138; 226; 52
-      Min Intensity: -1
+      Min Intensity: -0.5
       Name: GridMap Pred Geom
       Show Grid Lines: true
       Topic: /grid_map_geom
       Unreliable: false
       Use Rainbow: true
       Value: false
-    - Alpha: 0.5
+    - Alpha: 0.6000000238418579
       Autocompute Intensity Bounds: false
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
@@ -209,11 +209,11 @@ Visualization Manager:
       Height Layer: elevation
       Height Transformer: GridMapLayer
       History Length: 1
-      Invert Rainbow: true
+      Invert Rainbow: false
       Max Color: 239; 41; 41
-      Max Intensity: 1
+      Max Intensity: 0.5
       Min Color: 138; 226; 52
-      Min Intensity: -1
+      Min Intensity: -0.5
       Name: GridMap Pred Diff
       Show Grid Lines: true
       Topic: /grid_map_diff
@@ -497,7 +497,6 @@ Visualization Manager:
       Unreliable: false
       Value: false
       Visibility:
-        "": true
         Camera Front: true
         Camera Rear: true
         Camera Right: true
@@ -506,6 +505,7 @@ Visualization Manager:
         CameraInfo Rear: true
         CameraInfo Right: true
         Cloud: true
+        Forces: true
         Grid: true
         GridMap Lidar: true
         GridMap Pred Diff: true
@@ -533,7 +533,6 @@ Visualization Manager:
       Unreliable: false
       Value: false
       Visibility:
-        "": true
         Camera Front: true
         Camera Left: true
         Camera Right: true
@@ -542,6 +541,7 @@ Visualization Manager:
         CameraInfo Rear: true
         CameraInfo Right: true
         Cloud: true
+        Forces: true
         Grid: true
         GridMap Lidar: true
         GridMap Pred Diff: true
@@ -569,7 +569,6 @@ Visualization Manager:
       Unreliable: false
       Value: false
       Visibility:
-        "": true
         Camera Front: true
         Camera Left: true
         Camera Rear: true
@@ -578,6 +577,7 @@ Visualization Manager:
         CameraInfo Rear: true
         CameraInfo Right: true
         Cloud: true
+        Forces: true
         Grid: true
         GridMap Lidar: true
         GridMap Pred Diff: true
@@ -595,13 +595,13 @@ Visualization Manager:
         Value: true
       Zoom Factor: 1
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /forces
       Name: Forces
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 238; 238; 236
@@ -630,7 +630,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 9.129778861999512
+      Distance: 10.078107833862305
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -646,9 +646,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 1
-      Pitch: 0.6653982996940613
+      Pitch: 0.8853981494903564
       Target Frame: <Fixed Frame>
-      Yaw: 3.14039945602417
+      Yaw: 3.08039927482605
     Saved:
       - Class: rviz/Orbit
         Distance: 10
@@ -703,4 +703,4 @@ Window Geometry:
     collapsed: true
   Width: 683
   X: 543
-  Y: 87
+  Y: 27

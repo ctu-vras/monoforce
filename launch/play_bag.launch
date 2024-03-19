@@ -3,18 +3,28 @@
 <launch>
     <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
     <arg name="rate" default="1." doc="Playback rate"/>
+    <arg name="delay" default="3.0" doc="Delay in the bag file [sec]"/>
     <arg name="start" default="0." doc="Start moment in a bag file [sec]"/>
     <!--Bag file player -->
-    <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
-<!--    <arg name="bag" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag"/>--> -->
+<!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/> -->
+   <arg name="bag" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag"/>
 <!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/> -->
 
     <arg name="params" default="$(eval bag.split()[0] + '.params')"/>
     <rosparam command="load" file="$(arg params)"/>
     <param name="use_sim_time" value="true"/>
 
+    <!--
+        Workaround for /tf_static problems with rosbag.
+        TODO Watch https://github.com/ros/geometry2/issues/181
+    -->
+    <node name="play_tf_static" pkg="monoforce" type="play_tf_static"
+         args="$(arg bag)" output="log">
+        <remap from="~tf_static" to="/tf_static"/>
+    </node>
+
     <node name="rosbag_play" pkg="rosbag" type="play"
-          args="--clock --delay 3.0 --rate $(arg rate) --start $(arg start) $(arg bag)">
+          args="--clock --delay $(arg delay) --rate $(arg rate) --start $(arg start) $(arg bag)">
         <remap from="os_cloud_node/destaggered_points" to="points"/>
     </node>
 

@@ -8,6 +8,7 @@
             pts_topics: $(arg pts_topics)
             robot_frame: base_link
             config_path: $(dirname)/../config/dphys_cfg.yaml
+            max_stale_msg_delay: 1.0
         </rosparam>
     </node>
 </launch>

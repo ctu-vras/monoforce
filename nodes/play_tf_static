@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+from __future__ import absolute_import, division, print_function
+import rosbag
+import rospy
+from tf2_msgs.msg import TFMessage
+from threading import Lock
+
+
+class PlayTfStatic(object):
+
+    def __init__(self):
+        self.order_by = rospy.get_param('~order_by', 'capture')
+        assert self.order_by in ('capture', 'header')
+        rospy.loginfo('Publish latest static transforms according to %s time.', self.order_by)
+
+        self.bag_paths = rospy.get_param('~bag', [])
+        if isinstance(self.bag_paths, str):
+            self.bag_paths = [self.bag_paths]
+        self.bag_paths += rospy.myargv()[1:]
+        self.start_time = rospy.get_param('~start_time', None)
+        self.end_time = rospy.get_param('~end_time', None)
+        rospy.loginfo('Publish transforms from %s [%s, %s].',
+                      ', '.join(self.bag_paths), self.start_time or 'start', self.end_time or 'end')
+
+        self.lock = Lock()
+        self.frames = []
+        self.transforms = {}
+        self.times = {}
+
+        self.tf_static_pub = rospy.Publisher('/tf_static', TFMessage, queue_size=1, latch=True)
+
+        # Remap if you want to collect published transforms to avoid delays on start.
+        self.tf_sub = rospy.Subscriber('~tf_static', TFMessage, self.merge_transforms, queue_size=2)
+
+    def publish_transforms(self):
+        with self.lock:
+            self.tf_static_pub.publish(TFMessage(self.transforms.values()))
+            frames = sorted(self.transforms.keys())
+            if frames == self.frames:
+                return
+            self.frames = frames
+            rospy.loginfo('Latching at the latest transforms for child frames %s.', ', '.join(frames))
+
+    def update_transform(self, tf, t):
+        with self.lock:
+            child = tf.child_frame_id
+            if self.order_by == 'capture':
+                time = t
+            else:
+                time = tf.header.stamp
+
+            if child in self.transforms:
+                if time <= self.times[child] or tf == self.transforms[child]:
+                    rospy.logdebug('Same or more recent transform for %s already published, do nothing.', child)
+                    return False
+                else:
+                    rospy.loginfo('Child frame %s updated.', child)
+
+            self.transforms[child] = tf
+            self.times[child] = time
+            return True
+
+    def merge_transforms(self, msg, t=None):
+        if t is None:
+            t = rospy.Time.now()
+        # Need to process all transforms: create complete list first.
+        updated = [self.update_transform(tf, t) for tf in msg.transforms]
+        if any(updated):
+            self.publish_transforms()
+
+    def spin(self):
+        for bag_path in self.bag_paths:
+            if rospy.is_shutdown():
+                break
+            with rosbag.Bag(bag_path) as bag:
+                start_time = (None if self.start_time is None
+                              else rospy.Time.from_sec(bag.get_start_time() + self.start_time))
+                end_time = (None if self.end_time is None
+                            else rospy.Time.from_sec(bag.get_start_time() + self.end_time))
+                for _, msg, t in bag.read_messages(topics=['/tf_static'], start_time=start_time, end_time=end_time):
+                    if rospy.is_shutdown():
+                        break
+                    self.merge_transforms(msg, t)
+        rospy.loginfo('Bag files processed.')
+
+
+if __name__ == '__main__':
+    rospy.init_node('play_tf_static')
+    node = PlayTfStatic()
+    node.spin()
+    rospy.spin()

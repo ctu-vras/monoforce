@@ -37,10 +37,10 @@ class HeightMapEstimator:
         # point cloud publisher
         self.hm_cloud_pub = rospy.Publisher('/height_map/points', PointCloud2, queue_size=1)
         # grid map publisher
-        self.hm_grid_pub = rospy.Publisher('/grid_map', GridMap, queue_size=1)
+        self.hm_grid_pub = rospy.Publisher('/grid_map/rigid', GridMap, queue_size=1)
 
         # max message delay
-        self.max_stale_msg_delay = 1.0
+        self.max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 1.0)
 
         # point cloud subscribers
         self.pts_subs = []
@@ -112,9 +112,9 @@ class HeightMapEstimator:
                 tf = self.tf_buffer.lookup_transform(target_frame=self.robot_frame,
                                                      source_frame=msg.header.frame_id,
                                                      time=msg.header.stamp,
-                                                     timeout=rospy.Duration(0.5))
-            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-                rospy.logwarn('Could not get transform from %s to %s' % (msg.header.frame_id, self.robot_frame))
+                                                     timeout=rospy.Duration(1.0))
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as ex:
+                rospy.logwarn('Could not get transform from %s to %s due to %s' % (msg.header.frame_id, self.robot_frame, ex))
                 return None
 
             Tr = numpify(tf.transform).reshape((4, 4))

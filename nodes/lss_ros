@@ -163,7 +163,7 @@ class LSS:
         timeout = rospy.Duration.from_sec(1.0)
         try:
             tf = self.tf_buffer.lookup_transform(self.hm_frame, msg.header.frame_id, time, timeout)
-        except tf2_ros.TransformException as ex:
+        except Exception as ex:
             rospy.logerr('Could not transform from camera %s to robot %s: %s.',
                          msg.header.frame_id, self.hm_frame, ex)
             raise ex

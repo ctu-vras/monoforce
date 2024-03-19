@@ -297,12 +297,12 @@ class DataVis:
                 if np.random.random() > 0.5:
                     v = -v
                 w = np.random.uniform(-0.2, 0.2)
-                # v = 0.5
+                # v = 0.4
                 # w = -0.13
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
                 states, robot_points = self.predict_states(height_pred_rigid, v=v, w=w)
                 # states, robot_points = self.predict_poses(hm_lidar[0].cpu().numpy(), v=v, w=w)
-                # states, robot_points = self.predict_poses(height_pred_geom, v=v, w=w)
+                # states, robot_points = self.predict_states(height_pred_geom, v=v, w=w)
                 poses = self.poses_from_states(states)
                 rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
                 forces = states[4].cpu().numpy()
