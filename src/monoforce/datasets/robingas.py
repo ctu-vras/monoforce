@@ -909,83 +909,11 @@ def extrinsics_demo():
         mlab.show()
 
 
-def vis_rgb_cloud():
-    from ..vis import show_cloud
-    from ..utils import normalize
-
-    for path in robingas_husky_seq_paths:
-        assert os.path.exists(path)
-
-        cfg = DPhysConfig()
-        ds = DEMPathData(path, dphys_cfg=cfg)
-
-        i = np.random.choice(range(len(ds)))
-        # i = 10
-        cloud = ds.get_cloud(i)
-        colors = ds.get_cloud_color(i)
-        if colors is None:
-            colors = np.zeros_like(cloud)
-
-        # poses
-        traj = ds.get_traj(i)
-        poses = traj['poses']
-
-        # images
-        img_front = ds.get_raw_image(i, 'front')
-        img_rear = ds.get_raw_image(i, 'rear')
-        img_left = ds.get_raw_image(i, 'left')
-        img_right = ds.get_raw_image(i, 'right')
-
-        # colored point cloud
-        points = position(cloud)
-        rgb = color(colors)
-        rgb = normalize(rgb)
-
-        # show images
-        plt.figure(figsize=(12, 12))
-
-        plt.subplot(332)
-        plt.title('Front camera')
-        plt.imshow(img_front)
-        plt.axis('off')
-
-        plt.subplot(338)
-        plt.title('Rear camera')
-        plt.imshow(img_rear)
-        plt.axis('off')
-
-        plt.subplot(334)
-        plt.title('Left camera')
-        plt.imshow(img_left)
-        plt.axis('off')
-
-        plt.subplot(336)
-        plt.title('Right camera')
-        plt.imshow(img_right)
-        plt.axis('off')
-
-        # show point cloud
-        plt.subplot(335)
-        points_vis = filter_range(points, cfg.d_min, cfg.d_max)
-        points_vis = filter_grid(points_vis, 0.2)
-        plt.plot(points_vis[:, 0], points_vis[:, 1], 'k.', markersize=0.5)
-        # plot poses
-        plt.plot(poses[:, 0, 3], poses[:, 1, 3], 'ro', markersize=4)
-        plt.axis('equal')
-        plt.grid()
-
-        plt.show()
-
-        show_cloud(points, rgb)
-
-
 def traversed_height_map():
     path = np.random.choice(robingas_husky_seq_paths)
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
-    cfg.from_yaml(os.path.join(path, 'terrain', 'train_log', 'dphys_cfg.yaml'))
-    # cfg.d_min = 1.
 
     ds = DEMPathData(path, dphys_cfg=cfg)
     i = np.random.choice(range(len(ds)))
@@ -1096,7 +1024,7 @@ def trajecory_footprint_heightmap():
     traj_points = ds.estimated_footprint_traj_points(i)
 
     lidar_height = ds.estimate_heightmap(points)['z']
-    traj_hm = ds.estimate_heightmap(traj_points, robot_size=None)
+    traj_hm = ds.estimate_heightmap(traj_points)
     traj_height = traj_hm['z']
     traj_mask = traj_hm['mask']
     print('lidar_height', lidar_height.shape)
@@ -1126,7 +1054,6 @@ def trajecory_footprint_heightmap():
 def main():
     heightmap_demo()
     extrinsics_demo()
-    vis_rgb_cloud()
     traversed_height_map()
     vis_hm_weights()
     vis_estimated_height_map()
