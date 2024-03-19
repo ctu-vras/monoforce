@@ -928,19 +928,19 @@ def traversed_height_map():
 
     # height map: estimated from point cloud
     heightmap = ds.estimate_heightmap(points)
-    height_est = heightmap['z']
+    height_geom = heightmap['z']
     x_grid, y_grid = heightmap['x'], heightmap['y']
     # height map: optimized from robot-terrain interaction model
-    height = ds.get_traj_dphyics_terrain(i)
+    height_rigid = ds.get_traj_dphyics_terrain(i)
 
     plt.figure(figsize=(12, 12))
-    h, w = height_est.shape
+    h, w = height_geom.shape
     xy_grid = poses[:, :2, 3] / cfg.grid_res + np.array([w / 2, h / 2])
     plt.subplot(131)
-    plt.imshow(height_est)
+    plt.imshow(height_geom.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(132)
-    plt.imshow(height)
+    plt.imshow(height_rigid.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(133)
     plt.imshow(img)
