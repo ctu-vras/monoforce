@@ -14,6 +14,25 @@
 	    <arg name="viz" value="false"/>
     </include>
 
+    <!-- Point cloud range filter -->
+    <node name="cloud_range_filter_max" pkg="nodelet" type="nodelet"
+          args="standalone cloud_proc/range_filter"
+          respawn="true" respawn_delay="1.0" output="log">
+        <rosparam subst_value="true">
+            field: x
+            min: 1.0
+            max: 50.0
+        </rosparam>
+        <remap from="input" to="ouster/points"/>
+        <remap from="output" to="ouster/points_in_range"/>
+    </node>
+
+    <!-- Point cloud deskewing -->
+    <node name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
+        <remap from="input_point_cloud" to="ouster/points_in_range" />
+        <remap from="output_point_cloud" to="ouster/points_deskewed" />
+	</node>
+
     <!-- Rviz -->
     <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/radarize.rviz"/>
 </launch>

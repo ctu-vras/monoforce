@@ -9,12 +9,6 @@
         <arg name="rviz" value="false"/>
     </include>
 
-    <!-- Point cloud deskewing -->
-    <node name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
-        <remap from="input_point_cloud" to="ouster/points" />
-        <remap from="output_point_cloud" to="ouster/points_deskewed" />
-	</node>
-
     <!-- SLAM -->
     <include file="$(dirname)/slam.launch">
         <arg name="cloud" value="ouster/points_deskewed"/>

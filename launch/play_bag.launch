@@ -52,6 +52,12 @@
         </group>
     </group>
 
+     <!-- Point cloud deskewing -->
+    <node name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
+        <remap from="input_point_cloud" to="points" />
+        <remap from="output_point_cloud" to="points_deskewed" />
+	</node>
+
     <!-- Visualization -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
           args="-d $(dirname)/../config/rviz/bag_data.rviz"/>
