@@ -458,18 +458,19 @@ def sample_heightmap_at_img_pose():
 def vis_data():
     from monoforce.datasets import RobinGas, Rellis3D
 
-    cfg = DPhysConfig()
-    cfg.from_yaml('../config/dphys_cfg.yaml')
+    dphys_cfg = DPhysConfig()
+    dphys_cfg.from_yaml('../config/dphys_cfg.yaml')
 
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
 
-    # paths = robingas_husky_seq_paths + oru_seq_paths
-    paths = rellis3d_seq_paths
+    # paths = robingas_husky_seq_paths
+    # paths = rellis3d_seq_paths
+    paths = oru_seq_paths
 
     for path in paths:
-        # ds = RobinGas(path=path, cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
-        ds = Rellis3D(path=path, dphys_cfg=cfg, data_aug_conf=data_aug_conf, is_train=False)
+        ds = RobinGas(path=path, dphys_cfg=dphys_cfg, data_aug_conf=data_aug_conf, is_train=False)
+        # ds = Rellis3D(path=path, dphys_cfg=dphys_cfg, data_aug_conf=data_aug_conf, is_train=False)
         i = np.random.choice(range(len(ds)))
         print(f'Visualizing sample {i} from {os.path.basename(path)}...')
 
@@ -481,7 +482,7 @@ def vis_data():
 
         plt.figure(figsize=(20, 4))
         plt.subplot(1, 5, 1)
-        plt.title('Input Image')
+        plt.title('Front (0) Image')
         plt.imshow(img)
         plt.subplot(1, 5, 2)
         plt.title('Height Trajectory')

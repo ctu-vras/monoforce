@@ -58,16 +58,6 @@ python train
 The pretrained weights for the LSS terrain encoder can be downloaded from
 [train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
 
-### Data Sample
-
-The LSS model training data example include:
-- input RGB images,
-- terrain heightmap estimated from lidar,
-- robot footprint trajectory,
-- point cloud generated from camera frustums.
-
-![](./docs/imgs/lss_data.png)
-
 ## ROS Integration
 
 We provide a ROS node that integrates the trained Terrain Encoder model with the Differentiable Physics module.

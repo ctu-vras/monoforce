@@ -317,6 +317,10 @@ class DEMPathData(Dataset):
                     global_cloud = points
                 else:
                     global_cloud = np.vstack((global_cloud, points))
+            # save global cloud to file
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(global_cloud)
+            o3d.io.write_point_cloud(path, pcd)
 
         if vis:
             pcd = o3d.geometry.PointCloud()

@@ -5,9 +5,10 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /Clouds1
         - /Traversability1
       Splitter Ratio: 0.5
-    Tree Height: 418
+    Tree Height: 538
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -25,7 +26,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: Camera Left
+    SyncSource: PointCloud2
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -100,46 +101,18 @@ Visualization Manager:
         {}
       Update Interval: 0
       Value: false
+    - Alpha: 1
+      Class: rviz_plugin_tutorials/Imu
+      Color: 204; 51; 204
+      Enabled: false
+      History Length: 1
+      Name: Imu
+      Queue Size: 10
+      Topic: /imu/data
+      Unreliable: false
+      Value: false
     - Class: rviz/Group
       Displays:
-        - Alpha: 1
-          Autocompute Intensity Bounds: true
-          Autocompute Value Bounds:
-            Max Value: 10
-            Min Value: -10
-            Value: true
-          Axis: Z
-          Channel Name: intensity
-          Class: rviz/PointCloud2
-          Color: 46; 52; 54
-          Color Transformer: FlatColor
-          Decay Time: 0
-          Enabled: true
-          Invert Rainbow: false
-          Max Color: 255; 255; 255
-          Min Color: 0; 0; 0
-          Name: PointCloud2
-          Position Transformer: XYZ
-          Queue Size: 10
-          Selectable: true
-          Size (Pixels): 2
-          Size (m): 0.029999999329447746
-          Style: Points
-          Topic: /points
-          Unreliable: false
-          Use Fixed Frame: true
-          Use rainbow: true
-          Value: true
-        - Alpha: 1
-          Class: rviz_plugin_tutorials/Imu
-          Color: 204; 51; 204
-          Enabled: false
-          History Length: 1
-          Name: Imu
-          Queue Size: 10
-          Topic: /imu/data
-          Unreliable: false
-          Value: false
         - Class: rviz/Image
           Enabled: false
           Image Topic: /camera_front/image_color
@@ -188,8 +161,216 @@ Visualization Manager:
           Transport Hint: compressed
           Unreliable: false
           Value: false
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_front/image_color
+          Name: Camera Front
+          Overlay Alpha: 0.20000000298023224
+          Queue Size: 2
+          Transport Hint: compressed
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              Value: true
+            Clouds:
+              Deskewed Points: true
+              Points: true
+              Value: true
+            Grid: true
+            Imu: true
+            InteractiveMarkers: true
+            Lower cost Path: true
+            MARV RobotModel: true
+            RobotModel: true
+            Sampled Paths: true
+            TF: true
+            TFTrajectory: true
+            Traversability:
+              " GridMap Geom": true
+              GridMap Diff: true
+              GridMap Rigid: true
+              Value: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_left/image_color
+          Name: Camera Left
+          Overlay Alpha: 0.20000000298023224
+          Queue Size: 2
+          Transport Hint: compressed
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              Value: true
+            Clouds:
+              Deskewed Points: true
+              Points: true
+              Value: true
+            Grid: true
+            Imu: true
+            InteractiveMarkers: true
+            Lower cost Path: true
+            MARV RobotModel: true
+            RobotModel: true
+            Sampled Paths: true
+            TF: true
+            TFTrajectory: true
+            Traversability:
+              " GridMap Geom": true
+              GridMap Diff: true
+              GridMap Rigid: true
+              Value: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_right/image_color
+          Name: Camera Right
+          Overlay Alpha: 0.20000000298023224
+          Queue Size: 2
+          Transport Hint: compressed
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              Value: true
+            Clouds:
+              Deskewed Points: true
+              Points: true
+              Value: true
+            Grid: true
+            Imu: true
+            InteractiveMarkers: true
+            Lower cost Path: true
+            MARV RobotModel: true
+            RobotModel: true
+            Sampled Paths: true
+            TF: true
+            TFTrajectory: true
+            Traversability:
+              " GridMap Geom": true
+              GridMap Diff: true
+              GridMap Rigid: true
+              Value: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_rear/image_color
+          Name: Camera Rear
+          Overlay Alpha: 0.20000000298023224
+          Queue Size: 2
+          Transport Hint: compressed
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              Value: true
+            Clouds:
+              Deskewed Points: true
+              Points: true
+              Value: true
+            Grid: true
+            Imu: true
+            InteractiveMarkers: true
+            Lower cost Path: true
+            MARV RobotModel: true
+            RobotModel: true
+            Sampled Paths: true
+            TF: true
+            TFTrajectory: true
+            Traversability:
+              " GridMap Geom": true
+              GridMap Diff: true
+              GridMap Rigid: true
+              Value: true
+            Value: true
+          Zoom Factor: 1
       Enabled: true
-      Name: Sensors
+      Name: Cameras
+    - Class: rviz/Group
+      Displays:
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz/PointCloud2
+          Color: 46; 52; 54
+          Color Transformer: FlatColor
+          Decay Time: 0
+          Enabled: false
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Min Color: 0; 0; 0
+          Name: Points
+          Position Transformer: XYZ
+          Queue Size: 10
+          Selectable: true
+          Size (Pixels): 2
+          Size (m): 0.029999999329447746
+          Style: Points
+          Topic: /points
+          Unreliable: false
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: false
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz/PointCloud2
+          Color: 46; 52; 54
+          Color Transformer: FlatColor
+          Decay Time: 0
+          Enabled: true
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Min Color: 0; 0; 0
+          Name: Deskewed Points
+          Position Transformer: XYZ
+          Queue Size: 10
+          Selectable: true
+          Size (Pixels): 2
+          Size (m): 0.029999999329447746
+          Style: Points
+          Topic: /points_deskewed
+          Unreliable: false
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: true
+      Enabled: true
+      Name: Clouds
     - Class: rviz/Group
       Displays:
         - Alpha: 0.6000000238418579
@@ -306,154 +487,6 @@ Visualization Manager:
       duration: 1000
       frame: base_link
       line_width: 0.10000000149011612
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_front/image_color
-      Name: Camera Front
-      Overlay Alpha: 0.20000000298023224
-      Queue Size: 2
-      Transport Hint: compressed
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Left: true
-        Camera Rear: true
-        Camera Right: true
-        Grid: true
-        InteractiveMarkers: true
-        Lower cost Path: true
-        MARV RobotModel: true
-        RobotModel: true
-        Sampled Paths: true
-        Sensors:
-          Camera Front: true
-          Camera Left: true
-          Camera Rear: true
-          Camera Right: true
-          Imu: true
-          PointCloud2: true
-          Value: true
-        TF: true
-        TFTrajectory: true
-        Traversability:
-          " GridMap Geom": true
-          GridMap Diff: true
-          GridMap Rigid: true
-          Value: true
-        Value: true
-      Zoom Factor: 1
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_left/image_color
-      Name: Camera Left
-      Overlay Alpha: 0.20000000298023224
-      Queue Size: 2
-      Transport Hint: compressed
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Front: true
-        Camera Rear: true
-        Camera Right: true
-        Grid: true
-        InteractiveMarkers: true
-        Lower cost Path: true
-        MARV RobotModel: true
-        RobotModel: true
-        Sampled Paths: true
-        Sensors:
-          Camera Front: true
-          Camera Left: true
-          Camera Rear: true
-          Camera Right: true
-          Imu: true
-          PointCloud2: true
-          Value: true
-        TF: true
-        TFTrajectory: true
-        Traversability:
-          " GridMap Geom": true
-          GridMap Diff: true
-          GridMap Rigid: true
-          Value: true
-        Value: true
-      Zoom Factor: 1
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_right/image_color
-      Name: Camera Right
-      Overlay Alpha: 0.20000000298023224
-      Queue Size: 2
-      Transport Hint: compressed
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Front: true
-        Camera Left: true
-        Camera Rear: true
-        Grid: true
-        InteractiveMarkers: true
-        Lower cost Path: true
-        MARV RobotModel: true
-        RobotModel: true
-        Sampled Paths: true
-        Sensors:
-          Camera Front: true
-          Camera Left: true
-          Camera Rear: true
-          Camera Right: true
-          Imu: true
-          PointCloud2: true
-          Value: true
-        TF: true
-        TFTrajectory: true
-        Traversability:
-          " GridMap Geom": true
-          GridMap Diff: true
-          GridMap Rigid: true
-          Value: true
-        Value: true
-      Zoom Factor: 1
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_rear/image_color
-      Name: Camera Rear
-      Overlay Alpha: 0.20000000298023224
-      Queue Size: 2
-      Transport Hint: compressed
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Front: true
-        Camera Left: true
-        Camera Right: true
-        Grid: true
-        InteractiveMarkers: true
-        Lower cost Path: true
-        MARV RobotModel: true
-        RobotModel: true
-        Sampled Paths: true
-        Sensors:
-          Camera Front: true
-          Camera Left: true
-          Camera Rear: true
-          Camera Right: true
-          Imu: true
-          PointCloud2: true
-          Value: true
-        TF: true
-        TFTrajectory: true
-        Traversability:
-          " GridMap Geom": true
-          GridMap Diff: true
-          GridMap Rigid: true
-          Value: true
-        Value: true
-      Zoom Factor: 1
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -512,11 +545,11 @@ Window Geometry:
   Camera Right:
     collapsed: false
   Displays:
-    collapsed: true
-  Height: 1016
-  Hide Left Dock: true
+    collapsed: false
+  Height: 1136
+  Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000002490000024afc020000000afb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc0000003d0000024a0000000000fffffffaffffffff0100000002fb0000000a005600690065007700730000000000ffffffff0000010000fffffffb000000100044006900730070006c0061007900730000000000000001560000015600fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0049006d006100670065000000031d000000be0000000000000000fb0000000a0049006d006100670065000000032c000000af0000000000000000000000010000010f000003edfc0200000002fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000738000000ccfc0100000005fb0000001600430061006d0065007200610020004c0065006600740000000000000001e30000008800fffffffb0000001800430061006d006500720061002000460072006f006e00740000000000000003590000009100fffffffb0000001600430061006d006500720061002000520065006100720000000000000004740000008b00fffffffb0000001800430061006d0065007200610020005200690067006800740000000000000007380000009000fffffffb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000014efc0100000007fb0000001800430061006d006500720061002000460072006f006e00740100000000000001cd0000009100fffffffb0000001800430061006d006500720061002000460072006f006e00740100000000000001a00000000000000000fb0000001600430061006d0065007200610020004c00650066007401000001d3000001d30000008800fffffffb0000001800430061006d00650072006100200052006900670068007401000003ac000001b90000009000fffffffb0000001600430061006d00650072006100200052006500610072010000056b000001cd0000008b00fffffffb0000000800540069006d00650000000000000007380000041800fffffffb0000000800540069006d00650100000000000004500000000000000000000007380000024a00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd000000040000000000000249000002c2fc020000000afb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc0000003d000002c2000000e60100001cfa000000010100000002fb0000000a005600690065007700730100000000ffffffff0000010000fffffffb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0049006d006100670065000000031d000000be0000000000000000fb0000000a0049006d006100670065000000032c000000af0000000000000000000000010000010f000003edfc0200000002fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000738000000ccfc0100000005fb0000001600430061006d0065007200610020004c0065006600740000000000000001e30000008800fffffffb0000001800430061006d006500720061002000460072006f006e00740000000000000003590000009100fffffffb0000001600430061006d006500720061002000520065006100720000000000000004740000008b00fffffffb0000001800430061006d0065007200610020005200690067006800740000000000000007380000009000fffffffb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000014efc0100000007fb0000001800430061006d006500720061002000460072006f006e00740100000000000001cd0000009100fffffffb0000001800430061006d006500720061002000460072006f006e00740100000000000001a00000000000000000fb0000001600430061006d0065007200610020004c00650066007401000001d3000001d30000008800fffffffb0000001800430061006d00650072006100200052006900670068007401000003ac000001b90000009000fffffffb0000001600430061006d00650072006100200052006500610072010000056b000001cd0000008b00fffffffb0000000800540069006d00650000000000000007380000041800fffffffb0000000800540069006d00650100000000000004500000000000000000000004e9000002c200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -524,7 +557,7 @@ Window Geometry:
   Tool Properties:
     collapsed: false
   Views:
-    collapsed: true
+    collapsed: false
   Width: 1848
   X: 72
   Y: 27
