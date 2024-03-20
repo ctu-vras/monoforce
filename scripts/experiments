@@ -466,10 +466,10 @@ def vis_data():
 
     # paths = robingas_husky_seq_paths
     # paths = rellis3d_seq_paths
-    paths = oru_seq_paths
+    paths = oru_seq_paths + robingas_husky_seq_paths
 
     for path in paths:
-        ds = RobinGas(path=path, dphys_cfg=dphys_cfg, data_aug_conf=data_aug_conf, is_train=False)
+        ds = RobinGas(path=path, dphys_cfg=dphys_cfg, data_aug_conf=data_aug_conf, is_train=False, only_front_hm=True)
         # ds = Rellis3D(path=path, dphys_cfg=dphys_cfg, data_aug_conf=data_aug_conf, is_train=False)
         i = np.random.choice(range(len(ds)))
         print(f'Visualizing sample {i} from {os.path.basename(path)}...')

@@ -354,6 +354,23 @@ class DEMPathData(Dataset):
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
+    def crop_front_height_map(self, hm, only_mask=False):
+        # square defining observation area on the ground
+        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.dphys_cfg.d_max / 2
+        offset = np.asarray([0, self.dphys_cfg.d_max / 2, 0])
+        square = square + offset
+        h, w = hm.shape[1], hm.shape[2]
+        square_grid = square[:, :2] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
+        if only_mask:
+            mask = np.zeros((h, w), dtype=np.float32)
+            mask[int(square_grid[0, 1]):int(square_grid[2, 1]),
+            int(square_grid[0, 0]):int(square_grid[2, 0])] = 1.
+            return mask
+        # crop height map to observation area defined by square grid
+        hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
+                         int(square_grid[0, 0]):int(square_grid[2, 0])]
+        return hm_front
+
     def get_lidar_height_map(self, i, cached=True, dir_name=None, **kwargs):
         """
         Get height map from lidar point cloud.
@@ -374,9 +391,9 @@ class DEMPathData(Dataset):
             lidar_hm = self.estimate_heightmap(points, **kwargs)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, lidar_hm)
-        height = torch.from_numpy(lidar_hm['z'])
-        mask = torch.from_numpy(lidar_hm['mask'])
-        heightmap = torch.stack([height, mask])
+        height = lidar_hm['z']
+        mask = lidar_hm['mask']
+        heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
     def get_traj_height_map(self, i, method='footprint', cached=True, dir_name=None):
@@ -426,9 +443,7 @@ class DEMPathData(Dataset):
                 np.save(file_path, traj_hm)
             height = traj_hm['z']
             mask = traj_hm['mask']
-        height = torch.from_numpy(height)
-        mask = torch.from_numpy(mask)
-        heightmap = torch.stack([height, mask])
+        heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
     def get_sample(self, i, visualize=False):
@@ -628,25 +643,14 @@ class RobinGas(DEMPathData):
 
         return outputs
 
-    def crop_front_height_map(self, hm):
-        # square defining observation area on the ground
-        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.dphys_cfg.d_max / 2
-        offset = np.asarray([0, self.dphys_cfg.d_max / 2, 0])
-        square = square + offset
-        h, w = hm.shape[1], hm.shape[2]
-        square_grid = square[:, :2] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
-        # crop height map to observation area defined by square grid
-        hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
-                         int(square_grid[0, 0]):int(square_grid[2, 0])]
-        return hm_front
-
     def get_sample(self, i):
         img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
         hm_lidar = self.get_lidar_height_map(i, robot_radius=1.0)
         hm_traj = self.get_traj_height_map(i)
         if self.only_front_hm:
-            hm_lidar = self.crop_front_height_map(hm_lidar)
-            hm_traj = self.crop_front_height_map(hm_traj)
+            mask = self.crop_front_height_map(hm_lidar[1:2], only_mask=True)
+            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
+            hm_traj[1] = hm_traj[1] * torch.from_numpy(mask)
         map_pose = torch.as_tensor(self.get_pose(i))
         return img, rot, tran, intrin, post_rot, post_tran, hm_lidar, hm_traj, map_pose
 
@@ -657,14 +661,15 @@ class RobinGasVis(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        height_lidar = self.get_lidar_height_map(i)
-        height_traj = self.get_traj_height_map(i)
+        hm_lidar = self.get_lidar_height_map(i)
+        hm_traj = self.get_traj_height_map(i)
         if self.only_front_hm:
-            height_lidar = self.crop_front_height_map(height_lidar)
-            height_traj = self.crop_front_height_map(height_traj)
+            mask = self.crop_front_height_map(hm_lidar[1:2], only_mask=True)
+            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
+            hm_traj[1] = hm_traj[1] * torch.from_numpy(mask)
         map_pose = torch.as_tensor(self.get_pose(i))
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts
 
 
 class RobinGasCamSynch(RobinGas):
