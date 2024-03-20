@@ -84,9 +84,11 @@ Consider citing the paper if you find it relevant to your research:
 
 ```bibtex
 @article{agishev2023monoforce,
-  title={MonoForce: Self-supervised learning of physics-aware grey-box model for predicting the robot-terrain interaction},
-  author={Agishev, Ruslan and Zimmermann, Karel and Pecka, Martin and Svoboda, Tom{\'a}{\v{s}}},
-  journal={arXiv preprint arXiv:2309.09007},
-  year={2023}
+    title={MonoForce: Self-supervised Learning of Physics-aware Model for Predicting Robot-terrain Interaction},
+    author={Ruslan Agishev and Karel Zimmermann and Vladimír Kubelka and Martin Pecka and Tomáš Svoboda},
+    year={2023},
+    eprint={2309.09007},
+    archivePrefix={arXiv},
+    primaryClass={cs.RO}
 }
 ```
