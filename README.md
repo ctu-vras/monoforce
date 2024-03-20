@@ -55,8 +55,9 @@ python train
 
 ### Weights
 
-The pretrained weights for the LSS terrain encoder can be downloaded from
-[train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
+The pretrained weights for the LSS terrain encoder can be downloaded from:
+- RobinGas: [lss_robingas_2024_03_04_09_42_47/train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
+- RELLIS-3D: [lss_rellis3d_2024_03_06_16_07_52/train_lss.pt](https://drive.google.com/file/d/12WUNFXFHsm3hM1Ov-Ap1yRybOif6-Vi4/view?usp=sharing)
 
 ## ROS Integration
 
