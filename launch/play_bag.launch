@@ -5,6 +5,7 @@
     <arg name="rate" default="1." doc="Playback rate"/>
     <arg name="delay" default="3.0" doc="Delay in the bag file [sec]"/>
     <arg name="start" default="0." doc="Start moment in a bag file [sec]"/>
+    <arg name="debayer" default="true" doc="Debayer images or not"/>
     <!--Bag file player -->
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
 <!--    <arg name="bag" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44.bag"/> -->
@@ -26,10 +27,26 @@
     <node name="rosbag_play" pkg="rosbag" type="play"
           args="--clock --delay $(arg delay) --rate $(arg rate) --start $(arg start) $(arg bag)">
         <remap from="os_cloud_node/destaggered_points" to="points"/>
+        <remap from="points_filtered_kontron" to="points"/>
+
+        <!-- TRADR image topics remapping -->
+        <remap from="/viz/camera_4/image/compressed" to="/camera_front/image_color/compressed"/>
+        <remap from="/viz/camera_0/image/compressed" to="/camera_right/image_color/compressed"/>
+        <remap from="/viz/camera_1/image/compressed" to="/camera_rear_right/image_color/compressed"/>
+        <remap from="/viz/camera_2/image/compressed" to="/camera_rear_left/image_color/compressed"/>
+        <remap from="/viz/camera_3/image/compressed" to="/camera_left/image_color/compressed"/>
+        <remap from="/viz/camera_5/image/compressed" to="/camera_up/image_color/compressed"/>
+        <!-- TRADR camera info topics remapping -->
+        <remap from="/viz/camera_4/camera_info" to="/camera_front/camera_info"/>
+        <remap from="/viz/camera_0/camera_info" to="/camera_right/camera_info"/>
+        <remap from="/viz/camera_1/camera_info" to="/camera_rear_right/camera_info"/>
+        <remap from="/viz/camera_2/camera_info" to="/camera_rear_left/camera_info"/>
+        <remap from="/viz/camera_3/camera_info" to="/camera_left/camera_info"/>
+        <remap from="/viz/camera_5/camera_info" to="/camera_up/camera_info"/>
     </node>
 
     <!-- Debayering of images with image_proc -->
-    <group>
+    <group if="$(arg debayer)">
         <group ns="camera_front">
             <node name="debayer" pkg="nodelet" type="nodelet" args="standalone image_proc/debayer" respawn="false" output="screen">
                  <param name="image_transport" value="compressed"/>
