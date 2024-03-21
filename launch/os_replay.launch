@@ -1,21 +1,23 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 
 <launch>
-    <arg name="rate" default="1.0"/>
-    <arg name="start" default="0.0"/>
     <arg name="rviz" default="false"/>
+    <arg name="range_filter" default="true"/>
+    <arg name="deskewing" default="true"/>
 
     <param name="use_sim_time" value="true"/>
     <include file="$(find ouster_ros)/launch/replay.launch">
             <arg name="ouster_ns" value="ouster"/>
 	    <arg name="sensor_frame" value="os_sensor"/>
 <!-- 	    <arg name="metadata" value="$(dirname)/../config/ouster/os1-122047000415-metadata.json"/> -->
-	    <arg name="metadata" value="$(dirname)/../config/ouster/os0-122140000627-metadata.json"/>
+<!-- 	    <arg name="metadata" value="$(dirname)/../config/ouster/os0-122140000627-metadata.json"/> -->
+<!--             <arg name="metadata" value="$(dirname)/../config/ouster/os1-991901000486-metadata.json"/> -->
+            <arg name="metadata" value="$(dirname)/../config/ouster/os1_64beam_radarize_metadata.json"/>
 	    <arg name="viz" value="false"/>
     </include>
 
     <!-- Point cloud range filter -->
-    <node name="cloud_range_filter_max" pkg="nodelet" type="nodelet"
+    <node if="$(arg range_filter)" name="cloud_range_filter_max" pkg="nodelet" type="nodelet"
           args="standalone cloud_proc/range_filter"
           respawn="true" respawn_delay="1.0" output="log">
         <rosparam subst_value="true">
@@ -28,7 +30,7 @@
     </node>
 
     <!-- Point cloud deskewing -->
-    <node name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
+    <node if="$(arg deskewing)" name="pcl_deskew_node" pkg="pointcloud_motion_deskew" type="pointcloud2_deskew_node" output="screen" >
         <remap from="input_point_cloud" to="ouster/points_in_range" />
         <remap from="output_point_cloud" to="ouster/points_deskewed" />
 	</node>
