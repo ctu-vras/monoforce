@@ -2,7 +2,6 @@
 <launch>
     <arg name="rviz" default="true"/>
     <arg name="diffphys" default="false" doc="Whether to run the diff physics node or not"/>
-    <arg name="slam" default="false" doc="Whether to run the SLAM node or not"/>
     <arg name="lss_debug" default="false"/>
     <arg name="weights" default="$(dirname)/../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt"/>
 <!--     <arg name="weights" default="$(dirname)/../config/tb_runs/lss_rellis3d_2024_03_06_16_07_52/train_lss.pt"/> -->
@@ -21,7 +20,7 @@
     <arg name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/calibration/"/>
 
     <!-- Robot data: from bag file -->
-    <include file="$(dirname)/play_bag.launch">
+    <include file="$(dirname)/robingas_bag.launch">
         <arg name="bag" value="$(arg bag)"/>
         <arg name="rate" value="1."/>
         <arg name="start" value="0."/>
@@ -53,22 +52,6 @@
             max_stale_msg_delay: 0.5
         </rosparam>
     </node>
-
-    <group if="$(arg slam)">
-        <!-- Cloud filterring -->
-        <include file="$(dirname)/cloud_filter.launch">
-            <arg name="input" value="points"/>
-            <arg name="output" value="filtered_cloud"/>
-            <arg name="min_depth" value="1.0"/>
-            <arg name="max_depth" value="25.0"/>
-            <arg name="grid_res" value="0.1"/>
-        </include>
-        <!-- SLAM -->
-        <include file="$(dirname)/slam.launch">
-            <arg name="cloud" value="filtered_cloud"/>
-            <arg name="odom_frame" value="odom"/>
-        </include>
-    </group>
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"

@@ -1,7 +1,5 @@
 import torch
-# from pynput import keyboard
 import numpy as np
-# from .models import RigidBodySoftTerrain, State
 from .transformations import rot2rpy
 import time
 

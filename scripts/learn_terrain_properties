@@ -6,7 +6,7 @@ import numpy as np
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
 from monoforce.utils import read_yaml, str2bool
-from monoforce.vis import setup_visualization, animate_trajectory, set_axes_equal
+from monoforce.vis import setup_visualization, animate_trajectory
 from monoforce.datasets.utils import visualize_data
 from monoforce.datasets import RobinGas, robingas_husky_seq_paths
 from monoforce.config import DPhysConfig
@@ -281,12 +281,12 @@ def main():
     print(args)
 
     cfg = DPhysConfig()
-    cfg.from_yaml('../../config/dphys_cfg.yaml')
+    cfg.from_yaml('../config/dphys_cfg.yaml')
     cfg.vel_tracks = args.vel_tracks * np.asarray([1., 1.])
     cfg.robot_terrain_interaction_model = args.control_model
     cfg.device = args.device
 
-    data_aug_conf = read_yaml('../../config/lss_cfg.yaml')['data_aug_conf']
+    data_aug_conf = read_yaml('../config/lss_cfg.yaml')['data_aug_conf']
 
     learner = Learner(data_path=args.data_path, cfg=cfg, data_aug_config=data_aug_conf,
                       vis=args.visualize, save_data=args.save_data,

@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from monoforce.utils import normalize
 
 
 __all__ = [

@@ -3,10 +3,9 @@
     <arg name="rviz" default="true"/>
 <!--     <arg name="bag" default="$(dirname)/../data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34.bag"/> -->
     <arg name="bag" default="$(dirname)/../data/robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57.bag"/>
-    <arg name="slam" default="false" doc="Run SLAM or not"/>
 
     <!-- Robot data: from bag file -->
-    <include file="$(dirname)/play_bag.launch">
+    <include file="$(dirname)/robingas_bag.launch">
         <arg name="bag" value="$(arg bag)"/>
         <arg name="rate" value="1."/>
         <arg name="start" value="0."/>
@@ -17,23 +16,6 @@
     <include file="$(dirname)/hm_estimator.launch">
         <arg name="pts_topics" value="[points]"/>
     </include>
-
-    <!-- SLAM node -->
-    <group if="$(arg slam)">
-        <!-- Cloud filterring -->
-        <include file="$(dirname)/cloud_filter.launch">
-            <arg name="input" value="points"/>
-            <arg name="output" value="filtered_cloud"/>
-            <arg name="min_depth" value="1.0"/>
-            <arg name="max_depth" value="25.0"/>
-            <arg name="grid_res" value="0.1"/>
-        </include>
-        <!-- SLAM -->
-        <include file="$(dirname)/slam.launch">
-            <arg name="cloud" value="filtered_cloud"/>
-            <arg name="odom_frame" value="odom"/>
-        </include>
-    </group>
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"

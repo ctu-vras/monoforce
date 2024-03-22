@@ -1,5 +1,4 @@
 import torch
-from .segmentation import affine
 from .transformations import rot2rpy, rpy2rot
 from .utils import position
 import numpy as np
@@ -17,6 +16,28 @@ __all__ = [
     'estimate_heightmap',
     'hm_to_cloud',
 ]
+
+
+def affine(tf, x):
+    """Apply an affine transform to points."""
+    tf = np.asarray(tf)
+    x = np.asarray(x)
+    assert tf.ndim == 2
+    assert x.ndim == 2
+    assert tf.shape[1] == x.shape[0] + 1
+    y = np.matmul(tf[:-1, :-1], x) + tf[:-1, -1:]
+    return y
+
+
+def inverse(tf):
+    """Compute the inverse of an affine transform."""
+    tf = np.asarray(tf)
+    assert tf.ndim == 2
+    assert tf.shape[0] == tf.shape[1]
+    tf_inv = np.eye(tf.shape[0])
+    tf_inv[:-1, :-1] = tf[:-1, :-1].T
+    tf_inv[:-1, -1:] = -np.matmul(tf_inv[:-1, :-1], tf[:-1, -1:])
+    return tf_inv
 
 
 def within_bounds(x, min=None, max=None, bounds=None, log_variable=None):

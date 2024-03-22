@@ -77,5 +77,5 @@
 
     <!-- Visualization -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
-          args="-d $(dirname)/../config/rviz/bag_data.rviz"/>
+          args="-d $(dirname)/../config/rviz/robingas.rviz"/>
 </launch>
