@@ -6,7 +6,7 @@ data_aug_conf:
   - 0.0
   Ncams: 1
   cams:
-  - CAM_FRONT
+  - CAMERA_FRONT
   final_dim:
   - 256
   - 416

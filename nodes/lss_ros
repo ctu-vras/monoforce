@@ -335,16 +335,16 @@ class LSSVis(LSS):
             plt.clf()
             final_ax = plt.subplot(gs[:, 3:4])
             for imgi, img in enumerate(imgs[si]):
-                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                mask = get_only_in_img_mask(ego_pts, H, W)
-                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
+                cam_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                mask = get_only_in_img_mask(cam_pts, H, W)
+                plot_pts = post_rots[si, imgi].matmul(cam_pts) + post_trans[si, imgi].unsqueeze(1)
 
                 ax = plt.subplot(gs[imgi // 2, imgi % 2])
                 showimg = img.permute(1, 2, 0).numpy()
                 showimg = normalize(showimg)
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask], s=2, cmap='jet', alpha=0.2)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[2, mask], s=2, cmap='jet', alpha=0.2)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '), horizontalalignment='center', verticalalignment='top',

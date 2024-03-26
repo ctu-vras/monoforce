@@ -251,6 +251,14 @@ class Rellis3DBase(torch.utils.data.Dataset):
         i = np.clip(i, 0, len(self.ids_rgb) - 1)
         return read_rgb(self.image_path(self.ids_rgb[i]))
 
+    def get_raw_img_size(self, id=None):
+        if id is None:
+            id = self.ids[0]
+        assert id in self.ids
+        img = self.get_image(id)
+        return img.shape[0], img.shape[1]
+
+
 class Rellis3D(Rellis3DBase):
     def __init__(self, path, data_aug_conf, dphys_cfg=DPhysConfig(), is_train=False, only_front_hm=False):
         super().__init__(path)
@@ -259,6 +267,7 @@ class Rellis3D(Rellis3DBase):
         self.data_aug_conf = data_aug_conf
         self.img_augs = self.get_img_augs()
         self.only_front_hm = only_front_hm
+        self.cameras = ['camera_front']
 
     def get_img_augs(self):
         if self.is_train:
@@ -438,7 +447,7 @@ class Rellis3D(Rellis3DBase):
         return hm_front
 
     def sample_augmentation(self):
-        H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        H, W = self.get_raw_img_size()
         fH, fW = self.data_aug_conf['final_dim']
         if self.is_train:
             resize = np.random.uniform(*self.data_aug_conf['resize_lim'])

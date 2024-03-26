@@ -16,7 +16,7 @@ from monoforce.datasets.robingas import explore_data, RobinGasVis
 from monoforce.datasets.rellis3d import Rellis3DVis
 from monoforce.config import DPhysConfig
 from monoforce.cloudproc import estimate_heightmap, hm_to_cloud
-from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths
+from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths, robingas_tradr_seq_paths
 from monoforce.utils import read_yaml, position
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference
@@ -376,7 +376,7 @@ class EvaluatorGeom:
 
 class EvaluatorLSS(EvaluatorGeom):
     def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset,
-                 # model_path='../config/tb_runs/lss_2024_03_04_09_42_47/train_lss.pt'):
+                 # model_path='../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt'):
                  # model_path='../config/tb_runs/lss_rellis3d_robingas_dphysics_terrain/train_lss.pt'):
                  model_path='../config/tb_runs/lss_rellis3d_2024_03_06_16_07_52/train_lss.pt'):
         super().__init__(dphys_config_path, terrain_encoder_config_path, dataset, model_path)
@@ -530,12 +530,14 @@ class EvaluatorSemSeg(EvaluatorGeom):
 
 def vis_data(dataset):
     dphys_config_path = '../config/dphys_cfg.yaml'
-    terrain_encoder_config_path = '../config/lss_cfg.yaml'
-    modelf = '../config/tb_runs/lss_rellis3d_robingas_dphysics_terrain/train_lss.pt'
-    # modelf = None
+    lss_config_path = '../config/lss_cfg.yaml'
+    # modelf = '../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt'
+    modelf = None
 
     if dataset == 'robingas':
-        data_paths = robingas_husky_seq_paths
+        # data_paths = oru_seq_paths
+        # data_paths = robingas_husky_seq_paths
+        data_paths = robingas_tradr_seq_paths
         DataClass = RobinGasVis
     elif dataset == 'rellis3d':
         data_paths = rellis3d_seq_paths
@@ -545,13 +547,14 @@ def vis_data(dataset):
 
     for path in data_paths:
         assert os.path.isdir(path), 'Data path %s does not exist' % path
-        lss_config = read_yaml(terrain_encoder_config_path)
+        lss_config = read_yaml(lss_config_path)
         grid_conf = lss_config['grid_conf']
         data_aug_conf = lss_config['data_aug_conf']
         cfg = DPhysConfig()
         cfg.from_yaml(dphys_config_path)
-        explore_data(path, grid_conf, data_aug_conf, cfg, modelf=modelf,
-                     sample_range='random', save=False, is_train=False, DataClass=DataClass)
+        for _ in range(5):
+            explore_data(path, grid_conf, data_aug_conf, cfg, modelf=modelf,
+                         sample_range='random', save=False, is_train=True, DataClass=DataClass)
 
 
 def evaluate(dataset):

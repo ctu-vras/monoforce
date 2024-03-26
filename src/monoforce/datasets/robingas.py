@@ -8,7 +8,6 @@ from scipy.spatial import cKDTree
 from torch.utils.data import Dataset
 from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
 from matplotlib import cm, pyplot as plt
-from mayavi import mlab
 from ..models.lss.tools import ego_to_cam, get_only_in_img_mask, denormalize_img, img_transform, normalize_img
 from ..models.lss.model import compile_model
 from ..config import DPhysConfig
@@ -16,8 +15,8 @@ from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_box
 from ..utils import position, color
 from ..cloudproc import filter_grid, filter_range
-from ..imgproc import undistort_image, project_cloud_to_image
-from ..vis import show_cloud, draw_coord_frame, draw_coord_frames, set_axes_equal
+from ..imgproc import undistort_image
+from ..vis import set_axes_equal
 from ..utils import normalize
 from .utils import load_cam_calib
 import cv2
@@ -26,7 +25,6 @@ from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
 import pandas as pd
-
 try:
     mpl.use('TkAgg')
 except:
@@ -36,6 +34,7 @@ except:
         print('Cannot set matplotlib backend')
     pass
 
+
 __all__ = [
     'data_dir',
     'DEMPathData',
@@ -44,12 +43,13 @@ __all__ = [
     'RobinGas',
     'RobinGasVis',
     'robingas_husky_seq_paths',
+    'robingas_marv_seq_paths',
+    'robingas_tradr_seq_paths',
     'sim_seq_paths',
     'oru_seq_paths',
     'explore_data',
 ]
 
-IGNORE_LABEL = 255
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
 
 robingas_husky_seq_paths = [
@@ -66,6 +66,13 @@ robingas_marv_seq_paths = [
     os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'),
 ]
 robingas_marv_seq_paths = [os.path.normpath(path) for path in robingas_marv_seq_paths]
+
+robingas_tradr_seq_paths = [
+    os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-14-30-57/'),
+    os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-14-05-42/'),
+    os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/'),
+]
+robingas_tradr_seq_paths = [os.path.normpath(path) for path in robingas_tradr_seq_paths]
 
 sim_seq_paths = [
     os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25'),
@@ -116,7 +123,6 @@ class DEMPathData(Dataset):
             - ...
         - poses
             - lidar_poses.csv
-            - camera_front_poses.csv
             - ...
 
     A sample of the dataset contains:
@@ -142,7 +148,7 @@ class DEMPathData(Dataset):
         self.dphys_cfg = dphys_cfg
         self.calib = load_cam_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
-        self.poses = self.get_poses()
+        self.ts, self.poses = self.get_poses(return_stamps=True)
 
     def get_ids(self):
         ids = [f[:-4] for f in os.listdir(self.cloud_path)]
@@ -155,7 +161,7 @@ class DEMPathData(Dataset):
         T[:3, :4] = pose.reshape((3, 4))
         return T
 
-    def get_poses(self):
+    def get_poses(self, return_stamps=False):
         if not os.path.exists(self.poses_path):
             print(f'Trajectory poses file {self.poses_path} does not exist')
             return None
@@ -166,6 +172,8 @@ class DEMPathData(Dataset):
         Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr = np.asarray(Tr, dtype=np.float32).reshape((4, 4))
         poses = np.asarray([pose @ np.linalg.inv(Tr) for pose in poses])
+        if return_stamps:
+            return stamps, poses
         return poses
 
     def get_pose(self, i):
@@ -180,9 +188,17 @@ class DEMPathData(Dataset):
             stamps, poses = data[:, 0], data[:, 1:13]
             poses = np.asarray([self.pose2mat(pose) for pose in poses])
         else:
-            poses = np.load(os.path.join(self.traj_path, '%s.npz' % ind))['traj']
-            dt = 0.5
-            stamps = dt * np.arange(len(poses))
+            # get trajectory as sequence of `n_frames` future poses
+            n_frames = 100
+            i1 = i + n_frames
+            i1 = np.clip(i1, 0, len(self))
+            poses = copy.copy(self.poses[i:i1])
+            # transform to robot frame
+            poses = np.linalg.inv(poses[0]) @ poses
+            # take into account robot's clearance
+            poses[:, 2, 3] -= self.calib['clearance']
+            # time stamps
+            stamps = np.asarray(copy.copy(self.ts[i:i1]))
 
         traj = {
             'stamps': stamps, 'poses': poses,
@@ -246,6 +262,11 @@ class DEMPathData(Dataset):
 
     def get_cloud(self, i):
         cloud = self.get_raw_cloud(i)
+        # remove nans from structured array with fields x, y, z
+        cloud = cloud[~np.isnan(cloud['x'])]
+        # cloud = cloud[~np.isnan(cloud['y'])]
+        # cloud = cloud[~np.isnan(cloud['z'])]
+
         # move points to robot frame
         Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
@@ -323,8 +344,16 @@ class DEMPathData(Dataset):
             o3d.io.write_point_cloud(path, pcd)
 
         if vis:
+            # remove nans
+            global_cloud_vis = global_cloud[~np.isnan(global_cloud).any(axis=1)]
+            # remove height outliers
+            heights = global_cloud_vis[:, 2]
+            h_min = np.quantile(heights, 0.001)
+            h_max = np.quantile(heights, 0.999)
+            global_cloud_vis = global_cloud_vis[(global_cloud_vis[:, 2] > h_min) & (global_cloud_vis[:, 2] < h_max)]
+
             pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(global_cloud)
+            pcd.points = o3d.utility.Vector3dVector(global_cloud_vis)
             o3d.visualization.draw_geometries([pcd])
         return global_cloud
 
@@ -453,11 +482,6 @@ class DEMPathData(Dataset):
             cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
         points = position(cloud)
 
-        if visualize:
-            trav = np.asarray(cloud['traversability'], dtype=points.dtype)
-            valid = trav != IGNORE_LABEL
-            show_cloud(points, min=trav[valid].min(), max=trav[valid].max() + 1)
-
         traj = self.get_traj(i)
         height = self.estimate_heightmap(points, fill_value=0.)
 
@@ -511,12 +535,13 @@ class RobinGas(DEMPathData):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_hm = only_front_hm
-        # get camera names
-        self.cameras = self.get_camera_names()[:1] if only_front_hm else self.get_camera_names()
 
         # initialize image augmentations
         self.data_aug_conf = data_aug_conf
         self.img_augs = self.get_img_augs()
+
+        # get camera names
+        self.cameras = ['camera_front'] if only_front_hm else self.get_camera_names()
 
     def get_img_augs(self):
         if self.is_train:
@@ -536,6 +561,12 @@ class RobinGas(DEMPathData):
             ])
         else:
             return None
+
+    def get_raw_img_size(self, i=0, cam=None):
+        if cam is None:
+            cam = self.cameras[0]
+        img = self.get_raw_image(i, cam)
+        return img.shape[0], img.shape[1]
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -562,7 +593,7 @@ class RobinGas(DEMPathData):
         return img, K
 
     def sample_augmentation(self):
-        H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
+        H, W = self.get_raw_img_size()
         fH, fW = self.data_aug_conf['final_dim']
         if self.is_train:
             resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
@@ -756,10 +787,8 @@ def explore_data(path, grid_conf, data_aug_conf, dphys_cfg, modelf=None,
 
     ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, dphys_cfg=dphys_cfg)
 
-    H, W = data_aug_conf['H'], data_aug_conf['W']
-    cams = data_aug_conf['cams']
-    rat = H / W
-    val = 10.1
+    H, W = ds.get_raw_img_size()
+    cams = ds.cameras
 
     if sample_range == 'random':
         sample_range = [np.random.choice(range(len(ds)))]
@@ -769,8 +798,9 @@ def explore_data(path, grid_conf, data_aug_conf, dphys_cfg, modelf=None,
         assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
 
     for sample_i in sample_range:
-        fig = plt.figure(figsize=(val + val / 3 * 2 * rat * 3, val / 3 * 2 * rat))
-        gs = mpl.gridspec.GridSpec(2, 5, width_ratios=(1, 1, 2 * rat, 2 * rat, 2 * rat))
+        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
+        fig = plt.figure(figsize=(5 * n_cols, 5 * n_rows))
+        gs = mpl.gridspec.GridSpec(n_rows, n_cols)
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
         sample = ds[sample_i]
@@ -795,18 +825,18 @@ def explore_data(path, grid_conf, data_aug_conf, dphys_cfg, modelf=None,
 
         for si in range(imgs.shape[0]):
             plt.clf()
-            final_ax = plt.subplot(gs[:, 4:5])
+            final_ax = plt.subplot(gs[:, -1:])
             for imgi, img in enumerate(imgs[si]):
                 ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
                 mask = get_only_in_img_mask(ego_pts, H, W)
                 plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
 
-                ax = plt.subplot(gs[imgi // 2, imgi % 2])
+                ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
                 showimg = denormalize_img(img)
 
                 plt.imshow(showimg)
                 plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
-                            s=1, alpha=0.5, cmap='jet', vmin=-1, vmax=1)
+                            s=1, alpha=0.2, cmap='jet', vmin=-1, vmax=1)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
@@ -822,12 +852,12 @@ def explore_data(path, grid_conf, data_aug_conf, dphys_cfg, modelf=None,
             plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
             plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
 
-            ax = plt.subplot(gs[:, 2:3])
+            ax = plt.subplot(gs[:, -3:-2])
             plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             plt.axis('off')
             plt.colorbar()
 
-            ax = plt.subplot(gs[:, 3:4])
+            ax = plt.subplot(gs[:, -2:-1])
             plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             plt.axis('off')
             plt.colorbar()
@@ -1011,7 +1041,9 @@ def vis_estimated_height_map():
 
 
 def global_cloud_demo():
-    for path in robingas_husky_seq_paths:
+    # paths = robingas_husky_seq_paths
+    paths = robingas_tradr_seq_paths
+    for path in paths:
         ds = DEMPathData(path=path)
         ds.global_cloud(vis=True)
 
@@ -1019,7 +1051,8 @@ def global_cloud_demo():
 def trajecory_footprint_heightmap():
     import open3d as o3d
 
-    path = robingas_husky_seq_paths[0]
+    # path = robingas_husky_seq_paths[0]
+    path = robingas_tradr_seq_paths[0]
     assert os.path.exists(path)
 
     cfg = DPhysConfig()

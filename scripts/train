@@ -12,7 +12,7 @@ from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets import RobinGas, explore_data, RobinGasVis
 from monoforce.datasets import Rellis3D, Rellis3DVis
-from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths
+from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths, robingas_tradr_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.utils import read_yaml, write_to_yaml, str2bool
 from tqdm import tqdm
@@ -142,7 +142,8 @@ class Trainer:
         elif self.dataset == 'robingas':
             Data = RobinGas
             DataVis = RobinGasVis
-            data_paths = robingas_husky_seq_paths
+            # data_paths = robingas_husky_seq_paths
+            data_paths = robingas_tradr_seq_paths
         elif self.dataset == 'oru':
             Data = RobinGas
             DataVis = RobinGasVis
