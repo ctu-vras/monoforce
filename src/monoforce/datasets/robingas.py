@@ -163,15 +163,16 @@ class DEMPathData(Dataset):
 
     def get_poses(self, return_stamps=False):
         if not os.path.exists(self.poses_path):
-            print(f'Trajectory poses file {self.poses_path} does not exist')
+            print(f'Poses file {self.poses_path} does not exist')
             return None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
         stamps, Ts = data[:, 0], data[:, 1:13]
-        poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
+        lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=np.float32).reshape((4, 4))
-        poses = np.asarray([pose @ np.linalg.inv(Tr) for pose in poses])
+        Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=np.float32).reshape((4, 4))
+        Tr_lidar_robot = np.linalg.inv(Tr_robot_lidar)
+        poses = lidar_poses @ Tr_lidar_robot
         if return_stamps:
             return stamps, poses
         return poses
@@ -181,33 +182,30 @@ class DEMPathData(Dataset):
 
     def get_traj(self, i):
         ind = self.ids[i]
+        Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=np.float32).reshape((4, 4))
         # load data from csv file
         csv_path = os.path.join(self.traj_path, '%s.csv' % ind)
         if os.path.exists(csv_path):
             data = np.loadtxt(csv_path, delimiter=',', skiprows=1)
             stamps, poses = data[:, 0], data[:, 1:13]
             poses = np.asarray([self.pose2mat(pose) for pose in poses])
+            # transform to robot frame
+            poses = Tr_robot_lidar @ poses
         else:
             # get trajectory as sequence of `n_frames` future poses
             n_frames = 100
             i1 = i + n_frames
             i1 = np.clip(i1, 0, len(self))
             poses = copy.copy(self.poses[i:i1])
-            # transform to robot frame
+            # poses = Tr_robot_lidar @ poses
             poses = np.linalg.inv(poses[0]) @ poses
-            # take into account robot's clearance
-            poses[:, 2, 3] -= self.calib['clearance']
             # time stamps
             stamps = np.asarray(copy.copy(self.ts[i:i1]))
 
         traj = {
             'stamps': stamps, 'poses': poses,
         }
-
-        # transform to robot frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=np.float32).reshape((4, 4))
-        traj['poses'] = np.asarray([Tr @ pose for pose in traj['poses']])
 
         return traj
 
@@ -297,9 +295,6 @@ class DEMPathData(Dataset):
         return terrain
 
     def estimated_footprint_traj_points(self, i, robot_size=(0.7, 1.0)):
-        traj = self.get_traj(i)
-        poses = traj['poses'].squeeze()
-
         # robot footprint points grid
         width, length = robot_size
         x = np.arange(-length / 2, length / 2, self.dphys_cfg.grid_res)
@@ -310,17 +305,20 @@ class DEMPathData(Dataset):
 
         Tr_base_link__base_footprint = np.asarray(self.calib['transformations']['T_base_link__base_footprint']['data'],
                                                   dtype=float).reshape((4, 4))
-        trajectory_footprint = []
-        for pose in poses:
-            Tr = pose @ Tr_base_link__base_footprint
-            footprint = transform_cloud(footprint0, Tr)
-            trajectory_footprint.append(footprint)
-        trajectory_footprint = np.concatenate(trajectory_footprint, axis=0)
-        return trajectory_footprint
+        traj = self.get_traj(i)
+        poses = traj['poses']
+        poses_footprint = poses @ Tr_base_link__base_footprint
 
-    def global_cloud(self, vis=False):
+        trajectory_points = []
+        for Tr in poses_footprint:
+            footprint = transform_cloud(footprint0, Tr)
+            trajectory_points.append(footprint)
+        trajectory_points = np.concatenate(trajectory_points, axis=0)
+        return trajectory_points
+
+    def global_cloud(self, vis=False, cached=True):
         path = os.path.join(self.path, 'global_map.pcd')
-        if os.path.exists(path):
+        if cached and os.path.exists(path):
             # print('Loading global cloud from file...')
             pcd = o3d.io.read_point_cloud(path)
             global_cloud = np.asarray(pcd.points, dtype=np.float32)
@@ -878,7 +876,8 @@ def heightmap_demo():
     from ..cloudproc import filter_grid, filter_range
     import matplotlib.pyplot as plt
 
-    path = robingas_husky_seq_paths[0]
+    # path = robingas_husky_seq_paths[0]
+    path = robingas_tradr_seq_paths[0]
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
@@ -908,7 +907,8 @@ def extrinsics_demo():
     from mayavi import mlab
     from ..vis import draw_coord_frames, draw_coord_frame
 
-    for path in robingas_husky_seq_paths:
+    # for path in robingas_husky_seq_paths:
+    for path in robingas_tradr_seq_paths:
         assert os.path.exists(path)
 
         cfg = DPhysConfig()
@@ -925,8 +925,10 @@ def extrinsics_demo():
             if 'marv' in path:
                 camera_frames = ['camera_left', 'camera_right', 'camera_up', 'camera_fisheye_front',
                                  'camera_fisheye_rear']
-            else:
+            elif 'husky' in path:
                 camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
+            else:
+                camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear_left', 'camera_rear_right', 'camera_up']
         elif 'sim' in path:
             camera_frames = ['realsense_left', 'realsense_right', 'realsense_front', 'realsense_rear']
         else:
@@ -949,7 +951,8 @@ def extrinsics_demo():
 
 
 def traversed_height_map():
-    path = np.random.choice(robingas_husky_seq_paths)
+    # path = np.random.choice(robingas_husky_seq_paths)
+    path = np.random.choice(robingas_tradr_seq_paths)
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
@@ -1018,7 +1021,8 @@ def vis_estimated_height_map():
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 
-    path = np.random.choice(robingas_husky_seq_paths)
+    # path = np.random.choice(robingas_husky_seq_paths)
+    path = np.random.choice(robingas_tradr_seq_paths)
     ds = DEMPathData(path=path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
@@ -1069,18 +1073,18 @@ def trajecory_footprint_heightmap():
     traj_hm = ds.estimate_heightmap(traj_points)
     traj_height = traj_hm['z']
     traj_mask = traj_hm['mask']
-    print('lidar_height', lidar_height.shape)
-    print('traj_height', traj_height.shape)
+    # print('lidar_height', lidar_height.shape)
+    # print('traj_height', traj_height.shape)
 
     plt.figure()
     plt.subplot(131)
-    plt.imshow(lidar_height, cmap='jet', vmin=-0.5, vmax=0.5)
+    plt.imshow(lidar_height.T, cmap='jet', vmin=-0.5, vmax=0.5, origin='lower')
     plt.colorbar()
     plt.subplot(132)
-    plt.imshow(traj_height, cmap='jet', vmin=-0.5, vmax=0.5)
+    plt.imshow(traj_height.T, cmap='jet', vmin=-0.5, vmax=0.5, origin='lower')
     plt.colorbar()
     plt.subplot(133)
-    plt.imshow(traj_mask, cmap='gray')
+    plt.imshow(traj_mask.T, cmap='gray', origin='lower')
     plt.show()
 
     pcd1 = o3d.geometry.PointCloud()
