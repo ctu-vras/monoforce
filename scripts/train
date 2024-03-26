@@ -337,13 +337,15 @@ class Trainer:
             self.writer.add_scalar('train/epoch_loss', train_loss, e)
 
             if train_loss < self.min_train_loss:
-                self.min_train_loss = train_loss
-                print('Saving train model...')
-                torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
+                with torch.no_grad():
+                    self.min_train_loss = train_loss
+                    print('Saving train model...')
+                    self.model.eval()
+                    torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
 
-                # visualize training predictions
-                fig = self.vis_pred(self.train_loaders[0])
-                self.writer.add_figure('train/prediction', fig, e)
+                    # visualize training predictions
+                    fig = self.vis_pred(self.train_loaders[0])
+                    self.writer.add_figure('train/prediction', fig, e)
 
             # validation epoch
             with torch.no_grad():
@@ -353,6 +355,7 @@ class Trainer:
                 if val_loss < self.min_loss:
                     self.min_loss = val_loss
                     print('Saving model...')
+                    self.model.eval()
                     torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
 
                     # visualize validation predictions
@@ -409,10 +412,10 @@ class Trainer:
                 ax = axes[imgi]
                 img = imgs[batchi, imgi]
                 img = denormalize_img(img)
-                ego_pts = ego_to_cam(hm_points, rots[batchi, imgi], trans[batchi, imgi], intrins[batchi, imgi])
+                cam_pts = ego_to_cam(hm_points, rots[batchi, imgi], trans[batchi, imgi], intrins[batchi, imgi])
                 img_H, img_W = self.data_aug_conf['H'], self.data_aug_conf['W']
-                mask_img = get_only_in_img_mask(ego_pts, img_H, img_W)
-                plot_pts = post_rots[batchi, imgi].matmul(ego_pts) + post_trans[batchi, imgi].unsqueeze(1)
+                mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
+                plot_pts = post_rots[batchi, imgi].matmul(cam_pts) + post_trans[batchi, imgi].unsqueeze(1)
                 ax.imshow(img)
                 ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
                            cmap='jet', vmin=-1.0, vmax=1.0)
