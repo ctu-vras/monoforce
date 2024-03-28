@@ -24,7 +24,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: Camera Front
+    SyncSource: ""
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -208,7 +208,7 @@ Visualization Manager:
       Color: 46; 52; 54
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Min Color: 0; 0; 0
@@ -223,7 +223,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Class: rviz/Image
       Enabled: false
       Image Topic: /camera_front/image
@@ -571,7 +571,7 @@ Visualization Manager:
       Marker Topic: /forces
       Name: Forces
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true

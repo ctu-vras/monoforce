@@ -21,13 +21,13 @@ import tf2_ros
 from visualization_msgs.msg import Marker, MarkerArray
 
 
-class DataVis:
+class MonoForce:
     def __init__(self, name='monoforce'):
         self.dphys_cfg = DPhysConfig()
         self.pkg_path = rospkg.RosPack().get_path('monoforce')
-        self.config_path = rospy.get_param('~config_path', os.path.join(self.pkg_path, 'config/dphys_cfg.yaml'))
-        assert os.path.isfile(self.config_path), 'Config file %s does not exist' % self.config_path
-        self.dphys_cfg.from_yaml(self.config_path)
+        self.dphys_config_path = rospy.get_param('~dphys_config_path', os.path.join(self.pkg_path, 'config/dphys_cfg.yaml'))
+        assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
+        self.dphys_cfg.from_yaml(self.dphys_config_path)
         self.dphys_cfg.from_rosparams(node_name=name)
 
         # load LSS config
@@ -338,9 +338,10 @@ class DataVis:
             pose_i = (pose_i + 1) % len(poses)
             rate.sleep()
 
+
 def main():
     rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
-    node = DataVis()
+    node = MonoForce()
     node.run()
 
 

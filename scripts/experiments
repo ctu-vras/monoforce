@@ -222,13 +222,17 @@ def create_global_gloud_map():
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
     data_aug_conf = lss_cfg['data_aug_conf']
 
-    for path in robingas_husky_seq_paths:
+    dist_th = 0.1
+
+    # paths = robingas_husky_seq_paths
+    paths = oru_seq_paths
+
+    for path in paths:
         print('Processing sequence:', path)
-        ds = RobinGas(path, is_train=True, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
+        ds = RobinGas(path, data_aug_conf=data_aug_conf, dphys_cfg=cfg)
 
         # create global cloud
         poses = ds.get_poses()
-        dist_th = 0.1
         global_cloud = None
         for i in tqdm(range(len(ds))):
             cloud = ds.get_cloud(i)

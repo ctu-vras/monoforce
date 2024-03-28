@@ -65,6 +65,9 @@ class LSS:
         self.hm_geom_pub = rospy.Publisher('/grid_map/geom', GridMap, queue_size=1)
         self.hm_diff_pub = rospy.Publisher('/grid_map/diff', GridMap, queue_size=1)
 
+        # height map publisher
+        self.hm_pub = rospy.Publisher('/height_map', PointCloud2, queue_size=1)
+
         # subscribe to camera intrinsics (ones)
         self.proc_lock = RLock()
 
@@ -85,11 +88,11 @@ class LSS:
 
     def load_model(self, modelf):
         model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
-        if modelf is None:
-            rospy.logerr('No LSS model weights provided, using random weights')
-            return model
-        rospy.loginfo('Loading LSS model from %s' % modelf)
-        model.load_state_dict(torch.load(modelf, map_location=self.device))
+        if not os.path.exists(modelf):
+            rospy.logerr('Model weights file %s does not exist. Using random weights.' % modelf)
+        else:
+            rospy.loginfo('Loading LSS model from %s' % modelf)
+            model.load_state_dict(torch.load(modelf))
         model.to(self.device)
         model.eval()
         return model
@@ -266,6 +269,13 @@ class LSS:
             grid_msg.info.header.frame_id = self.hm_frame
             pub.publish(grid_msg)
 
+        # publish height map as point cloud
+        cloud_msg = height_map_to_point_cloud_msg(height_pred_rigid.squeeze().cpu().numpy(),
+                                                  grid_res=self.dphys_cfg.grid_res)
+        cloud_msg.header.stamp = stamp
+        cloud_msg.header.frame_id = self.hm_frame
+        self.hm_pub.publish(cloud_msg)
+
     def spin(self):
         try:
             rospy.spin()
@@ -439,9 +449,9 @@ def main():
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
     dphys_cfg = DPhysConfig()
-    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
-    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    dphys_cfg.from_yaml(config_path)
+    dphys_config_path = rospy.get_param('~dphys_config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
+    assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
+    dphys_cfg.from_yaml(dphys_config_path)
 
     # load LSS config
     lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss_cfg.yaml'))
@@ -465,8 +475,7 @@ def main():
                 hm_frame=hm_frame,
                 max_msgs_delay=max_msgs_delay,
                 max_stale_msg_delay=max_stale_msg_delay,
-                calib_path=calib_path,
-                )
+                calib_path=calib_path)
     node.start()
     node.spin()
 

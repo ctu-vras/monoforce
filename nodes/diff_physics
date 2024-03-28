@@ -50,7 +50,6 @@ class DiffPhysics:
         height = numpify(msg)['z']
         h = w = int(2 * self.dphys_cfg.d_max / self.dphys_cfg.grid_res)
         height = height.reshape((h, w))
-        height = np.asarray(height, dtype=np.float64)
         height = height.T
         rospy.loginfo('Received height map of shape: %s' % str(height.shape))
 

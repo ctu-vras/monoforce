@@ -539,7 +539,7 @@ class RobinGas(DEMPathData):
         self.img_augs = self.get_img_augs()
 
         # get camera names
-        self.cameras = ['camera_front'] if only_front_hm else self.get_camera_names()
+        self.cameras = self.get_camera_names()[:1] if only_front_hm else self.get_camera_names()
 
     def get_img_augs(self):
         if self.is_train:
@@ -1046,13 +1046,14 @@ def vis_estimated_height_map():
 
 def global_cloud_demo():
     # paths = robingas_husky_seq_paths
-    paths = robingas_tradr_seq_paths
+    # paths = robingas_tradr_seq_paths
+    paths = oru_seq_paths
     for path in paths:
         ds = DEMPathData(path=path)
         ds.global_cloud(vis=True)
 
 
-def trajecory_footprint_heightmap():
+def trajectory_footprint_heightmap():
     import open3d as o3d
 
     # path = robingas_husky_seq_paths[0]
@@ -1104,7 +1105,7 @@ def main():
     vis_hm_weights()
     vis_estimated_height_map()
     global_cloud_demo()
-    trajecory_footprint_heightmap()
+    trajectory_footprint_heightmap()
 
 
 if __name__ == '__main__':

@@ -5,7 +5,7 @@
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
     <arg name="model_weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
-    <arg name="config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
+    <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg.yaml"/>
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_stale_msg_delay" default="0.2"/>
@@ -13,9 +13,9 @@
     <arg name="debug" default="false"/>
 
     <!-- Lss node -->
-    <node name="lss" pkg="monoforce" type="lss_ros" output="screen">
+    <node name="lss" pkg="monoforce" type="lss" output="screen">
         <rosparam subst_value="true">
-            config_path: $(arg config_path)
+            dphys_config_path: $(arg dphys_config_path)
             lss_config_path: $(arg lss_config_path)
             img_topics: $(arg img_topics)
             camera_info_topics: $(arg camera_info_topics)

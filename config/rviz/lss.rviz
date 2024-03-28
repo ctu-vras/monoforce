@@ -451,7 +451,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 25; 255; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.20000000298023224
@@ -470,13 +470,13 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /lower_cost_path
       Unreliable: false
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /sampled_paths
       Name: Sampled Paths
       Namespaces:
-        {}
+        paths: true
       Queue Size: 100
       Value: true
     - Class: jsk_rviz_plugin/TFTrajectory
