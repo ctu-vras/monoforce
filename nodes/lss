@@ -13,7 +13,7 @@ from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask, normalize_img
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.utils import normalize, read_yaml
-from monoforce.datasets.utils import load_cam_calib
+from monoforce.datasets.utils import load_calib
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, CameraInfo
 import rospkg
 from time import time
@@ -51,7 +51,7 @@ class LSS:
         self.img_topics = img_topics
         self.camera_info_topics = camera_info_topics
 
-        self.calib = load_cam_calib(calib_path)
+        self.calib = load_calib(calib_path)
         if self.calib is not None:
             rospy.loginfo('Loaded calibration from %s' % calib_path)
 

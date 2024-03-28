@@ -34,8 +34,6 @@ class MonoForce:
         self.lss_config_path = rospy.get_param('~lss_config_path', os.path.join(self.pkg_path, 'config/lss_cfg.yaml'))
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
-        self.grid_conf = self.lss_config['grid_conf']
-        self.data_aug_conf = self.lss_config['data_aug_conf']
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if self.dphys_cfg.n_samples / self.dphys_cfg.total_sim_time != 100:
@@ -242,7 +240,7 @@ class MonoForce:
         # choose data sample
         seq_i = rospy.get_param('~seq_i', np.random.choice(range(len(robingas_husky_seq_paths))))
         data_seq = robingas_husky_seq_paths[seq_i]
-        ds = RobinGasVis(data_seq, dphys_cfg=self.dphys_cfg, data_aug_conf=self.data_aug_conf, is_train=False)
+        ds = RobinGasVis(data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
         rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), data_seq))
         sample_i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
         rospy.loginfo('Using sample %d' % sample_i)

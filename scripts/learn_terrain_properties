@@ -7,7 +7,7 @@ from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
 from monoforce.utils import read_yaml, str2bool
 from monoforce.vis import setup_visualization, animate_trajectory
-from monoforce.datasets.utils import visualize_data
+from monoforce.datasets.utils import vis_dem_data
 from monoforce.datasets import RobinGas, robingas_husky_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.control import pose_control
@@ -38,14 +38,14 @@ def arg_parser():
 
 
 class Learner:
-    def __init__(self, data_path, cfg, data_aug_config,
+    def __init__(self, data_path, dphys_cfg, lss_cfg,
                  vis=False, save_data=False,
                  convergence_std=0.001, convergence_n_samples=30,
                  lr=0.01, n_train_iters=100,
                  hm_var_weight=1.):
         self.data_path = data_path
-        self.cfg = cfg
-        self.data_aug_config = data_aug_config
+        self.dphys_cfg = dphys_cfg
+        self.lss_cfg = lss_cfg
         self.vis = vis
         self.save_data = save_data
         self.convergence_std = convergence_std
@@ -58,21 +58,21 @@ class Learner:
 
     def create_robot_terrain_interaction_system(self, height, states):
         system = RigidBodySoftTerrain(height=torch.zeros_like(height) + states[0][:, 2].min(),
-                                      grid_res=self.cfg.grid_res,
-                                      friction=self.cfg.friction, mass=self.cfg.robot_mass,
+                                      grid_res=self.dphys_cfg.grid_res,
+                                      friction=self.dphys_cfg.friction, mass=self.dphys_cfg.robot_mass,
                                       state=State(
-                                          xyz=states[0][0] + torch.tensor([0., 0., 1.], device=self.cfg.device).view(
+                                          xyz=states[0][0] + torch.tensor([0., 0., 1.], device=self.dphys_cfg.device).view(
                                               states[0][0].shape),
                                           rot=states[1][0],
                                           vel=states[2][0],
                                           omega=states[3][0],
-                                          forces=states[4][0], device=self.cfg.device),
-                                      device=self.cfg.device, use_ode=False,
-                                      interaction_model=self.cfg.robot_terrain_interaction_model)
+                                          forces=states[4][0], device=self.dphys_cfg.device),
+                                      device=self.dphys_cfg.device, use_ode=False,
+                                      interaction_model=self.dphys_cfg.robot_terrain_interaction_model)
         return system
 
     def learn(self):
-        ds = RobinGas(path=self.data_path, dphys_cfg=self.cfg, data_aug_conf=self.data_aug_config, is_train=False)
+        ds = RobinGas(path=self.data_path, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg, is_train=False)
         for data_i in range(len(ds)):
         # for data_i in tqdm(range(len(ds)), desc='Learning terrain properties'):
             # print('Processing %s data sample' % ds.ids[data_i])
@@ -81,7 +81,7 @@ class Learner:
                 continue
 
             states_true = ds.get_states_traj(data_i, start_from_zero=True)
-            states_true = tuple([x.to(self.cfg.device) for x in states_true])
+            states_true = tuple([x.to(self.dphys_cfg.device) for x in states_true])
 
             hm_lidar = ds.get_lidar_height_map(data_i)
             height = hm_lidar[0]
@@ -90,23 +90,23 @@ class Learner:
             img, _ = ds.get_image(data_i)
 
             if self.vis:
-                visualize_data(height, traj, img=img, cfg=self.cfg)
+                vis_dem_data(height, traj, img=img, cfg=self.dphys_cfg)
 
             # create robot-terrain interaction model
             system = self.create_robot_terrain_interaction_system(height, states_true)
-            system = system.to(self.cfg.device)
+            system = system.to(self.dphys_cfg.device)
 
             t0, s0 = 0., system.state
-            tt = torch.linspace(float(t0), float(t0) + self.cfg.total_sim_time, self.cfg.n_samples)
+            tt = torch.linspace(float(t0), float(t0) + self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
             states = system.sim(s0, tt)
             vis_cfg = setup_visualization(system=system, states=states, states_true=states_true,
-                                          cfg=self.cfg) if self.vis else None
+                                          cfg=self.dphys_cfg) if self.vis else None
 
             # optimize terrain properties to fit the trajectory
             id = ds.ids[data_i]
             system_opt = self.optimize_terrain(system, states_true=states_true, tt=tt, vis_cfg=vis_cfg, id=id)
             if self.save_data:
-                self.save_result(system_opt, id=id, cfg=self.cfg)
+                self.save_result(system_opt, id=id, cfg=self.dphys_cfg)
 
     def follow_trajectory(self, system, tt, states_true):
         state = system.state
@@ -114,14 +114,14 @@ class Learner:
         xyz_true, rot_true = states_true[0], states_true[1]
         dt = (tt[1:] - tt[:-1]).mean()
 
-        loss_trans_sum = torch.tensor(0., device=self.cfg.device)
-        loss_rot_sum = torch.tensor(0., device=self.cfg.device)
+        loss_trans_sum = torch.tensor(0., device=self.dphys_cfg.device)
+        loss_rot_sum = torch.tensor(0., device=self.dphys_cfg.device)
         states = []
         tracks_distance = system.robot_points[1].max() - system.robot_points[1].min()
 
         for i_s in range(n_true_states - 1):
             # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i_s + 1].squeeze()))
-            time_interval = tt[i_s * self.cfg.n_samples // (n_true_states - 1):(i_s + 1) * self.cfg.n_samples // (
+            time_interval = tt[i_s * self.dphys_cfg.n_samples // (n_true_states - 1):(i_s + 1) * self.dphys_cfg.n_samples // (
                     n_true_states - 1)]
 
             pos_x, pos_R, vel_x, vel_omega, forces = state
@@ -134,14 +134,14 @@ class Learner:
                 v, w = pose_control(state, goal_pose, allow_backwards=True,
                                     Kp_rho=1.5, Kp_theta=20., Kp_yaw=0.5)
 
-                if self.cfg.robot_terrain_interaction_model in ['rigid_layer', 'rigid_soft_layers']:
+                if self.dphys_cfg.robot_terrain_interaction_model in ['rigid_layer', 'rigid_soft_layers']:
                     # two tracks (flippers) robot model
                     u1 = v - w * tracks_distance / 4.
                     u2 = v + w * tracks_distance / 4.
-                    system.vel_tracks = torch.clip(torch.tensor([u1, u2]), min=-self.cfg.max_vel, max=self.cfg.max_vel)
+                    system.vel_tracks = torch.clip(torch.tensor([u1, u2]), min=-self.dphys_cfg.max_vel, max=self.dphys_cfg.max_vel)
                 else:
-                    v = torch.clip(torch.as_tensor(v), -self.cfg.max_vel, self.cfg.max_vel)
-                    w = torch.clip(torch.as_tensor(w), -self.cfg.max_omega, self.cfg.max_omega)
+                    v = torch.clip(torch.as_tensor(v), -self.dphys_cfg.max_vel, self.dphys_cfg.max_vel)
+                    w = torch.clip(torch.as_tensor(w), -self.dphys_cfg.max_omega, self.dphys_cfg.max_omega)
                     state[2][0] = v
                     state[3][2] = w
 
@@ -280,15 +280,15 @@ def main():
     args = arg_parser().parse_args()
     print(args)
 
-    cfg = DPhysConfig()
-    cfg.from_yaml('../config/dphys_cfg.yaml')
-    cfg.vel_tracks = args.vel_tracks * np.asarray([1., 1.])
-    cfg.robot_terrain_interaction_model = args.control_model
-    cfg.device = args.device
+    dhpys_cfg = DPhysConfig()
+    dhpys_cfg.from_yaml('../config/dphys_cfg.yaml')
+    dhpys_cfg.vel_tracks = args.vel_tracks * np.asarray([1., 1.])
+    dhpys_cfg.robot_terrain_interaction_model = args.control_model
+    dhpys_cfg.device = args.device
 
-    data_aug_conf = read_yaml('../config/lss_cfg.yaml')['data_aug_conf']
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
 
-    learner = Learner(data_path=args.data_path, cfg=cfg, data_aug_config=data_aug_conf,
+    learner = Learner(data_path=args.data_path, dphys_cfg=dhpys_cfg, lss_cfg=lss_cfg,
                       vis=args.visualize, save_data=args.save_data,
                       convergence_std=args.convergence_std, convergence_n_samples=args.convergence_n_samples,
                       lr=args.lr, n_train_iters=args.n_train_iters)

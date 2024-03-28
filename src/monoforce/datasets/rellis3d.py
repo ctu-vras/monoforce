@@ -8,7 +8,8 @@ from ..utils import position, read_yaml
 from ..transformations import transform_cloud
 from ..cloudproc import filter_grid, estimate_heightmap, hm_to_cloud
 from ..config import DPhysConfig
-from .robingas import data_dir, explore_data
+from .robingas import data_dir
+from monoforce.datasets.utils import explore_data
 from copy import copy
 import torch
 import yaml
@@ -260,11 +261,11 @@ class Rellis3DBase(torch.utils.data.Dataset):
 
 
 class Rellis3D(Rellis3DBase):
-    def __init__(self, path, data_aug_conf, dphys_cfg=DPhysConfig(), is_train=False, only_front_hm=False):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=False, only_front_hm=False):
         super().__init__(path)
         self.dphys_cfg = dphys_cfg
         self.is_train = is_train
-        self.data_aug_conf = data_aug_conf
+        self.lss_cfg = lss_cfg
         self.img_augs = self.get_img_augs()
         self.only_front_hm = only_front_hm
         self.cameras = ['camera_front']
@@ -448,23 +449,23 @@ class Rellis3D(Rellis3DBase):
 
     def sample_augmentation(self):
         H, W = self.get_raw_img_size()
-        fH, fW = self.data_aug_conf['final_dim']
+        fH, fW = self.lss_cfg['data_aug_conf']['final_dim']
         if self.is_train:
-            resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
+            resize = np.random.uniform(*self.lss_cfg['data_aug_conf']['resize_lim'])
             resize_dims = (int(W * resize), int(H * resize))
             newW, newH = resize_dims
-            crop_h = int((1 - np.random.uniform(*self.data_aug_conf['bot_pct_lim'])) * newH) - fH
+            crop_h = int((1 - np.random.uniform(*self.lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
             crop_w = int(np.random.uniform(0, max(0, newW - fW)))
             crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
-            if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
+            if self.lss_cfg['data_aug_conf']['rand_flip'] and np.random.choice([0, 1]):
                 flip = True
-            rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
+            rotate = np.random.uniform(*self.lss_cfg['data_aug_conf']['rot_lim'])
         else:
             resize = max(fH / H, fW / W)
             resize_dims = (int(W * resize), int(H * resize))
             newW, newH = resize_dims
-            crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim'])) * newH) - fH
+            crop_h = int((1 - np.mean(self.lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
             crop_w = int(max(0, newW - fW) / 2)
             crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
@@ -528,8 +529,8 @@ class Rellis3D(Rellis3DBase):
 
 
 class Rellis3DVis(Rellis3D):
-    def __init__(self, path, data_aug_conf, dphys_cfg=DPhysConfig(), is_train=False):
-        super().__init__(path, data_aug_conf, dphys_cfg, is_train)
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=False, only_front_hm=False):
+        super().__init__(path, lss_cfg, dphys_cfg, is_train, only_front_hm)
 
     def get_sample(self, id):
         inputs = self.get_image_data(id, normalize=False)
@@ -577,18 +578,17 @@ def global_map_demo():
 
 
 def traversed_cloud_demo():
-    cfg = DPhysConfig()
+    dphys_cfg = DPhysConfig()
     config_path = os.path.join(data_dir, '../config/dphys_cfg.yaml')
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    cfg.from_yaml(config_path)
+    dphys_cfg.from_yaml(config_path)
 
     lss_cfg_path = os.path.join(data_dir, '../config/lss_cfg.yaml')
     assert os.path.isfile(lss_cfg_path)
     lss_cfg = read_yaml(lss_cfg_path)
-    data_aug_conf = lss_cfg['data_aug_conf']
 
     path = np.random.choice(rellis3d_seq_paths)
-    ds = Rellis3D(path=path, dphys_cfg=cfg, data_aug_conf=data_aug_conf)
+    ds = Rellis3D(path=path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
 
     id = np.random.choice(ds.ids)
     cloud = ds.get_cloud(id)
@@ -614,35 +614,9 @@ def traversed_cloud_demo():
     o3d.visualization.draw_geometries([pcd, pcd_poses, pcd_footprint])
 
 
-def heightmap_demo():
-    cfg = DPhysConfig()
-    p = os.path.join(data_dir, '../config/dphys_cfg.yaml')
-    assert os.path.isfile(p), 'Config file %s does not exist' % p
-    cfg.from_yaml(p)
-
-    # p = os.path.join(data_dir, '../config/lss_cfg_mono.yaml')
-    p = os.path.join(data_dir, '../config/lss_cfg.yaml')
-    lss_cfg = read_yaml(p)
-    data_aug_conf = lss_cfg['data_aug_conf']
-    grid_conf = lss_cfg['grid_conf']
-
-    # path = np.random.choice(rellis3d_seq_paths)
-    path = rellis3d_seq_paths[0]
-    ds = Rellis3D(path=path, dphys_cfg=cfg, data_aug_conf=data_aug_conf)
-
-    # i = np.random.choice(len(ds))
-    i = 0
-    sample = ds[i]
-    for s in sample:
-        print(s.shape)
-
-    explore_data(path, grid_conf, data_aug_conf, cfg, is_train=False, DataClass=Rellis3DVis)
-
-
 def main():
-    # global_map_demo()
+    global_map_demo()
     traversed_cloud_demo()
-    heightmap_demo()
 
 
 if __name__ == '__main__':

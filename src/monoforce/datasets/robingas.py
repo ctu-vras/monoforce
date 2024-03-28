@@ -4,27 +4,25 @@ import matplotlib as mpl
 import numpy as np
 import torch
 import torchvision
-from scipy.spatial import cKDTree
 from torch.utils.data import Dataset
 from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
-from matplotlib import cm, pyplot as plt
-from ..models.lss.tools import ego_to_cam, get_only_in_img_mask, denormalize_img, img_transform, normalize_img
-from ..models.lss.model import compile_model
+from matplotlib import pyplot as plt
+from ..models.lss.tools import img_transform, normalize_img
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
-from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_box
-from ..utils import position, color
-from ..cloudproc import filter_grid, filter_range
+from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..utils import position
+from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..vis import set_axes_equal
 from ..utils import normalize
-from .utils import load_cam_calib
+from .utils import load_calib
 import cv2
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
-import pandas as pd
+
 try:
     mpl.use('TkAgg')
 except:
@@ -40,14 +38,11 @@ __all__ = [
     'DEMPathData',
     'RobinGas',
     'RobinGasVis',
-    'RobinGas',
-    'RobinGasVis',
     'robingas_husky_seq_paths',
     'robingas_marv_seq_paths',
     'robingas_tradr_seq_paths',
     'sim_seq_paths',
     'oru_seq_paths',
-    'explore_data',
 ]
 
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
@@ -94,10 +89,7 @@ oru_seq_paths = [os.path.normpath(path) for path in oru_seq_paths]
 
 class DEMPathData(Dataset):
     """
-    Class to wrap semi-supervised traversability data generated using lidar odometry.
-    Please, have a look at the `scripts/data/save_sensor_data` script for data generation from bag file.
-    The dataset additionally contains camera images, calibration data, IMU measurements,
-    and RGB colors projected from cameras onto the point clouds.
+    Class to wrap traversability data generated using lidar odometry.
 
     The data is stored in the following structure:
     - <path>
@@ -146,7 +138,7 @@ class DEMPathData(Dataset):
         self.calib_path = os.path.join(path, 'calibration')
         # assert os.path.exists(self.calib_path)
         self.dphys_cfg = dphys_cfg
-        self.calib = load_cam_calib(calib_path=self.calib_path)
+        self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.ts, self.poses = self.get_poses(return_stamps=True)
 
@@ -279,14 +271,6 @@ class DEMPathData(Dataset):
         # convert to structured numpy array with 'r', 'g', 'b' fields
         color = unstructured_to_structured(rgb, names=['r', 'g', 'b'])
         return color
-
-    def get_raw_image(self, i, camera='camera_front'):
-        ind = self.ids[i]
-        img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
-        assert os.path.exists(img_path), f'Image path {img_path} does not exist'
-        img = Image.open(img_path)
-        img = np.asarray(img)
-        return img
 
     def get_traj_dphyics_terrain(self, i):
         ind = self.ids[i]
@@ -473,7 +457,7 @@ class DEMPathData(Dataset):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_sample(self, i, visualize=False):
+    def get_sample(self, i):
         cloud = self.get_cloud(i)
         if os.path.exists(self.cloud_color_path):
             color = self.get_cloud_color(i)
@@ -526,16 +510,16 @@ class RobinGas(DEMPathData):
 
     def __init__(self,
                  path,
-                 data_aug_conf,
+                 lss_cfg,
+                 dphys_cfg=DPhysConfig(),
                  is_train=False,
-                 only_front_hm=False,
-                 dphys_cfg=DPhysConfig()):
+                 only_front_hm=False):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_hm = only_front_hm
 
         # initialize image augmentations
-        self.data_aug_conf = data_aug_conf
+        self.lss_cfg = lss_cfg
         self.img_augs = self.get_img_augs()
 
         # get camera names
@@ -559,6 +543,16 @@ class RobinGas(DEMPathData):
             ])
         else:
             return None
+
+    def get_raw_image(self, i, camera=None):
+        if camera is None:
+            camera = self.cameras[0]
+        ind = self.ids[i]
+        img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
+        assert os.path.exists(img_path), f'Image path {img_path} does not exist'
+        img = Image.open(img_path)
+        img = np.asarray(img)
+        return img
 
     def get_raw_img_size(self, i=0, cam=None):
         if cam is None:
@@ -592,23 +586,23 @@ class RobinGas(DEMPathData):
 
     def sample_augmentation(self):
         H, W = self.get_raw_img_size()
-        fH, fW = self.data_aug_conf['final_dim']
+        fH, fW = self.lss_cfg['data_aug_conf']['final_dim']
         if self.is_train:
-            resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
+            resize = np.random.uniform(*self.lss_cfg['data_aug_conf']['resize_lim'])
             resize_dims = (int(W * resize), int(H * resize))
             newW, newH = resize_dims
-            crop_h = int((1 - np.random.uniform(*self.data_aug_conf['bot_pct_lim'])) * newH) - fH
+            crop_h = int((1 - np.random.uniform(*self.lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
             crop_w = int(np.random.uniform(0, max(0, newW - fW)))
             crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
-            if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
+            if self.lss_cfg['data_aug_conf']['rand_flip'] and np.random.choice([0, 1]):
                 flip = True
-            rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
+            rotate = np.random.uniform(*self.lss_cfg['data_aug_conf']['rot_lim'])
         else:
             resize = max(fH / H, fW / W)
             resize_dims = (int(W * resize), int(H * resize))
             newW, newH = resize_dims
-            crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim'])) * newH) - fH
+            crop_h = int((1 - np.mean(self.lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
             crop_w = int(max(0, newW - fW) / 2)
             crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
@@ -685,8 +679,8 @@ class RobinGas(DEMPathData):
 
 
 class RobinGasVis(RobinGas):
-    def __init__(self, path, data_aug_conf, is_train=True, dphys_cfg=DPhysConfig()):
-        super(RobinGasVis, self).__init__(path, data_aug_conf, is_train=is_train, dphys_cfg=dphys_cfg)
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_hm=False):
+        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train, only_front_hm=only_front_hm)
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
@@ -700,176 +694,6 @@ class RobinGasVis(RobinGas):
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
         return imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts
 
-
-class RobinGasCamSynch(RobinGas):
-    def __init__(self,
-                 path,
-                 data_aug_conf,
-                 is_train=True,
-                 dphys_cfg=DPhysConfig(),
-                 camera_to_synchronize_to='camera_front'
-                 ):
-        super(RobinGasCamSynch, self).__init__(path, data_aug_conf, is_train=is_train, dphys_cfg=dphys_cfg)
-        self.camera_to_synchronize_to = camera_to_synchronize_to
-        self.poses_at_camera_stamps_path = {
-            cam: os.path.join(self.path, 'poses', f'robot_poses_at_{cam}_timestamps.csv') for cam in self.cameras}
-
-    def get_poses_at_camera_stamps(self, camera):
-        poses = np.loadtxt(self.poses_at_camera_stamps_path[camera], delimiter=',', skiprows=1)
-        stamps, poses = poses[:, 0], poses[:, 1:13]
-        poses = np.asarray([self.pose2mat(pose) for pose in poses], dtype=np.float32)
-        return poses
-
-    def get_timestamps(self):
-        path = os.path.join(self.path, 'timestamps.csv')
-        timestamps = pd.read_csv(path)
-        return timestamps
-
-    def get_cloud(self, i):
-        # get cloud from lidar
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
-        cloud = transform_cloud(self.get_raw_cloud(i), Tr)
-        cloud = position(cloud)
-
-        pose_lidar_stamp = self.get_pose(i)
-        poses_cam_stamp = self.get_poses_at_camera_stamps(camera=self.camera_to_synchronize_to)
-        pose_cam_stamp = poses_cam_stamp[i]
-
-        pose_diff = np.linalg.inv(pose_cam_stamp) @ pose_lidar_stamp
-        cloud_cam_stamp = transform_cloud(cloud, pose_diff)
-
-        # sample cloud from map at the same time as the camera image
-        global_cloud = self.global_cloud(vis=False)
-        box_size = [2 * self.dphys_cfg.d_max, 2 * self.dphys_cfg.d_max, 2 * self.dphys_cfg.h_max]
-        cloud_sampled = filter_box(global_cloud, box_size=box_size, box_pose=pose_cam_stamp)
-        cloud_sampled = transform_cloud(cloud_sampled, np.linalg.inv(pose_cam_stamp))
-
-        # find nearest neighbors from the cloud from the map to the lidar cloud
-        tree = cKDTree(cloud_sampled)
-        dists, idxs = tree.query(cloud_cam_stamp, k=1)
-        cloud_sampled = cloud_sampled[idxs]
-
-        return cloud_sampled
-
-
-class RobinGasCamSynchVis(RobinGasCamSynch):
-    def __init__(self,
-                 path,
-                 data_aug_conf,
-                 is_train=True,
-                 dphys_cfg=DPhysConfig(),
-                 camera_to_synchronize_to='camera_front'
-                 ):
-        super(RobinGasCamSynchVis, self).__init__(path, data_aug_conf, is_train=is_train, dphys_cfg=dphys_cfg,
-                                                  camera_to_synchronize_to=camera_to_synchronize_to)
-
-    def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        height_lidar = self.get_lidar_height_map(i)
-        height_traj = self.get_traj_height_map(i)
-        map_pose = torch.as_tensor(self.get_pose(i))
-        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, height_lidar, height_traj, map_pose, lidar_pts
-
-
-def explore_data(path, grid_conf, data_aug_conf, dphys_cfg, modelf=None,
-                 sample_range='random', save=False, is_train=False, DataClass=RobinGasVis):
-    assert os.path.exists(path)
-
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    if modelf is not None:
-        model.load_state_dict(torch.load(modelf))
-        print('Loaded LSS model from', modelf)
-        model.eval()
-
-    ds = DataClass(path, is_train=is_train, data_aug_conf=data_aug_conf, dphys_cfg=dphys_cfg)
-
-    H, W = ds.get_raw_img_size()
-    cams = ds.cameras
-
-    if sample_range == 'random':
-        sample_range = [np.random.choice(range(len(ds)))]
-    elif sample_range == 'all':
-        sample_range = tqdm(range(len(ds)), total=len(ds))
-    else:
-        assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
-
-    for sample_i in sample_range:
-        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
-        fig = plt.figure(figsize=(5 * n_cols, 5 * n_rows))
-        gs = mpl.gridspec.GridSpec(n_rows, n_cols)
-        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-
-        sample = ds[sample_i]
-        sample = [s[np.newaxis] for s in sample]
-        # print('sample', sample_i, 'id', ds.ids[sample_i])
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
-        height_lidar, mask_lidar = hm_lidar[:, 0], hm_lidar[:, 1]
-        height_traj, mask_traj = hm_traj[:, 0], hm_traj[:, 1]
-        if modelf is not None:
-            with torch.no_grad():
-                # replace height maps with model output
-                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                voxel_feats = model.get_voxels(*inputs)
-                height_lidar, height_diff = model.bevencode(voxel_feats)
-                height_traj = height_lidar - height_diff
-                # replace lidar cloud with model height map output
-                pts = hm_to_cloud(height_traj.squeeze(), dphys_cfg).T
-                pts = pts.unsqueeze(0)
-
-        img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
-
-        for si in range(imgs.shape[0]):
-            plt.clf()
-            final_ax = plt.subplot(gs[:, -1:])
-            for imgi, img in enumerate(imgs[si]):
-                ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                mask = get_only_in_img_mask(ego_pts, H, W)
-                plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
-
-                ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
-                showimg = denormalize_img(img)
-
-                plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
-                            s=1, alpha=0.2, cmap='jet', vmin=-1, vmax=1)
-                plt.axis('off')
-                # camera name as text on image
-                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
-                         horizontalalignment='center', verticalalignment='top',
-                         transform=ax.transAxes, fontsize=10)
-
-                plt.sca(final_ax)
-                plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
-                         label=cams[imgi].replace('_', ' '))
-
-            plt.legend(loc='upper right')
-            final_ax.set_aspect('equal')
-            plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
-            plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
-
-            ax = plt.subplot(gs[:, -3:-2])
-            plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
-            plt.colorbar()
-
-            ax = plt.subplot(gs[:, -2:-1])
-            plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
-            plt.colorbar()
-
-            if save:
-                save_dir = os.path.join(path, 'visuals_pred' if modelf is not None else 'visuals')
-                os.makedirs(save_dir, exist_ok=True)
-                imname = f'{ds.ids[sample_i]}.jpg'
-                imname = os.path.join(save_dir, imname)
-                # print('saving', imname)
-                plt.savefig(imname)
-                plt.close(fig)
-            else:
-                plt.show()
 
 def heightmap_demo():
     from ..vis import show_cloud_plt

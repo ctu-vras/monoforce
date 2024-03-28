@@ -1,6 +1,14 @@
 import os
+
+import matplotlib as mpl
 import numpy as np
+import torch
 import yaml
+from tqdm import tqdm
+
+from monoforce.cloudproc import hm_to_cloud
+from monoforce.models.lss.model import compile_model
+from monoforce.models.lss.tools import ego_to_cam, get_only_in_img_mask, denormalize_img
 
 from ..config import DPhysConfig
 from ..transformations import xyz_rpy_to_matrix
@@ -14,7 +22,9 @@ __all__ = [
     'get_robingas_data',
     'get_kkt_data',
     'get_simple_data',
-    'visualize_data'
+    'vis_dem_data',
+    'load_calib',
+    'explore_data'
 ]
 
 
@@ -94,7 +104,7 @@ def get_simple_data(cfg: DPhysConfig):
     return height, traj
 
 
-def visualize_data(height, traj, img=None, cfg=DPhysConfig()):
+def vis_dem_data(height, traj, img=None, cfg=DPhysConfig()):
     assert len(height.shape) == 2, 'Height map should be 2D'
     assert len(traj['poses'].shape) == 3, 'Trajectory should be 3D'
     plt.figure(figsize=(20, 10))
@@ -132,7 +142,7 @@ def visualize_data(height, traj, img=None, cfg=DPhysConfig()):
     plt.show()
 
 
-def load_cam_calib(calib_path):
+def load_calib(calib_path):
     calib = {}
     # read camera calibration
     cams_path = os.path.join(calib_path, 'cameras')
@@ -166,8 +176,106 @@ if __name__ == '__main__':
     cfg.grid_res = 0.2
 
     hm, traj = get_robingas_data(cfg)
-    visualize_data(hm['z'], traj, cfg)
+    vis_dem_data(hm['z'], traj, cfg)
     # height, traj = get_kkt_data(cfg)
     # visualize_data(height, traj, cfg)
     # height, traj = get_simple_data(cfg)
     # visualize_data(height, traj, cfg)
+
+
+def explore_data(ds, modelf=None, sample_range='random', save=False):
+    lss_cfg = ds.lss_cfg
+    dphys_cfg = ds.dphys_cfg
+    grid_conf = lss_cfg['grid_conf']
+    data_aug_conf = lss_cfg['data_aug_conf']
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+    if modelf is not None:
+        model.load_state_dict(torch.load(modelf))
+        print('Loaded LSS model from', modelf)
+        model.eval()
+
+    H, W = ds.get_raw_img_size()
+    cams = ds.cameras
+
+    if sample_range == 'random':
+        sample_range = [np.random.choice(range(len(ds)))]
+    elif sample_range == 'all':
+        sample_range = tqdm(range(len(ds)), total=len(ds))
+    else:
+        assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
+
+    for sample_i in sample_range:
+        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
+        fig = plt.figure(figsize=(5 * n_cols, 5 * n_rows))
+        gs = mpl.gridspec.GridSpec(n_rows, n_cols)
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
+        sample = ds[sample_i]
+        sample = [s[np.newaxis] for s in sample]
+        # print('sample', sample_i, 'id', ds.ids[sample_i])
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
+        height_lidar, mask_lidar = hm_lidar[:, 0], hm_lidar[:, 1]
+        height_traj, mask_traj = hm_traj[:, 0], hm_traj[:, 1]
+        if modelf is not None:
+            with torch.no_grad():
+                # replace height maps with model output
+                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+                voxel_feats = model.get_voxels(*inputs)
+                height_lidar, height_diff = model.bevencode(voxel_feats)
+                height_traj = height_lidar - height_diff
+                # replace lidar cloud with model height map output
+                pts = hm_to_cloud(height_traj.squeeze(), dphys_cfg).T
+                pts = pts.unsqueeze(0)
+
+        frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+        for si in range(imgs.shape[0]):
+            plt.clf()
+            final_ax = plt.subplot(gs[:, -1:])
+            for imgi, img in enumerate(imgs[si]):
+                cam_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                mask = get_only_in_img_mask(cam_pts, H, W)
+                plot_pts = post_rots[si, imgi].matmul(cam_pts) + post_trans[si, imgi].unsqueeze(1)
+
+                ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
+                showimg = denormalize_img(img)
+
+                plt.imshow(showimg)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
+                            s=1, alpha=0.2, cmap='jet', vmin=-1, vmax=1)
+                plt.axis('off')
+                # camera name as text on image
+                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
+                         horizontalalignment='center', verticalalignment='top',
+                         transform=ax.transAxes, fontsize=10)
+
+                plt.sca(final_ax)
+                plt.plot(frustum_pts[si, imgi, :, :, :, 0].view(-1), frustum_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                         label=cams[imgi].replace('_', ' '))
+
+            plt.legend(loc='upper right')
+            final_ax.set_aspect('equal')
+            plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
+            plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
+
+            ax = plt.subplot(gs[:, -3:-2])
+            plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
+            plt.colorbar()
+
+            ax = plt.subplot(gs[:, -2:-1])
+            plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
+            plt.colorbar()
+
+            if save:
+                save_dir = os.path.join(path, 'visuals_pred' if modelf is not None else 'visuals')
+                os.makedirs(save_dir, exist_ok=True)
+                imname = f'{ds.ids[sample_i]}.jpg'
+                imname = os.path.join(save_dir, imname)
+                # print('saving', imname)
+                plt.savefig(imname)
+                plt.close(fig)
+            else:
+                plt.show()

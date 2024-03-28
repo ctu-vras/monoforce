@@ -10,7 +10,8 @@ from monoforce.cloudproc import hm_to_cloud
 from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets import RobinGas, explore_data, RobinGasVis
+from monoforce.datasets import RobinGas, RobinGasVis
+from monoforce.datasets.utils import explore_data
 from monoforce.datasets import Rellis3D, Rellis3DVis
 from monoforce.datasets import robingas_husky_seq_paths, oru_seq_paths, rellis3d_seq_paths, robingas_tradr_seq_paths
 from monoforce.config import DPhysConfig
@@ -71,8 +72,7 @@ class Trainer:
     def __init__(self,
                  dataset,
                  dphys_cfg,
-                 data_aug_conf,
-                 grid_conf,
+                 lss_cfg,
                  bsz=1,
                  nworkers=10,
                  lr=1e-3,
@@ -90,8 +90,7 @@ class Trainer:
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.dphys_cfg = dphys_cfg
-        self.data_aug_conf = data_aug_conf
-        self.grid_conf = grid_conf
+        self.lss_cfg = lss_cfg
         self.dataset = dataset
         self.nepochs = nepochs
         self.map_consistency = map_consistency
@@ -119,11 +118,10 @@ class Trainer:
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
         write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
-        lss_cfg = {'data_aug_conf': data_aug_conf, 'grid_conf': grid_conf}  # combine data_aug_conf and grid_conf
         write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
     def load_model(self, modelf=None):
-        model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
+        model = compile_model(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf'], outC=1)
         if modelf is not None:
             print('Loading pretrained LSS model from', modelf)
             model.load_state_dict(torch.load(modelf))
@@ -153,13 +151,12 @@ class Trainer:
         print('Data paths:', data_paths)
         for path in data_paths:
             assert os.path.exists(path)
-            # print(f'Train dataset from path {path} size is {len(ds)}')
-            if vis:
-                explore_data(path, self.grid_conf, self.data_aug_conf, self.dphys_cfg,
-                             save=False, is_train=True, DataClass=DataVis)
+            train_ds = Data(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
+            val_ds = Data(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
 
-            train_ds = Data(path, is_train=True, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
-            val_ds = Data(path, is_train=False, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
+            if vis:
+                train_ds_vis = DataVis(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
+                explore_data(train_ds_vis)
 
             if debug:
                 print('Debug mode: using small datasets')
@@ -413,7 +410,7 @@ class Trainer:
                 img = imgs[batchi, imgi]
                 img = denormalize_img(img)
                 cam_pts = ego_to_cam(hm_points, rots[batchi, imgi], trans[batchi, imgi], intrins[batchi, imgi])
-                img_H, img_W = self.data_aug_conf['H'], self.data_aug_conf['W']
+                img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
                 mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
                 plot_pts = post_rots[batchi, imgi].matmul(cam_pts) + post_trans[batchi, imgi].unsqueeze(1)
                 ax.imshow(img)
@@ -460,24 +457,22 @@ class Trainer:
 
 
 def main():
-    cfg = DPhysConfig()
+    dphys_cfg = DPhysConfig()
     config_path = '../config/dphys_cfg.yaml'
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    cfg.from_yaml(config_path)
-    cfg.hm_interp_method = None
+    dphys_cfg.from_yaml(config_path)
+    dphys_cfg.hm_interp_method = None
 
     # load LSS config
     lss_config_path = '../config/lss_cfg.yaml'
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
-    lss_config = read_yaml(lss_config_path)
-    grid_conf = lss_config['grid_conf']
-    data_aug_conf = lss_config['data_aug_conf']
+    lss_cfg = read_yaml(lss_config_path)
 
     args = arg_parser()
     print(args)
 
     trainer = Trainer(dataset=args.dataset,
-                      dphys_cfg=cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
+                      dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,

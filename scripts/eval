@@ -12,7 +12,8 @@ from torch.utils.data import ConcatDataset
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.robingas import explore_data, RobinGasVis
+from monoforce.datasets.robingas import RobinGasVis
+from monoforce.datasets.utils import explore_data
 from monoforce.datasets.rellis3d import Rellis3DVis
 from monoforce.config import DPhysConfig
 from monoforce.cloudproc import estimate_heightmap, hm_to_cloud
@@ -31,13 +32,13 @@ def show_height_as_cloud(height, cfg, mask=None):
 
 
 class EvaluatorGeom:
-    def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset, model_path=None):
+    def __init__(self, dphys_config_path, lss_config_path, dataset, model_path=None):
         self.model_path = model_path
         assert model_path is None or os.path.isfile(model_path), 'Model file %s does not exist' % model_path
         self.config_path = dphys_config_path
         assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
-        self.terrain_encoder_config_path = terrain_encoder_config_path
-        assert os.path.isfile(terrain_encoder_config_path), 'LSS config file %s does not exist' % terrain_encoder_config_path
+        self.lss_config_path = lss_config_path
+        assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
         self.dataset = dataset
         if dataset == 'robingas':
             self.data_paths = robingas_husky_seq_paths
@@ -51,9 +52,7 @@ class EvaluatorGeom:
         self.dphys_cfg = DPhysConfig()
         self.dphys_cfg.from_yaml(dphys_config_path)
 
-        self.lss_config = read_yaml(terrain_encoder_config_path)
-        self.grid_conf = self.lss_config['grid_conf']
-        self.data_aug_conf = self.lss_config['data_aug_conf']
+        self.lss_cfg = read_yaml(lss_config_path)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -82,7 +81,7 @@ class EvaluatorGeom:
         if seq_path is None:
             seq_path = self.data_paths[0]
 
-        ds = self.DataClass(seq_path, is_train=False, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg)
+        ds = self.DataClass(seq_path, is_train=False, data_aug_conf=self.lss_cfg['data_aug_conf'], dphys_cfg=self.dphys_cfg)
         if sample_range is None:
             sample_range = range(len(ds))
 
@@ -112,7 +111,7 @@ class EvaluatorGeom:
                 img = denormalize_img(img)
                 # project height map points to image
                 ego_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
-                img_H, img_W = self.data_aug_conf['H'], self.data_aug_conf['W']
+                img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
                 mask = get_only_in_img_mask(ego_pts, img_H, img_W)
                 plot_pts = post_rots[imgi].matmul(ego_pts) + post_trans[imgi].unsqueeze(1)
                 ax.imshow(img)
@@ -154,9 +153,8 @@ class EvaluatorGeom:
         all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss = 0.0, 0.0
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
-            # explore_data(path, self.grid_conf, self.data_aug_conf, self.cfg, self.model_path, save=False)
 
-            val_ds = self.DataClass(path, is_train=False, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg)
+            val_ds = self.DataClass(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg)
             valloader = torch.utils.data.DataLoader(val_ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
             # validation epoch
@@ -336,7 +334,7 @@ class EvaluatorGeom:
     def evaluate(self, vis=False, verbose=False, random_order=False):
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
-            ds = self.DataClass(path, is_train=False, data_aug_conf=self.data_aug_conf, dphys_cfg=self.dphys_cfg)
+            ds = self.DataClass(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg)
             sample_range = np.arange(0, len(ds))
             if random_order:
                 np.random.shuffle(sample_range)
@@ -375,15 +373,15 @@ class EvaluatorGeom:
         return f'Evaluator: {self.__class__.__name__} with the Model: {self.model.__class__.__name__}'
 
 class EvaluatorLSS(EvaluatorGeom):
-    def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset,
+    def __init__(self, dphys_config_path, lss_config_path, dataset,
                  # model_path='../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt'):
                  # model_path='../config/tb_runs/lss_rellis3d_robingas_dphysics_terrain/train_lss.pt'):
                  model_path='../config/tb_runs/lss_rellis3d_2024_03_06_16_07_52/train_lss.pt'):
-        super().__init__(dphys_config_path, terrain_encoder_config_path, dataset, model_path)
+        super().__init__(dphys_config_path, lss_config_path, dataset, model_path)
 
     def load_model(self):
         print('Loading LSS model')
-        model = compile_model(self.grid_conf, self.data_aug_conf, outC=1)
+        model = compile_model(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf'], outC=1)
         print('Loading', self.model_path)
         model.load_state_dict(torch.load(self.model_path))
         model.eval()
@@ -417,8 +415,8 @@ class EvaluatorLSS(EvaluatorGeom):
 
 
 class EvaluatorLSSGeom(EvaluatorLSS):
-    def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset):
-        super().__init__(dphys_config_path, terrain_encoder_config_path, dataset)
+    def __init__(self, dphys_config_path, lss_config_path, dataset):
+        super().__init__(dphys_config_path, lss_config_path, dataset)
 
     def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
         sample = ds[i]
@@ -432,9 +430,9 @@ class EvaluatorLSSGeom(EvaluatorLSS):
 
 
 class EvaluatorKKT(EvaluatorGeom):
-    def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset,
+    def __init__(self, dphys_config_path, lss_config_path, dataset,
                  model_path='../../pose-consistency-KKT-loss/weights/network_weights_s2d'):
-        super().__init__(dphys_config_path, terrain_encoder_config_path, dataset, model_path)
+        super().__init__(dphys_config_path, lss_config_path, dataset, model_path)
 
     def load_model(self):
         print('Loading KKT model')
@@ -472,9 +470,9 @@ class EvaluatorKKT(EvaluatorGeom):
 
 
 class EvaluatorSemSeg(EvaluatorGeom):
-    def __init__(self, dphys_config_path, terrain_encoder_config_path, dataset,
+    def __init__(self, dphys_config_path, lss_config_path, dataset,
                  model_path='../../traversability_estimation/config/weights/depth_cloud/deeplabv3_resnet101_lr_0.0001_bs_64_epoch_32_TraversabilityClouds_depth_64x256_labels_traversability_iou_0.928.pth'):
-        super().__init__(dphys_config_path, terrain_encoder_config_path, dataset, model_path)
+        super().__init__(dphys_config_path, lss_config_path, dataset, model_path)
 
     def load_model(self):
         print('Loading SemSeg model')
@@ -548,21 +546,18 @@ def vis_data(dataset):
     for path in data_paths:
         assert os.path.isdir(path), 'Data path %s does not exist' % path
         lss_config = read_yaml(lss_config_path)
-        grid_conf = lss_config['grid_conf']
-        data_aug_conf = lss_config['data_aug_conf']
-        cfg = DPhysConfig()
-        cfg.from_yaml(dphys_config_path)
+        dphys_cfg = DPhysConfig()
+        dphys_cfg.from_yaml(dphys_config_path)
+        ds = DataClass(path, is_train=False, lss_cfg=lss_config, dphys_cfg=dphys_cfg)
         for _ in range(5):
-            explore_data(path, grid_conf, data_aug_conf, cfg, modelf=modelf,
-                         sample_range='random', save=False, is_train=True, DataClass=DataClass)
+            explore_data(ds, modelf=modelf, sample_range='random', save=False)
 
 
 def evaluate(dataset):
     dphys_config_path = '../config/dphys_cfg.yaml'
-    terrain_encoder_config_path = '../config/lss_cfg.yaml'
+    lss_config_path = '../config/lss_cfg_husky.yaml'
 
     evals = [EvaluatorGeom, EvaluatorLSS, EvaluatorKKT, EvaluatorLSSGeom]
-    # evals = [Evaluator, EvaluatorLSS, EvaluatorKKT]
     # evals = [EvaluatorLSS]
     # evals = [EvaluatorLSSGeom]
     # evals = [EvaluatorGeom]
@@ -571,7 +566,7 @@ def evaluate(dataset):
     with torch.no_grad():
         for Eval in evals:
             evaluator = Eval(dphys_config_path=dphys_config_path,
-                             terrain_encoder_config_path=terrain_encoder_config_path,
+                             lss_config_path=lss_config_path,
                              dataset=dataset)
             print(evaluator)
             # evaluator.eval_terrain_encoder(bsz=4)
@@ -583,8 +578,8 @@ def evaluate(dataset):
 
 
 def main():
-    # dataset = 'robingas'
-    dataset = 'rellis3d'
+    dataset = 'robingas'
+    # dataset = 'rellis3d'
 
     # vis_data(dataset)
     evaluate(dataset)
