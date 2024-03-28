@@ -551,13 +551,13 @@ class RobinGas(DEMPathData):
         img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
         assert os.path.exists(img_path), f'Image path {img_path} does not exist'
         img = Image.open(img_path)
-        img = np.asarray(img)
         return img
 
     def get_raw_img_size(self, i=0, cam=None):
         if cam is None:
             cam = self.cameras[0]
         img = self.get_raw_image(i, cam)
+        img = np.asarray(img)
         return img.shape[0], img.shape[1]
 
     def get_camera_names(self):
@@ -567,19 +567,20 @@ class RobinGas(DEMPathData):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_image(self, i, cam=None, undistort=False):
-        if cam is None:
-            cam = self.cameras[0]
-        img = self.get_raw_image(i, cam)
+    def get_image(self, i, camera=None, undistort=False):
+        if camera is None:
+            camera = self.cameras[0]
+        img = self.get_raw_image(i, camera)
+        img = np.asarray(img)
         for key in self.calib.keys():
-            if cam in key:
-                cam = key
+            if camera in key:
+                camera = key
                 break
-        K = self.calib[cam]['camera_matrix']['data']
-        r, c = self.calib[cam]['camera_matrix']['rows'], self.calib[cam]['camera_matrix']['cols']
-        K = np.array(K).reshape((r, c))
+        K = self.calib[camera]['camera_matrix']['data']
+        r, c = self.calib[camera]['camera_matrix']['rows'], self.calib[camera]['camera_matrix']['cols']
+        K = np.asarray(K, dtype=np.float32).reshape((r, c))
         if undistort:
-            D = self.calib[cam]['distortion_coefficients']['data']
+            D = self.calib[camera]['distortion_coefficients']['data']
             D = np.array(D)
             img, K = undistort_image(img, K, D)
         return img, K
@@ -665,6 +666,18 @@ class RobinGas(DEMPathData):
         outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
 
         return outputs
+
+    def get_segmentation(self, i, camera=None):
+        if camera is None:
+            camera = self.cameras[0]
+        ind = self.ids[i]
+        seg_path = os.path.join(self.path, 'images/vis/', '%s_%s.png' % (ind, camera))
+        assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
+        seg = Image.open(seg_path)
+        size = self.get_raw_img_size(i, camera)
+        transform = torchvision.transforms.Resize(size, interpolation=Image.BICUBIC)
+        seg = transform(seg)
+        return seg
 
     def get_sample(self, i):
         img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
