@@ -16,7 +16,7 @@
     <param name="use_sim_time" value="true"/>
 
     <!-- Workaround for /tf_static problems with rosbag: https://github.com/ros/geometry2/issues/181 -->
-    <node name="play_tf_static" pkg="dataproc" type="play_tf_static"
+    <node name="play_tf_static" pkg="monoforce" type="play_tf_static"
          args="$(arg bag)" output="log">
         <remap from="~tf_static" to="/tf_static"/>
     </node>

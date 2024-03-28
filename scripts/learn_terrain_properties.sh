@@ -16,7 +16,6 @@ SEQUENCES=(
             'robingas/data/22-06-30-cimicky_haj/husky_2022-06-30-15-58-37/'
 )
 
-
 # source ROS workspace
 source /home/$USER/workspaces/traversability_ws/devel/setup.bash
 
