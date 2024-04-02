@@ -5,9 +5,8 @@ import numpy as np
 import torch
 import torchvision
 from torch.utils.data import Dataset
-from numpy.lib.recfunctions import unstructured_to_structured, merge_arrays
 from matplotlib import pyplot as plt
-from ..models.lss.tools import img_transform, normalize_img
+from ..models.lss.tools import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
@@ -17,6 +16,7 @@ from ..imgproc import undistort_image
 from ..vis import set_axes_equal
 from ..utils import normalize
 from .utils import load_calib
+from .coco import COCO_CATEGORIES
 import cv2
 import albumentations as A
 from PIL import Image
@@ -263,15 +263,6 @@ class DEMPathData(Dataset):
         cloud = transform_cloud(cloud, Tr)
         return cloud
 
-    def get_cloud_color(self, i):
-        ind = self.ids[i]
-        if not os.path.exists(self.cloud_color_path):
-            return None
-        rgb = np.load(os.path.join(self.cloud_color_path, '%s.npz' % ind))['rgb']
-        # convert to structured numpy array with 'r', 'g', 'b' fields
-        color = unstructured_to_structured(rgb, names=['r', 'g', 'b'])
-        return color
-
     def get_traj_dphyics_terrain(self, i):
         ind = self.ids[i]
         p = os.path.join(self.path, 'terrain', 'traj', 'dphysics', '%s.npy' % ind)
@@ -459,14 +450,9 @@ class DEMPathData(Dataset):
 
     def get_sample(self, i):
         cloud = self.get_cloud(i)
-        if os.path.exists(self.cloud_color_path):
-            color = self.get_cloud_color(i)
-            cloud = merge_arrays([cloud, color], flatten=True, usemask=False)
         points = position(cloud)
-
         traj = self.get_traj(i)
         height = self.estimate_heightmap(points, fill_value=0.)
-
         return cloud, traj, height
 
     def __getitem__(self, i):
@@ -667,17 +653,83 @@ class RobinGas(DEMPathData):
 
         return outputs
 
-    def get_segmentation(self, i, camera=None):
+    def seg_label_to_color(self, seg_label):
+        coco_colors = [(np.array(color['color'])).tolist() for color in COCO_CATEGORIES] + [[0, 0, 0]]
+        seg_label = np.asarray(seg_label)
+        # transform segmentation labels to colors
+        size = [s for s in seg_label.shape] + [3]
+        seg_color = np.zeros(size, dtype=np.uint8)
+        for color_i, color in enumerate(coco_colors):
+            seg_color[seg_label == color_i] = color
+        return seg_color
+
+    def get_seg_label(self, i, camera=None):
         if camera is None:
             camera = self.cameras[0]
-        ind = self.ids[i]
-        seg_path = os.path.join(self.path, 'images/vis/', '%s_%s.png' % (ind, camera))
+        id = self.ids[i]
+        seg_path = os.path.join(self.path, 'images/seg/', '%s_%s.npy' % (id, camera))
         assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
-        seg = Image.open(seg_path)
+        seg = Image.fromarray(np.load(seg_path))
         size = self.get_raw_img_size(i, camera)
         transform = torchvision.transforms.Resize(size, interpolation=Image.BICUBIC)
         seg = transform(seg)
         return seg
+    
+    def get_semantic_cloud(self, i, classes=None, vis=False):
+        coco_classes = [i['name'].replace('-merged', '').replace('-other', '') for i in COCO_CATEGORIES] + ['void']
+        if classes is None:
+            classes = np.copy(coco_classes)
+        # ids of classes in COCO
+        selected_labels = []
+        for c in classes:
+            if c in coco_classes:
+                selected_labels.append(coco_classes.index(c))
+
+        lidar_points = position(self.get_cloud(i))
+        points = []
+        labels = []
+        for cam in self.cameras[::-1]:
+            seg_label_cam = self.get_seg_label(i, camera=cam)
+            seg_label_cam = np.asarray(seg_label_cam)
+
+            K = self.calib[cam]['camera_matrix']['data']
+            K = np.asarray(K, dtype=np.float32).reshape((3, 3))
+            E = self.calib['transformations'][f'T_base_link__{cam}']['data']
+            E = np.asarray(E, dtype=np.float32).reshape((4, 4))
+    
+            lidar_points = torch.as_tensor(lidar_points)
+            E = torch.as_tensor(E)
+            K = torch.as_tensor(K)
+    
+            cam_points = ego_to_cam(lidar_points.T, E[:3, :3], E[:3, 3], K).T
+            mask = get_only_in_img_mask(cam_points.T, seg_label_cam.shape[0], seg_label_cam.shape[1])
+            cam_points = cam_points[mask]
+
+            # colorize point cloud with values from segmentation image
+            uv = cam_points[:, :2].numpy().astype(int)
+            seg_label_cam = seg_label_cam[uv[:, 1], uv[:, 0]]
+    
+            points.append(lidar_points[mask].numpy())
+            labels.append(seg_label_cam)
+
+        points = np.concatenate(points)
+        labels = np.concatenate(labels)
+        colors = self.seg_label_to_color(labels)
+        assert len(points) == len(colors)
+
+        # mask out points with labels not in selected classes
+        mask = np.isin(labels, selected_labels)
+        points = points[mask]
+        colors = colors[mask]
+
+        if vis:
+            colors = normalize(colors)
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
+            pcd.colors = o3d.utility.Vector3dVector(colors)
+            o3d.visualization.draw_geometries([pcd])
+
+        return points, colors
 
     def get_sample(self, i):
         img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
