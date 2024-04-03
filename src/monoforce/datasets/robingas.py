@@ -731,16 +731,24 @@ class RobinGas(DEMPathData):
 
         return points, colors
 
+    def get_rigid_heightmap(self, i, rigid_classes=None):
+        if rigid_classes is None:
+            rigid_classes = ['tree', 'person', 'building']
+        seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
+        traj_points = self.estimated_footprint_traj_points(i)
+        points = np.concatenate((seg_points, traj_points), axis=0)
+        hm = self.estimate_heightmap(points)
+        height, mask = hm['z'], hm['mask']
+        heightmap = torch.from_numpy(np.stack([height, mask]))
+        return heightmap
+
     def get_sample(self, i):
         img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
-        hm_lidar = self.get_lidar_height_map(i, robot_radius=1.0)
-        hm_traj = self.get_traj_height_map(i)
+        hm_rigid = self.get_rigid_heightmap(i)
         if self.only_front_hm:
-            mask = self.crop_front_height_map(hm_lidar[1:2], only_mask=True)
-            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
-            hm_traj[1] = hm_traj[1] * torch.from_numpy(mask)
-        map_pose = torch.as_tensor(self.get_pose(i))
-        return img, rot, tran, intrin, post_rot, post_tran, hm_lidar, hm_traj, map_pose
+            mask = self.crop_front_height_map(hm_rigid[1:2], only_mask=True)
+            hm_rigid[1] = hm_rigid[1] * torch.from_numpy(mask)
+        return img, rot, tran, intrin, post_rot, post_tran, hm_rigid
 
 
 class RobinGasVis(RobinGas):
@@ -749,15 +757,12 @@ class RobinGasVis(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_lidar = self.get_lidar_height_map(i)
-        hm_traj = self.get_traj_height_map(i)
+        hm_rigid = self.get_rigid_heightmap(i)
         if self.only_front_hm:
-            mask = self.crop_front_height_map(hm_lidar[1:2], only_mask=True)
-            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
-            hm_traj[1] = hm_traj[1] * torch.from_numpy(mask)
-        map_pose = torch.as_tensor(self.get_pose(i))
+            mask = self.crop_front_height_map(hm_rigid[1:2], only_mask=True)
+            hm_rigid[1] = hm_rigid[1] * torch.from_numpy(mask)
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid, lidar_pts
 
 
 def heightmap_demo():

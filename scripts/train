@@ -25,21 +25,17 @@ import argparse
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train LSS model')
-    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
+    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
     parser.add_argument('--nworkers', type=int, default=10, help='Number of workers for dataloaders')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
-    parser.add_argument('--map_consistency', type=str2bool, default=False, help='Enable map consistency loss')
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     # parser.add_argument('--dataset', type=str, default='oru', help='Dataset name')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
-    parser.add_argument('--lidar_hm_weight', type=float, default=1.0, help='Weight for lidar heightmap loss')
-    parser.add_argument('--traj_hm_weight', type=float, default=100.0, help='Weight for trajectory heightmap loss')
-    parser.add_argument('--hdiff_weight', type=float, default=0.001, help='Weight for height difference loss')
     parser.add_argument('--only_front_hm', type=str2bool, default=False, help='Use only front heightmap')
 
     return parser.parse_args()
@@ -59,14 +55,10 @@ class Trainer:
     lr: float, learning rate
     weight_decay: float, weight decay
     nepochs: int, number of epochs
-    map_consistency: bool, enable map consistency loss
     pretrained_model_path: str, path to pretrained model
     log_dir: str, path to log directory
     debug: bool, debug mode: use small datasets
     vis: bool, visualize training samples
-    lidar_hm_weight: float, weight for lidar heightmap loss
-    traj_hm_weight: float, weight for trajectory heightmap loss
-    hdiff_weight: float, weight for height difference loss
     """
 
     def __init__(self,
@@ -78,14 +70,12 @@ class Trainer:
                  lr=1e-3,
                  weight_decay=1e-7,
                  nepochs=1000,
-                 map_consistency=True,
                  pretrained_model_path=None,
                  debug=False,
                  vis=False,
                  lidar_hm_weight=1.0,
                  traj_hm_weight=50.0,
                  hdiff_weight=0.0001,
-                 map_consistency_weight=0.1,
                  only_front_hm=False):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -93,7 +83,6 @@ class Trainer:
         self.lss_cfg = lss_cfg
         self.dataset = dataset
         self.nepochs = nepochs
-        self.map_consistency = map_consistency
 
         self.min_loss = np.inf
         self.min_train_loss = np.inf
@@ -103,11 +92,10 @@ class Trainer:
         self.lidar_hm_weight = lidar_hm_weight
         self.traj_hm_weight = traj_hm_weight
         self.hdiff_weight = hdiff_weight
-        self.map_consistency_weight = map_consistency_weight
 
         self.only_front_hm = only_front_hm
 
-        self.train_loaders, self.val_loaders = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
         self.model = self.load_model(modelf=pretrained_model_path)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         self.loss_fn = torch.nn.MSELoss(reduction='none')
@@ -167,8 +155,7 @@ class Trainer:
                 # randomly select a subset of the dataset
                 val_ds_size = int(val_fraction * len(train_ds))
                 # if map consistency is enabled, use a sequential part of the dataset
-                val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False) if not self.map_consistency \
-                    else range(len(train_ds) // 2, len(train_ds) // 2 + val_ds_size)
+                val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
                 train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
                 assert len(train_ids) + len(val_ids) == len(train_ds)
                 # check that there is no overlap between train and val ids
@@ -182,44 +169,18 @@ class Trainer:
             train_datasets.append(train_ds)
             val_datasets.append(val_ds)
 
-        # concatenate datasets if map consistency is disabled
-        if not self.map_consistency:
-            train_datasets = [ConcatDataset(train_datasets)]
-            val_datasets = [ConcatDataset(val_datasets)]
-            print('Concatenated datasets length: train %i, valid: %i' % (len(train_datasets[0]), len(val_datasets[0])))
+        # concatenate datasets
+        train_dataset = ConcatDataset(train_datasets)
+        val_dataset = ConcatDataset(val_datasets)
+        print('Concatenated datasets length: train %i, valid: %i' % (len(train_dataset), len(val_dataset)))
 
         # create dataloaders
-        train_loaders = []
-        for ds in train_datasets:
-            train_loader = DataLoader(ds, batch_size=bsz,
-                                      shuffle=False if self.map_consistency else True,
-                                      num_workers=nworkers)
-            train_loaders.append(train_loader)
-        val_loaders = []
-        for ds in val_datasets:
-            val_loader = DataLoader(ds, batch_size=bsz, shuffle=False, num_workers=nworkers)
-            val_loaders.append(val_loader)
+        train_loader = DataLoader(train_dataset, batch_size=bsz, shuffle=True, num_workers=nworkers)
+        val_loader = DataLoader(val_dataset, batch_size=bsz, shuffle=False, num_workers=nworkers)
 
-        return train_loaders, val_loaders
+        return train_loader, val_loader
 
-    def lidar_hm_loss(self, height_pred, height_gt, weights=None):
-        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
-        if weights is None:
-            weights = torch.ones_like(height_gt)
-        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
-
-        # handle imbalanced height distribution (increase weights for higher heights / obstacles)
-        h_mean = height_gt[weights.bool()].mean()
-        # the higher the difference from mean the higher the weight
-        weights_h = 1.0 + torch.abs(height_gt - h_mean)
-        # apply height difference weights
-        weights = weights * weights_h
-
-        # compute weighted loss
-        loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
-        return loss
-
-    def traj_hm_loss(self, height_pred, height_gt, weights=None):
+    def rigid_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
         if weights is None:
             weights = torch.ones_like(height_gt)
@@ -236,36 +197,8 @@ class Trainer:
         loss = (self.loss_fn(height_pred, height_gt) * weights).mean()
         return loss
 
-    def map_consistency_loss(self, height, map_pose, vis=False):
-        assert len(height) == len(map_pose), 'Heightmaps and map poses must have the same length'
-        assert len(height) > 1, 'Map consistency loss requires at least 2 heightmaps'
-
-        clouds = []
-        for p, h in zip(map_pose, height):
-            hm_cloud = hm_to_cloud(h.squeeze(), self.dphys_cfg)
-            hm_cloud = transform_cloud(hm_cloud, p)
-            clouds.append(hm_cloud)
-
-        # pytorch3d pointcloud
-        src_cloud = Pointclouds(points=[torch.cat(clouds[::2])])
-        tgt_cloud = Pointclouds(points=[torch.cat(clouds[1::2])])
-        # chamfer distance
-        chamfer_dist, _ = chamfer_distance(src_cloud, tgt_cloud)
-
-        if vis:
-            import open3d as o3d
-            with torch.no_grad():
-                global_hm_cloud = torch.cat(clouds, dim=0)
-                # plot global cloud with open3d
-                hm_pcd = o3d.geometry.PointCloud()
-                hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud.cpu().numpy())
-                o3d.visualization.draw_geometries([hm_pcd])
-
-        return chamfer_dist
-
     def epoch(self, train=True):
-        assert len(self.train_loaders) == len(self.val_loaders), 'Train and val loaders must have the same length'
-        loaders = self.train_loaders if train else self.val_loaders
+        loader = self.train_loader if train else self.val_loader
         counter = self.train_counter if train else self.val_counter
 
         if train:
@@ -273,56 +206,31 @@ class Trainer:
         else:
             self.model.eval()
 
-        epoch_loss = 0.0
         max_grad_norm = 5.0
+        epoch_loss = 0.0
+        for batch in tqdm(loader, total=len(loader)):
+            batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid = batch
+            height_rigid, weights_rigid = hm_rigid[:, 0:1], hm_rigid[:, 1:2]
 
-        for loader in loaders:
-            loader_loss = 0.0
-            for batch in tqdm(loader, total=len(loader)):
-                batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
-                imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = batch
-                height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-                height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+            if train:
+                self.optimizer.zero_grad()
 
-                if train:
-                    self.optimizer.zero_grad()
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            height_pred = self.model(*inputs)
 
-                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                voxel_feats = self.model.get_voxels(*inputs)
-                height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
-                height_pred_rigid = height_pred_geom - height_pred_diff
+            loss = self.rigid_hm_loss(height_pred, height_rigid, weights_rigid)
+            if train:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
+                self.optimizer.step()
+            epoch_loss += loss.item()
 
-                loss_lidar = self.lidar_hm_loss(height_pred_geom, height_lidar, weights_lidar)
-                loss_traj = self.traj_hm_loss(height_pred_rigid, height_traj, weights_traj)
+            counter += 1
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
-                # add height difference loss
-                loss_hdiff = height_pred_diff.std()
-
-                loss = self.lidar_hm_weight * loss_lidar + self.traj_hm_weight * loss_traj + self.hdiff_weight * loss_hdiff
-                if self.map_consistency and len(height_pred_rigid) > 1:
-                    loss_map = self.map_consistency_loss(height_pred_rigid, map_pose)
-                    loss += self.map_consistency_weight * loss_map
-                else:
-                    loss_map = torch.tensor(np.nan, device=self.device)
-
-                if train:
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
-                    self.optimizer.step()
-                loader_loss += loss.item()
-
-                counter += 1
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_lidar, counter)
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_rigid", loss_traj, counter)
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_map", loss_map, counter)
-                self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
-
-            if len(loader) > 0:
-                loader_loss /= len(loader)
-            epoch_loss += loader_loss
-        if len(loaders) > 0:
-            epoch_loss /= len(loaders)
+        if len(loader) > 0:
+            epoch_loss /= len(loader)
 
         return epoch_loss, counter
 
@@ -341,7 +249,7 @@ class Trainer:
                     torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
 
                     # visualize training predictions
-                    fig = self.vis_pred(self.train_loaders[0])
+                    fig = self.vis_pred(self.train_loader)
                     self.writer.add_figure('train/prediction', fig, e)
 
             # validation epoch
@@ -356,45 +264,32 @@ class Trainer:
                     torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
 
                     # visualize validation predictions
-                    fig = self.vis_pred(self.val_loaders[0])
+                    fig = self.vis_pred(self.val_loader)
                     self.writer.add_figure('val/prediction', fig, e)
 
     def vis_pred(self, loader):
         fig = plt.figure(figsize=(20, 12))
-        ax1 = fig.add_subplot(341)
-        ax2 = fig.add_subplot(342)
-        ax3 = fig.add_subplot(343)
-        ax4 = fig.add_subplot(344)
-        ax5 = fig.add_subplot(345)
-        ax6 = fig.add_subplot(346)
-        ax7 = fig.add_subplot(347)
-        ax8 = fig.add_subplot(348)
-        ax9 = fig.add_subplot(349)
-        ax10 = fig.add_subplot(3, 4, 10)
-        ax11 = fig.add_subplot(3, 4, 11)
-        ax12 = fig.add_subplot(3, 4, 12)
+        ax1 = fig.add_subplot(241)
+        ax2 = fig.add_subplot(242)
+        ax3 = fig.add_subplot(243)
+        ax4 = fig.add_subplot(244)
+        ax5 = fig.add_subplot(245)
+        ax6 = fig.add_subplot(246)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6]
         for ax in axes:
             ax.clear()
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.device) for i in inputs]
-            hm_lidar = torch.as_tensor(hm_lidar, dtype=torch.float32)
-            voxel_feats = self.model.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
-            height_pred = height_pred_geom - height_pred_diff
+            height_pred = self.model(*inputs)
 
             batchi = 0
             height_pred = height_pred[batchi, 0].cpu()
-            height_pred_geom = height_pred_geom[batchi, 0].cpu()
-            height_pred_diff = height_pred_diff[batchi, 0].cpu()
-            height_lidar = hm_lidar[batchi, 0].cpu()
-            height_traj = hm_traj[batchi, 0].cpu()
-            mask_measured = hm_lidar[batchi, 1].bool().cpu()
+            height_rigid = hm_rigid[batchi, 0].cpu()
 
             # get height map points
             z_grid = height_pred
@@ -422,36 +317,8 @@ class Trainer:
             ax5.set_title('Prediction')
             ax5.imshow(height_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax6.set_title('Masked Prediction')
-            height_pred_vis = np.zeros_like(height_pred)
-            height_pred_vis[mask_measured] = height_pred[mask_measured]
-            ax6.imshow(height_pred_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            ax7.set_title('Lidar')
-            ax7.imshow(height_lidar.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            ax8.set_title('Traj')
-            ax8.imshow(height_traj.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            # predicted geometric height
-            ax9.set_title('Geom Pred')
-            ax9.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            # masked predicted geometric height
-            ax10.set_title('Masked Geom Pred')
-            height_pred_geom_vis = np.zeros_like(height_pred)
-            height_pred_geom_vis[mask_measured] = height_pred_geom[mask_measured]
-            ax10.imshow(height_pred_geom_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            # predicted diff height
-            ax11.set_title('Diff Pred')
-            ax11.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            # masked predicted diff height
-            ax12.set_title('Masked Diff Pred')
-            height_pred_diff_vis = np.zeros_like(height_pred)
-            height_pred_diff_vis[mask_measured] = height_pred_diff[mask_measured]
-            ax12.imshow(height_pred_diff_vis.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.set_title('Label')
+            ax6.imshow(height_rigid.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 
@@ -476,10 +343,7 @@ def main():
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,
-                      map_consistency=args.map_consistency,
                       debug=args.debug, vis=args.vis,
-                      lidar_hm_weight=args.lidar_hm_weight, traj_hm_weight=args.traj_hm_weight,
-                      hdiff_weight=args.hdiff_weight,
                       only_front_hm=args.only_front_hm)
     trainer.train()
 

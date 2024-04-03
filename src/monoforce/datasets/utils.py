@@ -205,7 +205,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
 
     for sample_i in sample_range:
-        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
+        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 2)
         fig = plt.figure(figsize=(5 * n_cols, 5 * n_rows))
         gs = mpl.gridspec.GridSpec(n_rows, n_cols)
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
@@ -213,19 +213,16 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
         # print('sample', sample_i, 'id', ds.ids[sample_i])
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, pts = sample
-        height_lidar, mask_lidar = hm_lidar[:, 0], hm_lidar[:, 1]
-        height_traj, mask_traj = hm_traj[:, 0], hm_traj[:, 1]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid, pts = sample
+        height_rigid, mask_rigid = hm_rigid[:, 0], hm_rigid[:, 1]
         if modelf is not None:
             with torch.no_grad():
                 # replace height maps with model output
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
                 inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                voxel_feats = model.get_voxels(*inputs)
-                height_lidar, height_diff = model.bevencode(voxel_feats)
-                height_traj = height_lidar - height_diff
+                height_rigid = model(*inputs)
                 # replace lidar cloud with model height map output
-                pts = hm_to_cloud(height_traj.squeeze(), dphys_cfg).T
+                pts = hm_to_cloud(height_rigid.squeeze(), dphys_cfg).T
                 pts = pts.unsqueeze(0)
 
         frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
@@ -259,18 +256,13 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
             plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
             plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
 
-            ax = plt.subplot(gs[:, -3:-2])
-            plt.imshow(height_lidar[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
-            plt.colorbar()
-
             ax = plt.subplot(gs[:, -2:-1])
-            plt.imshow(height_traj[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.imshow(height_rigid[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             plt.axis('off')
             plt.colorbar()
 
             if save:
-                save_dir = os.path.join(path, 'visuals_pred' if modelf is not None else 'visuals')
+                save_dir = os.path.join(ds.path, 'visuals_pred' if modelf is not None else 'visuals')
                 os.makedirs(save_dir, exist_ok=True)
                 imname = f'{ds.ids[sample_i]}.jpg'
                 imname = os.path.join(save_dir, imname)
