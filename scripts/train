@@ -4,10 +4,6 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import ConcatDataset, DataLoader
-from pytorch3d.loss import chamfer_distance
-from pytorch3d.structures import Pointclouds
-from monoforce.cloudproc import hm_to_cloud
-from monoforce.transformations import transform_cloud
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets import RobinGas, RobinGasVis
@@ -48,8 +44,7 @@ class Trainer:
     Args:
     dataset: str, dataset name
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
-    data_aug_conf: dict, data augmentation configuration
-    grid_conf: dict, grid configuration
+    lss_cfg: dict, LSS model configuration
     bsz: int, batch size
     nworkers: int, number of workers for dataloaders
     lr: float, learning rate

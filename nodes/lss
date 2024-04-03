@@ -62,8 +62,6 @@ class LSS:
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         # grid map publisher
         self.hm_rigid_pub = rospy.Publisher('/grid_map/rigid', GridMap, queue_size=1)
-        self.hm_geom_pub = rospy.Publisher('/grid_map/geom', GridMap, queue_size=1)
-        self.hm_diff_pub = rospy.Publisher('/grid_map/diff', GridMap, queue_size=1)
 
         # height map publisher
         self.hm_pub = rospy.Publisher('/height_map', PointCloud2, queue_size=1)
@@ -252,22 +250,18 @@ class LSS:
         inputs = [i.to(self.device) for i in inputs]
 
         # model inference
-        voxel_feats = self.model.get_voxels(*inputs)
-        height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
-        height_pred_rigid = height_pred_geom - height_pred_diff
+        height_pred_rigid = self.model(*inputs)
 
         rospy.logdebug('Predicted height map shape: %s' % str(height_pred_rigid.shape))
 
         # publish height map as grid map
         stamp = rospy.Time.now()
-        for height, pub in zip([height_pred_rigid, height_pred_geom, height_pred_diff],
-                               [self.hm_rigid_pub, self.hm_geom_pub, self.hm_diff_pub]):
-            height = height.squeeze().cpu().numpy()
-            grid_msg = height_map_to_gridmap_msg(height, self.dphys_cfg.grid_res,
-                                                 xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
-            grid_msg.info.header.stamp = stamp
-            grid_msg.info.header.frame_id = self.hm_frame
-            pub.publish(grid_msg)
+        height = height_pred_rigid.squeeze().cpu().numpy()
+        grid_msg = height_map_to_gridmap_msg(height, self.dphys_cfg.grid_res,
+                                             xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        grid_msg.info.header.stamp = stamp
+        grid_msg.info.header.frame_id = self.hm_frame
+        self.hm_rigid_pub.publish(grid_msg)
 
         # publish height map as point cloud
         cloud_msg = height_map_to_point_cloud_msg(height_pred_rigid.squeeze().cpu().numpy(),
