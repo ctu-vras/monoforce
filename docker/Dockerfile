@@ -26,7 +26,9 @@ RUN apt-get update && apt-get install -y \
 # Install python dependencies
 RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
 RUN pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install python requirements
+COPY requirements.txt /monoforce/requirements.txt
+RUN pip install -r /monoforce/requirements.txt
 
 WORKDIR /monoforce
