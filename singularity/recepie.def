@@ -34,9 +34,8 @@ From: ros:noetic-perception
     apt update
     apt install -y ${packages}
 
-    # Pytorch
-    pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 tensorboard --index-url https://download.pytorch.org/whl/cu118
     # Install python packages
+    pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 tensorboard --index-url https://download.pytorch.org/whl/cu118
     pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
     pip install -r ${SINGULARITY_ROOTFS}/requirements.txt
 

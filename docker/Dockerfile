@@ -28,7 +28,22 @@ RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url h
 RUN pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 
 # Install python requirements
-COPY requirements.txt /monoforce/requirements.txt
-RUN pip install -r /monoforce/requirements.txt
+ENV CATKIN_WS /root/catkin_ws
+COPY requirements.txt .
+RUN pip install -r --no-cache-dir requirements.txt
 
-WORKDIR /monoforce
+# Set python3 as default
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Copy ROS package
+COPY ./ $CATKIN_WS/src/monoforce/
+
+# Build ROS package
+WORKDIR $CATKIN_WS
+RUN catkin config \
+      --extend /opt/ros/$ROS_DISTRO \
+      --cmake-args \
+        -DCMAKE_BUILD_TYPE=Release && \
+    catkin build && \
+    sed -i '/exec "$@"/i \
+            source "/root/catkin_ws/devel/setup.bash"' /ros_entrypoint.sh

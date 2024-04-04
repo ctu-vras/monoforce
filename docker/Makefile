@@ -5,8 +5,8 @@ help:
 	@echo "-- Help Menu"
 	@echo ""
 	@echo "   1. make build              - build all images"
-	# @echo "   1. make pull             - pull all images"
-	@echo "   1. make clean              - remove all images"
+	@echo "   2. make clean              - remove all images"
+	@echo "   3. make run                - run the container"
 	@echo ""
 
 build:
@@ -14,3 +14,6 @@ build:
 
 clean:
 	@docker rmi -f ros:monoforce
+
+run:
+	@docker run -it --rm --net=host -v $(pwd)/../:/root/catkin_ws/src/monoforce/ ros:monoforce /bin/bash

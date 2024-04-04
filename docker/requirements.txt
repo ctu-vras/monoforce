@@ -16,12 +16,10 @@ scikit-learn==1.0
 six==1.15.0
 segmentation_models_pytorch==0.2.1
 albumentations==1.2.1
-open3d==0.13.0
+open3d==0.10.0
 matplotlib==3.4.3
-vtk==9.2.6
-mayavi==4.8.1
 opencv_python==4.9.0.80
-Pillow==10.0.0
+Pillow==9.5.0
 pyransac3d==0.6.0
 ransac==1.0.4
 scipy==1.8.1
