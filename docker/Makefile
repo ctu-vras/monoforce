@@ -16,4 +16,6 @@ clean:
 	@docker rmi -f ros:monoforce
 
 run:
-	@docker run -it --rm --net=host -v $(pwd)/../:/root/catkin_ws/src/monoforce/ ros:monoforce /bin/bash
+	@docker run -it --rm --net=host --gpus all \
+        -v /media/ruslan/SSD/data/robingas/:/root/catkin_ws/src/monoforce/data/robingas/ \
+		-v $(pwd)/../:/root/catkin_ws/src/monoforce/ ros:monoforce /bin/bash

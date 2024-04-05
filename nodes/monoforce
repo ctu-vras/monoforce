@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import RobinGasVis, robingas_husky_seq_paths
+from monoforce.datasets import RobinGasVis, robingas_tradr_seq_paths, robingas_husky_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.models import State, RigidBodySoftTerrain
 from monoforce.ros import height_map_to_gridmap_msg, to_path, to_tf, xyz_to_point
@@ -23,15 +23,23 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 class MonoForce:
     def __init__(self, name='monoforce'):
+        self.robot = rospy.get_param('~robot', 'husky')
+        # choose data sample
+        seqs = robingas_husky_seq_paths if self.robot == 'husky' else robingas_tradr_seq_paths
+        seq_i = rospy.get_param('~seq_i', np.random.choice(range(len(seqs))))
+        self.data_seq = seqs[seq_i]
+
         self.dphys_cfg = DPhysConfig()
         self.pkg_path = rospkg.RosPack().get_path('monoforce')
-        self.dphys_config_path = rospy.get_param('~dphys_config_path', os.path.join(self.pkg_path, 'config/dphys_cfg.yaml'))
+        self.dphys_config_path = rospy.get_param('~dphys_config_path',
+                                                 os.path.join(self.pkg_path, 'config/dphys_cfg.yaml'))
         assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
         self.dphys_cfg.from_yaml(self.dphys_config_path)
         self.dphys_cfg.from_rosparams(node_name=name)
 
         # load LSS config
-        self.lss_config_path = rospy.get_param('~lss_config_path', os.path.join(self.pkg_path, 'config/lss_cfg.yaml'))
+        self.lss_config_path = rospy.get_param('~lss_config_path',
+                                               os.path.join(self.pkg_path, f'config/lss_cfg_{self.robot}.yaml'))
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
 
@@ -43,8 +51,7 @@ class MonoForce:
         self.map_frame = rospy.get_param('~map_frame', 'map')
         self.robot_initial_frame = rospy.get_param('~robot_initial_frame', 'base_link0')
         self.robot_frame = rospy.get_param('~robot_frame', 'base_link')
-        # self.camera_frames = [cam.lower() for cam in self.data_aug_conf['cams']]
-        self.camera_frames = ['camera_front', 'camera_left', 'camera_rear', 'camera_right']
+        self.camera_frames = None  # will be set from the data sequence
         self.modelf = rospy.get_param('~lss_weights')
         self.model = self.load_model()
 
@@ -57,8 +64,8 @@ class MonoForce:
         self.cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
         self.path_pub = rospy.Publisher('path', Path, queue_size=1)
         self.path_gt_pub = rospy.Publisher('path_gt', Path, queue_size=1)
-        self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
-        self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
+        self.img_pubs = None
+        self.caminfo_pubs = None
         self.tf_broadcast = tf2_ros.TransformBroadcaster()
         self.forces_pub = rospy.Publisher('forces', MarkerArray, queue_size=1)
 
@@ -237,19 +244,22 @@ class MonoForce:
         return states, robot_points.detach()
 
     def run(self):
-        # choose data sample
-        seq_i = rospy.get_param('~seq_i', np.random.choice(range(len(robingas_husky_seq_paths))))
-        data_seq = robingas_husky_seq_paths[seq_i]
-        ds = RobinGasVis(data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
-        rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), data_seq))
+        ds = RobinGasVis(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
+        rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
         sample_i = rospy.get_param('~sample_i', np.random.choice(range(len(ds))))
         rospy.loginfo('Using sample %d' % sample_i)
 
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[sample_i]
+        self.camera_frames = ds.cameras
+        self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
+        self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
+
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid, lidar_pts = ds[sample_i]
         points = lidar_pts.numpy().T
 
         traj = ds.get_traj(sample_i)
         poses_gt = traj['poses']
+
+        map_pose = ds.get_pose(sample_i)
 
         imgs_raw = []
         Ks = []
@@ -262,13 +272,8 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            # height_pred = self.model(*inputs)
-            voxel_feats = self.model.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
-            height_pred_rigid = height_pred_geom - height_pred_diff
-            height_pred_rigid = height_pred_rigid.squeeze().cpu().numpy()
-            height_pred_geom = height_pred_geom.squeeze().cpu().numpy()
-            height_pred_diff = height_pred_diff.squeeze().cpu().numpy()
+            height_pred = self.model(*inputs)
+            height_pred = height_pred.squeeze().cpu().numpy()
 
         rate = rospy.Rate(self.rate)
         pose_i = 0
@@ -282,11 +287,8 @@ class MonoForce:
                 # point cloud
                 self.publish_cloud(points, stamp)
                 # grid map
-                self.publish_gridmap(hm_lidar[0], stamp, self.gm_lidar_pub, mask=hm_lidar[1])
-                self.publish_gridmap(hm_traj[0], stamp, self.gm_traj_pub, mask=hm_traj[1])
-                self.publish_gridmap(height_pred_rigid, stamp, self.gm_rigid_pub)
-                self.publish_gridmap(height_pred_geom, stamp, self.gm_geom_pub)
-                self.publish_gridmap(height_pred_diff, stamp, self.gm_diff_pub)
+                self.publish_gridmap(hm_rigid[0], stamp, self.gm_lidar_pub, mask=hm_rigid[1])
+                self.publish_gridmap(height_pred, stamp, self.gm_rigid_pub)
                 # images
                 self.publish_images(imgs_raw, Ks, stamp)
 
@@ -298,9 +300,8 @@ class MonoForce:
                 # v = 0.4
                 # w = -0.13
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
-                states, robot_points = self.predict_states(height_pred_rigid, v=v, w=w)
-                # states, robot_points = self.predict_poses(hm_lidar[0].cpu().numpy(), v=v, w=w)
-                # states, robot_points = self.predict_states(height_pred_geom, v=v, w=w)
+                states, robot_points = self.predict_states(height_pred, v=v, w=w)
+                # states, robot_points = self.predict_poses(hm_rigid[0].cpu().numpy(), v=v, w=w)
                 poses = self.poses_from_states(states)
                 rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
                 forces = states[4].cpu().numpy()

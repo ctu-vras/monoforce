@@ -24,16 +24,20 @@ roscore &
 ROSCORE_PID=$!
 sleep 1
 
-rviz -d ../config/rviz/monoforce.rviz &
+rviz -d ../config/rviz/monoforce_tradr.rviz &
 RVIZ_PID=$!
 
 MONOFORCE_DIR=$(abspath "..")
+#DATA_DIR=$(abspath "../data/robingas/")
+DATA_DIR=/media/ruslan/SSD1/data/robingas/
 
 docker run \
   -it \
   --rm \
+  --gpus all \
   --net=host \
   -v ${MONOFORCE_DIR}:/root/catkin_ws/src/monoforce/ \
+  -v ${DATA_DIR}:/root/catkin_ws/src/monoforce/data/robingas/ \
   ros:monoforce \
   /bin/bash -c \
   "cd /root/catkin_ws/; \
@@ -42,7 +46,7 @@ docker run \
           -DCMAKE_BUILD_TYPE=Release; \
       catkin build; \
       source devel/setup.bash; \
-      roslaunch monoforce lss.launch rviz:=false"
+      roslaunch monoforce monoforce.launch rviz:=false robot:=tradr"
 
 wait $ROSCORE_PID
 wait $RVIZ_PID

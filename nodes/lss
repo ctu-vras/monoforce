@@ -448,7 +448,7 @@ def main():
     dphys_cfg.from_yaml(dphys_config_path)
 
     # load LSS config
-    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss_cfg.yaml'))
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(pkg_path, 'config/lss_cfg_tradr.yaml'))
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_config = read_yaml(lss_config_path)
     grid_conf = lss_config['grid_conf']

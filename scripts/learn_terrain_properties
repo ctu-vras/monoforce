@@ -285,7 +285,7 @@ def main():
     dhpys_cfg.robot_terrain_interaction_model = args.control_model
     dhpys_cfg.device = args.device
 
-    lss_cfg = read_yaml('../config/lss_cfg.yaml')
+    lss_cfg = read_yaml('../config/lss_cfg_tradr.yaml')
 
     learner = Learner(data_path=args.data_path, dphys_cfg=dhpys_cfg, lss_cfg=lss_cfg,
                       vis=args.visualize, save_data=args.save_data,

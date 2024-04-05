@@ -583,7 +583,7 @@ def traversed_cloud_demo():
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     dphys_cfg.from_yaml(config_path)
 
-    lss_cfg_path = os.path.join(data_dir, '../config/lss_cfg.yaml')
+    lss_cfg_path = os.path.join(data_dir, '../config/lss_cfg_tradr.yaml')
     assert os.path.isfile(lss_cfg_path)
     lss_cfg = read_yaml(lss_cfg_path)
 

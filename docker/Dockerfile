@@ -21,7 +21,11 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-ros-numpy \
     ros-noetic-jsk-rviz-plugins \
     ros-noetic-rviz \
-    ros-noetic-grid-map
+    ros-noetic-grid-map \
+    ros-noetic-husky-description \
+    ros-noetic-xacro \
+    ros-noetic-robot-state-publisher \
+    ros-noetic-joint-state-publisher
 
 # Install python dependencies
 RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
@@ -30,7 +34,7 @@ RUN pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 # Install python requirements
 ENV CATKIN_WS /root/catkin_ws
 COPY requirements.txt .
-RUN pip install -r --no-cache-dir requirements.txt
+RUN pip install -r requirements.txt
 
 # Set python3 as default
 RUN ln -s /usr/bin/python3 /usr/bin/python
@@ -47,3 +51,7 @@ RUN catkin config \
     catkin build && \
     sed -i '/exec "$@"/i \
             source "/root/catkin_ws/devel/setup.bash"' /ros_entrypoint.sh
+
+# Clean up
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
