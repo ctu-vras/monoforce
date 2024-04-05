@@ -190,7 +190,7 @@ class Trainer:
         weights = weights[mask_valid]
 
         # compute weighted loss
-        loss = (self.loss_fn(height_pred, height_gt.softmax(dim=0)) * weights).mean()
+        loss = (self.loss_fn(height_pred * weights, (height_gt * weights).softmax(dim=0))).mean()
         return loss
 
     def epoch(self, train=True):
