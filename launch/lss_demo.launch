@@ -3,8 +3,9 @@
     <arg name="rviz" default="true"/>
     <arg name="diffphys" default="false" doc="Whether to run the diff physics node or not"/>
     <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
-    <arg name="robot" default="husky" doc="Robot type: husky, tradr or marv"/>
-    <arg name="weights" default="$(dirname)/../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt"/>
+    <arg name="robot" default="tradr" doc="Robot type: husky, tradr or marv"/>
+    <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
+<!--     <arg name="weights" default="$(dirname)/../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt"/> -->
 <!--     <arg name="weights" default="$(dirname)/../config/tb_runs/lss_rellis3d_2024_03_06_16_07_52/train_lss.pt"/> -->
 
     <!-- Husky robot arguments -->
@@ -54,7 +55,7 @@
         <arg name="hm_frame" value="base_link"/>
         <arg name="dphys_config_path" value="$(arg dphys_config_path)"/>
         <arg name="lss_config_path" value="$(arg lss_config_path)"/>
-        <arg name="model_weights" value="$(arg weights)"/>
+        <arg name="weights" value="$(arg weights)"/>
         <arg name="max_msgs_delay" value="0.2"/>
         <arg name="max_stale_msg_delay" value="1.0"/>
     </include>

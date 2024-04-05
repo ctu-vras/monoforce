@@ -1,7 +1,7 @@
 import os
 import cv2
 import matplotlib.pyplot as plt
-from matplotlib import cm
+from matplotlib import cm, pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
@@ -291,3 +291,41 @@ if __name__ == '__main__':
     draw_coord_frame(T1)
     # Show the figure
     mlab.show()
+
+
+def vis_dem_data(height, traj, img=None, cfg=DPhysConfig()):
+    assert len(height.shape) == 2, 'Height map should be 2D'
+    assert len(traj['poses'].shape) == 3, 'Trajectory should be 3D'
+    plt.figure(figsize=(20, 10))
+    # add subplot
+    ax = plt.subplot(131)
+    ax.set_title('Height map')
+    ax.imshow(height.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
+    x, y = traj['poses'][:, 0, 3], traj['poses'][:, 1, 3]
+    h, w = height.shape
+    x_grid, y_grid = x / cfg.grid_res + w / 2, y / cfg.grid_res + h / 2
+    plt.plot(x_grid, y_grid, 'rx-', label='Robot trajectory')
+    time_ids = np.linspace(1, len(x_grid), len(x_grid), dtype=int)
+    # plot time indices for each waypoint in a trajectory
+    for i, txt in enumerate(time_ids):
+        ax.annotate(txt, (x_grid[i], y_grid[i]))
+    plt.legend()
+
+    # visualize heightmap as a surface in 3D
+    X = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+    Y = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+    X, Y = np.meshgrid(X, Y)
+    Z = height
+    ax = plt.subplot(132, projection='3d')
+    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+    ax.set_title('Height map')
+    set_axes_equal(ax)
+
+    if img is not None:
+        # visualize image
+        ax = plt.subplot(133)
+        ax.imshow(img)
+        ax.set_title('Camera view')
+        ax.axis('off')
+
+    plt.show()

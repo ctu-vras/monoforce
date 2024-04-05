@@ -4,7 +4,7 @@
     <arg name="img_topics" default="[]"/>
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
-    <arg name="model_weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
+    <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
     <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg.yaml"/>
     <arg name="max_msgs_delay" default="0.1"/>
@@ -20,7 +20,7 @@
             img_topics: $(arg img_topics)
             camera_info_topics: $(arg camera_info_topics)
             hm_frame: $(arg hm_frame)
-            model_weights: $(arg model_weights)
+            weights: $(arg weights)
             max_msgs_delay: $(arg max_msgs_delay)
             max_stale_msg_delay: $(arg max_stale_msg_delay)
             calib_path: $(arg calib_path)

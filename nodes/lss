@@ -32,7 +32,7 @@ class LSS:
     def __init__(self, dphys_cfg: DPhysConfig,
                  data_aug_conf: dict,
                  grid_conf: dict,
-                 model_weights=None,
+                 weights=None,
                  hm_frame='base_link',
                  img_topics=[],
                  camera_info_topics=[],
@@ -44,7 +44,7 @@ class LSS:
         self.grid_conf = grid_conf
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.model = self.load_model(model_weights)
+        self.model = self.load_model(weights)
 
         self.hm_frame = hm_frame
 
@@ -282,7 +282,7 @@ class LSSVis(LSS):
                  dphys_cfg: DPhysConfig,
                  data_aug_conf: dict,
                  grid_conf: dict,
-                 model_weights=None,
+                 weights=None,
                  hm_frame='base_link',
                  img_topics=[],
                  camera_info_topics=[],
@@ -295,7 +295,7 @@ class LSSVis(LSS):
             dphys_cfg=dphys_cfg,
             data_aug_conf=data_aug_conf,
             grid_conf=grid_conf,
-            model_weights=model_weights,
+            weights=weights,
             hm_frame=hm_frame,
             img_topics=img_topics,
             camera_info_topics=camera_info_topics,
@@ -457,14 +457,14 @@ def main():
     img_topics = rospy.get_param('~img_topics', [])
     camera_info_topics = rospy.get_param('~camera_info_topics', [])
     hm_frame = rospy.get_param('~hm_frame', 'base_link')
-    model_weights = rospy.get_param('~model_weights', os.path.join(pkg_path, 'config/weights/lss/lss.pt'))
+    weights = rospy.get_param('~weights', os.path.join(pkg_path, 'config/weights/lss/lss.pt'))
     max_msgs_delay = rospy.get_param('~max_msgs_delay', 0.1)
     max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.2)
     calib_path = rospy.get_param('~calib_path', '')
 
     Node = LSSVis if rospy.get_param('~debug', False) else LSS
     node = Node(dphys_cfg=dphys_cfg, data_aug_conf=data_aug_conf, grid_conf=grid_conf,
-                model_weights=model_weights,
+                weights=weights,
                 img_topics=img_topics, camera_info_topics=camera_info_topics,
                 hm_frame=hm_frame,
                 max_msgs_delay=max_msgs_delay,

@@ -13,7 +13,6 @@ from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
-from ..vis import set_axes_equal
 from ..utils import normalize
 from .utils import load_calib
 from .coco import COCO_CATEGORIES
@@ -851,7 +850,7 @@ def traversed_height_map():
 
     cfg = DPhysConfig()
 
-    ds = DEMPathData(path, dphys_cfg=cfg)
+    ds = RobinGas(path, dphys_cfg=cfg)
     i = np.random.choice(range(len(ds)))
 
     # trajectory poses
@@ -884,6 +883,8 @@ def traversed_height_map():
 
 
 def vis_hm_weights():
+    from ..vis import set_axes_equal
+
     cfg = DPhysConfig()
 
     # circle mask: all points within a circle of radius 1 m are valid
@@ -907,6 +908,8 @@ def vis_hm_weights():
 
 
 def vis_estimated_height_map():
+    from ..vis import set_axes_equal
+
     cfg = DPhysConfig()
     cfg.grid_res = 0.1
     cfg.d_max = 12.8

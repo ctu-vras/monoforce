@@ -12,17 +12,13 @@ from monoforce.models.lss.tools import ego_to_cam, get_only_in_img_mask, denorma
 
 from ..config import DPhysConfig
 from ..transformations import xyz_rpy_to_matrix
-from ..vis import set_axes_equal
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
-from mpl_toolkits.mplot3d import Axes3D
-
 
 __all__ = [
     'get_robingas_data',
     'get_kkt_data',
     'get_simple_data',
-    'vis_dem_data',
     'load_calib',
     'explore_data'
 ]
@@ -104,44 +100,6 @@ def get_simple_data(cfg: DPhysConfig):
     return height, traj
 
 
-def vis_dem_data(height, traj, img=None, cfg=DPhysConfig()):
-    assert len(height.shape) == 2, 'Height map should be 2D'
-    assert len(traj['poses'].shape) == 3, 'Trajectory should be 3D'
-    plt.figure(figsize=(20, 10))
-    # add subplot
-    ax = plt.subplot(131)
-    ax.set_title('Height map')
-    ax.imshow(height.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
-    x, y = traj['poses'][:, 0, 3], traj['poses'][:, 1, 3]
-    h, w = height.shape
-    x_grid, y_grid = x / cfg.grid_res + w / 2, y / cfg.grid_res + h / 2
-    plt.plot(x_grid, y_grid, 'rx-', label='Robot trajectory')
-    time_ids = np.linspace(1, len(x_grid), len(x_grid), dtype=int)
-    # plot time indices for each waypoint in a trajectory
-    for i, txt in enumerate(time_ids):
-        ax.annotate(txt, (x_grid[i], y_grid[i]))
-    plt.legend()
-
-    # visualize heightmap as a surface in 3D
-    X = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-    Y = np.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-    X, Y = np.meshgrid(X, Y)
-    Z = height
-    ax = plt.subplot(132, projection='3d')
-    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
-    ax.set_title('Height map')
-    set_axes_equal(ax)
-
-    if img is not None:
-        # visualize image
-        ax = plt.subplot(133)
-        ax.imshow(img)
-        ax.set_title('Camera view')
-        ax.axis('off')
-
-    plt.show()
-
-
 def load_calib(calib_path):
     calib = {}
     # read camera calibration
@@ -165,22 +123,6 @@ def load_calib(calib_path):
     calib['clearance'] = np.abs(np.asarray(calib['transformations']['T_base_link__base_footprint']['data'], dtype=np.float32).reshape((4, 4))[2, 3])
 
     return calib
-
-
-if __name__ == '__main__':
-    cfg = DPhysConfig()
-    # cfg.d_min, cfg.d_max = -12.75, 12.85
-    # cfg.grid_res = 0.1
-
-    cfg.d_min, cfg.d_max = -8., 8.
-    cfg.grid_res = 0.2
-
-    hm, traj = get_robingas_data(cfg)
-    vis_dem_data(hm['z'], traj, cfg)
-    # height, traj = get_kkt_data(cfg)
-    # visualize_data(height, traj, cfg)
-    # height, traj = get_simple_data(cfg)
-    # visualize_data(height, traj, cfg)
 
 
 def explore_data(ds, modelf=None, sample_range='random', save=False):
