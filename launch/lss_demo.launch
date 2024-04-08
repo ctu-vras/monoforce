@@ -22,7 +22,7 @@
     <arg if="$(eval robot == 'husky')" name="calib_path" default="$(dirname)/../data/robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/calibration/"/>
 
     <!-- Tradr robot arguments -->
-    <arg if="$(eval robot == 'tradr')" name="lss_config_path" default="$(dirname)/../config/lss_cfg.yaml"/>
+    <arg if="$(eval robot == 'tradr')" name="lss_config_path" default="$(dirname)/../config/lss_cfg_tradr.yaml"/>
     <arg if="$(eval robot == 'tradr')" name="bag" default="$(dirname)/../data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22.bag"/>
     <arg if="$(eval robot == 'tradr')" name="img_topics" default="['/camera_front/image_rect/compressed',
                                                                    '/camera_left/image_rect/compressed',

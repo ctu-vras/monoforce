@@ -29,7 +29,7 @@ RVIZ_PID=$!
 
 MONOFORCE_DIR=$(abspath "..")
 #DATA_DIR=$(abspath "../data/robingas/")
-DATA_DIR=/media/ruslan/SSD1/data/robingas/
+DATA_DIR=/media/ruslan/data/robingas/
 
 docker run \
   -it \
@@ -38,7 +38,7 @@ docker run \
   --net=host \
   -v ${MONOFORCE_DIR}:/root/catkin_ws/src/monoforce/ \
   -v ${DATA_DIR}:/root/catkin_ws/src/monoforce/data/robingas/ \
-  ros:monoforce \
+  agishrus/monoforce \
   /bin/bash -c \
   "cd /root/catkin_ws/; \
   catkin config \
