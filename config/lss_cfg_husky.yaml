@@ -1,4 +1,6 @@
 data_aug_conf:
+  H: 1200
+  W: 1920
   bot_pct_lim:
   - 0.0
   - 0.0

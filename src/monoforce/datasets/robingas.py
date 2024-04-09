@@ -730,10 +730,10 @@ class RobinGas(DEMPathData):
 
         return points, colors
 
-    def get_rigid_heightmap(self, i, rigid_classes=None):
-        if rigid_classes is None:
-            rigid_classes = ['tree', 'person', 'building']
-        seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
+    def get_terrain_heightmap(self, i, terrain_classes=None):
+        if terrain_classes is None:
+            terrain_classes = ['tree', 'person', 'building']
+        seg_points, _ = self.get_semantic_cloud(i, classes=terrain_classes, vis=False)
         traj_points = self.estimated_footprint_traj_points(i)
         points = np.concatenate((seg_points, traj_points), axis=0)
         hm = self.estimate_heightmap(points)
@@ -743,11 +743,11 @@ class RobinGas(DEMPathData):
 
     def get_sample(self, i):
         img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
-        hm_rigid = self.get_rigid_heightmap(i)
+        hm_terrain = self.get_terrain_heightmap(i)
         if self.only_front_hm:
-            mask = self.crop_front_height_map(hm_rigid[1:2], only_mask=True)
-            hm_rigid[1] = hm_rigid[1] * torch.from_numpy(mask)
-        return img, rot, tran, intrin, post_rot, post_tran, hm_rigid
+            mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
+            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
+        return img, rot, tran, intrin, post_rot, post_tran, hm_terrain
 
 
 class RobinGasVis(RobinGas):
@@ -756,12 +756,12 @@ class RobinGasVis(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_rigid = self.get_rigid_heightmap(i)
+        hm_terrain = self.get_terrain_heightmap(i)
         if self.only_front_hm:
-            mask = self.crop_front_height_map(hm_rigid[1:2], only_mask=True)
-            hm_rigid[1] = hm_rigid[1] * torch.from_numpy(mask)
+            mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
+            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid, lidar_pts
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_terrain, lidar_pts
 
 
 def heightmap_demo():
@@ -866,7 +866,7 @@ def traversed_height_map():
     height_geom = heightmap['z']
     x_grid, y_grid = heightmap['x'], heightmap['y']
     # height map: optimized from robot-terrain interaction model
-    height_rigid = ds.get_traj_dphyics_terrain(i)
+    height_terrain = ds.get_traj_dphyics_terrain(i)
 
     plt.figure(figsize=(12, 12))
     h, w = height_geom.shape
@@ -875,7 +875,7 @@ def traversed_height_map():
     plt.imshow(height_geom.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(132)
-    plt.imshow(height_rigid.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
+    plt.imshow(height_terrain.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(133)
     plt.imshow(img)

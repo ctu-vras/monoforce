@@ -141,6 +141,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
 
     if sample_range == 'random':
         sample_range = [np.random.choice(range(len(ds)))]
+        print('Selected data sample #{}'.format(sample_range[0]))
     elif sample_range == 'all':
         sample_range = tqdm(range(len(ds)), total=len(ds))
     else:
