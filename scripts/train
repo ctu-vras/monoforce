@@ -3,7 +3,7 @@
 import os
 import torch
 import numpy as np
-from torch.utils.data import ConcatDataset, DataLoader
+from torch.utils.data import ConcatDataset, DataLoader, Subset
 from monoforce.models.lss.tools import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
 from monoforce.datasets import RobinGas, RobinGasVis
@@ -30,9 +30,12 @@ def arg_parser():
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     # parser.add_argument('--dataset', type=str, default='oru', help='Dataset name')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
-    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
-    parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
+    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
+    parser.add_argument('--vis', type=str2bool, default=True, help='Visualize training samples')
     parser.add_argument('--only_front_hm', type=str2bool, default=False, help='Use only front heightmap')
+    parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
+    parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
+    parser.add_argument('--hdiff_weight', type=float, default=0.001, help='Weight for height difference loss')
 
     return parser.parse_args()
 
@@ -68,8 +71,8 @@ class Trainer:
                  pretrained_model_path=None,
                  debug=False,
                  vis=False,
-                 lidar_hm_weight=1.0,
-                 traj_hm_weight=50.0,
+                 geom_hm_weight=1.0,
+                 terrain_hm_weight=50.0,
                  hdiff_weight=0.0001,
                  only_front_hm=False):
 
@@ -84,8 +87,8 @@ class Trainer:
         self.train_counter = 0
         self.val_counter = 0
 
-        self.lidar_hm_weight = lidar_hm_weight
-        self.traj_hm_weight = traj_hm_weight
+        self.geom_hm_weight = geom_hm_weight
+        self.terrain_hm_weight = terrain_hm_weight
         self.hdiff_weight = hdiff_weight
 
         self.only_front_hm = only_front_hm
@@ -93,8 +96,7 @@ class Trainer:
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
         self.model = self.load_model(modelf=pretrained_model_path)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        # self.loss_fn = torch.nn.MSELoss(reduction='none')
-        self.loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
+        self.loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
                                     f'lss_{dataset}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
@@ -142,20 +144,14 @@ class Trainer:
                 train_ds_vis = DataVis(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
                 explore_data(train_ds_vis)
 
-            if debug:
-                print('Debug mode: using small datasets')
-                # randomly sample from the dataset
-                train_ids = np.random.choice(len(train_ds), int(0.02 * len(train_ds)), replace=False)
-                val_ids = np.random.choice(len(val_ds), int(0.01 * len(val_ds)), replace=False)
-            else:
-                # randomly select a subset of the dataset
-                val_ds_size = int(val_fraction * len(train_ds))
-                # if map consistency is enabled, use a sequential part of the dataset
-                val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
-                train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
-                assert len(train_ids) + len(val_ids) == len(train_ds)
-                # check that there is no overlap between train and val ids
-                assert len(np.intersect1d(train_ids, val_ids)) == 0
+            # randomly select a subset of the dataset
+            val_ds_size = int(val_fraction * len(train_ds))
+            # if map consistency is enabled, use a sequential part of the dataset
+            val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
+            train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
+            assert len(train_ids) + len(val_ids) == len(train_ds)
+            # check that there is no overlap between train and val ids
+            assert len(np.intersect1d(train_ids, val_ids)) == 0
 
             train_ds = train_ds[train_ids]
             val_ds = val_ds[val_ids]
@@ -168,6 +164,10 @@ class Trainer:
         # concatenate datasets
         train_dataset = ConcatDataset(train_datasets)
         val_dataset = ConcatDataset(val_datasets)
+        if debug:
+            print('Debug mode: using small datasets')
+            train_dataset = Subset(train_dataset, np.random.choice(len(train_dataset), 32, replace=False))
+            val_dataset = Subset(val_dataset, np.random.choice(len(val_dataset), 8, replace=False))
         print('Concatenated datasets length: train %i, valid: %i' % (len(train_dataset), len(val_dataset)))
 
         # create dataloaders
@@ -176,7 +176,24 @@ class Trainer:
 
         return train_loader, val_loader
 
-    def rigid_hm_loss(self, height_pred, height_gt, weights=None):
+    def geom_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+
+        # handle imbalanced height distribution (increase weights for higher heights / obstacles)
+        h_mean = height_gt[weights.bool()].mean()
+        # the higher the difference from mean the higher the weight
+        weights_h = 1.0 + torch.abs(height_gt - h_mean)
+        # apply height difference weights
+        weights = weights * weights_h
+
+        # compute weighted loss
+        loss = (self.loss_fn(height_pred * weights, height_gt * weights)).mean()
+        return loss
+
+    def terrain_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
         if weights is None:
             weights = torch.ones_like(height_gt)
@@ -190,7 +207,7 @@ class Trainer:
         weights = weights[mask_valid]
 
         # compute weighted loss
-        loss = (self.loss_fn(height_pred * weights, (height_gt * weights).softmax(dim=0))).mean()
+        loss = (self.loss_fn(height_pred * weights, height_gt * weights)).mean()
         return loss
 
     def epoch(self, train=True):
@@ -206,16 +223,26 @@ class Trainer:
         epoch_loss = 0.0
         for batch in tqdm(loader, total=len(loader)):
             batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid = batch
-            height_rigid, weights_rigid = hm_rigid[:, 0:1], hm_rigid[:, 1:2]
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain = batch
+            height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
+            height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
             if train:
                 self.optimizer.zero_grad()
 
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            height_pred = self.model(*inputs)
+            voxel_feats = self.model.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+            height_pred_terrain = height_pred_geom - height_pred_diff
 
-            loss = self.rigid_hm_loss(height_pred, height_rigid, weights_rigid)
+            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom)
+            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain)
+
+            # add height difference loss
+            loss_hdiff = height_pred_diff.std()
+
+            loss = self.geom_hm_weight * loss_geom + self.terrain_hm_weight * loss_terrain + self.hdiff_weight * loss_hdiff
+
             if train:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
@@ -223,6 +250,9 @@ class Trainer:
             epoch_loss += loss.item()
 
             counter += 1
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_terrain", loss_terrain, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
         if len(loader) > 0:
@@ -265,30 +295,38 @@ class Trainer:
 
     def vis_pred(self, loader):
         fig = plt.figure(figsize=(20, 12))
-        ax1 = fig.add_subplot(241)
-        ax2 = fig.add_subplot(242)
-        ax3 = fig.add_subplot(243)
-        ax4 = fig.add_subplot(244)
-        ax5 = fig.add_subplot(245)
-        ax6 = fig.add_subplot(246)
+        ax1 = fig.add_subplot(341)
+        ax2 = fig.add_subplot(342)
+        ax3 = fig.add_subplot(343)
+        ax4 = fig.add_subplot(344)
+        ax5 = fig.add_subplot(345)
+        ax6 = fig.add_subplot(346)
+        ax7 = fig.add_subplot(347)
+        ax8 = fig.add_subplot(348)
+        ax9 = fig.add_subplot(349)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9]
         for ax in axes:
             ax.clear()
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid = next(iter(loader))
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.device) for i in inputs]
-            height_pred = self.model(*inputs)
+            voxel_feats = self.model.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+            height_pred_terrain = height_pred_geom - height_pred_diff
 
             batchi = 0
-            height_pred = height_pred[batchi, 0].cpu()
-            height_rigid = hm_rigid[batchi, 0].cpu()
+            height_pred_geom = height_pred_geom[batchi, 0].cpu()
+            height_pred_terrain = height_pred_terrain[batchi, 0].cpu()
+            height_pred_diff = height_pred_diff[batchi, 0].cpu()
+            height_geom = hm_geom[batchi, 0].cpu()
+            height_terrain = hm_terrain[batchi, 0].cpu()
 
             # get height map points
-            z_grid = height_pred
+            z_grid = height_pred_terrain
             x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
             y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
@@ -309,12 +347,20 @@ class Trainer:
                            cmap='jet', vmin=-1.0, vmax=1.0)
                 ax.axis('off')
 
-            # plot prediction as image
-            ax5.set_title('Prediction')
-            ax5.imshow(height_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax5.set_title('Prediction: Geom')
+            ax5.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax6.set_title('Label')
-            ax6.imshow(height_rigid.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.set_title('Label: Geom')
+            ax6.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax7.set_title('Prediction: Terrain')
+            ax7.imshow(height_pred_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax8.set_title('Label: Terrain')
+            ax8.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax9.set_title('Prediction: HM Diff')
+            ax9.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             return fig
 
@@ -339,6 +385,9 @@ def main():
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,
+                      geom_hm_weight=args.geom_hm_weight,
+                      terrain_hm_weight=args.terrain_hm_weight,
+                      hdiff_weight=args.hdiff_weight,
                       debug=args.debug, vis=args.vis,
                       only_front_hm=args.only_front_hm)
     trainer.train()

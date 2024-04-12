@@ -742,12 +742,14 @@ class RobinGas(DEMPathData):
         return heightmap
 
     def get_sample(self, i):
-        img, rot, tran, intrin, post_rot, post_tran = self.get_images_data(i)
+        img, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i)
+        hm_lidar = self.get_lidar_height_map(i)
         hm_terrain = self.get_terrain_heightmap(i)
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
+            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        return img, rot, tran, intrin, post_rot, post_tran, hm_terrain
+        return img, rot, tran, intrins, post_rots, post_trans, hm_lidar, hm_terrain
 
 
 class RobinGasVis(RobinGas):
@@ -756,12 +758,14 @@ class RobinGasVis(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        hm_lidar = self.get_lidar_height_map(i)
         hm_terrain = self.get_terrain_heightmap(i)
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
+            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_terrain, lidar_pts
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_terrain, lidar_pts
 
 
 def heightmap_demo():

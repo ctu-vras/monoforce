@@ -156,8 +156,8 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
         # print('sample', sample_i, 'id', ds.ids[sample_i])
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid, pts = sample
-        height_rigid, mask_rigid = hm_rigid[:, 0], hm_rigid[:, 1]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_terrain, pts = sample
+        height_rigid, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
         if modelf is not None:
             with torch.no_grad():
                 # replace height maps with model output
