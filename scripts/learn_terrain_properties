@@ -82,7 +82,7 @@ class Learner:
             states_true = ds.get_states_traj(data_i, start_from_zero=True)
             states_true = tuple([x.to(self.dphys_cfg.device) for x in states_true])
 
-            hm_lidar = ds.get_lidar_height_map(data_i)
+            hm_lidar = ds.get_geom_height_map(data_i)
             height = hm_lidar[0]
 
             traj = ds.get_traj(data_i)

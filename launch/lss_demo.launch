@@ -27,14 +27,12 @@
                                                                    '/camera_left/image_rect/compressed',
                                                                    '/camera_rear_left/image_rect/compressed',
                                                                    '/camera_rear_right/image_rect/compressed',
-                                                                   '/camera_right/image_rect/compressed',
-                                                                   '/camera_up/image_rect/compressed']"/>
+                                                                   '/camera_right/image_rect/compressed']"/>
     <arg if="$(eval robot == 'tradr')" name="camera_info_topics" default="['/camera_front/camera_info',
                                                                            '/camera_left/camera_info',
                                                                            '/camera_rear_left/camera_info',
                                                                            '/camera_rear_right/camera_info',
-                                                                           '/camera_right/camera_info',
-                                                                           '/camera_up/camera_info']"/>
+                                                                           '/camera_right/camera_info']"/>
     <arg if="$(eval robot == 'tradr')" name="calib_path" default="$(dirname)/../data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/calibration/"/>
 
     <!-- Robot data: from bag file -->
@@ -57,6 +55,7 @@
         <arg name="weights" value="$(arg weights)"/>
         <arg name="max_msgs_delay" value="0.2"/>
         <arg name="max_stale_msg_delay" value="1.0"/>
+        <arg name="debug" value="false"/>
     </include>
 
     <!-- Diff Physics node -->

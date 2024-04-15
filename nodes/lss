@@ -180,8 +180,6 @@ class LSS:
         Get inputs for LSS model from image and camera info messages.
         """
         assert len(img_msgs) == len(info_msgs)
-        assert isinstance(img_msgs[0], CompressedImage)
-        assert isinstance(info_msgs[0], CameraInfo)
 
         imgs = []
         post_rots = []
@@ -189,6 +187,9 @@ class LSS:
         intriniscs = []
         cams_to_robot = []
         for cam_i, (img_msg, info_msg) in enumerate(zip(img_msgs, info_msgs)):
+            assert isinstance(img_msg, CompressedImage)
+            assert isinstance(info_msg, CameraInfo)
+
             img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
             # BGR to RGB
             img = img[:, :, ::-1]

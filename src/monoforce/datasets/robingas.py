@@ -334,7 +334,7 @@ class DEMPathData(Dataset):
         # create global heightmap cloud
         global_hm_cloud = []
         for i in tqdm(range(len(self))):
-            hm = self.get_lidar_height_map(i)
+            hm = self.get_geom_height_map(i)
             hm_cloud = hm_to_cloud(hm[0], self.dphys_cfg, mask=hm[1])
             hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), poses[i])
             global_hm_cloud.append(hm_cloud)
@@ -372,7 +372,7 @@ class DEMPathData(Dataset):
                          int(square_grid[0, 0]):int(square_grid[2, 0])]
         return hm_front
 
-    def get_lidar_height_map(self, i, cached=True, dir_name=None, **kwargs):
+    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
         """
         Get height map from lidar point cloud.
         :param i: index of the sample
@@ -730,10 +730,10 @@ class RobinGas(DEMPathData):
 
         return points, colors
 
-    def get_terrain_heightmap(self, i, terrain_classes=None):
-        if terrain_classes is None:
-            terrain_classes = ['tree', 'person', 'building']
-        seg_points, _ = self.get_semantic_cloud(i, classes=terrain_classes, vis=False)
+    def get_terrain_heightmap(self, i, obstacle_classes=None):
+        if obstacle_classes is None:
+            obstacle_classes = ['person']
+        seg_points, _ = self.get_semantic_cloud(i, classes=obstacle_classes, vis=False)
         traj_points = self.estimated_footprint_traj_points(i)
         points = np.concatenate((seg_points, traj_points), axis=0)
         hm = self.estimate_heightmap(points)
@@ -743,13 +743,13 @@ class RobinGas(DEMPathData):
 
     def get_sample(self, i):
         img, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_lidar = self.get_lidar_height_map(i)
-        hm_terrain = self.get_terrain_heightmap(i)
+        hm_geom = self.get_geom_height_map(i)
+        hm_terrain = self.get_terrain_heightmap(i, obstacle_classes=['person'])
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
-            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
+            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        return img, rot, tran, intrins, post_rots, post_trans, hm_lidar, hm_terrain
+        return img, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
 
 
 class RobinGasVis(RobinGas):
@@ -758,14 +758,14 @@ class RobinGasVis(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_lidar = self.get_lidar_height_map(i)
-        hm_terrain = self.get_terrain_heightmap(i)
+        hm_geom = self.get_geom_height_map(i)
+        hm_terrain = self.get_terrain_heightmap(i, obstacle_classes=['person'])
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
-            hm_lidar[1] = hm_lidar[1] * torch.from_numpy(mask)
+            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_terrain, lidar_pts
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts
 
 
 def heightmap_demo():

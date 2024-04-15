@@ -56,11 +56,6 @@ class MonoForce:
         self.model = self.load_model()
 
         # publishers
-        self.gm_lidar_pub = rospy.Publisher('grid_map_lidar', GridMap, queue_size=1)
-        self.gm_traj_pub = rospy.Publisher('grid_map_traj', GridMap, queue_size=1)
-        self.gm_rigid_pub = rospy.Publisher('grid_map_rigid', GridMap, queue_size=1)
-        self.gm_geom_pub = rospy.Publisher('grid_map_geom', GridMap, queue_size=1)
-        self.gm_diff_pub = rospy.Publisher('grid_map_diff', GridMap, queue_size=1)
         self.cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
         self.path_pub = rospy.Publisher('path', Path, queue_size=1)
         self.path_gt_pub = rospy.Publisher('path_gt', Path, queue_size=1)
@@ -109,14 +104,20 @@ class MonoForce:
             K_msg.width = img.shape[1]
             K_pub.publish(K_msg)
 
-    def publish_gridmap(self, height, stamp, pub, mask=None):
+    def publish_gridmap(self, height, stamp, topic, mask=None):
+        assert isinstance(height, np.ndarray) or isinstance(height, torch.Tensor)
+        assert isinstance(mask, np.ndarray) or isinstance(mask, torch.Tensor) or mask is None
+        assert isinstance(stamp, rospy.Time)
+        assert isinstance(topic, str)
+
         if isinstance(height, torch.Tensor):
-            height = height.cpu().numpy()
+            height = height.squeeze().cpu().numpy()
         if isinstance(mask, torch.Tensor):
-            mask = mask.cpu().numpy()
+            mask = mask.squeeze().cpu().numpy()
         grid_msg = height_map_to_gridmap_msg(height, grid_res=self.dphys_cfg.grid_res, mask=mask)
         grid_msg.info.header.frame_id = self.robot_initial_frame
         grid_msg.info.header.stamp = stamp
+        pub = rospy.Publisher(topic, GridMap, queue_size=1)
         pub.publish(grid_msg)
 
     def publish_forces(self, robot_forces, robot_points, stamp):
@@ -232,6 +233,8 @@ class MonoForce:
         return poses
 
     def predict_states(self, height, v, w):
+        if isinstance(height, torch.Tensor):
+            height = height.squeeze().cpu().numpy()
         with torch.no_grad():
             # controls
             tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
@@ -253,7 +256,7 @@ class MonoForce:
         self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
         self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
 
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_rigid, lidar_pts = ds[sample_i]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = ds[sample_i]
         points = lidar_pts.numpy().T
 
         traj = ds.get_traj(sample_i)
@@ -272,8 +275,10 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            height_pred = self.model(*inputs)
-            height_pred = height_pred.squeeze().cpu().numpy()
+            voxel_feats = self.model.get_voxels(*inputs)
+            height_geom_pred, height_diff_pred = self.model.bevencode(voxel_feats)
+            height_terrain_pred = height_geom_pred - height_diff_pred
+            # height_terrain_pred = self.model(*inputs)
 
         rate = rospy.Rate(self.rate)
         pose_i = 0
@@ -287,8 +292,11 @@ class MonoForce:
                 # point cloud
                 self.publish_cloud(points, stamp)
                 # grid map
-                self.publish_gridmap(hm_rigid[0], stamp, self.gm_lidar_pub, mask=hm_rigid[1])
-                self.publish_gridmap(height_pred, stamp, self.gm_rigid_pub)
+                self.publish_gridmap(hm_geom[0], stamp, topic='grid_map_geom', mask=hm_geom[1])
+                self.publish_gridmap(hm_terrain[0], stamp, topic='grid_map_terrain', mask=hm_terrain[1])
+                self.publish_gridmap(height_geom_pred, stamp, topic='grid_map_geom_pred')
+                self.publish_gridmap(height_diff_pred, stamp, topic='grid_map_diff_pred')
+                self.publish_gridmap(height_terrain_pred, stamp, topic='grid_map_terrain_pred')
                 # images
                 self.publish_images(imgs_raw, Ks, stamp)
 
@@ -300,8 +308,8 @@ class MonoForce:
                 # v = 0.4
                 # w = -0.13
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
-                states, robot_points = self.predict_states(height_pred, v=v, w=w)
-                # states, robot_points = self.predict_poses(hm_rigid[0].cpu().numpy(), v=v, w=w)
+                states, robot_points = self.predict_states(height_terrain_pred, v=v, w=w)
+                # states, robot_points = self.predict_states(hm_terrain[0], v=v, w=w)
                 poses = self.poses_from_states(states)
                 rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
                 forces = states[4].cpu().numpy()
@@ -341,7 +349,10 @@ class MonoForce:
 def main():
     rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
     node = MonoForce()
-    node.run()
+    try:
+        node.run()
+    except rospy.ROSInterruptException:
+        rospy.loginfo('Shutting down monoforce node')
 
 
 if __name__ == '__main__':

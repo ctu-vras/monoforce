@@ -184,7 +184,7 @@ class EvaluatorGeom:
 
     def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
         id = ds.ids[i] if self.dataset == 'rellis3d' else i
-        hm_lidar = ds.get_lidar_height_map(id)
+        hm_lidar = ds.get_geom_height_map(id)
         height = hm_lidar[0]
         return height
 
