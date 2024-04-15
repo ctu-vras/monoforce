@@ -528,14 +528,15 @@ class EvaluatorSemSeg(EvaluatorGeom):
 
 def vis_data(dataset):
     dphys_config_path = '../config/dphys_cfg.yaml'
-    lss_config_path = '../config/lss_cfg_tradr.yaml'
+    lss_config_path = '../config/lss_cfg_husky.yaml'
+    # lss_config_path = '../config/lss_cfg_tradr.yaml'
     # modelf = '../config/tb_runs/lss_robingas_2024_03_04_09_42_47/train_lss.pt'
     modelf = None
 
     if dataset == 'robingas':
-        # data_paths = oru_seq_paths
+        data_paths = oru_seq_paths
         # data_paths = robingas_husky_seq_paths
-        data_paths = robingas_tradr_seq_paths
+        # data_paths = robingas_tradr_seq_paths
         DataClass = RobinGasVis
     elif dataset == 'rellis3d':
         data_paths = rellis3d_seq_paths
@@ -549,8 +550,7 @@ def vis_data(dataset):
         dphys_cfg = DPhysConfig()
         dphys_cfg.from_yaml(dphys_config_path)
         ds = DataClass(path, is_train=False, lss_cfg=lss_config, dphys_cfg=dphys_cfg)
-        for _ in range(5):
-            explore_data(ds, modelf=modelf, sample_range='random', save=False)
+        explore_data(ds, modelf=modelf, sample_range='random', save=False)
 
 
 def evaluate(dataset):

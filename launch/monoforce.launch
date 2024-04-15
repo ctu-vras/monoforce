@@ -3,7 +3,6 @@
     <arg name="rviz" default="true"/>
     <arg name="seq_i" default="0"/>
     <arg name="sample_i" default="0"/>
-<!--     <arg name="sample_i" default="429"/> -->
     <arg name="robot" default="tradr"/>
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
 

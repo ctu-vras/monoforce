@@ -4,9 +4,6 @@ data_aug_conf:
   bot_pct_lim:
   - 0.0
   - 0.0
-  Ncams: 1
-  cams:
-  - CAMERA_FRONT
   final_dim:
   - 256
   - 416

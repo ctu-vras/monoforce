@@ -41,6 +41,29 @@ rellis3d_seq_paths = [
     os.path.join(data_dir, 'Rellis3D', seq_name) for seq_name in seq_names
 ]
 
+# similar to https://github.com/cocodataset/panopticapi/blob/master/panoptic_coco_categories.json
+RELLIS3D_CATEGORIES = [
+    {'id': 0, 'name': 'void', 'color': [0, 0, 0]},
+    {'id': 1, 'name': 'dirt', 'color': [108, 64, 20]},
+    {'id': 3, 'name': 'grass', 'color': [0, 102, 0]},
+    {'id': 4, 'name': 'tree', 'color': [0, 255, 0]},
+    {'id': 5, 'name': 'pole', 'color': [0, 153, 153]},
+    {'id': 6, 'name': 'water', 'color': [0, 128, 255]},
+    {'id': 7, 'name': 'sky', 'color': [0, 0, 255]},
+    {'id': 8, 'name': 'vehicle', 'color': [255, 255, 0]},
+    {'id': 9, 'name': 'object', 'color': [255, 0, 127]},
+    {'id': 10, 'name': 'asphalt', 'color': [64, 64, 64]},
+    {'id': 12, 'name': 'building', 'color': [255, 0, 0]},
+    {'id': 15, 'name': 'log', 'color': [102, 0, 0]},
+    {'id': 17, 'name': 'person', 'color': [204, 153, 255]},
+    {'id': 18, 'name': 'fence', 'color': [102, 0, 204]},
+    {'id': 19, 'name': 'bush', 'color': [255, 153, 204]},
+    {'id': 23, 'name': 'concrete', 'color': [170, 170, 170]},
+    {'id': 27, 'name': 'barrier', 'color': [41, 121, 255]},
+    {'id': 31, 'name': 'puddle', 'color': [134, 255, 239]},
+    {'id': 33, 'name': 'mud', 'color': [99, 66, 34]},
+    {'id': 34, 'name': 'rubble', 'color': [110, 22, 138]},
+]
 
 def read_points_ply(path, dtype=np.float32):
     pcd = o3d.io.read_point_cloud(path)
@@ -54,15 +77,12 @@ def read_points_ply(path, dtype=np.float32):
 def read_points_bin(path, dtype=np.float32):
     xyzi = np.fromfile(path, dtype=dtype)
     xyzi = xyzi.reshape((-1, 4))
-    points = unstructured_to_structured(xyzi.astype(dtype=dtype), names=['x', 'y', 'z', 'i'])
+    points = unstructured_to_structured(xyzi, names=['x', 'y', 'z', 'i'])
     return points
 
 
-def read_points_labels(path, dtype=np.uint32):
-    label = np.fromfile(path, dtype=dtype)
-    label = label.reshape((-1, 1))
-    # label = convert_label(label, inverse=False)
-    label = unstructured_to_structured(label.astype(dtype=dtype), names=['label'])
+def read_points_labels(path):
+    label = np.fromfile(path, dtype=np.uint32)
     return label
 
 
@@ -344,7 +364,7 @@ class Rellis3D(Rellis3DBase):
                   forces.view(n_states, 3, 10))
         return states
 
-    def estimated_footprint_traj_points(self, id, robot_size=(1.38, 1.52)):
+    def get_footprint_traj_points(self, id, robot_size=(1.38, 1.52)):
         traj = self.get_traj(id)
         poses = traj['poses'].copy()
 
@@ -379,7 +399,7 @@ class Rellis3D(Rellis3DBase):
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
-    def get_lidar_height_map(self, id, cached=True, dir_name=None, **kwargs):
+    def get_geom_height_map(self, id, cached=True, dir_name=None, **kwargs):
         """
         Get height map from lidar point cloud.
         :param i: index of the sample
@@ -405,7 +425,32 @@ class Rellis3D(Rellis3DBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_traj_height_map(self, id, cached=True, dir_name=None):
+    def get_obstacles_points(self, id, obstacle_classes=None, vis=False):
+        rellis3d_classes = [cat['name'] for cat in RELLIS3D_CATEGORIES]
+        rellis3d_labels = [cat['id'] for cat in RELLIS3D_CATEGORIES]
+        if obstacle_classes is None:
+            obstacle_classes = ['tree', 'pole', 'vehicle', 'building', 'log', 'person', 'fence', 'barrier']
+        lidar_points = position(self.get_cloud(id))
+        lidar_label = self.cloud_label(id)
+        assert len(lidar_points) == len(lidar_label), f'Number of points ({len(lidar_points)}) and labels ({len(lidar_label)}) must be the same'
+        obstacle_labels = [rellis3d_labels[rellis3d_classes.index(cls)] for cls in obstacle_classes]
+        mask = np.isin(lidar_label, obstacle_labels)
+        points = lidar_points[mask]
+
+        if vis:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(lidar_points)
+            pcd.paint_uniform_color([0.5, 0.5, 0.5])
+
+            pcd_obstacle = o3d.geometry.PointCloud()
+            pcd_obstacle.points = o3d.utility.Vector3dVector(points)
+            pcd_obstacle.paint_uniform_color([1, 0, 0])
+
+            o3d.visualization.draw_geometries([pcd, pcd_obstacle])
+
+        return points
+
+    def get_terrain_height_map(self, id, cached=False, dir_name=None):
         """
         Get height map from trajectory points.
         :param i: index of the sample
@@ -418,15 +463,17 @@ class Rellis3D(Rellis3DBase):
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
         file_path = os.path.join(dir_name, '%05d.npy' % self.ids.index(id))
         if cached and os.path.exists(file_path):
-            traj_hm = np.load(file_path, allow_pickle=True).item()
+            hm_rigid = np.load(file_path, allow_pickle=True).item()
         else:
-            traj_points = self.estimated_footprint_traj_points(id)
-            traj_hm = self.estimate_heightmap(traj_points, robot_radius=None)
+            traj_points = self.get_footprint_traj_points(id)
+            obstacle_points = self.get_obstacles_points(id)
+            points = np.concatenate([traj_points, obstacle_points], axis=0)
+            hm_rigid = self.estimate_heightmap(points, robot_radius=None)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, traj_hm)
-        height = traj_hm['z']
+            np.save(file_path, hm_rigid)
+        height = hm_rigid['z']
         # masking out the front part of the height map
-        mask = traj_hm['mask'] * self.crop_front_height_map(height[None], only_mask=True)
+        mask = hm_rigid['mask'] * self.crop_front_height_map(height[None], only_mask=True)
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
@@ -519,13 +566,12 @@ class Rellis3D(Rellis3DBase):
         inputs = self.get_image_data(id)
         inputs = [i.unsqueeze(0) for i in inputs]
         img, rot, tran, K, post_rot, post_tran = inputs
-        hm_lidar = torch.as_tensor(self.get_lidar_height_map(id))
-        hm_traj = torch.as_tensor(self.get_traj_height_map(id))
+        hm_geom = torch.as_tensor(self.get_geom_height_map(id))
+        hm_terrain = torch.as_tensor(self.get_terrain_height_map(id))
         if self.only_front_hm:
-            hm_lidar = self.crop_front_height_map(hm_lidar)
-            hm_traj = self.crop_front_height_map(hm_traj)
-        map_pose = torch.as_tensor(self.get_cloud_pose(id))
-        return img, rot, tran, K, post_rot, post_tran, hm_lidar, hm_traj, map_pose
+            hm_geom = self.crop_front_height_map(hm_geom)
+            hm_terrain = self.crop_front_height_map(hm_terrain)
+        return img, rot, tran, K, post_rot, post_tran, hm_geom, hm_terrain
 
 
 class Rellis3DVis(Rellis3D):
@@ -536,14 +582,13 @@ class Rellis3DVis(Rellis3D):
         inputs = self.get_image_data(id, normalize=False)
         inputs = [i.unsqueeze(0) for i in inputs]
         img, rot, tran, K, post_rot, post_tran = inputs
-        hm_lidar = torch.as_tensor(self.get_lidar_height_map(id))
-        hm_traj = torch.as_tensor(self.get_traj_height_map(id))
+        hm_lidar = torch.as_tensor(self.get_geom_height_map(id))
+        hm_traj = torch.as_tensor(self.get_terrain_height_map(id))
         if self.only_front_hm:
             hm_lidar = self.crop_front_height_map(hm_lidar)
             hm_traj = self.crop_front_height_map(hm_traj)
         lidar_pts = torch.as_tensor(position(self.get_cloud(id))).T
-        map_pose = torch.as_tensor(self.get_cloud_pose(id))
-        return img, rot, tran, K, post_rot, post_tran, hm_lidar, hm_traj, map_pose, lidar_pts
+        return img, rot, tran, K, post_rot, post_tran, hm_lidar, hm_traj, lidar_pts
 
 
 def global_map_demo():
@@ -597,7 +642,7 @@ def traversed_cloud_demo():
     traj = ds.get_traj(id, n_frames=100)
     poses = traj['poses']
 
-    footprint_traj = ds.estimated_footprint_traj_points(id)
+    footprint_traj = ds.get_footprint_traj_points(id)
     print(cloud.shape, poses.shape, footprint_traj.shape)
 
     pcd = o3d.geometry.PointCloud()

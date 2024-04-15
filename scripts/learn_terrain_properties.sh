@@ -28,7 +28,7 @@ do
                                --vel-tracks 2.0 \
                                --device 'cpu' \
                                --convergence-std 0.001 --convergence-n-samples 20 \
-			       --hm-var-weight 5. \
+			                         --hm-var-weight 5. \
                                --visualize $VIS --save-data $SAVE
 done
 echo "Done learning terrain properties."

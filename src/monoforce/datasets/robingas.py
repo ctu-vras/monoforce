@@ -268,7 +268,7 @@ class DEMPathData(Dataset):
         terrain = np.load(p)['height']
         return terrain
 
-    def estimated_footprint_traj_points(self, i, robot_size=(0.7, 1.0)):
+    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0)):
         # robot footprint points grid
         width, length = robot_size
         x = np.arange(-length / 2, length / 2, self.dphys_cfg.grid_res)
@@ -438,7 +438,7 @@ class DEMPathData(Dataset):
             if cached and os.path.exists(file_path):
                 traj_hm = np.load(file_path, allow_pickle=True).item()
             else:
-                traj_points = self.estimated_footprint_traj_points(i)
+                traj_points = self.get_footprint_traj_points(i)
                 traj_hm = self.estimate_heightmap(traj_points, robot_radius=None)
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 np.save(file_path, traj_hm)
@@ -734,7 +734,7 @@ class RobinGas(DEMPathData):
         if obstacle_classes is None:
             obstacle_classes = ['person']
         seg_points, _ = self.get_semantic_cloud(i, classes=obstacle_classes, vis=False)
-        traj_points = self.estimated_footprint_traj_points(i)
+        traj_points = self.get_footprint_traj_points(i)
         points = np.concatenate((seg_points, traj_points), axis=0)
         hm = self.estimate_heightmap(points)
         height, mask = hm['z'], hm['mask']
@@ -744,7 +744,7 @@ class RobinGas(DEMPathData):
     def get_sample(self, i):
         img, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i)
         hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_heightmap(i, obstacle_classes=['person'])
+        hm_terrain = self.get_terrain_heightmap(i)
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
@@ -759,7 +759,7 @@ class RobinGasVis(RobinGas):
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_heightmap(i, obstacle_classes=['person'])
+        hm_terrain = self.get_terrain_heightmap(i)
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
@@ -969,7 +969,7 @@ def trajectory_footprint_heightmap():
     cloud, traj, height = sample
     points = position(cloud)
 
-    traj_points = ds.estimated_footprint_traj_points(i)
+    traj_points = ds.get_footprint_traj_points(i)
 
     lidar_height = ds.estimate_heightmap(points)['z']
     traj_hm = ds.estimate_heightmap(traj_points)

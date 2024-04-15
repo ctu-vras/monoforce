@@ -8,5 +8,4 @@ WEIGHTS=/home/agishrus/workspaces/traversability_ws/src/monoforce/config/tb_runs
         --debug False --vis False \
         --geom_hm_weight 1.0 --terrain_hm_weight 10.0 --hdiff_weight 1e-4 \
         --dataset robingas \
-	--pretrained_model_path ${WEIGHTS}
-
+	      --pretrained_model_path ${WEIGHTS}
