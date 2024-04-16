@@ -92,7 +92,7 @@ class EvaluatorGeom:
             # clear grid axes
             plt.clf()
 
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = ds[i]
+            imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = ds[i]
             height = self.get_height(i, ds)
 
             # create height map grid
@@ -140,12 +140,12 @@ class EvaluatorGeom:
                 plt.draw()
 
     def compute_losses(self, batch):
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
-        height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = batch
+        height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
+        height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
-        loss_geom = self.loss_fn(height_lidar[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-        loss_rigid = self.loss_fn(height_lidar[weights_traj.bool()], height_traj[weights_traj.bool()])
+        loss_geom = self.loss_fn(height_geom[weights_geom.bool()], height_geom[weights_geom.bool()])
+        loss_rigid = self.loss_fn(height_geom[weights_terrain.bool()], height_terrain[weights_terrain.bool()])
 
         return loss_geom, loss_rigid
 
@@ -184,8 +184,8 @@ class EvaluatorGeom:
 
     def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
         id = ds.ids[i] if self.dataset == 'rellis3d' else i
-        hm_lidar = ds.get_geom_height_map(id)
-        height = hm_lidar[0]
+        hm_geom = ds.get_geom_height_map(id)
+        height = hm_geom[0]
         return height
 
     def get_data(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
@@ -390,7 +390,7 @@ class EvaluatorLSS(EvaluatorGeom):
 
     def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
         sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = sample
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
         height_pred = self.model(*inputs)
@@ -399,9 +399,9 @@ class EvaluatorLSS(EvaluatorGeom):
 
     def compute_losses(self, batch):
         batch = [torch.as_tensor(b, device=self.device) for b in batch]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
-        height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = batch
+        height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
+        height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
 
         # compute loss
@@ -409,8 +409,8 @@ class EvaluatorLSS(EvaluatorGeom):
         height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
         height_pred_rigid = height_pred_geom - height_pred_diff
 
-        loss_geom = self.loss_fn(height_pred_geom[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-        loss_rigid = self.loss_fn(height_pred_rigid[weights_traj.bool()], height_traj[weights_traj.bool()])
+        loss_geom = self.loss_fn(height_pred_geom[weights_geom.bool()], height_geom[weights_geom.bool()])
+        loss_rigid = self.loss_fn(height_pred_rigid[weights_terrain.bool()], height_terrain[weights_terrain.bool()])
         return loss_geom, loss_rigid
 
 
@@ -420,7 +420,7 @@ class EvaluatorLSSGeom(EvaluatorLSS):
 
     def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
         sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = sample
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
         voxel_feats = self.model.get_voxels(*inputs)
@@ -447,25 +447,25 @@ class EvaluatorKKT(EvaluatorGeom):
 
     def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
         sample = ds[i]
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = sample
-        input = torch.as_tensor(hm_lidar[None], device=self.device)
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = sample
+        input = torch.as_tensor(hm_geom[None], device=self.device)
         hm_pred = self.model(input)
         height = hm_pred.squeeze().cpu()[0]
         return height
 
     def compute_losses(self, batch):
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
-        hm_lidar = torch.as_tensor(hm_lidar, device=self.device)
-        hm_traj = torch.as_tensor(hm_traj, device=self.device)
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = batch
+        hm_geom = torch.as_tensor(hm_geom, device=self.device)
+        hm_terrain = torch.as_tensor(hm_terrain, device=self.device)
 
-        height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+        height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
+        height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
-        hm_pred = self.model(hm_lidar)
+        hm_pred = self.model(hm_geom)
         height_pred = hm_pred[:, 0:1]
 
-        loss_geom = self.loss_fn(height_pred[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-        loss_rigid = self.loss_fn(height_pred[weights_traj.bool()], height_traj[weights_traj.bool()])
+        loss_geom = self.loss_fn(height_pred[weights_geom.bool()], height_geom[weights_geom.bool()])
+        loss_rigid = self.loss_fn(height_pred[weights_terrain.bool()], height_terrain[weights_terrain.bool()])
         return loss_geom, loss_rigid
 
 
@@ -508,9 +508,9 @@ class EvaluatorSemSeg(EvaluatorGeom):
         return height
 
     def compute_losses(self, batch):
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_traj, map_pose, lidar_pts = batch
-        height_lidar, weights_lidar = hm_lidar[:, 0:1], hm_lidar[:, 1:2]
-        height_traj, weights_traj = hm_traj[:, 0:1], hm_traj[:, 1:2]
+        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = batch
+        height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
+        height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
         heights_pred = []
         for points in lidar_pts:
@@ -518,11 +518,11 @@ class EvaluatorSemSeg(EvaluatorGeom):
             height_pred = self.points_to_height(points)
             heights_pred.append(height_pred)
         height_pred = torch.stack(heights_pred).unsqueeze(1)
-        assert height_pred.shape == height_lidar.shape
-        assert height_pred.shape == height_traj.shape
+        assert height_pred.shape == height_geom.shape
+        assert height_pred.shape == height_terrain.shape
 
-        loss_geom = self.loss_fn(height_pred[weights_lidar.bool()], height_lidar[weights_lidar.bool()])
-        loss_rigid = self.loss_fn(height_pred[weights_traj.bool()], height_traj[weights_traj.bool()])
+        loss_geom = self.loss_fn(height_pred[weights_geom.bool()], height_geom[weights_geom.bool()])
+        loss_rigid = self.loss_fn(height_pred[weights_terrain.bool()], height_terrain[weights_terrain.bool()])
         return loss_geom, loss_rigid
 
 

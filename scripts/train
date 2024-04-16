@@ -29,6 +29,8 @@ def arg_parser():
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     # parser.add_argument('--dataset', type=str, default='oru', help='Dataset name')
+    parser.add_argument('--dphys_cfg_path', type=str, default='../config/dphys_cfg.yaml', help='Path to DPhys config')
+    parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
@@ -366,19 +368,19 @@ class Trainer:
 
 
 def main():
+    args = arg_parser()
+    print(args)
+
     dphys_cfg = DPhysConfig()
-    config_path = '../config/dphys_cfg.yaml'
-    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    dphys_cfg.from_yaml(config_path)
+    dphys_config_path = args.dphys_cfg_path
+    assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
+    dphys_cfg.from_yaml(dphys_config_path)
     dphys_cfg.hm_interp_method = None
 
     # load LSS config
-    lss_config_path = '../config/lss_cfg_tradr.yaml'
+    lss_config_path = args.lss_cfg_path
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_cfg = read_yaml(lss_config_path)
-
-    args = arg_parser()
-    print(args)
 
     trainer = Trainer(dataset=args.dataset,
                       dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
