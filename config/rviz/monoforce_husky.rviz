@@ -24,7 +24,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: Camera Front
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -91,111 +91,6 @@ Visualization Manager:
       Topic: /path
       Unreliable: false
       Value: true
-    - Alpha: 0.30000001192092896
-      Autocompute Intensity Bounds: false
-      Class: grid_map_rviz_plugin/GridMap
-      Color: 200; 200; 200
-      Color Layer: elevation
-      Color Transformer: GridMapLayer
-      Enabled: false
-      Height Layer: elevation
-      Height Transformer: GridMapLayer
-      History Length: 1
-      Invert Rainbow: true
-      Max Color: 239; 41; 41
-      Max Intensity: 1
-      Min Color: 138; 226; 52
-      Min Intensity: -1
-      Name: GridMap Lidar
-      Show Grid Lines: true
-      Topic: /grid_map_lidar
-      Unreliable: false
-      Use Rainbow: true
-      Value: false
-    - Alpha: 0.6000000238418579
-      Autocompute Intensity Bounds: true
-      Class: grid_map_rviz_plugin/GridMap
-      Color: 200; 200; 200
-      Color Layer: mask
-      Color Transformer: GridMapLayer
-      Enabled: false
-      Height Layer: elevation
-      Height Transformer: GridMapLayer
-      History Length: 1
-      Invert Rainbow: true
-      Max Color: 239; 41; 41
-      Max Intensity: 10
-      Min Color: 138; 226; 52
-      Min Intensity: 0
-      Name: GridMap Traj
-      Show Grid Lines: true
-      Topic: /grid_map_traj
-      Unreliable: false
-      Use Rainbow: false
-      Value: false
-    - Alpha: 0.5
-      Autocompute Intensity Bounds: false
-      Class: grid_map_rviz_plugin/GridMap
-      Color: 200; 200; 200
-      Color Layer: elevation
-      Color Transformer: GridMapLayer
-      Enabled: true
-      Height Layer: elevation
-      Height Transformer: GridMapLayer
-      History Length: 1
-      Invert Rainbow: true
-      Max Color: 239; 41; 41
-      Max Intensity: 1
-      Min Color: 138; 226; 52
-      Min Intensity: -1
-      Name: GridMap Pred Rigid
-      Show Grid Lines: true
-      Topic: /grid_map_rigid
-      Unreliable: false
-      Use Rainbow: true
-      Value: true
-    - Alpha: 0.5
-      Autocompute Intensity Bounds: false
-      Class: grid_map_rviz_plugin/GridMap
-      Color: 200; 200; 200
-      Color Layer: elevation
-      Color Transformer: GridMapLayer
-      Enabled: false
-      Height Layer: elevation
-      Height Transformer: GridMapLayer
-      History Length: 1
-      Invert Rainbow: true
-      Max Color: 239; 41; 41
-      Max Intensity: 1
-      Min Color: 138; 226; 52
-      Min Intensity: -1
-      Name: GridMap Pred Geom
-      Show Grid Lines: true
-      Topic: /grid_map_geom
-      Unreliable: false
-      Use Rainbow: true
-      Value: false
-    - Alpha: 0.5
-      Autocompute Intensity Bounds: false
-      Class: grid_map_rviz_plugin/GridMap
-      Color: 200; 200; 200
-      Color Layer: elevation
-      Color Transformer: GridMapLayer
-      Enabled: false
-      Height Layer: elevation
-      Height Transformer: GridMapLayer
-      History Length: 1
-      Invert Rainbow: true
-      Max Color: 239; 41; 41
-      Max Intensity: 1
-      Min Color: 138; 226; 52
-      Min Intensity: -1
-      Name: GridMap Pred Diff
-      Show Grid Lines: true
-      Topic: /grid_map_diff
-      Unreliable: false
-      Use Rainbow: true
-      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -223,54 +118,6 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
-    - Class: rviz/Image
-      Enabled: false
-      Image Topic: /camera_front/image
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: Image Front
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: false
-    - Class: rviz/Image
-      Enabled: false
-      Image Topic: /camera_left/image
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: Image Left
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: false
-    - Class: rviz/Image
-      Enabled: false
-      Image Topic: /camera_rear/image
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: Image Rear
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: false
-    - Class: rviz/Image
-      Enabled: false
-      Image Topic: /camera_right/image
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: Image Right
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
       Value: false
     - Alpha: 1
       Class: rviz/RobotModel
@@ -358,222 +205,403 @@ Visualization Manager:
       Update Interval: 0
       Value: true
       Visual Enabled: true
-    - Class: jsk_rviz_plugin/CameraInfo
-      Enabled: false
-      Image Topic: /camera_front/image
-      Name: CameraInfo Front
-      Queue Size: 10
-      Topic: /camera_front/camera_info
-      Unreliable: false
-      Value: false
-      alpha: 0.5
-      color: 85; 255; 255
-      edge color: 125; 125; 125
-      far clip: 1
-      not show side polygons: true
-      show edges: true
-      show polygons: true
-      transport hints: raw
-      use image: true
-    - Class: jsk_rviz_plugin/CameraInfo
-      Enabled: false
-      Image Topic: /camera_front/image
-      Name: CameraInfo Left
-      Queue Size: 10
-      Topic: /camera_left/camera_info
-      Unreliable: false
-      Value: false
-      alpha: 0.5
-      color: 85; 255; 255
-      edge color: 125; 125; 125
-      far clip: 1
-      not show side polygons: true
-      show edges: true
-      show polygons: true
-      transport hints: raw
-      use image: true
-    - Class: jsk_rviz_plugin/CameraInfo
-      Enabled: false
-      Image Topic: /camera_front/image
-      Name: CameraInfo Rear
-      Queue Size: 10
-      Topic: /camera_rear/camera_info
-      Unreliable: false
-      Value: false
-      alpha: 0.5
-      color: 85; 255; 255
-      edge color: 125; 125; 125
-      far clip: 1
-      not show side polygons: true
-      show edges: true
-      show polygons: true
-      transport hints: raw
-      use image: true
-    - Class: jsk_rviz_plugin/CameraInfo
-      Enabled: false
-      Image Topic: /camera_front/image
-      Name: CameraInfo Right
-      Queue Size: 10
-      Topic: /camera_right/camera_info
-      Unreliable: false
-      Value: false
-      alpha: 0.5
-      color: 85; 255; 255
-      edge color: 125; 125; 125
-      far clip: 1
-      not show side polygons: true
-      show edges: true
-      show polygons: true
-      transport hints: raw
-      use image: true
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_front/image
-      Name: Camera Front
-      Overlay Alpha: 0.30000001192092896
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Left: true
-        Camera Rear: true
-        Camera Right: true
-        CameraInfo Front: true
-        CameraInfo Left: true
-        CameraInfo Rear: true
-        CameraInfo Right: true
-        Cloud: true
-        Forces: true
-        Grid: true
-        GridMap Lidar: true
-        GridMap Pred Diff: true
-        GridMap Pred Geom: true
-        GridMap Pred Rigid: true
-        GridMap Traj: true
-        Image Front: true
-        Image Left: true
-        Image Rear: true
-        Image Right: true
-        Path: true
-        RobotModel: true
-        TF: true
-        Value: true
-      Zoom Factor: 1
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_left/image
-      Name: Camera Left
-      Overlay Alpha: 0.30000001192092896
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Front: true
-        Camera Rear: true
-        Camera Right: true
-        CameraInfo Front: true
-        CameraInfo Left: true
-        CameraInfo Rear: true
-        CameraInfo Right: true
-        Cloud: true
-        Forces: true
-        Grid: true
-        GridMap Lidar: true
-        GridMap Pred Diff: true
-        GridMap Pred Geom: true
-        GridMap Pred Rigid: true
-        GridMap Traj: true
-        Image Front: true
-        Image Left: true
-        Image Rear: true
-        Image Right: true
-        Path: true
-        RobotModel: true
-        TF: true
-        Value: true
-      Zoom Factor: 1
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_rear/image
-      Name: Camera Rear
-      Overlay Alpha: 0.30000001192092896
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Front: true
-        Camera Left: true
-        Camera Right: true
-        CameraInfo Front: true
-        CameraInfo Left: true
-        CameraInfo Rear: true
-        CameraInfo Right: true
-        Cloud: true
-        Forces: true
-        Grid: true
-        GridMap Lidar: true
-        GridMap Pred Diff: true
-        GridMap Pred Geom: true
-        GridMap Pred Rigid: true
-        GridMap Traj: true
-        Image Front: true
-        Image Left: true
-        Image Rear: true
-        Image Right: true
-        Path: true
-        RobotModel: true
-        TF: true
-        Value: true
-      Zoom Factor: 1
-    - Class: rviz/Camera
-      Enabled: true
-      Image Rendering: background and overlay
-      Image Topic: /camera_right/image
-      Name: Camera Right
-      Overlay Alpha: 0.30000001192092896
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: true
-      Visibility:
-        Camera Front: true
-        Camera Left: true
-        Camera Rear: true
-        CameraInfo Front: true
-        CameraInfo Left: true
-        CameraInfo Rear: true
-        CameraInfo Right: true
-        Cloud: true
-        Forces: true
-        Grid: true
-        GridMap Lidar: true
-        GridMap Pred Diff: true
-        GridMap Pred Geom: true
-        GridMap Pred Rigid: true
-        GridMap Traj: true
-        Image Front: true
-        Image Left: true
-        Image Rear: true
-        Image Right: true
-        Path: true
-        RobotModel: true
-        TF: true
-        Value: true
-      Zoom Factor: 1
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /forces
       Name: Forces
       Namespaces:
-        {}
+        "": true
       Queue Size: 100
       Value: true
+    - Class: rviz/Group
+      Displays:
+        - Alpha: 0.30000001192092896
+          Autocompute Intensity Bounds: false
+          Class: grid_map_rviz_plugin/GridMap
+          Color: 200; 200; 200
+          Color Layer: elevation
+          Color Transformer: GridMapLayer
+          Enabled: false
+          Height Layer: elevation
+          Height Transformer: GridMapLayer
+          History Length: 1
+          Invert Rainbow: true
+          Max Color: 239; 41; 41
+          Max Intensity: 1
+          Min Color: 138; 226; 52
+          Min Intensity: -1
+          Name: GridMap Geom
+          Show Grid Lines: true
+          Topic: /grid_map_geom
+          Unreliable: false
+          Use Rainbow: true
+          Value: false
+        - Alpha: 0.6000000238418579
+          Autocompute Intensity Bounds: true
+          Class: grid_map_rviz_plugin/GridMap
+          Color: 200; 200; 200
+          Color Layer: mask
+          Color Transformer: GridMapLayer
+          Enabled: false
+          Height Layer: elevation
+          Height Transformer: GridMapLayer
+          History Length: 1
+          Invert Rainbow: true
+          Max Color: 239; 41; 41
+          Max Intensity: 10
+          Min Color: 138; 226; 52
+          Min Intensity: 0
+          Name: GridMap Terrain
+          Show Grid Lines: true
+          Topic: /grid_map_terrain
+          Unreliable: false
+          Use Rainbow: false
+          Value: false
+        - Alpha: 0.5
+          Autocompute Intensity Bounds: false
+          Class: grid_map_rviz_plugin/GridMap
+          Color: 200; 200; 200
+          Color Layer: elevation
+          Color Transformer: GridMapLayer
+          Enabled: true
+          Height Layer: elevation
+          Height Transformer: GridMapLayer
+          History Length: 1
+          Invert Rainbow: true
+          Max Color: 239; 41; 41
+          Max Intensity: 1
+          Min Color: 138; 226; 52
+          Min Intensity: -1
+          Name: GridMap Pred Terrain
+          Show Grid Lines: true
+          Topic: /grid_map_terrain_pred
+          Unreliable: false
+          Use Rainbow: true
+          Value: true
+        - Alpha: 0.5
+          Autocompute Intensity Bounds: false
+          Class: grid_map_rviz_plugin/GridMap
+          Color: 200; 200; 200
+          Color Layer: elevation
+          Color Transformer: GridMapLayer
+          Enabled: false
+          Height Layer: elevation
+          Height Transformer: GridMapLayer
+          History Length: 1
+          Invert Rainbow: true
+          Max Color: 239; 41; 41
+          Max Intensity: 1
+          Min Color: 138; 226; 52
+          Min Intensity: -1
+          Name: GridMap Pred Geom
+          Show Grid Lines: true
+          Topic: /grid_map_geom_pred
+          Unreliable: false
+          Use Rainbow: true
+          Value: false
+        - Alpha: 0.5
+          Autocompute Intensity Bounds: false
+          Class: grid_map_rviz_plugin/GridMap
+          Color: 200; 200; 200
+          Color Layer: elevation
+          Color Transformer: GridMapLayer
+          Enabled: false
+          Height Layer: elevation
+          Height Transformer: GridMapLayer
+          History Length: 1
+          Invert Rainbow: true
+          Max Color: 239; 41; 41
+          Max Intensity: 1
+          Min Color: 138; 226; 52
+          Min Intensity: -1
+          Name: GridMap Pred Diff
+          Show Grid Lines: true
+          Topic: /grid_map_diff_pred
+          Unreliable: false
+          Use Rainbow: true
+          Value: false
+      Enabled: true
+      Name: GridMap
+    - Class: rviz/Group
+      Displays:
+        - Class: jsk_rviz_plugin/CameraInfo
+          Enabled: false
+          Image Topic: /camera_front/image
+          Name: CameraInfo Front
+          Queue Size: 10
+          Topic: /camera_front/camera_info
+          Unreliable: false
+          Value: false
+          alpha: 0.5
+          color: 85; 255; 255
+          edge color: 125; 125; 125
+          far clip: 1
+          not show side polygons: true
+          show edges: true
+          show polygons: true
+          transport hints: raw
+          use image: true
+        - Class: jsk_rviz_plugin/CameraInfo
+          Enabled: false
+          Image Topic: /camera_front/image
+          Name: CameraInfo Left
+          Queue Size: 10
+          Topic: /camera_left/camera_info
+          Unreliable: false
+          Value: false
+          alpha: 0.5
+          color: 85; 255; 255
+          edge color: 125; 125; 125
+          far clip: 1
+          not show side polygons: true
+          show edges: true
+          show polygons: true
+          transport hints: raw
+          use image: true
+        - Class: jsk_rviz_plugin/CameraInfo
+          Enabled: false
+          Image Topic: /camera_front/image
+          Name: CameraInfo Rear
+          Queue Size: 10
+          Topic: /camera_rear/camera_info
+          Unreliable: false
+          Value: false
+          alpha: 0.5
+          color: 85; 255; 255
+          edge color: 125; 125; 125
+          far clip: 1
+          not show side polygons: true
+          show edges: true
+          show polygons: true
+          transport hints: raw
+          use image: true
+        - Class: jsk_rviz_plugin/CameraInfo
+          Enabled: false
+          Image Topic: /camera_front/image
+          Name: CameraInfo Right
+          Queue Size: 10
+          Topic: /camera_right/camera_info
+          Unreliable: false
+          Value: false
+          alpha: 0.5
+          color: 85; 255; 255
+          edge color: 125; 125; 125
+          far clip: 1
+          not show side polygons: true
+          show edges: true
+          show polygons: true
+          transport hints: raw
+          use image: true
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_front/image
+          Name: Camera Front
+          Overlay Alpha: 0.30000001192092896
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              CameraInfo Front: true
+              CameraInfo Left: true
+              CameraInfo Rear: true
+              CameraInfo Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear: true
+              Image Right: true
+              Value: true
+            Cloud: true
+            Forces: true
+            Grid: true
+            GridMap:
+              GridMap Geom: true
+              GridMap Pred Diff: true
+              GridMap Pred Geom: true
+              GridMap Pred Terrain: true
+              GridMap Terrain: true
+              Value: true
+            Path: true
+            RobotModel: true
+            TF: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_left/image
+          Name: Camera Left
+          Overlay Alpha: 0.30000001192092896
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              CameraInfo Front: true
+              CameraInfo Left: true
+              CameraInfo Rear: true
+              CameraInfo Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear: true
+              Image Right: true
+              Value: true
+            Cloud: true
+            Forces: true
+            Grid: true
+            GridMap:
+              GridMap Geom: true
+              GridMap Pred Diff: true
+              GridMap Pred Geom: true
+              GridMap Pred Terrain: true
+              GridMap Terrain: true
+              Value: true
+            Path: true
+            RobotModel: true
+            TF: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_rear/image
+          Name: Camera Rear
+          Overlay Alpha: 0.30000001192092896
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              CameraInfo Front: true
+              CameraInfo Left: true
+              CameraInfo Rear: true
+              CameraInfo Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear: true
+              Image Right: true
+              Value: true
+            Cloud: true
+            Forces: true
+            Grid: true
+            GridMap:
+              GridMap Geom: true
+              GridMap Pred Diff: true
+              GridMap Pred Geom: true
+              GridMap Pred Terrain: true
+              GridMap Terrain: true
+              Value: true
+            Path: true
+            RobotModel: true
+            TF: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Camera
+          Enabled: true
+          Image Rendering: background and overlay
+          Image Topic: /camera_right/image
+          Name: Camera Right
+          Overlay Alpha: 0.30000001192092896
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: true
+          Visibility:
+            Cameras:
+              Camera Front: true
+              Camera Left: true
+              Camera Rear: true
+              Camera Right: true
+              CameraInfo Front: true
+              CameraInfo Left: true
+              CameraInfo Rear: true
+              CameraInfo Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear: true
+              Image Right: true
+              Value: true
+            Cloud: true
+            Forces: true
+            Grid: true
+            GridMap:
+              GridMap Geom: true
+              GridMap Pred Diff: true
+              GridMap Pred Geom: true
+              GridMap Pred Terrain: true
+              GridMap Terrain: true
+              Value: true
+            Path: true
+            RobotModel: true
+            TF: true
+            Value: true
+          Zoom Factor: 1
+        - Class: rviz/Image
+          Enabled: false
+          Image Topic: /camera_front/image
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Image Front
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: false
+        - Class: rviz/Image
+          Enabled: false
+          Image Topic: /camera_left/image
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Image Left
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: false
+        - Class: rviz/Image
+          Enabled: false
+          Image Topic: /camera_rear/image
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Image Rear
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: false
+        - Class: rviz/Image
+          Enabled: false
+          Image Topic: /camera_right/image
+          Max Value: 1
+          Median window: 5
+          Min Value: 0
+          Name: Image Right
+          Normalize Range: true
+          Queue Size: 2
+          Transport Hint: raw
+          Unreliable: false
+          Value: false
+      Enabled: true
+      Name: Cameras
   Enabled: true
   Global Options:
     Background Color: 238; 238; 236
@@ -602,7 +630,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 9.022716522216797
+      Distance: 10
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -610,17 +638,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -0.5085874795913696
-        Y: 0.149113729596138
-        Z: -0.7754947543144226
+        X: 0
+        Y: 0
+        Z: 0
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 1
-      Pitch: 0.6403982043266296
+      Pitch: 0.7853981852531433
       Target Frame: <Fixed Frame>
-      Yaw: 3.4503984451293945
+      Yaw: 0.7853981852531433
     Saved:
       - Class: rviz/Orbit
         Distance: 10

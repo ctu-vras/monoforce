@@ -6,11 +6,12 @@
     <arg name="robot" default="tradr"/>
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
 
-    <arg name="description" default="$(dirname)/../urdf/husky/husky.urdf.xacro"/>
     <!-- Load robot description -->
-    <param name="robot_description" command="$(find xacro)/xacro '$(arg description)'"/>
+    <rosparam command="load" file="$(dirname)/../config/$(arg robot).params"/>
+    <remap if="$(eval robot == 'tradr')" from="robot_description" to="nifti_robot_description"/>
+
     <!-- Robot state publisher -->
-    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
 
     <node pkg="monoforce" type="monoforce" name="monoforce" output="screen">
@@ -22,7 +23,7 @@
             sample_i: $(arg sample_i)
             lss_weights: $(arg weights)
             dphys_config_path: $(dirname)/../config/dphys_cfg.yaml
-            lss_config_path: $(dirname)/../config/lss_cfg_$(arg robot).yaml
+            lss_config_path: $(dirname)/../config/lss_cfg_tradr.yaml
             pub_cloud: true
             pub_path: true
         </rosparam>

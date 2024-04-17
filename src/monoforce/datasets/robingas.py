@@ -592,7 +592,7 @@ class RobinGas(DEMPathData):
         assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
         seg = Image.fromarray(np.load(seg_path))
         size = self.get_raw_img_size(i, camera)
-        transform = torchvision.transforms.Resize(size, interpolation=Image.BICUBIC)
+        transform = torchvision.transforms.Resize(size)
         seg = transform(seg)
         return seg
     
