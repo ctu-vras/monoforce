@@ -374,8 +374,8 @@ class EvaluatorGeom:
 
 class EvaluatorLSS(EvaluatorGeom):
     def __init__(self, dphys_config_path, lss_config_path, dataset,
-                 model_path='../config/tb_runs/lss_robingas_2024_04_17_14_36_22/train_lss.pt'):
-                 # model_path='../config/tb_runs/lss_rellis3d_2024_04_17_17_43_16/train_lss.pt'):
+                 model_path='../config/tb_runs/lss_robingas_2024_04_17_14_36_22/lss.pt'):
+                 # model_path='../config/tb_runs/lss_rellis3d_2024_04_17_17_43_16/lss.pt'):
         super().__init__(dphys_config_path, lss_config_path, dataset, model_path)
 
     def load_model(self):

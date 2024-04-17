@@ -23,7 +23,7 @@
             sample_i: $(arg sample_i)
             lss_weights: $(arg weights)
             dphys_config_path: $(dirname)/../config/dphys_cfg.yaml
-            lss_config_path: $(dirname)/../config/lss_cfg_tradr.yaml
+            lss_config_path: $(dirname)/../config/lss_cfg_$(arg robot).yaml
             pub_cloud: true
             pub_path: true
         </rosparam>

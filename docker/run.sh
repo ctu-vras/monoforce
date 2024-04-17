@@ -24,12 +24,11 @@ roscore &
 ROSCORE_PID=$!
 sleep 1
 
-rviz -d ../config/rviz/monoforce_tradr.rviz &
+rviz -d ../config/rviz/monoforce_husky.rviz &
 RVIZ_PID=$!
 
 MONOFORCE_DIR=$(abspath "..")
-#DATA_DIR=$(abspath "../data/robingas/")
-DATA_DIR=/media/ruslan/data/robingas/
+DATA_DIR=$(abspath "../data/robingas/")
 
 docker run \
   -it \
@@ -46,7 +45,7 @@ docker run \
           -DCMAKE_BUILD_TYPE=Release; \
       catkin build; \
       source devel/setup.bash; \
-      roslaunch monoforce monoforce.launch rviz:=false robot:=tradr"
+      roslaunch monoforce monoforce.launch rviz:=false robot:=husky"
 
 wait $ROSCORE_PID
 wait $RVIZ_PID

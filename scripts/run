@@ -7,7 +7,7 @@ from monoforce.datasets import RobinGasVis, robingas_tradr_seq_paths, robingas_h
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
 from monoforce.models.lss.model import compile_model
-from monoforce.utils import read_yaml, position
+from monoforce.utils import read_yaml
 
 
 class MonoForce:
@@ -74,11 +74,7 @@ class MonoForce:
         print('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
         sample_i = np.random.choice(range(len(ds)))
         print('Using sample %d' % sample_i)
-
         imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
-        # points = position(ds.get_cloud(sample_i))
-        traj = ds.get_traj(sample_i)
-        # poses_gt = traj['poses']
 
         # get heightmap prediction
         with torch.no_grad():

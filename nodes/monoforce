@@ -14,7 +14,7 @@ from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
 from grid_map_msgs.msg import GridMap
 from ros_numpy import msgify
-from monoforce.utils import read_yaml
+from monoforce.utils import read_yaml, position
 import rospkg
 import tf2_ros
 from visualization_msgs.msg import Marker, MarkerArray
@@ -184,8 +184,8 @@ class MonoForce:
         self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
         self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
 
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = ds[sample_i]
-        points = lidar_pts.numpy().T
+        imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
+        points = position(ds.get_cloud(sample_i))
 
         traj = ds.get_traj(sample_i)
         poses_gt = traj['poses']

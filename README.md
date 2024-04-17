@@ -17,6 +17,18 @@ Please, follow the [INSTALL.md](./docs/INSTALL.md) for the installation instruct
 
 Traversability data structure and processing are described in the [DATA.md](./docs/DATA.md).
 
+## Running
+
+To predict terrain shape and robot's trajectory from RGB images, please run:
+```commandline
+python scripts/run
+```
+
+If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can run the demo:
+```commandline
+cd docker/ && ./run.sh
+```
+
 ## Differentiable Physics
 ![](./docs/imgs/diffphysics.png)
 
