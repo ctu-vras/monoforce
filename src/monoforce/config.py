@@ -1,4 +1,3 @@
-import rospy
 import torch
 import numpy as np
 import yaml
@@ -39,6 +38,7 @@ class DPhysConfig:
         return str(self.__dict__)
 
     def to_rosparam(self):
+        import rospy
         # make class attributes available as rosparams
         for k, v in self.__dict__.items():
             if isinstance(v, np.ndarray):
@@ -46,6 +46,7 @@ class DPhysConfig:
             rospy.set_param('~' + k, v)
 
     def from_rosparams(self, node_name):
+        import rospy
         # make rosparams available as class attributes
         for k in rospy.get_param_names():
             if k.startswith('/' + node_name):

@@ -7,10 +7,9 @@ import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasVis, robingas_tradr_seq_paths, robingas_husky_seq_paths
 from monoforce.config import DPhysConfig
-from monoforce.models import State, RigidBodySoftTerrain
+from monoforce.models import dphysics
 from monoforce.ros import height_map_to_gridmap_msg, to_path, to_tf, xyz_to_point
 from monoforce.models.lss.model import compile_model
-from monoforce.transformations import rot2rpy
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
 from grid_map_msgs.msg import GridMap
@@ -140,7 +139,7 @@ class MonoForce:
             marker.points.append(xyz_to_point([0, 0, 0]))
             marker.points.append(xyz_to_point(force / self.dphys_cfg.robot_mass / 9.8))
             marker.scale.x = 0.05
-            marker.scale.y = 0.1  # to make the arrow visible
+            marker.scale.y = 0.10
             marker.scale.z = 0.05
             marker.color.a = 1.0
             marker.color.r = 1.0
@@ -148,75 +147,6 @@ class MonoForce:
             marker.color.b = 0.0
             markers.markers.append(marker)
         self.forces_pub.publish(markers)
-
-    def dphysics(self, height, controls, state=None):
-        assert isinstance(height, np.ndarray)
-        assert height.shape[0] == height.shape[1]
-        assert isinstance(controls, dict)
-        assert 'stamps' in controls.keys()
-        assert 'linear_v' in controls.keys()
-        assert 'angular_w' in controls.keys()
-        assert isinstance(state, State) or state is None
-
-        if state is None:
-            state = State(xyz=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
-                          rot=torch.eye(3, device=self.device),
-                          vel=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
-                          omega=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
-                          device=self.device)
-
-        """ Create robot-terrain interaction models """
-        system = RigidBodySoftTerrain(height=height,
-                                      grid_res=self.dphys_cfg.grid_res,
-                                      friction=self.dphys_cfg.friction,
-                                      mass=self.dphys_cfg.robot_mass,
-                                      state=state,
-                                      device=self.device, use_ode=False,
-                                      interaction_model='diffdrive',
-                                      robot_model='husky')
-
-        # put models with their params to self.device
-        system = system.to(self.device)
-        tt = controls['stamps'].to(self.device)
-
-        """ Navigation loop """
-        dt = (tt[1:] - tt[:-1]).mean()
-
-        xyz, Rs, linear_v, angular_w, forces = state
-        xyz, Rs, linear_v, angular_w, forces = [xyz], [Rs], [linear_v], [angular_w], [forces]
-
-        for t in range(len(tt[1:])):
-            v, w = controls['linear_v'][t], controls['angular_w'][t]
-
-            state[2][0] = v
-            state[3][2] = w
-
-            dstate = system.forward(t, state)
-            state = state.update(dstate, dt)
-
-            roll, pitch, yaw = rot2rpy(state[1].squeeze())
-            if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
-                rospy.logwarn('Robot is upside down')
-                break
-
-            xyz.append(state[0])
-            Rs.append(state[1])
-            linear_v.append(state[2])
-            angular_w.append(state[3])
-            forces.append(state[4])
-
-        xyz = torch.stack(xyz)
-        Rs = torch.stack(Rs)
-        linear_v = torch.stack(linear_v)
-        angular_w = torch.stack(angular_w)
-        forces = torch.stack(forces)
-
-        states = [xyz, Rs, linear_v, angular_w, forces]
-
-        # robot points
-        robot_points = system.robot_points
-
-        return states, robot_points
 
     def poses_from_states(self, states):
         xyz = states[0].cpu().numpy()
@@ -236,15 +166,13 @@ class MonoForce:
         if isinstance(height, torch.Tensor):
             height = height.squeeze().cpu().numpy()
         with torch.no_grad():
-            # controls
+            # constant linear and angular velocities as control inputs
             tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
-            controls = {
-                'stamps': tt,
-                'linear_v': v * torch.ones(self.dphys_cfg.n_samples),
-                'angular_w': w * torch.ones(self.dphys_cfg.n_samples)
-            }
-            states, robot_points = self.dphysics(height, controls)
-        return states, robot_points.detach()
+            vs = v * torch.ones(self.dphys_cfg.n_samples)
+            ws = w * torch.ones(self.dphys_cfg.n_samples)
+            controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
+            states, system = dphysics(height, controls, dphys_cfg=self.dphys_cfg, device=self.device)
+        return states, system.robot_points.detach()
 
     def run(self):
         ds = RobinGasVis(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
@@ -275,10 +203,10 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            voxel_feats = self.model.get_voxels(*inputs)
-            height_geom_pred, height_diff_pred = self.model.bevencode(voxel_feats)
-            height_terrain_pred = height_geom_pred - height_diff_pred
-            # height_terrain_pred = self.model(*inputs)
+            # voxel_feats = self.model.get_voxels(*inputs)
+            # height_geom_pred, height_diff_pred = self.model.bevencode(voxel_feats)
+            # height_terrain_pred = height_geom_pred - height_diff_pred
+            height_terrain_pred = self.model(*inputs)
 
         rate = rospy.Rate(self.rate)
         pose_i = 0
@@ -292,10 +220,10 @@ class MonoForce:
                 # point cloud
                 self.publish_cloud(points, stamp)
                 # grid map
-                self.publish_gridmap(hm_geom[0], stamp, topic='grid_map_geom', mask=hm_geom[1])
-                self.publish_gridmap(hm_terrain[0], stamp, topic='grid_map_terrain', mask=hm_terrain[1])
-                self.publish_gridmap(height_geom_pred, stamp, topic='grid_map_geom_pred')
-                self.publish_gridmap(height_diff_pred, stamp, topic='grid_map_diff_pred')
+                # self.publish_gridmap(hm_geom[0], stamp, topic='grid_map_geom', mask=hm_geom[1])
+                # self.publish_gridmap(hm_terrain[0], stamp, topic='grid_map_terrain', mask=hm_terrain[1])
+                # self.publish_gridmap(height_geom_pred, stamp, topic='grid_map_geom_pred')
+                # self.publish_gridmap(height_diff_pred, stamp, topic='grid_map_diff_pred')
                 self.publish_gridmap(height_terrain_pred, stamp, topic='grid_map_terrain_pred')
                 # images
                 self.publish_images(imgs_raw, Ks, stamp)

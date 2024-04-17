@@ -1,8 +1,9 @@
+import warnings
 import torch
 from torch import nn
 import numpy as np
 from torchdiffeq import odeint, odeint_adjoint
-from ..transformations import rot2rpy, rpy2rot
+from ..transformations import rot2rpy
 from ..utils import skew_symmetric
 from ..config import DPhysConfig
 from ..control import pose_control
@@ -100,7 +101,7 @@ class RigidBodySoftTerrain(nn.Module):
                  Kp_theta=50.0,  # heading proportional gain
                  Kp_yaw=1.0,  # yaw (at a pose) proportional gain
                  learn_height=True,
-                 robot_model='marv'
+                 robot_model='husky'
                  ):
         super().__init__()
         self.device = device
@@ -146,8 +147,8 @@ class RigidBodySoftTerrain(nn.Module):
         self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
 
     def create_robot_model(self, model='husky'):
-        if model == 'marv':
-            size = (1.0, 0.6)
+        if model == 'tradr':
+            size = (1.0, 0.5)
             s_x, s_y = size
             n_pts = 10
             px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
@@ -160,6 +161,8 @@ class RigidBodySoftTerrain(nn.Module):
             px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
             py = torch.hstack([s_y / 2. * torch.ones(n_pts // 2), -s_y / 2. * torch.ones(n_pts // 2)])
             pz = torch.zeros(n_pts)
+        elif model == 'marv':
+            raise NotImplementedError
         elif model == 'warthog':
             raise NotImplementedError
         else:
@@ -493,71 +496,94 @@ class RigidBodySoftTerrain(nn.Module):
             self.state = State(xyz=state[0], rot=state[1], vel=state[2], omega=state[3], forces=state[4])
 
 
-def make_dphysics_model(height, cfg: DPhysConfig):
+def make_dphysics_model(height, dphys_cfg: DPhysConfig):
     system = RigidBodySoftTerrain(height=height,
-                                  grid_res=cfg.grid_res,
-                                  damping=cfg.damping, elasticity=cfg.elasticity, friction=cfg.friction,
-                                  mass=cfg.robot_mass,
-                                  state=State(xyz=cfg.robot_init_xyz),
-                                  vel_tracks=cfg.vel_tracks,
-                                  device=cfg.device, use_ode=False)
+                                  grid_res=dphys_cfg.grid_res,
+                                  damping=dphys_cfg.damping, elasticity=dphys_cfg.elasticity, friction=dphys_cfg.friction,
+                                  mass=dphys_cfg.robot_mass,
+                                  state=State(xyz=dphys_cfg.robot_init_xyz),
+                                  vel_tracks=dphys_cfg.vel_tracks)
     return system
 
 
-def main():
-    from mayavi import mlab  # visualization tool
+def dphysics(height, controls, robot_model='husky', state=None, dphys_cfg=None, device=None):
+    """
+    Simulate robot-terrain interaction model
+    @param height: heightmap, 2D numpy array
+    @param controls: control commands, linear velocity and angular velocity
+    @param robot_model: robot model, e.g., 'tradr', 'husky', 'marv'
+    @param state: initial state, State
+    @param dphys_cfg: configuration, DPhysConfig
+    @param device: cuda or cpu
+    @return: states, system
+    """
+    assert isinstance(height, np.ndarray)
+    assert height.shape[0] == height.shape[1]
+    assert isinstance(controls, dict)
+    assert 'stamps' in controls.keys()
+    assert 'linear_v' in controls.keys()
+    assert 'angular_w' in controls.keys()
+    assert isinstance(state, State) or state is None
 
-    OUTPUT_PATH = '/home/ruslan/workspaces/traversability_ws/src/differentiable_physics/data/output'
-    CREATE_MOVIE = 1
+    if dphys_cfg is None:
+        dphys_cfg = DPhysConfig()
 
-    height = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                       [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],
-                       [0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5],
-                       [0.5, 0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5],
-                       [1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
-                       [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5],
-                       [0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5],
-                       [0.5, 0.5, 0.0, 0.5, 0.7, 0.5, 0.5, 0.0, 0.5, 0.7],
-                       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    system_true = RigidBodySoftTerrain(height=height,
-                                       damping=10.0, elasticity=10.0, friction=0.9, mass=10.0, vel_tracks=[2., 2.])
+    if state is None:
+        state = State(xyz=torch.tensor([0., 0., 0.], device=device).view(3, 1),
+                      rot=torch.eye(3, device=device),
+                      vel=torch.tensor([0., 0., 0.], device=device).view(3, 1),
+                      omega=torch.tensor([0., 0., 0.], device=device).view(3, 1),
+                      device=device)
 
-    total_time = 4.0
-    number_of_samples = 100
-    t0, state = 0., system_true.state
-    tt = torch.linspace(float(t0), total_time, number_of_samples)
-    states = odeint(system_true.forward, state.as_tuple(), tt, atol=1e-3, rtol=1e-3)
-    # states = system_true.sim(state, tt)
+    """ Create robot-terrain interaction models """
+    system = RigidBodySoftTerrain(height=height,
+                                  grid_res=dphys_cfg.grid_res,
+                                  friction=dphys_cfg.friction,
+                                  mass=dphys_cfg.robot_mass,
+                                  state=state,
+                                  device=device, use_ode=False,
+                                  interaction_model='diffdrive',
+                                  robot_model=robot_model)
 
-    pos_x, pos_R, vel_x, vel_omega, aux = states
-    h = system_true.height.detach().cpu().numpy()
-    x_grid, y_grid = np.mgrid[0:system_true.height.shape[0], 0:system_true.height.shape[1]]
-    points = system_true.robot_points.detach().cpu().numpy()
+    # put models with their params to self.device
+    system = system.to(device)
+    tt = controls['stamps'].to(device)
 
-    fig = mlab.figure(size=(1024, 512))  # , bgcolor=(1, 1, 1), fgcolor=(0.2, 0.2, 0.2))
-    for t in range(pos_x.shape[0]):
-        _, _, _, _, f = system_true.forward(tt[t], (pos_x[t], pos_R[t], vel_x[t], vel_omega[t], aux[t]))
+    """ Navigation loop """
+    dt = (tt[1:] - tt[:-1]).mean()
 
-        mlab.clf()
-        mlab.plot3d(pos_x[0:(t + 1), 0].detach().cpu().numpy(), pos_x[0:(t + 1), 1].detach().cpu().numpy(),
-                    pos_x[0:(t + 1), 2].detach().cpu().numpy(), color=(1, 1, 1), line_width=2.0)
-        mlab.surf(x_grid, y_grid, h, opacity=0.5, representation='wireframe', line_width=5.0)
-        mlab.surf(x_grid, y_grid, h, color=(0.5, 0.5, 1.0), opacity=0.5, representation='surface')
-        cog = pos_x[t].detach().cpu().numpy()
-        rot = pos_R[t].detach().cpu().numpy()
-        d = rot @ points
-        mlab.points3d(cog[0] + d[0, :], cog[1] + d[1, :], cog[2] + d[2, :], scale_factor=0.25)
-        mlab.quiver3d(cog[0] + d[0, :], cog[1] + d[1, :], cog[2] + d[2, :], f[0].detach().cpu().numpy(),
-                      f[1].detach().cpu().numpy(), f[2].detach().cpu().numpy(), scale_factor=0.005)
-        # robot.plot_robot_Rt([], pos_R[t].detach().cpu().numpy(), pos_x[t].detach().cpu().numpy())
-        mlab.view(azimuth=150 - t, elevation=80, distance=20.0)
-        if CREATE_MOVIE:
-            mlab.savefig(filename=OUTPUT_PATH + '{:04d}_frame'.format(t) + '.png', magnification=1.0)
-        # else:
-        #    mlab.show()
+    xyz, Rs, linear_v, angular_w, forces = state
+    xyz, Rs, linear_v, angular_w, forces = [xyz], [Rs], [linear_v], [angular_w], [forces]
 
+    for t in range(len(tt[1:])):
+        v, w = controls['linear_v'][t], controls['angular_w'][t]
 
-if __name__ == '__main__':
-    main()
+        state[2][0] = v
+        state[3][2] = w
+
+        dstate = system.forward(t, state)
+        state = state.update(dstate, dt)
+
+        roll, pitch, yaw = rot2rpy(state[1].squeeze())
+        if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
+            warnings.warn('Robot is flipped over!')
+            break
+
+        xyz.append(state[0])
+        Rs.append(state[1])
+        linear_v.append(state[2])
+        angular_w.append(state[3])
+        forces.append(state[4])
+
+    xyz = torch.stack(xyz)
+    Rs = torch.stack(Rs)
+    linear_v = torch.stack(linear_v)
+    angular_w = torch.stack(angular_w)
+    forces = torch.stack(forces)
+
+    states = [xyz, Rs, linear_v, angular_w, forces]
+
+    return states, system
