@@ -1,15 +1,13 @@
 from __future__ import absolute_import
 import os
 import numpy as np
-import torchvision
 from matplotlib import pyplot as plt
-from ..models.lss.tools import img_transform, normalize_img
-from ..utils import position, read_yaml
+from ..models.lss.utils import img_transform, normalize_img
+from ..utils import position, read_yaml, timing
 from ..transformations import transform_cloud
-from ..cloudproc import filter_grid, estimate_heightmap, hm_to_cloud
+from ..cloudproc import filter_grid, estimate_heightmap
 from ..config import DPhysConfig
 from .robingas import data_dir
-from monoforce.datasets.utils import explore_data
 from copy import copy
 import torch
 import yaml
@@ -106,7 +104,7 @@ def read_poses(path):
 
 def read_rgb(path):
     img = Image.open(path)
-    img = np.asarray(img, dtype=np.uint8)
+    # img = np.asarray(img, dtype=np.uint8)
     return img
 
 
@@ -450,14 +448,13 @@ class Rellis3D(Rellis3DBase):
 
         return points
 
-    def get_terrain_height_map(self, id, cached=False, dir_name=None):
+    def get_terrain_height_map(self, id, cached=True, dir_name=None):
         """
         Get height map from trajectory points.
-        :param i: index of the sample
-        :param method: method to estimate height map from trajectory points
+        :param id: id of the sample
         :param cached: if True, load height map from file if it exists, otherwise estimate it
         :param dir_name: directory to save/load height map
-        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
+        :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
@@ -495,7 +492,7 @@ class Rellis3D(Rellis3DBase):
         return hm_front
 
     def sample_augmentation(self):
-        H, W = self.get_raw_img_size()
+        H, W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
         fH, fW = self.lss_cfg['data_aug_conf']['final_dim']
         if self.is_train:
             resize = np.random.uniform(*self.lss_cfg['data_aug_conf']['resize_lim'])
@@ -519,19 +516,19 @@ class Rellis3D(Rellis3DBase):
             rotate = 0
         return resize, resize_dims, crop, flip, rotate
 
-    def get_image_data(self, id, normalize=True):
+    def get_image_data(self, id):
         img = self.get_image(id)
         K = self.calib['K']
-
-        if self.is_train:
-            img = self.img_augs(image=img)['image']
+        # # apply augmentations: may slow down the training
+        # if self.is_train:
+        #     img = self.img_augs(image=np.asarray(img))['image']
 
         post_rot = torch.eye(2)
         post_tran = torch.zeros(2)
 
         # augmentation (resize, crop, horizontal flip, rotate)
         resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
-        img, post_rot2, post_tran2 = img_transform(Image.fromarray(img), post_rot, post_tran,
+        img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
                                                    resize=resize,
                                                    resize_dims=resize_dims,
                                                    crop=crop,
@@ -544,10 +541,7 @@ class Rellis3D(Rellis3DBase):
         post_rot[:2, :2] = post_rot2
 
         # rgb and intrinsics
-        if normalize:
-            img = normalize_img(img)
-        else:
-            img = torchvision.transforms.ToTensor()(img)
+        img = normalize_img(img)
         K = torch.as_tensor(K)
 
         # extrinsics
@@ -579,7 +573,7 @@ class Rellis3DVis(Rellis3D):
         super().__init__(path, lss_cfg, dphys_cfg, is_train, only_front_hm)
 
     def get_sample(self, id):
-        inputs = self.get_image_data(id, normalize=False)
+        inputs = self.get_image_data(id)
         inputs = [i.unsqueeze(0) for i in inputs]
         img, rot, tran, K, post_rot, post_tran = inputs
         hm_lidar = torch.as_tensor(self.get_geom_height_map(id))

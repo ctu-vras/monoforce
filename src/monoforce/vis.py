@@ -323,6 +323,7 @@ def vis_dem_data(height, traj, img=None, cfg=DPhysConfig()):
 
     if img is not None:
         # visualize image
+        img = np.asarray(img)
         ax = plt.subplot(133)
         ax.imshow(img)
         ax.set_title('Camera view')

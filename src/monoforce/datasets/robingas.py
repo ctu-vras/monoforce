@@ -6,11 +6,11 @@ import torch
 import torchvision
 from torch.utils.data import Dataset
 from matplotlib import pyplot as plt
-from ..models.lss.tools import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask
+from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
-from ..utils import position
+from ..utils import position, timing
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..utils import normalize
@@ -372,81 +372,6 @@ class DEMPathData(Dataset):
                          int(square_grid[0, 0]):int(square_grid[2, 0])]
         return hm_front
 
-    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
-        """
-        Get height map from lidar point cloud.
-        :param i: index of the sample
-        :param cached: if True, load height map from file if it exists, otherwise estimate it
-        :param dir_name: directory to save/load height map
-        :param kwargs: additional arguments for height map estimation
-        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
-        """
-        if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'lidar')
-        file_path = os.path.join(dir_name, f'{self.ids[i]}')
-        if cached and os.path.exists(file_path):
-            lidar_hm = np.load(file_path, allow_pickle=True).item()
-        else:
-            cloud = self.get_cloud(i)
-            points = position(cloud)
-            lidar_hm = self.estimate_heightmap(points, **kwargs)
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, lidar_hm)
-        height = lidar_hm['z']
-        mask = lidar_hm['mask']
-        heightmap = torch.from_numpy(np.stack([height, mask]))
-        return heightmap
-
-    def get_traj_height_map(self, i, method='footprint', cached=True, dir_name=None):
-        """
-        Get height map from trajectory points.
-        :param i: index of the sample
-        :param method: method to estimate height map from trajectory points
-        :param cached: if True, load height map from file if it exists, otherwise estimate it
-        :param dir_name: directory to save/load height map
-        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
-        """
-        assert method in ['dphysics', 'footprint']
-        if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
-        if method == 'dphysics':
-            height = self.get_traj_dphyics_terrain(i)
-            h, w = int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res), int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res)
-            # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
-            H, W = height.shape
-            if H == 256 and W == 256:
-                # print(f'Height map shape is {H} x {W}). Cropping to 128 x 128')
-                # select only the h x w area from the center of the height map
-                height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
-                                int(W // 2 - w // 2):int(W // 2 + w // 2)]
-            # poses in grid coordinates
-            poses = self.get_traj(i)['poses']
-            poses_grid = poses[:, :2, 3] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
-            poses_grid = poses_grid.astype(int)
-            # crop poses to observation area defined by square grid
-            poses_grid = poses_grid[(poses_grid[:, 0] > 0) & (poses_grid[:, 0] < w) &
-                                    (poses_grid[:, 1] > 0) & (poses_grid[:, 1] < h)]
-
-            # visited by poses dilated height map area mask
-            kernel = np.ones((3, 3), dtype=np.uint8)
-            mask = np.zeros((h, w), dtype=np.uint8)
-            mask[poses_grid[:, 0], poses_grid[:, 1]] = 1
-            mask = cv2.dilate(mask, kernel, iterations=2)
-        else:
-            assert method == 'footprint'
-            file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
-            if cached and os.path.exists(file_path):
-                traj_hm = np.load(file_path, allow_pickle=True).item()
-            else:
-                traj_points = self.get_footprint_traj_points(i)
-                traj_hm = self.estimate_heightmap(traj_points, robot_radius=None)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                np.save(file_path, traj_hm)
-            height = traj_hm['z']
-            mask = traj_hm['mask']
-        heightmap = torch.from_numpy(np.stack([height, mask]))
-        return heightmap
-
     def get_sample(self, i):
         cloud = self.get_cloud(i)
         points = position(cloud)
@@ -556,7 +481,6 @@ class RobinGas(DEMPathData):
         if camera is None:
             camera = self.cameras[0]
         img = self.get_raw_image(i, camera)
-        img = np.asarray(img)
         for key in self.calib.keys():
             if camera in key:
                 camera = key
@@ -567,11 +491,12 @@ class RobinGas(DEMPathData):
         if undistort:
             D = self.calib[camera]['distortion_coefficients']['data']
             D = np.array(D)
+            img = np.asarray(img)
             img, K = undistort_image(img, K, D)
         return img, K
 
     def sample_augmentation(self):
-        H, W = self.get_raw_img_size()
+        H, W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
         fH, fW = self.lss_cfg['data_aug_conf']['final_dim']
         if self.is_train:
             resize = np.random.uniform(*self.lss_cfg['data_aug_conf']['resize_lim'])
@@ -594,8 +519,8 @@ class RobinGas(DEMPathData):
             flip = False
             rotate = 0
         return resize, resize_dims, crop, flip, rotate
-    
-    def get_images_data(self, i, normalize=True):
+
+    def get_images_data(self, i):
         imgs = []
         rots = []
         trans = []
@@ -605,15 +530,15 @@ class RobinGas(DEMPathData):
 
         for cam in self.cameras:
             img, K = self.get_image(i, cam, undistort=False)
-            if self.is_train:
-                img = self.img_augs(image=img)['image']
+            # if self.is_train:
+            #     img = self.img_augs(image=np.asarray(img))['image']
 
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
 
             # augmentation (resize, crop, horizontal flip, rotate)
             resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
-            img, post_rot2, post_tran2 = img_transform(Image.fromarray(img), post_rot, post_tran,
+            img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
                                                        resize=resize,
                                                        resize_dims=resize_dims,
                                                        crop=crop,
@@ -627,10 +552,7 @@ class RobinGas(DEMPathData):
             post_rot[:2, :2] = post_rot2
 
             # rgb and intrinsics
-            if normalize:
-                img = normalize_img(img)
-            else:
-                img = torchvision.transforms.ToTensor()(img)
+            img = normalize_img(img)
             K = torch.as_tensor(K)
 
             # extrinsics
@@ -730,21 +652,89 @@ class RobinGas(DEMPathData):
 
         return points, colors
 
-    def get_terrain_heightmap(self, i, obstacle_classes=None):
-        if obstacle_classes is None:
-            obstacle_classes = ['person']
-        seg_points, _ = self.get_semantic_cloud(i, classes=obstacle_classes, vis=False)
-        traj_points = self.get_footprint_traj_points(i)
-        points = np.concatenate((seg_points, traj_points), axis=0)
-        hm = self.estimate_heightmap(points)
-        height, mask = hm['z'], hm['mask']
+    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
+        """
+        Get height map from lidar point cloud.
+        :param i: index of the sample
+        :param cached: if True, load height map from file if it exists, otherwise estimate it
+        :param dir_name: directory to save/load height map
+        :param kwargs: additional arguments for height map estimation
+        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
+        """
+        if dir_name is None:
+            dir_name = os.path.join(self.path, 'terrain', 'lidar')
+        file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
+        if cached and os.path.exists(file_path):
+            lidar_hm = np.load(file_path, allow_pickle=True).item()
+        else:
+            cloud = self.get_cloud(i)
+            points = position(cloud)
+            lidar_hm = self.estimate_heightmap(points, **kwargs)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            np.save(file_path, lidar_hm)
+        height = lidar_hm['z']
+        mask = lidar_hm['mask']
+        heightmap = torch.from_numpy(np.stack([height, mask]))
+        return heightmap
+
+    def get_terrain_height_map(self, i, method='footprint', cached=True, dir_name=None, obstacle_classes=['person']):
+        """
+        Get height map from trajectory points.
+        :param i: index of the sample
+        :param method: method to estimate height map from trajectory points
+        :param cached: if True, load height map from file if it exists, otherwise estimate it
+        :param dir_name: directory to save/load height map
+        :param obstacle_classes: classes of obstacles to include in the height map
+        :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
+        """
+        assert method in ['dphysics', 'footprint']
+        if dir_name is None:
+            dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
+        if method == 'dphysics':
+            height = self.get_traj_dphyics_terrain(i)
+            h, w = int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res), int(
+                2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res)
+            # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
+            H, W = height.shape
+            if H == 256 and W == 256:
+                # print(f'Height map shape is {H} x {W}). Cropping to 128 x 128')
+                # select only the h x w area from the center of the height map
+                height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
+                                int(W // 2 - w // 2):int(W // 2 + w // 2)]
+            # poses in grid coordinates
+            poses = self.get_traj(i)['poses']
+            poses_grid = poses[:, :2, 3] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
+            poses_grid = poses_grid.astype(int)
+            # crop poses to observation area defined by square grid
+            poses_grid = poses_grid[(poses_grid[:, 0] > 0) & (poses_grid[:, 0] < w) &
+                                    (poses_grid[:, 1] > 0) & (poses_grid[:, 1] < h)]
+
+            # visited by poses dilated height map area mask
+            kernel = np.ones((3, 3), dtype=np.uint8)
+            mask = np.zeros((h, w), dtype=np.uint8)
+            mask[poses_grid[:, 0], poses_grid[:, 1]] = 1
+            mask = cv2.dilate(mask, kernel, iterations=2)
+        else:
+            assert method == 'footprint'
+            file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
+            if cached and os.path.exists(file_path):
+                hm_rigid = np.load(file_path, allow_pickle=True).item()
+            else:
+                seg_points, _ = self.get_semantic_cloud(i, classes=obstacle_classes, vis=False)
+                traj_points = self.get_footprint_traj_points(i)
+                points = np.concatenate((seg_points, traj_points), axis=0)
+                hm_rigid = self.estimate_heightmap(points, robot_radius=None)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                np.save(file_path, hm_rigid)
+            height = hm_rigid['z']
+            mask = hm_rigid['mask']
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
     def get_sample(self, i):
         img, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i)
         hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_heightmap(i)
+        hm_terrain = self.get_terrain_height_map(i)
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
@@ -759,7 +749,7 @@ class RobinGasVis(RobinGas):
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_heightmap(i)
+        hm_terrain = self.get_terrain_height_map(i)
         if self.only_front_hm:
             mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)

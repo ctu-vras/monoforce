@@ -8,12 +8,13 @@ from tqdm import tqdm
 
 from monoforce.cloudproc import hm_to_cloud
 from monoforce.models.lss.model import compile_model
-from monoforce.models.lss.tools import ego_to_cam, get_only_in_img_mask, denormalize_img
+from monoforce.models.lss.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 
 from ..config import DPhysConfig
 from ..transformations import xyz_rpy_to_matrix
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
+
 
 __all__ = [
     'get_robingas_data',
@@ -136,7 +137,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         print('Loaded LSS model from', modelf)
         model.eval()
 
-    H, W = ds.get_raw_img_size()
+    H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
     cams = ds.cameras
 
     if sample_range == 'random':

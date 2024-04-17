@@ -15,8 +15,8 @@ __all__ = [
     'valid_point_mask',
     'estimate_heightmap',
     'hm_to_cloud',
+    'position',
 ]
-
 
 def affine(tf, x):
     """Apply an affine transform to points."""

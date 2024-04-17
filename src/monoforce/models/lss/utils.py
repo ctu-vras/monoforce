@@ -11,6 +11,8 @@ from tqdm import tqdm
 from PIL import Image
 import yaml
 
+from monoforce.utils import timing
+
 
 def load_config(fname):
     with open(fname, "r") as f:
@@ -56,7 +58,6 @@ def get_rot(h):
         [np.cos(h), np.sin(h)],
         [-np.sin(h), np.cos(h)],
     ])
-
 
 def img_transform(img, post_rot, post_tran,
                   resize, resize_dims, crop,

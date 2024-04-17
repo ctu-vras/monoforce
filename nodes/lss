@@ -10,7 +10,7 @@ from grid_map_msgs.msg import GridMap
 from monoforce.cloudproc import position, estimate_heightmap
 from monoforce.config import DPhysConfig
 from monoforce.models.lss.model import compile_model
-from monoforce.models.lss.tools import img_transform, ego_to_cam, get_only_in_img_mask, normalize_img
+from monoforce.models.lss.utils import img_transform, ego_to_cam, get_only_in_img_mask, normalize_img
 from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
 from monoforce.utils import normalize, read_yaml
 from monoforce.datasets.utils import load_calib

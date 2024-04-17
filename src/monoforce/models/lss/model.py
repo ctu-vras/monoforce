@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from efficientnet_pytorch import EfficientNet
 from torchvision.models.resnet import resnet18
-from .tools import gen_dx_bx, cumsum_trick, QuickCumsum
+from .utils import gen_dx_bx, cumsum_trick, QuickCumsum
 
 
 class Up(nn.Module):
