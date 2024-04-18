@@ -8,68 +8,34 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ![](./docs/imgs/monoforce.gif)
 
-<img src="docs/imgs/pipeline.png"/>
-
-## Installation
-Please, follow the [INSTALL.md](./docs/INSTALL.md) for the installation instructions.
-
-## Data
-
-Traversability data structure and processing are described in the [DATA.md](./docs/DATA.md).
+## Table of Contents
+- [Installation Instructions](./docs/INSTALL.md)
+- [Traversability Data Structure and Processing](./docs/DATA.md)
+- [Terrain Encoder](./docs/TERRAIN_ENCODER.md)
+- [Differentiable Physics](./docs/DPHYS.md)
+- [Running](#running)
+- [ROS Integration](#ros-integration)
+- [Citation](#citation)
 
 ## Running
 
-To predict terrain shape and robot's trajectory from RGB images, please run:
+The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Physics modules.
+Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
+Then the Differentiable Physics module simulates robot trajectory and interaction forces on the predicted terrain
+for a provided control sequence (linear and angular velocities).
+
+Please run the following command to explore the MonoForce pipeline:
 ```commandline
 python scripts/run
 ```
 
-If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can run the demo:
+If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
 ```commandline
 cd docker/ && ./run.sh
 ```
 
-## Differentiable Physics
-![](./docs/imgs/diffphysics.png)
-
-Run the differentiable physics simulation with a robot model and the provided dataset:
-```commandline
-python scripts/robot_control
-```
-
-![](./docs/imgs/hm_learning.gif)
-Terrain properties optimization from the ground-truth trajectories followed by the robot:
-```commandline
-python scripts/fit_terrain
-```
-
-## Terrain Encoder
-
-The Terrain Encoder is a model that predicts the shape of the supporting terrain from input RGB images.
-The demo video is available via the [link](https://drive.google.com/file/d/17GtA_uLyQ2o3tHiBuhxenZ0En7SzLAad/view?usp=sharing).
-
-<img src="docs/imgs/hm_prediction_demo.png" height="280"/> <img src="docs/imgs/images_to_heightmap.png" height="280"/>
-
-### Training
-
-![](./docs/imgs/terrain_encoder_training.png)
-
-1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is optimized in order to match the ground-truth trajectory as closely as possible.
-2. The optimized terrain shape is used as a label to train the terrain shape predictor. This model takes as input an RGB-image and predicts the shape of the supporting terrain in front of a robot.
-We utilize the [Lift-Splat-Shoot (LSS)](https://github.com/nv-tlabs/lift-splat-shoot) model as the Terrain Encoder.
-3. Lidar scans are used in order to provide initial height map estimates during training.
-
-To train the LSS model, please run:
-```commandline
-cd scripts/
-python train
-```
-
-### Weights
-
-The pretrained weights for the LSS terrain encoder can be downloaded from:
-- RobinGas: [lss_robingas_2024_03_04_09_42_47/train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
-- RELLIS-3D: [lss_rellis3d_2024_03_06_16_07_52/train_lss.pt](https://drive.google.com/file/d/12WUNFXFHsm3hM1Ov-Ap1yRybOif6-Vi4/view?usp=sharing)
+<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+<img src="./docs/imgs/monoforce_mayavi.gif" width="800"/>
 
 ## ROS Integration
 
@@ -78,7 +44,7 @@ Given the input RGB images and cameras calibration, the Terrain Encoder predicts
 which is then used to simulate robot trajectories.
 
 ```commandline
-roslaunch monoforce lss_demo.launch
+roslaunch monoforce monoforce.launch
 ```
 
 ## Citation

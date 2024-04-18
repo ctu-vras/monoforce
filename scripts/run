@@ -10,8 +10,8 @@ from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.utils import denormalize_img
 from monoforce.utils import read_yaml
 from mayavi import mlab
-
 from monoforce.vis import visualize_imgs
+
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -100,23 +100,38 @@ class MonoForce:
                 v = -v
             w = np.random.uniform(-0.2, 0.2)
             print('Predicting path with v=%.3f, w=%.3f' % (v, w))
-            states, robot_points = self.predict_states(height, v=v, w=w)
+            states, robot_points0 = self.predict_states(height, v=v, w=w)
             poses = self.poses_from_states(states)
             print('Predicted poses shape: %s' % str(poses.shape))
             forces = states[4].cpu().numpy()
             print('Predicted forces shape: %s' % str(forces.shape))
-            robot_points = robot_points.cpu().numpy()
-            print('Robot contact points shape: %s' % str(robot_points.shape))
+            robot_points0 = robot_points0.cpu().numpy()
+            print('Robot contact points shape: %s' % str(robot_points0.shape))
 
         # visualize
-        h, w = height.shape
-        x_grid, y_grid = np.mgrid[-h // 2:h // 2, -w // 2:w // 2] * self.dphys_cfg.grid_res
-
         mlab.figure(bgcolor=(1, 1, 1), size=(800, 800))
+        h, w = height.shape
+        x_grid, y_grid = np.mgrid[-h//2:h//2, -w//2:w//2] * self.dphys_cfg.grid_res
         mlab.surf(x_grid, y_grid, height, colormap='terrain')
-        mlab.points3d(robot_points[0, :], robot_points[1, :], robot_points[2, :], color=(0, 0, 1), scale_factor=0.1)
         mlab.plot3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(0, 0, 0), line_width=2.0)
+        visu_robot = mlab.points3d(robot_points0[0, :], robot_points0[1, :], robot_points0[2, :],
+                                   color=(0, 0, 1), scale_factor=0.2)
+        visu_forces = mlab.quiver3d(robot_points0[0, :], robot_points0[1, :], robot_points0[2, :],
+                                    forces[0, 0, :], forces[0, 1, :], forces[0, 2, :],
+                                    line_width=4.0, scale_factor=0.005)
+        for i in range(len(poses)):
+            robot_points = poses[i, :3, :3] @ robot_points0 + poses[i, :3, 3:4]
+            robot_points[2] -= ds.calib['clearance']
+            visu_robot.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :])
+            visu_forces.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :],
+                                        u=forces[i, 0, :], v=forces[i, 1, :], w=forces[i, 2, :])
+            mlab.view(azimuth=i / 2., elevation=60, distance=20)
+            # mlab pause
+            if i % 5 == 0:
+                os.makedirs('./output', exist_ok=True)
+                mlab.savefig(f'./output/pose_{i//5}.png')
         mlab.show()
+
 
 def main():
     monoforce = MonoForce()

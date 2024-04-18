@@ -1,3 +1,4 @@
+import os
 import cv2
 from matplotlib import cm, pyplot as plt
 from matplotlib.lines import Line2D
@@ -115,10 +116,10 @@ def animate_trajectory(system, vis_cfg, z_margin=0., frame_n=0, log_path='./gen'
                                         z=system.pos_x[:, 2].squeeze())
         # mlab.view(azimuth=150 - frame_n, elevation=60, distance=16.0)
 
-        # if t % save_figs_step == 0:
-        #     os.makedirs(log_path, exist_ok=True)
-        #     mlab.savefig(filename=os.path.join(log_path, '{:04d}_frame.png'.format(frame_n)), magnification=1.0)
-        #     frame_n += 1
+        if t % save_figs_step == 0:
+            os.makedirs(log_path, exist_ok=True)
+            mlab.savefig(filename=os.path.join(log_path, '{:04d}_frame.png'.format(frame_n)), magnification=1.0)
+            frame_n += 1
 
     return frame_n
 
