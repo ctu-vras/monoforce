@@ -42,7 +42,7 @@ docker run \
   "cd /root/catkin_ws/; \
   catkin config \
       --cmake-args \
-          -DCMAKE_BUILD_TYPE=Release; \
+      -DCMAKE_BUILD_TYPE=Release; \
       catkin build; \
       source devel/setup.bash; \
       roslaunch monoforce monoforce.launch rviz:=false robot:=husky"

@@ -4,7 +4,6 @@
     <arg name="seq_i" default="0"/>
     <arg name="sample_i" default="0"/>
     <arg name="robot" default="tradr"/>
-    <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
 
     <!-- Load robot description -->
     <rosparam command="load" file="$(dirname)/../config/params/$(arg robot).params"/>
@@ -21,7 +20,7 @@
             n_samples: 700
             seq_i: $(arg seq_i)
             sample_i: $(arg sample_i)
-            lss_weights: $(arg weights)
+            lss_weights: $(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt
             dphys_config_path: $(dirname)/../config/dphys_cfg.yaml
             lss_config_path: $(dirname)/../config/lss_cfg_$(arg robot).yaml
             pub_cloud: true

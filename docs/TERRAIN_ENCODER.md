@@ -23,5 +23,6 @@ python train
 ### Weights
 
 The pretrained weights for the LSS terrain encoder can be downloaded from:
-- RobinGas: [lss_robingas_2024_03_04_09_42_47/train_lss.pt](https://drive.google.com/file/d/168W8ftzlLFOquIb1mLTrSkjgMLHDOks0/view?usp=sharing)
-- RELLIS-3D: [lss_rellis3d_2024_03_06_16_07_52/train_lss.pt](https://drive.google.com/file/d/12WUNFXFHsm3hM1Ov-Ap1yRybOif6-Vi4/view?usp=sharing)
+- RobinGas: [lss_robingas_husky.pt](https://drive.google.com/file/d/1h1VieiIdGZB1Ml3QdIlh8ZJA67sJej4m/view?usp=sharing),
+            [lss_robingas_tradr.pt](https://drive.google.com/file/d/1jpsgXN-44Bbu9hfAWd5Z3te1DWp3s8cX/view?usp=sharing)
+- RELLIS-3D: [lss_rellis3d.pt](https://drive.google.com/file/d/1kK75mUxHn-4GadU4k8-c43hA9t3bZxw1/view?usp=sharing)

@@ -36,9 +36,10 @@ python scripts/run --img-paths data/robingas/data/22-10-20-unhost/ugv_2022-10-20
                                data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/images/1666267292_537972927_camera_right.png \
                    --cameras camera_front camera_left camera_right \
                    --calibration-path data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/calibration/ \
-                   --lss_cfg_path config/lss_cfg_tradr.yaml --model_path config/weights/lss/lss_tradr.pt --dphys_cfg_path config/dphys_cfg.yaml \
+                   --lss_cfg_path config/lss_cfg_tradr.yaml --model_path config/weights/lss/lss_robingas_tradr.pt --dphys_cfg_path config/dphys_cfg.yaml \
                    --linear-vel 0.5 --angular-vel -0.1
 ```
+Please, refer to the [Terrain Encoder](./docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
 
 If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
 ```commandline

@@ -40,7 +40,6 @@ __all__ = [
     'robingas_husky_seq_paths',
     'robingas_marv_seq_paths',
     'robingas_tradr_seq_paths',
-    'sim_seq_paths',
     'oru_seq_paths',
 ]
 
@@ -67,18 +66,6 @@ robingas_tradr_seq_paths = [
     os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/'),
 ]
 robingas_tradr_seq_paths = [os.path.normpath(path) for path in robingas_tradr_seq_paths]
-
-sim_seq_paths = [
-    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_2024-01-03-13-36-25'),
-    os.path.join(data_dir, 'husky_sim/husky_farmWith1CropRow_2024-01-03-13-52-36'),
-    os.path.join(data_dir, 'husky_sim/husky_inspection_2024-01-03-14-06-53'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-03-13-55-37'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_dynamic_2024-01-03-13-59-08'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-56-34'),
-    os.path.join(data_dir, 'husky_sim/husky_simcity_2024-01-09-17-50-23'),
-    os.path.join(data_dir, 'husky_sim/husky_emptyfarm_vegetation_2024-01-09-17-18-46'),
-]
-sim_seq_paths = [os.path.normpath(path) for path in sim_seq_paths]
 
 oru_seq_paths = [
     os.path.join(data_dir, 'ORU/2024_02_07_Husky_campus_forest_bushes/bags/radarize__2024-02-07-10-47-13_0/'),
