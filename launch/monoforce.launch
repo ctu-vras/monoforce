@@ -7,7 +7,7 @@
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
 
     <!-- Load robot description -->
-    <rosparam command="load" file="$(dirname)/../config/$(arg robot).params"/>
+    <rosparam command="load" file="$(dirname)/../config/params/$(arg robot).params"/>
     <remap if="$(eval robot == 'tradr')" from="robot_description" to="nifti_robot_description"/>
 
     <!-- Robot state publisher -->

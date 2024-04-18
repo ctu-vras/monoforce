@@ -25,7 +25,6 @@ def arg_parser():
                         default=os.path.join(base_path, 'config/lss_cfg_tradr.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str,
                         default=os.path.join(base_path, 'config/weights/lss/lss.pt'), help='Path to the LSS model')
-    parser.add_argument('--robot', type=str, default='tradr', help='Robot type: husky or tradr')
     parser.add_argument('--img-paths', type=str, required=True, nargs='+', help='Paths to the input RGB images')
     parser.add_argument('--calibration-path', type=str, required=True, help='Path to the calibration files')
     parser.add_argument('--cameras', type=str, nargs='+', default=None, help='Camera names')
@@ -38,14 +37,12 @@ def arg_parser():
 class MonoForce:
     def __init__(self, imgs_path, calib_path,
                  cameras=None,
-                 robot='tradr',
                  linear_vel=None, angular_vel=None,
                  dphys_cfg_path=os.path.join('..', 'config/dphys_cfg.yaml'),
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg_tradr.yaml'),
                  model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
         self.imgs_path = imgs_path
         self.calib_path = calib_path
-        self.robot = robot  # 'husky' or 'tradr
         self.linear_vel = linear_vel
         self.angular_vel = angular_vel
         if linear_vel is None:
@@ -224,7 +221,6 @@ def main():
     monoforce = MonoForce(imgs_path=args.img_paths,
                           calib_path=args.calibration_path,
                           cameras=args.cameras,
-                          robot=args.robot,
                           linear_vel=args.linear_vel,
                           angular_vel=args.angular_vel,
                           dphys_cfg_path=args.dphys_cfg_path,
