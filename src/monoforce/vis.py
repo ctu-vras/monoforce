@@ -123,19 +123,14 @@ def animate_trajectory(system, vis_cfg, z_margin=0., frame_n=0, log_path='./gen'
     return frame_n
 
 # helper function for data visualization
-def visualize_imgs(layout='rows', figsize=(20, 10), **images):
-    assert layout in ['columns', 'rows']
-    """PLot images in one row."""
+def visualize_imgs(images):
     n = len(images)
+    figsize = (n * 5, 5)
     plt.figure(figsize=figsize)
-    for i, (name, image) in enumerate(images.items()):
-        if layout == 'rows':
-            plt.subplot(1, n, i + 1)
-        elif layout == 'columns':
-            plt.subplot(n, 1, i + 1)
+    for i, image in enumerate(images):
+        plt.subplot(1, n, i + 1)
         plt.xticks([])
         plt.yticks([])
-        plt.title(' '.join(name.split('_')).title())
         plt.imshow(image)
     plt.tight_layout()
     plt.show()

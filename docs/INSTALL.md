@@ -17,10 +17,19 @@ cd ~/catkin_ws/src/ && git clone https://github.com/ctu-vras/monoforce.git
 cd ~/catkin_ws/ && catkin_make
 ```
 
+## Docker
+
+We have prepared a [Docker](https://docs.docker.com/engine/install/ubuntu/) image to run the monoforce package.
+To build the image:
+```commandline
+cd ./docker/
+make build
+```
+
 ## Singularity
 
 It is possible to run the monoforce package in a [Singularity](https://sylabs.io/singularity/) container.
-Build the container:
+To build the image:
 ```commandline
 cd ./singularity/
 ./build.sh

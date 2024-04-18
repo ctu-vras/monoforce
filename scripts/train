@@ -59,6 +59,10 @@ class Trainer:
     log_dir: str, path to log directory
     debug: bool, debug mode: use small datasets
     vis: bool, visualize training samples
+    geom_hm_weight: float, weight for geometry heightmap loss
+    terrain_hm_weight: float, weight for terrain heightmap loss
+    hdiff_weight: float, weight for height difference loss
+    only_front_hm: bool, use only front heightmap part for training
     """
 
     def __init__(self,

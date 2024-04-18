@@ -7,12 +7,18 @@ from monoforce.datasets import RobinGasVis, robingas_tradr_seq_paths, robingas_h
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
 from monoforce.models.lss.model import compile_model
+from monoforce.models.lss.utils import denormalize_img
 from monoforce.utils import read_yaml
+from mayavi import mlab
 
+from monoforce.vis import visualize_imgs
+
+np.random.seed(0)
+torch.manual_seed(0)
 
 class MonoForce:
-    def __init__(self):
-        self.robot = 'tradr'  # 'husky' or 'tradr
+    def __init__(self, robot='tradr'):
+        self.robot = robot  # 'husky' or 'tradr
         # choose data sample
         seqs = robingas_husky_seq_paths if self.robot == 'husky' else robingas_tradr_seq_paths
         seq_i = np.random.choice(range(len(seqs)))
@@ -75,12 +81,18 @@ class MonoForce:
         sample_i = np.random.choice(range(len(ds)))
         print('Using sample %d' % sample_i)
         imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
+        print('Loaded images with shapes: %s' % str([i.shape for i in imgs]))
+
+        # draw images
+        imgs_vis = [np.asarray(denormalize_img(img)) for img in imgs]
+        visualize_imgs(imgs_vis)
 
         # get heightmap prediction
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
             height_terrain_pred = self.model(*inputs)
+            height = height_terrain_pred.squeeze().cpu().numpy()
 
             # predict path poses
             v = np.random.uniform(0.4, 0.8)
@@ -88,7 +100,7 @@ class MonoForce:
                 v = -v
             w = np.random.uniform(-0.2, 0.2)
             print('Predicting path with v=%.3f, w=%.3f' % (v, w))
-            states, robot_points = self.predict_states(height_terrain_pred, v=v, w=w)
+            states, robot_points = self.predict_states(height, v=v, w=w)
             poses = self.poses_from_states(states)
             print('Predicted poses shape: %s' % str(poses.shape))
             forces = states[4].cpu().numpy()
@@ -96,6 +108,15 @@ class MonoForce:
             robot_points = robot_points.cpu().numpy()
             print('Robot contact points shape: %s' % str(robot_points.shape))
 
+        # visualize
+        h, w = height.shape
+        x_grid, y_grid = np.mgrid[-h // 2:h // 2, -w // 2:w // 2] * self.dphys_cfg.grid_res
+
+        mlab.figure(bgcolor=(1, 1, 1), size=(800, 800))
+        mlab.surf(x_grid, y_grid, height, colormap='terrain')
+        mlab.points3d(robot_points[0, :], robot_points[1, :], robot_points[2, :], color=(0, 0, 1), scale_factor=0.1)
+        mlab.plot3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(0, 0, 0), line_width=2.0)
+        mlab.show()
 
 def main():
     monoforce = MonoForce()
