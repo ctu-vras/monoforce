@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import os
 import numpy as np
 from matplotlib import pyplot as plt
-from ..models.lss.utils import img_transform, normalize_img
+from ..models.lss.utils import img_transform, normalize_img, sample_augmentation
 from ..utils import position, read_yaml, timing
 from ..transformations import transform_cloud
 from ..cloudproc import filter_grid, estimate_heightmap
@@ -491,31 +491,6 @@ class Rellis3D(Rellis3DBase):
                          int(square_grid[0, 0]):int(square_grid[2, 0])]
         return hm_front
 
-    def sample_augmentation(self):
-        H, W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
-        fH, fW = self.lss_cfg['data_aug_conf']['final_dim']
-        if self.is_train:
-            resize = np.random.uniform(*self.lss_cfg['data_aug_conf']['resize_lim'])
-            resize_dims = (int(W * resize), int(H * resize))
-            newW, newH = resize_dims
-            crop_h = int((1 - np.random.uniform(*self.lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
-            crop_w = int(np.random.uniform(0, max(0, newW - fW)))
-            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
-            flip = False
-            if self.lss_cfg['data_aug_conf']['rand_flip'] and np.random.choice([0, 1]):
-                flip = True
-            rotate = np.random.uniform(*self.lss_cfg['data_aug_conf']['rot_lim'])
-        else:
-            resize = max(fH / H, fW / W)
-            resize_dims = (int(W * resize), int(H * resize))
-            newW, newH = resize_dims
-            crop_h = int((1 - np.mean(self.lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
-            crop_w = int(max(0, newW - fW) / 2)
-            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
-            flip = False
-            rotate = 0
-        return resize, resize_dims, crop, flip, rotate
-
     def get_image_data(self, id):
         img = self.get_image(id)
         K = self.calib['K']
@@ -527,7 +502,7 @@ class Rellis3D(Rellis3DBase):
         post_tran = torch.zeros(2)
 
         # augmentation (resize, crop, horizontal flip, rotate)
-        resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
+        resize, resize_dims, crop, flip, rotate = sample_augmentation(self.lss_cfg, is_train=self.is_train)
         img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
                                                    resize=resize,
                                                    resize_dims=resize_dims,
