@@ -13,16 +13,31 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 __all__ = [
+    'visualize_imgs',
     'set_axes_equal',
     'setup_visualization',
     'animate_trajectory',
-    'visualize_imgs',
     'show_cloud',
     'show_cloud_plt',
     'plot_grad_flow',
     'draw_coord_frames',
     'draw_coord_frame',
 ]
+
+def visualize_imgs(images, names=None):
+    n = len(images)
+    figsize = (n * 5, 5)
+    plt.figure(figsize=figsize)
+    for i, image in enumerate(images):
+        plt.subplot(1, n, i + 1)
+        plt.xticks([])
+        plt.yticks([])
+        plt.imshow(image)
+        if names is not None:
+            assert len(names) >= n, f'Number of names {len(names)} must not be smaller than the number of images {n}'
+            plt.title(names[i])
+    plt.tight_layout()
+    plt.show()
 
 def draw_points_on_image(points, color, image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -122,20 +137,6 @@ def animate_trajectory(system, vis_cfg, z_margin=0., frame_n=0, log_path='./gen'
             frame_n += 1
 
     return frame_n
-
-# helper function for data visualization
-def visualize_imgs(images):
-    n = len(images)
-    figsize = (n * 5, 5)
-    plt.figure(figsize=figsize)
-    for i, image in enumerate(images):
-        plt.subplot(1, n, i + 1)
-        plt.xticks([])
-        plt.yticks([])
-        plt.imshow(image)
-    plt.tight_layout()
-    plt.show()
-
 
 def map_colors(values, colormap=cm.gist_rainbow, min_value=None, max_value=None):
     if not isinstance(values, torch.Tensor):

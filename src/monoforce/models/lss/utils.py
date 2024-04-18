@@ -114,6 +114,33 @@ normalize_img = torchvision.transforms.Compose((
                 torchvision.transforms.Normalize(mean=mean, std=std),
 ))
 
+
+def sample_augmentation(lss_cfg, is_train=False):
+    H, W = lss_cfg['data_aug_conf']['H'], lss_cfg['data_aug_conf']['W']
+    fH, fW = lss_cfg['data_aug_conf']['final_dim']
+    if is_train:
+        resize = np.random.uniform(*lss_cfg['data_aug_conf']['resize_lim'])
+        resize_dims = (int(W * resize), int(H * resize))
+        newW, newH = resize_dims
+        crop_h = int((1 - np.random.uniform(*lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
+        crop_w = int(np.random.uniform(0, max(0, newW - fW)))
+        crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+        flip = False
+        if lss_cfg['data_aug_conf']['rand_flip'] and np.random.choice([0, 1]):
+            flip = True
+        rotate = np.random.uniform(*lss_cfg['data_aug_conf']['rot_lim'])
+    else:
+        resize = max(fH / H, fW / W)
+        resize_dims = (int(W * resize), int(H * resize))
+        newW, newH = resize_dims
+        crop_h = int((1 - np.mean(lss_cfg['data_aug_conf']['bot_pct_lim'])) * newH) - fH
+        crop_w = int(max(0, newW - fW) / 2)
+        crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+        flip = False
+        rotate = 0
+    return resize, resize_dims, crop, flip, rotate
+
+
 def gen_dx_bx(xbound, ybound, zbound):
     dx = torch.Tensor([row[2] for row in [xbound, ybound, zbound]])
     bx = torch.Tensor([row[0] + row[2]/2.0 for row in [xbound, ybound, zbound]])
@@ -160,53 +187,3 @@ class QuickCumsum(torch.autograd.Function):
         val = gradx[back]
 
         return val, None, None
-
-
-class SimpleLoss(torch.nn.Module):
-    def __init__(self, pos_weight):
-        super(SimpleLoss, self).__init__()
-        self.loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([pos_weight]))
-
-    def forward(self, ypred, ytgt):
-        loss = self.loss_fn(ypred, ytgt)
-        return loss
-
-def get_batch_iou(preds, binimgs):
-    """Assumes preds has NOT been sigmoided yet
-    """
-    with torch.no_grad():
-        pred = (preds > 0)
-        tgt = binimgs.bool()
-        intersect = (pred & tgt).sum().float().item()
-        union = (pred | tgt).sum().float().item()
-    return intersect, union, intersect / union if (union > 0) else 1.0
-
-
-def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
-    model.eval()
-    total_loss = 0.0
-    total_intersect = 0.0
-    total_union = 0
-    print('running eval...')
-    loader = tqdm(valloader) if use_tqdm else valloader
-    with torch.no_grad():
-        for batch in loader:
-            allimgs, rots, trans, intrins, post_rots, post_trans, binimgs = batch
-            preds = model(allimgs.to(device), rots.to(device),
-                          trans.to(device), intrins.to(device), post_rots.to(device),
-                          post_trans.to(device))
-            binimgs = binimgs.to(device)
-
-            # loss
-            total_loss += loss_fn(preds, binimgs).item() * preds.shape[0]
-
-            # iou
-            intersect, union, _ = get_batch_iou(preds, binimgs)
-            total_intersect += intersect
-            total_union += union
-
-    model.train()
-    return {
-            'loss': total_loss / len(valloader.dataset),
-            'iou': total_intersect / total_union,
-            }

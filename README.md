@@ -10,7 +10,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ## Table of Contents
 - [Installation Instructions](./docs/INSTALL.md)
-- [Traversability Data Structure and Processing](./docs/DATA.md)
+- [Traversability Data Structure and Processing (RobinGas)](./docs/DATA.md)
 - [Terrain Encoder](./docs/TERRAIN_ENCODER.md)
 - [Differentiable Physics](./docs/DPHYS.md)
 - [Running](#running)
@@ -26,7 +26,17 @@ for a provided control sequence (linear and angular velocities).
 
 Please run the following command to explore the MonoForce pipeline:
 ```commandline
-python scripts/run
+python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
+```
+
+For example if you want to test the model with the provided images from the RobinGas dataset:
+```commandline
+python scripts/run --img-paths data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/images/1666267292_537972927_camera_front.png \
+                               data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/images/1666267292_537972927_camera_left.png \
+                               data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/images/1666267292_537972927_camera_right.png \
+                   --cameras camera_front camera_left camera_right \
+                   --calibration-path data/robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/calibration/ \
+                   --linear-vel 0.5 --angular-vel -0.1
 ```
 
 If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
