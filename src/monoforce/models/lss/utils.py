@@ -7,11 +7,8 @@ Authors: Jonah Philion and Sanja Fidler
 import numpy as np
 import torch
 import torchvision
-from tqdm import tqdm
 from PIL import Image
 import yaml
-
-from monoforce.utils import timing
 
 
 def load_config(fname):

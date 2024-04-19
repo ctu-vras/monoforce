@@ -28,10 +28,10 @@ __all__ = [
 def get_robingas_data(cfg: DPhysConfig(),
                       path='/home/ruslan/data/robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/',
                       i=None):
-    from monoforce.datasets.robingas import DEMPathData
+    from monoforce.datasets.robingas import RobinGasBase
     # Load traversability data
     assert os.path.exists(path)
-    ds = DEMPathData(path, dphys_cfg=cfg)
+    ds = RobinGasBase(path, dphys_cfg=cfg)
     i = np.random.choice(range(len(ds))) if i is None else i
     print('Selected data sample #{}'.format(i))
     sample = ds[i]

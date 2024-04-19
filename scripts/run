@@ -209,8 +209,8 @@ class MonoForce:
             mlab.view(azimuth=i/5, elevation=60, distance=20)
             # mlab pause
             if i % 5 == 0:
-                os.makedirs('./output', exist_ok=True)
-                mlab.savefig(f'./output/pose_{i//5}.png')
+                os.makedirs('./gen', exist_ok=True)
+                mlab.savefig(f'./gen/pose_{i//5}.png')
         mlab.show()
 
 

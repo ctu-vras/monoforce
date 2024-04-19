@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import RobinGasVis, robingas_tradr_seq_paths, robingas_husky_seq_paths
+from monoforce.datasets import RobinGasVis, robingas_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
 from monoforce.ros import height_map_to_gridmap_msg, to_path, to_tf, xyz_to_point
@@ -24,7 +24,7 @@ class MonoForce:
     def __init__(self, name='monoforce'):
         self.robot = rospy.get_param('~robot', 'husky')
         # choose data sample
-        seqs = robingas_husky_seq_paths if self.robot == 'husky' else robingas_tradr_seq_paths
+        seqs = robingas_seq_paths['husky'] if self.robot == 'husky' else robingas_seq_paths['tradr']
         seq_i = rospy.get_param('~seq_i', np.random.choice(range(len(seqs))))
         self.data_seq = seqs[seq_i]
 

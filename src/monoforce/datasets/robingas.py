@@ -10,7 +10,7 @@ from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_onl
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
-from ..utils import position, timing
+from ..utils import position
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..utils import normalize
@@ -34,55 +34,45 @@ except:
 
 __all__ = [
     'data_dir',
-    'DEMPathData',
+    'RobinGasBase',
     'RobinGas',
     'RobinGasVis',
-    'robingas_husky_seq_paths',
-    'robingas_marv_seq_paths',
-    'robingas_tradr_seq_paths',
-    'oru_seq_paths',
+    'robingas_seq_paths',
 ]
 
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
 
-robingas_husky_seq_paths = [
-    os.path.join(data_dir, 'robingas/data/22-10-27-unhost-final-demo/husky_2022-10-27-15-33-57/'),
-    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-10-33-15/'),
-    os.path.join(data_dir, 'robingas/data/22-09-27-unhost/husky/husky_2022-09-27-15-01-44/'),
-    os.path.join(data_dir, 'robingas/data/22-09-23-unhost/husky/husky_2022-09-23-12-38-31/'),
-    os.path.join(data_dir, 'robingas/data/22-06-30-cimicky_haj/husky_2022-06-30-15-58-37/'),
-]
-robingas_husky_seq_paths = [os.path.normpath(path) for path in robingas_husky_seq_paths]
-
-robingas_marv_seq_paths = [
-    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-16-37-03/'),
-    os.path.join(data_dir, 'robingas/data/22-08-12-cimicky_haj/marv/ugv_2022-08-12-15-18-34/'),
-]
-robingas_marv_seq_paths = [os.path.normpath(path) for path in robingas_marv_seq_paths]
-
-robingas_tradr_seq_paths = [
-    os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-14-30-57/'),
-    os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-14-05-42/'),
-    os.path.join(data_dir, 'robingas/data/22-10-20-unhost/ugv_2022-10-20-13-58-22/'),
-]
-robingas_tradr_seq_paths = [os.path.normpath(path) for path in robingas_tradr_seq_paths]
-
-oru_seq_paths = [
-    os.path.join(data_dir, 'ORU/2024_02_07_Husky_campus_forest_bushes/bags/radarize__2024-02-07-10-47-13_0/'),
-]
-oru_seq_paths = [os.path.normpath(path) for path in oru_seq_paths]
+robingas_seq_paths = {
+    'husky': [
+        os.path.join(data_dir, 'RobinGas/husky/husky_2022-10-27-15-33-57'),
+        os.path.join(data_dir, 'RobinGas/husky/husky_2022-09-27-10-33-15'),
+        os.path.join(data_dir, 'RobinGas/husky/husky_2022-09-27-15-01-44'),
+        os.path.join(data_dir, 'RobinGas/husky/husky_2022-09-23-12-38-31'),
+        os.path.join(data_dir, 'RobinGas/husky/husky_2022-06-30-15-58-37'),
+    ],
+    'marv': [
+        os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-16-37-03'),
+        os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-15-18-34'),
+    ],
+    'tradr': [
+        os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-30-57'),
+        os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-05-42'),
+        os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-13-58-22'),
+        # os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-06-30-11-30-57'),
+    ],
+    'husky_oru': [
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
+    ],
+}
 
 
-class DEMPathData(Dataset):
+class RobinGasBase(Dataset):
     """
     Class to wrap traversability data generated using lidar odometry.
 
     The data is stored in the following structure:
     - <path>
         - clouds
-            - <id>.npz
-            - ...
-        - cloud_colors
             - <id>.npz
             - ...
         - images
@@ -106,7 +96,7 @@ class DEMPathData(Dataset):
     A sample of the dataset contains:
     - point cloud (N x 3), where N is the number of points
     - height map (H x W)
-    - trajectory (T x 4 x 4), where T is the number of poses
+    - trajectory (T x 4 x 4), where the horizon T is the number of poses
     """
 
     def __init__(self, path, dphys_cfg=DPhysConfig()):
@@ -389,7 +379,7 @@ class DEMPathData(Dataset):
         return len(self.ids)
 
 
-class RobinGas(DEMPathData):
+class RobinGas(RobinGasBase):
     """
     A dataset for traversability estimation from camera and lidar data.
 
@@ -726,11 +716,11 @@ def heightmap_demo():
     import matplotlib.pyplot as plt
 
     # path = robingas_husky_seq_paths[0]
-    path = robingas_tradr_seq_paths[0]
+    path = robingas_seq_paths['tradr'][0]
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
-    ds = DEMPathData(path, dphys_cfg=cfg)
+    ds = RobinGasBase(path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -757,11 +747,11 @@ def extrinsics_demo():
     from ..vis import draw_coord_frames, draw_coord_frame
 
     # for path in robingas_husky_seq_paths:
-    for path in robingas_tradr_seq_paths:
+    for path in robingas_seq_paths['tradr']:
         assert os.path.exists(path)
 
         cfg = DPhysConfig()
-        ds = DEMPathData(path, dphys_cfg=cfg)
+        ds = RobinGasBase(path, dphys_cfg=cfg)
 
         robot_pose = np.eye(4)
         robot_frame = 'base_link'
@@ -801,7 +791,7 @@ def extrinsics_demo():
 
 def traversed_height_map():
     # path = np.random.choice(robingas_husky_seq_paths)
-    path = np.random.choice(robingas_tradr_seq_paths)
+    path = np.random.choice(robingas_seq_paths['tradr'])
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
@@ -875,8 +865,8 @@ def vis_estimated_height_map():
     cfg.hm_interp_method = 'nearest'
 
     # path = np.random.choice(robingas_husky_seq_paths)
-    path = np.random.choice(robingas_tradr_seq_paths)
-    ds = DEMPathData(path=path, dphys_cfg=cfg)
+    path = np.random.choice(robingas_seq_paths['tradr'])
+    ds = RobinGasBase(path=path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -899,10 +889,10 @@ def vis_estimated_height_map():
 
 def global_cloud_demo():
     # paths = robingas_husky_seq_paths
-    # paths = robingas_tradr_seq_paths
-    paths = oru_seq_paths
+    # paths = robingas_seq_paths['tradr']
+    paths = robingas_seq_paths['husky_oru']
     for path in paths:
-        ds = DEMPathData(path=path)
+        ds = RobinGasBase(path=path)
         ds.global_cloud(vis=True)
 
 
@@ -910,11 +900,11 @@ def trajectory_footprint_heightmap():
     import open3d as o3d
 
     # path = robingas_husky_seq_paths[0]
-    path = robingas_tradr_seq_paths[0]
+    path = robingas_seq_paths['tradr'][0]
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
-    ds = DEMPathData(path, dphys_cfg=cfg)
+    ds = RobinGasBase(path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     sample = ds[i]

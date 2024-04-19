@@ -1,0 +1,41 @@
+import os
+from monoforce.config import DPhysConfig
+from monoforce.datasets import robingas_seq_paths, RobinGasVis, rellis3d_seq_paths, Rellis3DVis
+from monoforce.datasets.utils import explore_data
+from monoforce.utils import read_yaml
+
+
+def vis_data(dataset):
+    dphys_config_path = '../config/dphys_cfg.yaml'
+    # lss_config_path = '../config/lss_cfg_husky.yaml'
+    lss_config_path = '../config/lss_cfg_tradr.yaml'
+    # modelf = '../config/weights/lss/lss_robingas_tradr.pt'
+    modelf = None
+
+    if dataset == 'robingas':
+        # data_paths = robingas_seq_paths['husky']
+        data_paths = robingas_seq_paths['tradr']
+        DataClass = RobinGasVis
+    elif dataset == 'rellis3d':
+        data_paths = rellis3d_seq_paths
+        DataClass = Rellis3DVis
+    else:
+        raise ValueError('Invalid dataset %s. Supported: rellis3d and robingas' % dataset)
+
+    for path in data_paths:
+        assert os.path.isdir(path), 'Data path %s does not exist' % path
+        lss_config = read_yaml(lss_config_path)
+        dphys_cfg = DPhysConfig()
+        dphys_cfg.from_yaml(dphys_config_path)
+        ds = DataClass(path, is_train=False, lss_cfg=lss_config, dphys_cfg=dphys_cfg)
+        explore_data(ds, modelf=modelf, sample_range='random', save=False)
+
+
+def main():
+    # dataset = 'robingas'
+    dataset = 'rellis3d'
+    vis_data(dataset)
+
+
+if __name__ == '__main__':
+    main()

@@ -34,7 +34,6 @@ seq_names = [
     '00003',
     '00004',
 ]
-
 rellis3d_seq_paths = [
     os.path.join(data_dir, 'Rellis3D', seq_name) for seq_name in seq_names
 ]

@@ -7,7 +7,7 @@ from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.losses import rotation_difference, translation_difference, total_variation, traj_dist
 from monoforce.utils import read_yaml, str2bool
 from monoforce.vis import setup_visualization, animate_trajectory, vis_dem_data
-from monoforce.datasets import RobinGas, robingas_husky_seq_paths
+from monoforce.datasets import RobinGas, robingas_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.control import pose_control
 from mayavi import mlab
@@ -25,7 +25,7 @@ def arg_parser():
     parser.add_argument('--control-model', type=str, default='diffdrive')
     parser.add_argument('--visualize', type=str2bool, default=False)
     parser.add_argument('--save-data', type=str2bool, default=True)
-    parser.add_argument('--data-path', type=str, default=robingas_husky_seq_paths[0])
+    parser.add_argument('--data-path', type=str, default=robingas_seq_paths['husky'][0])
     parser.add_argument('--vel-tracks', type=float, default=2.)
     parser.add_argument('--lr', type=float, default=0.02)
     parser.add_argument('--n-train-iters', type=int, default=100)

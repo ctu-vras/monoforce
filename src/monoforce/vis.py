@@ -59,11 +59,11 @@ def setup_visualization(system, states=None, states_true=None,
 
     mlab.figure(size=(1280, 720))  # bgcolor=(1, 1, 1), fgcolor=(0.2, 0.2, 0.2))
     mlab.clf()
-    visu_trajectory = mlab.plot3d
+    visu_traj = mlab.plot3d
     visu_forces = mlab.quiver3d
     if states is not None:
         pos_x, pos_R, vel_x, vel_omega, forces = [s.detach().cpu().numpy() for s in states]
-        visu_trajectory = mlab.plot3d(pos_x[:, 0], pos_x[:, 1], pos_x[:, 2], color=(0, 1, 0), line_width=2.0)
+        visu_traj = mlab.plot3d(pos_x[:, 0], pos_x[:, 1], pos_x[:, 2], color=(0, 1, 0), line_width=2.0)
         visu_forces = mlab.quiver3d(points[0, :], points[1, :], points[2, :],
                                     forces[0, 0, :], forces[0, 1, :], forces[0, 2, :],
                                     line_width=4.0, scale_factor=0.005)  # , color=(0.8, 0.8, 0.8))
@@ -75,43 +75,42 @@ def setup_visualization(system, states=None, states_true=None,
         poses_gt = np.asarray([np.eye(4) for _ in range(pos_x_true.shape[0])])
         poses_gt[:, :3, 3] = pos_x_true.squeeze()
         poses_gt[:, :3, :3] = pos_R_true
-        draw_coord_frames(poses_gt, scale=0.2)
+        # draw_coord_frames(poses_gt, scale=0.2)
         # draw velocities at ground truth poses locations
         mlab.quiver3d(pos_x_true[:, 0], pos_x_true[:, 1], pos_x_true[:, 2],
                       vel_x_true[:, 0], vel_x_true[:, 1], vel_x_true[:, 2],
                       line_width=2.0, scale_factor=1.)
 
-    visu_rigid_mesh = mlab.mesh(x_grid, y_grid, height,
-                                scalars=system.friction.detach().cpu().numpy(), opacity=0.3, vmax=1.0, vmin=0.5,
-                                colormap='jet',
-                                representation='surface')  # color=(0.15, 0.07, 0.0)
-    visu_rigid_wires = mlab.surf(x_grid, y_grid, height, opacity=0.3,
-                                 color=(0.6, 0.5, 0.4), representation='wireframe', line_width=5.0)
-    visu_robot = mlab.points3d(points[0, :], points[1, :], z_margin + points[2, :], scale_factor=0.25)
+    visu_friction = mlab.mesh(x_grid, y_grid, height,
+                              scalars=system.friction.detach().cpu().numpy(), opacity=0.3, vmax=1.0, vmin=0.5,
+                              colormap='jet',
+                              representation='surface')  # color=(0.15, 0.07, 0.0)
+    visu_terrain = mlab.surf(x_grid, y_grid, height, colormap='terrain')
+    visu_robot = mlab.points3d(points[0, :], points[1, :], z_margin + points[2, :], scale_factor=0.25, color=(0, 0, 0))
 
-    # mlab.colorbar(object=visu_rigid_mesh, title="Terrain friction coefficient")
+    # mlab.colorbar(object=visu_friction, title="Terrain friction coefficient")
     mlab.view(azimuth=150, elevation=80, distance=16.0)
 
     if show:
         mlab.show()
-    return visu_robot, visu_forces, visu_trajectory, visu_rigid_mesh, visu_rigid_wires
+    return visu_robot, visu_forces, visu_traj, visu_friction, visu_terrain
 
 
-def animate_trajectory(system, vis_cfg, z_margin=0., frame_n=0, log_path='./gen', save_figs_step=5):
-    visu_robot, visu_forces, visu_trajectory, visu_rigid_mesh, visu_rigid_wires = vis_cfg
+def animate_trajectory(system, vis_cfg, z_margin=0.1, frame_n=0, log_path='./gen', save_figs_step=5):
+    visu_robot, visu_forces, visu_traj, visu_friction, visu_terrain = vis_cfg
 
     points = system.robot_points.detach().cpu().numpy()
     h_r = system.height.detach().cpu().numpy()
     h = h_r + system.height_soft.detach().cpu().numpy()
-    visu_rigid_mesh.mlab_source.z = np.asarray(h_r, 'd')
-    visu_rigid_wires.mlab_source.scalars = np.asarray(h_r, 'd')
+    visu_friction.mlab_source.z = np.asarray(h_r, 'd')
+    visu_terrain.mlab_source.scalars = np.asarray(h_r, 'd')
     # visu_soft_mesh.mlab_source.z = np.asarray(h, 'd')
     # visu_soft_wires.mlab_source.scalars = np.asarray(h, 'd')
     # visu_soft_mesh.mlab_source.scalars = np.asarray(system.friction.detach().cpu().numpy(), 'd')
-    visu_rigid_mesh.mlab_source.scalars = np.asarray(system.friction.detach().cpu().numpy(), 'd')
-    # visu_rigid_mesh.mlab_source.scalars = np.asarray(system.elasticity.detach().cpu().numpy(), 'd')
+    visu_friction.mlab_source.scalars = np.asarray(system.friction.detach().cpu().numpy(), 'd')
+    # visu_friction.mlab_source.scalars = np.asarray(system.elasticity.detach().cpu().numpy(), 'd')
 
-    visu_rigid_wires.mlab_source.set(scalars=np.asarray(system.height.detach().cpu().numpy(), 'd'),
+    visu_terrain.mlab_source.set(scalars=np.asarray(system.height.detach().cpu().numpy(), 'd'),
                                      z=np.asarray(system.friction.detach().cpu().numpy(), 'd'))
     for t in range(system.pos_x.shape[0]):
         system.cog = system.pos_x[t]
@@ -126,9 +125,9 @@ def animate_trajectory(system, vis_cfg, z_margin=0., frame_n=0, log_path='./gen'
                                     z=z_margin + system.cog[2] + system.rot_p[2, :],
                                     u=system.forces_p[0, :],
                                     v=system.forces_p[1, :], w=system.forces_p[2, :])
-        visu_trajectory.mlab_source.set(x=system.pos_x[:, 0].squeeze(),
-                                        y=system.pos_x[:, 1].squeeze(),
-                                        z=system.pos_x[:, 2].squeeze())
+        visu_traj.mlab_source.set(x=system.pos_x[:, 0].squeeze(),
+                                  y=system.pos_x[:, 1].squeeze(),
+                                  z=system.pos_x[:, 2].squeeze())
         # mlab.view(azimuth=150 - frame_n, elevation=60, distance=16.0)
 
         if t % save_figs_step == 0:
