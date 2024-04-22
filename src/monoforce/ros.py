@@ -211,7 +211,7 @@ def to_box_msg(pose, size, stamp=None, frame_id=None):
     return box
 
 
-def to_marker(poses, color=None):
+def poses_to_marker(poses, color=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
     assert poses.shape[1:] == (4, 4)
     marker = Marker()

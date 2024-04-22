@@ -215,7 +215,7 @@ class LSS:
         intrins = np.stack(intriniscs)
         cams_to_robot = np.stack(cams_to_robot)
         rots, trans = cams_to_robot[:, :3, :3], cams_to_robot[:, :3, 3]
-        rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
+        rospy.loginfo('Preprocessed image shape: %s' % str(imgs.shape))
 
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         inputs = [torch.as_tensor(i[np.newaxis], dtype=torch.float32) for i in inputs]
@@ -223,7 +223,7 @@ class LSS:
         return inputs
 
     def callback(self, *msgs):
-        rospy.logdebug('Received %d messages' % len(msgs))
+        rospy.loginfo('Received %d messages' % len(msgs))
         # if message is stale do not process it
         dt = rospy.Time.now() - msgs[0].header.stamp
         if dt.to_sec() > self.max_stale_msg_delay:
@@ -253,7 +253,7 @@ class LSS:
         # model inference
         height_pred_rigid = self.model(*inputs)
 
-        rospy.logdebug('Predicted height map shape: %s' % str(height_pred_rigid.shape))
+        rospy.loginfo('Predicted height map shape: %s' % str(height_pred_rigid.shape))
 
         # publish height map as grid map
         stamp = rospy.Time.now()
@@ -440,7 +440,7 @@ class LSSVis(LSS):
 
 
 def main():
-    rospy.init_node('lss', anonymous=True, log_level=rospy.DEBUG)
+    rospy.init_node('lss', anonymous=True)
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
     dphys_cfg = DPhysConfig()

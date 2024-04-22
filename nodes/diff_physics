@@ -5,25 +5,24 @@ import torch
 import numpy as np
 import rospy
 from monoforce.config import DPhysConfig
-from monoforce.models import RigidBodySoftTerrain, State
-from monoforce.ros import to_marker, to_path
+from monoforce.models import dphysics
+from monoforce.ros import poses_to_marker, to_path
 from nav_msgs.msg import Path
 from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
 import rospkg
-from time import time
 from visualization_msgs.msg import MarkerArray
 
-
-pkg_path = rospkg.RosPack().get_path('monoforce')
 
 class DiffPhysics:
     def __init__(self, dphys_cfg: DPhysConfig,
                  hm_topic='/height_map',
                  hm_frame='base_link',
+                 robot='tradr',
                  linear_vels=[1.],
                  angular_vels=[0.],
                  max_stale_msg_delay=0.5):
+        self.robot = robot
         self.dphys_cfg = dphys_cfg
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.hm_frame = hm_frame
@@ -57,64 +56,6 @@ class DiffPhysics:
         with torch.no_grad():
             self.predict_paths(height, linear_vels=self.linear_vels, angular_vels=self.angular_vels)
 
-    def sim(self, height, controls):
-        assert isinstance(height, np.ndarray)
-        assert height.shape[0] == height.shape[1]
-        assert isinstance(controls, dict)
-        assert 'stamps' in controls.keys()
-        assert 'linear_v' in controls.keys()
-        assert 'angular_w' in controls.keys()
-
-        state = State(xyz=torch.tensor([0, 0., 0.], device=self.device).view(3, 1),
-                      rot=torch.eye(3, device=self.device),
-                      vel=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
-                      omega=torch.tensor([0., 0., 0.], device=self.device).view(3, 1),
-                      device=self.device)
-
-        """ Create robot-terrain interaction models """
-        system = RigidBodySoftTerrain(height=height,
-                                      grid_res=self.dphys_cfg.grid_res,
-                                      friction=self.dphys_cfg.friction,
-                                      mass=self.dphys_cfg.robot_mass,
-                                      state=state,
-                                      device=self.device, use_ode=False,
-                                      interaction_model='diffdrive')
-
-        # put models with their params to self.device
-        system = system.to(self.device)
-        tt = controls['stamps'].to(self.device)
-
-        """ Navigation loop """
-        dt = (tt[1:] - tt[:-1]).mean()
-
-        xyz, Rs, linear_v, angular_w, forces = state
-        xyz, Rs, linear_v, angular_w, forces = [xyz], [Rs], [linear_v], [angular_w], [forces]
-
-        for t in range(len(tt[1:])):
-            v, w = controls['linear_v'][t], controls['angular_w'][t]
-
-            state[2][0] = v
-            state[3][2] = w
-
-            dstate = system.forward(t, state)
-            state = state.update(dstate, dt)
-
-            xyz.append(state[0])
-            Rs.append(state[1])
-            linear_v.append(state[2])
-            angular_w.append(state[3])
-            forces.append(state[4])
-
-        xyz = torch.stack(xyz)
-        Rs = torch.stack(Rs)
-        linear_v = torch.stack(linear_v)
-        angular_w = torch.stack(angular_w)
-        forces = torch.stack(forces)
-
-        states = [xyz, Rs, linear_v, angular_w, forces]
-
-        return states
-
     def path_cost(self, states):
         assert isinstance(states, list)
         assert len(states) == 5
@@ -147,17 +88,12 @@ class DiffPhysics:
         min_path_cost = torch.tensor(np.inf, device=self.device)
         for v, w in zip(linear_vels, angular_vels):
             # controls
-            controls = {
-                'stamps': tt,
-                'linear_v': v * torch.ones(self.dphys_cfg.n_samples),
-                'angular_w': w * torch.ones(self.dphys_cfg.n_samples)
-            }
+            vs = v * torch.ones(self.dphys_cfg.n_samples)
+            ws = w * torch.ones(self.dphys_cfg.n_samples)
+            controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
 
             # predict states
-            t0 = time()
-            states = self.sim(height, controls)
-            t1 = time()
-            rospy.logdebug('Path of %d samples simulation took %.3f' % (self.dphys_cfg.n_samples, t1 - t0))
+            states, _ = dphysics(height, controls, robot_model=self.robot, dphys_cfg=self.dphys_cfg, device=self.device)
 
             # create path message (Marker)
             xyz = states[0].cpu().numpy()[::50]
@@ -181,14 +117,13 @@ class DiffPhysics:
 
             # map path cost to color (lower cost -> greener, higher cost -> redder)
             color = np.array([0., 1., 0.]) + (np.array([1., 0., 0.]) - np.array([0., 1., 0.])) * path_cost.item()
-            marker_msg = to_marker(Ts, color=color)
+            marker_msg = poses_to_marker(Ts, color=color)
             marker_msg.header.stamp = rospy.Time.now()
             marker_msg.header.frame_id = self.hm_frame
             marker_msg.ns = 'paths'
             marker_msg.id = path_id
             path_id += 1
             marker_array.markers.append(marker_msg)
-            rospy.logdebug('Path to marker array conversion took %.3f' % (time() - t1))
 
         # publish all sampled paths
         self.paths_pub.publish(marker_array)
@@ -201,15 +136,17 @@ class DiffPhysics:
 
 
 def main():
-    rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
+    rospy.init_node('diff_physics', anonymous=True)
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
-    cfg = DPhysConfig()
+    dphys_cfg = DPhysConfig()
     config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    cfg.from_yaml(config_path)
-    cfg.total_sim_time = rospy.get_param('~total_sim_time', 5.)
-    cfg.n_samples = 100 * int(cfg.total_sim_time)
+    dphys_cfg.from_yaml(config_path)
+    dphys_cfg.total_sim_time = rospy.get_param('~total_sim_time', 5.)
+    dphys_cfg.n_samples = 100 * int(dphys_cfg.total_sim_time)
+
+    robot = rospy.get_param('~robot', 'tradr')
 
     hm_topic = rospy.get_param('~hm_topic')
     hm_frame = rospy.get_param('~hm_frame')
@@ -219,7 +156,8 @@ def main():
     # max time to wait for a message before it is considered stale
     max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
     try:
-        node = DiffPhysics(dphys_cfg=cfg, hm_topic=hm_topic, hm_frame=hm_frame,
+        node = DiffPhysics(dphys_cfg=dphys_cfg, robot=robot,
+                           hm_topic=hm_topic, hm_frame=hm_frame,
                            linear_vels=linear_vels, angular_vels=angular_vels,
                            max_stale_msg_delay=max_stale_msg_delay)
         rospy.spin()

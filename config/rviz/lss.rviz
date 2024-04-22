@@ -5,9 +5,9 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /Cameras Tradr1
         - /Clouds1
         - /Traversability1
+        - /Lower cost Path1
       Splitter Ratio: 0.5
     Tree Height: 391
   - Class: rviz/Selection
@@ -196,11 +196,19 @@ Visualization Manager:
               Camera Right: true
               Value: true
             Cameras Tradr:
-              "": true
+              Camera Front: true
+              Camera Left: true
+              Camera Rear Left: true
+              Camera Rear Right: true
+              Camera Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear Left: true
+              Image Rear Right: true
+              Image Right: true
               Value: true
             Clouds:
-              Deskewed Points: true
-              Points: true
+              "": true
               Value: true
             Grid: true
             Husky RobotModel: true
@@ -213,9 +221,7 @@ Visualization Manager:
             TFTrajectory: true
             Tradr RobotModel: true
             Traversability:
-              " GridMap Geom": true
-              GridMap Diff: true
-              GridMap Rigid: true
+              "": true
               Value: true
             Value: true
           Zoom Factor: 1
@@ -237,11 +243,19 @@ Visualization Manager:
               Camera Right: true
               Value: true
             Cameras Tradr:
-              "": true
+              Camera Front: true
+              Camera Left: true
+              Camera Rear Left: true
+              Camera Rear Right: true
+              Camera Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear Left: true
+              Image Rear Right: true
+              Image Right: true
               Value: true
             Clouds:
-              Deskewed Points: true
-              Points: true
+              "": true
               Value: true
             Grid: true
             Husky RobotModel: true
@@ -254,9 +268,7 @@ Visualization Manager:
             TFTrajectory: true
             Tradr RobotModel: true
             Traversability:
-              " GridMap Geom": true
-              GridMap Diff: true
-              GridMap Rigid: true
+              "": true
               Value: true
             Value: true
           Zoom Factor: 1
@@ -278,11 +290,19 @@ Visualization Manager:
               Camera Right: true
               Value: true
             Cameras Tradr:
-              "": true
+              Camera Front: true
+              Camera Left: true
+              Camera Rear Left: true
+              Camera Rear Right: true
+              Camera Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear Left: true
+              Image Rear Right: true
+              Image Right: true
               Value: true
             Clouds:
-              Deskewed Points: true
-              Points: true
+              "": true
               Value: true
             Grid: true
             Husky RobotModel: true
@@ -295,9 +315,7 @@ Visualization Manager:
             TFTrajectory: true
             Tradr RobotModel: true
             Traversability:
-              " GridMap Geom": true
-              GridMap Diff: true
-              GridMap Rigid: true
+              "": true
               Value: true
             Value: true
           Zoom Factor: 1
@@ -319,11 +337,19 @@ Visualization Manager:
               Camera Right: true
               Value: true
             Cameras Tradr:
-              "": true
+              Camera Front: true
+              Camera Left: true
+              Camera Rear Left: true
+              Camera Rear Right: true
+              Camera Right: true
+              Image Front: true
+              Image Left: true
+              Image Rear Left: true
+              Image Rear Right: true
+              Image Right: true
               Value: true
             Clouds:
-              Deskewed Points: true
-              Points: true
+              "": true
               Value: true
             Grid: true
             Husky RobotModel: true
@@ -336,9 +362,7 @@ Visualization Manager:
             TFTrajectory: true
             Tradr RobotModel: true
             Traversability:
-              " GridMap Geom": true
-              GridMap Diff: true
-              GridMap Rigid: true
+              "": true
               Value: true
             Value: true
           Zoom Factor: 1
@@ -782,49 +806,49 @@ Visualization Manager:
       Name: Traversability
     - Class: rviz/InteractiveMarkers
       Enable Transparency: true
-      Enabled: true
+      Enabled: false
       Name: InteractiveMarkers
       Show Axes: false
       Show Descriptions: true
       Show Visual Aids: false
       Update Topic: /twist_marker_server/update
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 25; 255; 0
-      Enabled: false
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
+      Enabled: true
+      Head Diameter: 0.10000000149011612
+      Head Length: 0.10000000149011612
       Length: 0.20000000298023224
-      Line Style: Lines
-      Line Width: 0.029999999329447746
+      Line Style: Billboards
+      Line Width: 0.10000000149011612
       Name: Lower cost Path
       Offset:
         X: 0
         Y: 0
         Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: Axes
+      Pose Color: 78; 154; 6
+      Pose Style: Arrows
       Queue Size: 10
       Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
+      Shaft Diameter: 0.05000000074505806
+      Shaft Length: 0.05000000074505806
       Topic: /lower_cost_path
       Unreliable: false
-      Value: false
+      Value: true
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /sampled_paths
       Name: Sampled Paths
       Namespaces:
         {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: jsk_rviz_plugin/TFTrajectory
-      Enabled: true
+      Enabled: false
       Name: TFTrajectory
-      Value: true
+      Value: false
       color: 25; 255; 240
       duration: 1000
       frame: base_link

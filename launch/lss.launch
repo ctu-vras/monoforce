@@ -10,7 +10,6 @@
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_stale_msg_delay" default="0.2"/>
     <arg name="calib_path" default="''"/>
-    <arg name="debug" default="false"/>
 
     <!-- Lss node -->
     <node name="lss" pkg="monoforce" type="lss" output="screen">
@@ -24,7 +23,6 @@
             max_msgs_delay: $(arg max_msgs_delay)
             max_stale_msg_delay: $(arg max_stale_msg_delay)
             calib_path: $(arg calib_path)
-            debug: $(arg debug)
         </rosparam>
     </node>
 </launch>

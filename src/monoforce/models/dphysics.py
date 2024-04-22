@@ -4,7 +4,7 @@ from torch import nn
 import numpy as np
 from torchdiffeq import odeint, odeint_adjoint
 from ..transformations import rot2rpy
-from ..utils import skew_symmetric
+from ..utils import skew_symmetric, timing
 from ..config import DPhysConfig
 from ..control import pose_control
 
@@ -506,6 +506,7 @@ def make_dphysics_model(height, dphys_cfg: DPhysConfig):
     return system
 
 
+@timing
 def dphysics(height, controls, robot_model='husky', state=None, dphys_cfg=None, device=None):
     """
     Simulate robot-terrain interaction model
