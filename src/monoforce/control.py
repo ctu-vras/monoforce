@@ -93,41 +93,41 @@ def pose_control(state, goal_pose, Kp_rho=1., Kp_theta=1., Kp_yaw=1.,
 
     goal_xyz = goal_pose[:3, 3]
     # distances to goal in robot frame
-    dist = goal_xyz.squeeze() - state[0].squeeze()
-    rho = torch.linalg.norm(dist[:2])
+    d_xyz = goal_xyz.squeeze() - state[0].squeeze()
+    dist_xy = torch.linalg.norm(d_xyz[:2])
 
-    if rho < dist_reached:
+    if dist_xy < dist_reached:
         # print('Reached goal')
         if return_dist:
-            return 0., 0., rho
+            return 0., 0., dist_xy
         return 0., 0.
 
     # robot heading to goal error
     yaw = rot2rpy(state[1])[2].item()
-    theta = torch.atan2(dist[1], dist[0]) - yaw
-    # theta = (theta + np.pi) % (2 * np.pi) - np.pi
-    theta = torch.as_tensor(theta)
-    theta = torch.atan2(torch.sin(theta), torch.cos(theta))
+    d_theta = torch.atan2(d_xyz[1], d_xyz[0]) - yaw
+    # d_theta = (d_theta + np.pi) % (2 * np.pi) - np.pi
+    d_theta = torch.as_tensor(d_theta)
+    d_theta = torch.atan2(torch.sin(d_theta), torch.cos(d_theta))
 
     # robot yaw (orientation at goal point) error
     yaw_goal = rot2rpy(goal_pose[:3, :3])[2].item()
-    dyaw = yaw_goal - yaw
-    # dyaw = (dyaw + np.pi) % (2 * np.pi) - np.pi
-    dyaw = torch.as_tensor(dyaw)
-    dyaw = torch.atan2(torch.sin(dyaw), torch.cos(dyaw))
+    d_yaw = yaw_goal - yaw
+    # d_yaw = (d_yaw + np.pi) % (2 * np.pi) - np.pi
+    d_yaw = torch.as_tensor(d_yaw)
+    d_yaw = torch.atan2(torch.sin(d_yaw), torch.cos(d_yaw))
 
-    if allow_backwards and torch.abs(theta) > np.pi / 2.:
+    if allow_backwards and torch.abs(d_theta) > np.pi / 2.:
         # print('Going backwards')
-        theta = (theta + np.pi / 2.) % np.pi - np.pi / 2.
+        d_theta = (d_theta + np.pi / 2.) % np.pi - np.pi / 2.
         vel_sign = -1.
     else:
         vel_sign = 1.
 
-    v = vel_sign * Kp_rho * rho
-    w = Kp_theta * theta + Kp_yaw * dyaw
+    v = vel_sign * Kp_rho * dist_xy
+    w = Kp_theta * d_theta + Kp_yaw * d_yaw
 
     if return_dist:
-        return v, w, rho
+        return v, w, dist_xy
 
     return v, w
 

@@ -17,16 +17,27 @@ from monoforce.models.lss.model import compile_model
 from monoforce.datasets.robingas import RobinGasVis
 from monoforce.datasets.rellis3d import Rellis3DVis
 from monoforce.config import DPhysConfig
-from monoforce.cloudproc import estimate_heightmap
 from monoforce.datasets import rellis3d_seq_paths, robingas_seq_paths
-from monoforce.utils import read_yaml, position
+from monoforce.utils import read_yaml, str2bool
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference
 from monoforce.transformations import rot2rpy
-from monoforce.vis import animate_trajectory, setup_visualization, show_cloud
+from monoforce.vis import animate_trajectory, setup_visualization
+import argparse
 
 
 date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Evaluate the model')
+    parser.add_argument('--dphys_config', type=str, default='../config/dphys_cfg.yaml', help='Path to the dphys config file')
+    parser.add_argument('--lss_config', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to the lss config file')
+    parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name: rellis3d or robingas')
+    parser.add_argument('--robot', type=str, default='tradr', help='Robot name: husky or tradr')
+    parser.add_argument('--vis', type=str2bool, default=False, help='Visualize the results')
+    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode')
+    return parser.parse_args()
+
 
 class EvaluatorGeom:
     def __init__(self, dphys_config_path, lss_config_path, dataset, robot='tradr', model_path=None):
@@ -75,7 +86,8 @@ class EvaluatorGeom:
         if seq_path is None:
             seq_path = self.data_paths[0]
 
-        ds = self.DataClass(seq_path, is_train=False, data_aug_conf=self.lss_cfg['data_aug_conf'], dphys_cfg=self.dphys_cfg)
+        ds = self.DataClass(seq_path, is_train=False, data_aug_conf=self.lss_cfg['data_aug_conf'],
+                            dphys_cfg=self.dphys_cfg)
         if sample_range is None:
             sample_range = range(len(ds))
 
@@ -202,10 +214,14 @@ class EvaluatorGeom:
 
         # evaluate the states that are inside the height map
         xyz = states[0]
-        mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
-               (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
-        mask = mask.view(-1)
-        states = tuple([s[mask] for s in states])
+        mask_inside = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
+                      (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
+        mask_inside = mask_inside.view(-1)
+        # find first index of xyz that is outside the height map
+        idx = torch.argmin(mask_inside.float())
+        if idx > 0:
+            states = tuple([s[:idx] for s in states])
+        # states = tuple([s[mask_inside] for s in states])
 
         return states, height
 
@@ -219,18 +235,18 @@ class EvaluatorGeom:
         states_true = tuple([s.to(self.device) for s in states_true])
         xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
         n_true_states = len(xyz_true)
+        tt_true = torch.linspace(0, self.dphys_cfg.total_sim_time, n_true_states - 1)
 
         if n_true_states < 2:
             print('Not enough waypoints to evaluate')
-            return None, None
+            return None, None, None
 
         """ Create robot-terrain interaction models """
         system = RigidBodySoftTerrain(height=height,
                                       grid_res=self.dphys_cfg.grid_res,
                                       friction=self.dphys_cfg.friction, mass=self.dphys_cfg.robot_mass,
                                       state=State(
-                                          xyz=xyz_true[0] + torch.tensor([0., 0., 1.],
-                                                                         device=self.device).view(xyz_true[0].shape),
+                                          xyz=xyz_true[0],
                                           rot=rot_true[0],
                                           vel=vel_true[0],
                                           omega=omega_true[0],
@@ -255,30 +271,31 @@ class EvaluatorGeom:
         state = system.state
         states = []
         dt = (tt[1:] - tt[:-1]).mean()
-        loss_trans_sum = torch.tensor(0., device=self.device)
-        loss_rot_sum = torch.tensor(0., device=self.device)
-        poses_eval = []
+        poses_pred = []
+        poses_gt = []
         for i in range(n_true_states - 1):
             # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
-            time_interval = tt[i * self.dphys_cfg.n_samples // (n_true_states - 1):(i + 1) * self.dphys_cfg.n_samples // (
-                        n_true_states - 1)]
+            time_interval = tt[
+                            i * self.dphys_cfg.n_samples // (n_true_states - 1):(i + 1) * self.dphys_cfg.n_samples // (
+                                    n_true_states - 1)]
 
             pos_x, pos_R, vel_x, vel_omega, forces = state
             pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
 
             roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
-
             if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
                 # print('Robot is upside down')
-                return None, None
+                return None, None, None
 
-            goal_pose = torch.eye(4, device=self.device)
-            goal_pose[:3, 3:4] = xyz_true[i + 1]
-            goal_pose[:3, :3] = rot_true[i + 1]
+            pose_gt = torch.eye(4, device=self.device)
+            pose_gt[:3, 3:4] = xyz_true[i + 1]
+            pose_gt[:3, :3] = rot_true[i + 1]
+            poses_gt.append(pose_gt)
 
+            dist_xy = None
             for t in time_interval[1:]:
-                v, w = pose_control(state, goal_pose, allow_backwards=True,
-                                    Kp_rho=2., Kp_theta=4., Kp_yaw=4., dist_reached=0.01)
+                v, w, dist_xy = pose_control(state, pose_gt, allow_backwards=True,
+                                             Kp_rho=10., Kp_theta=4., Kp_yaw=4., dist_reached=0.01, return_dist=True)
                 state[2][0] = v
                 state[3][2] = w
 
@@ -290,77 +307,103 @@ class EvaluatorGeom:
                 vel_x.append(state[2])
                 vel_omega.append(state[3])
                 forces.append(state[4])
-            # print('Reached waypoint with accuracy: %.2f [m]' % dist.item())
+            # print('Reached waypoint with accuracy: %.2f [m]' % dist_xy.item())
 
             states_interval = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega),
                                torch.stack(forces)]
             states.append(states_interval)
 
-            # compute loss
-            loss_trans = translation_difference(pos_x[-1].view(1, 3, 1), states_true[0][i + 1].view(1, 3, 1))
-            loss_rot = rotation_difference(pos_R[-1].view(1, 3, 3), states_true[1][i + 1].view(1, 3, 3))
-
-            loss_trans_sum += loss_trans
-            loss_rot_sum += loss_rot
-
             # log poses at the end of each interval for which we compute loss
-            pose_eval = torch.eye(4)
-            pose_eval[:3, 3:4] = pos_x[-1].view(3, 1)
-            pose_eval[:3, :3] = pos_R[-1].view(3, 3)
-            poses_eval.append(pose_eval)
+            pose_pred = torch.eye(4, device=self.device)
+            pose_pred[:3, 3:4] = state[0].view(3, 1)
+            pose_pred[:3, :3] = state[1].view(3, 3)
+            poses_pred.append(pose_pred)
 
-        pos_x = torch.cat([x[0] for x in states], dim=0)
-        pos_R = torch.cat([x[1] for x in states], dim=0)
-        vel_x = torch.cat([x[2] for x in states], dim=0)
-        vel_omega = torch.cat([x[3] for x in states], dim=0)
-        forces = torch.cat([x[4] for x in states], dim=0)
+        # compute loss
+        poses_pred = torch.stack(poses_pred)
+        poses_gt = torch.stack(poses_gt)
+        loss_trans_sum = translation_difference(poses_pred[:, :3, 3:4], poses_gt[:, :3, 3:4])
+        loss_rot_sum = rotation_difference(poses_pred[:, :3, :3], poses_gt[:, :3, :3])
 
-        states = (pos_x, pos_R, vel_x, vel_omega, forces)
+        # draw height map and trajectories
+        fig = plt.figure(figsize=(10, 5))
+        gs = mpl.gridspec.GridSpec(1, 2)
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+        ax = plt.subplot(gs[0, 0])
+        ax.imshow(height.cpu().numpy().T, cmap='jet', vmin=-1.0, vmax=1.0, origin='lower')
+        xyz_pred = poses_pred[:, :3, 3].cpu().numpy()
+        xyz_gt = poses_gt[:, :3, 3].cpu().numpy()
+        xyz_pred_grid = (xyz_pred + self.dphys_cfg.d_max) / self.dphys_cfg.grid_res
+        xyz_gt_grid = (xyz_gt + self.dphys_cfg.d_max) / self.dphys_cfg.grid_res
+        ax.plot(xyz_pred_grid[:, 0], xyz_pred_grid[:, 1], 'gx', label='Estimated trajectory')
+        ax.plot(xyz_gt_grid[:, 0], xyz_gt_grid[:, 1], 'b.', label='Ground truth trajectory')
+        ax.set_title('Heightmap and Trajectories')
+        ax.axis('equal')
+        ax.legend()
 
-        loss_trans_sum /= (n_true_states - 1)
-        loss_rot_sum /= (n_true_states - 1)
+        # plot x, y, z components of the trajectories
+        ax = plt.subplot(gs[0, 1])
+        ax.plot(tt_true, xyz_pred[:, 0], 'r', label='x')
+        ax.plot(tt_true, xyz_pred[:, 1], 'g', label='y')
+        ax.plot(tt_true, xyz_pred[:, 2], 'b', label='z')
+        ax.plot(tt_true, xyz_gt[:, 0], 'r--', label='x gt')
+        ax.plot(tt_true, xyz_gt[:, 1], 'g--', label='y gt')
+        ax.plot(tt_true, xyz_gt[:, 2], 'b--', label='z gt')
+        ax.set_title('X, Y, Z Trajectories')
+        ax.legend()
+        plt.close(fig)
+
+        log = {
+            'fig': fig,
+        }
 
         # visualize trajectory
         if vis:
+            pos_x = torch.cat([x[0] for x in states], dim=0)
+            pos_R = torch.cat([x[1] for x in states], dim=0)
+            vel_x = torch.cat([x[2] for x in states], dim=0)
+            vel_omega = torch.cat([x[3] for x in states], dim=0)
+            forces = torch.cat([x[4] for x in states], dim=0)
+            states = (pos_x, pos_R, vel_x, vel_omega, forces)
             system.update_trajectory(states=states)
-            # draw_coord_frames(torch.stack(poses_eval).cpu().numpy(), scale=0.1)
             animate_trajectory(system, vis_cfg)
             mlab.show()
 
-        return loss_trans_sum, loss_rot_sum
+        return loss_trans_sum, loss_rot_sum, log
 
     def evaluate(self, vis=False, debug=False):
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
             ds = self.DataClass(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg)
             if debug:
-                np.random.seed(0)
-                ds = ds[np.random.choice(len(ds), 5)]
+                ds = ds[:5]
             for i in tqdm(range(len(ds))):
                 states_true, height = self.get_data(i, ds)
-                trans_diff, rot_diff = self.eval_diff_physics(height, states_true, vis=vis)
-                if rot_diff is not None:
+                trans_diff, rot_diff, log = self.eval_diff_physics(height, states_true, vis=vis)
+                if rot_diff is not None and trans_diff is not None:
                     self.metrics['trans_diff'].append(trans_diff.item())
                     self.metrics['rot_diff'].append(rot_diff.item())
                     # log to tensorboard
                     self.writer.add_scalar(f'{os.path.basename(path)}/trans_diff', trans_diff, i)
                     self.writer.add_scalar(f'{os.path.basename(path)}/rot_diff', rot_diff, i)
+                    self.writer.add_figure(f'{os.path.basename(path)}/fig', log['fig'], i)
 
-        trans_diff_final = np.mean(self.metrics['trans_diff'])
-        rot_diff_final = np.mean(self.metrics['rot_diff'])
+        trans_diff_final = np.nanmean(self.metrics['trans_diff'])
+        rot_diff_final = np.nanmean(self.metrics['rot_diff'])
         print(f'Average loss translation: %.2f [m]' % trans_diff_final)
         print(f'Average loss rotation: %.2f [deg]' % (rot_diff_final * 180 / np.pi))
 
         # write to file
-        fname = f'eval_metrics_{self.__class__.__name__}.csv'
+        fpath = os.path.join(self.log_dir, f'eval_metrics_{self.__class__.__name__}.csv')
         data = [['ATE [m]', 'ARE [deg]'],
                 [trans_diff_final, rot_diff_final * 180 / np.pi]]
-        with open(fname, 'w') as f:
+        with open(fpath, 'w') as f:
             for line in data:
                 f.write(','.join([str(x) for x in line]) + '\n')
 
     def __str__(self):
         return f'Evaluator: {self.__class__.__name__} with the Model: {self.model.__class__.__name__}'
+
 
 class EvaluatorLSS(EvaluatorGeom):
     def __init__(self, dphys_config_path, lss_config_path, dataset, robot, model_path):
@@ -455,10 +498,14 @@ class EvaluatorKKT(EvaluatorGeom):
         return loss_geom, loss_rigid
 
 
-def evaluate(dataset):
-    dphys_config_path = '../config/dphys_cfg.yaml'
-    robot = 'husky'
-    lss_config_path = f'../config/lss_cfg_{robot}.yaml'
+def evaluate(dataset, robot='tradr',
+             dphys_config_path=None,
+             lss_config_path=None,
+             vis=False, debug=False):
+    if dphys_config_path is None:
+        dphys_config_path = '../config/dphys_cfg.yaml'
+    if lss_config_path is None:
+        lss_config_path = f'../config/lss_cfg_{robot}.yaml'
     if dataset == 'robingas':
         model_path = f'../config/weights/lss/lss_robingas_{robot}.pt'
     elif dataset == 'rellis3d':
@@ -479,13 +526,17 @@ def evaluate(dataset):
                              dataset=dataset, robot=robot,
                              model_path=model_path)
             print(evaluator)
-            evaluator.evaluate(vis=False, debug=False)
+            evaluator.evaluate(vis=vis, debug=debug)
 
 
 def main():
-    dataset = 'robingas'
-    # dataset = 'rellis3d'
-    evaluate(dataset)
+    args = parse_args()
+    print(args)
+
+    evaluate(args.dataset, robot=args.robot,
+             dphys_config_path=args.dphys_config,
+             lss_config_path=args.lss_config,
+             vis=args.vis, debug=args.debug)
 
 
 if __name__ == '__main__':
