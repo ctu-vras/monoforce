@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <!-- Lss node arguments -->
     <arg name="img_topics" default="[]"/>
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
@@ -10,9 +9,10 @@
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_stale_msg_delay" default="0.2"/>
     <arg name="calib_path" default="''"/>
+    <arg name="n_cams" default="''"/>
 
-    <!-- Lss node -->
-    <node name="lss" pkg="monoforce" type="lss" output="screen">
+    <!-- Terrain encoder node (LSS) -->
+    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder">
         <rosparam subst_value="true">
             dphys_config_path: $(arg dphys_config_path)
             lss_config_path: $(arg lss_config_path)
@@ -23,6 +23,7 @@
             max_msgs_delay: $(arg max_msgs_delay)
             max_stale_msg_delay: $(arg max_stale_msg_delay)
             calib_path: $(arg calib_path)
+            n_cams: $(arg n_cams)
         </rosparam>
     </node>
 </launch>

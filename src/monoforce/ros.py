@@ -4,14 +4,13 @@ import torch
 import numpy as np
 import yaml
 from scipy.ndimage import rotate
-from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 from cv_bridge import CvBridge
 from jsk_recognition_msgs.msg import BoundingBox
 from monoforce.utils import slots, timing
 from nav_msgs.msg import Path
 from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray, TransformStamped
-from tf.transformations import quaternion_from_matrix, euler_from_quaternion, quaternion_matrix
+from tf.transformations import quaternion_from_matrix, quaternion_matrix
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import PointCloud2, CompressedImage, Image
@@ -188,6 +187,14 @@ def to_path(poses, stamp=None, frame_id=None):
         path.poses.append(pose)
     return path
 
+def transform_path(path, pose):
+    assert isinstance(path, Path)
+    assert isinstance(pose, np.ndarray)
+    assert pose.shape == (4, 4)
+    for i in range(len(path.poses)):
+        path_pose = np.matmul(pose, numpify(path.poses[i].pose))
+        path.poses[i].pose = msgify(Pose, path_pose)
+    return path
 
 def to_box_msg(pose, size, stamp=None, frame_id=None):
     assert isinstance(pose, np.ndarray) or isinstance(pose, torch.Tensor)

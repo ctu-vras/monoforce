@@ -86,8 +86,7 @@ class EvaluatorGeom:
         if seq_path is None:
             seq_path = self.data_paths[0]
 
-        ds = self.DataClass(seq_path, is_train=False, data_aug_conf=self.lss_cfg['data_aug_conf'],
-                            dphys_cfg=self.dphys_cfg)
+        ds = self.DataClass(seq_path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg)
         if sample_range is None:
             sample_range = range(len(ds))
 
@@ -284,7 +283,7 @@ class EvaluatorGeom:
 
             roll, pitch, yaw = rot2rpy(pos_R[-1].squeeze())
             if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
-                # print('Robot is upside down')
+                print('Robot is upside down')
                 return None, None, None
 
             pose_gt = torch.eye(4, device=self.device)

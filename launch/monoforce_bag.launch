@@ -42,8 +42,8 @@
         <arg name="rviz" value="false"/>
     </include>
 
-    <!-- LSS node -->
-    <include file="$(dirname)/lss.launch">
+    <!-- Terrain Encoder (LSS) node -->
+    <include file="$(dirname)/terrain_encoder.launch">
         <arg name="img_topics" value="$(arg img_topics)"/>
         <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
         <arg name="calib_path" value="$(arg calib_path)"/>
@@ -53,6 +53,7 @@
         <arg name="weights" value="$(arg weights)"/>
         <arg name="max_msgs_delay" value="0.2"/>
         <arg name="max_stale_msg_delay" value="1.0"/>
+<!--         <arg name="n_cams" value="1"/> -->
     </include>
 
     <!-- Diff Physics node -->
@@ -61,9 +62,9 @@
             robot: $(arg robot)
             hm_topic: /height_map
             hm_frame: base_link
-            linear_vels: [0.7, 0.7, 0.8]
-            angular_vels: [0., 0.2, -0.4]
-            total_sim_time: 5.
+            linear_vels: [0.5, 0.5, 0.5]
+            angular_vels: [0., 0.3, -0.3]
+            total_sim_time: 4.
             max_stale_msg_delay: 0.5
         </rosparam>
     </node>

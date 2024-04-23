@@ -3,7 +3,7 @@
     <arg name="pts_topics" default="[points]"/>
 
     <!-- Height map estimator node -->
-    <node name="hm_estimator" pkg="monoforce" type="hm_estimator" output="screen">
+    <node name="geom_hm_estimator" pkg="monoforce" type="geom_hm_estimator" output="screen">
         <rosparam subst_value="true">
             pts_topics: $(arg pts_topics)
             robot_frame: base_link
