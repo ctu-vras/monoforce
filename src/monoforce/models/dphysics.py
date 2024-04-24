@@ -558,7 +558,6 @@ def dphysics(height, controls, robot_model='husky', state=None, dphys_cfg=None, 
 
     xyz, Rs, linear_v, angular_w, forces = state
     xyz, Rs, linear_v, angular_w, forces = [xyz], [Rs], [linear_v], [angular_w], [forces]
-
     for t in range(len(tt[1:])):
         v, w = controls['linear_v'][t], controls['angular_w'][t]
 

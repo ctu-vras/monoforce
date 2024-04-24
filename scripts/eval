@@ -321,8 +321,8 @@ class EvaluatorGeom:
         # compute loss
         poses_pred = torch.stack(poses_pred)
         poses_gt = torch.stack(poses_gt)
-        loss_trans_sum = translation_difference(poses_pred[:, :3, 3:4], poses_gt[:, :3, 3:4])
-        loss_rot_sum = rotation_difference(poses_pred[:, :3, :3], poses_gt[:, :3, :3])
+        loss_trans = translation_difference(poses_pred[:, :3, 3:4], poses_gt[:, :3, 3:4])
+        loss_rot = rotation_difference(poses_pred[:, :3, :3], poses_gt[:, :3, :3])
 
         # draw height map and trajectories
         fig = plt.figure(figsize=(10, 5))
@@ -352,9 +352,7 @@ class EvaluatorGeom:
         ax.legend()
         plt.close(fig)
 
-        log = {
-            'fig': fig,
-        }
+        log = {'fig': fig}
 
         # visualize trajectory
         if vis:
@@ -368,7 +366,7 @@ class EvaluatorGeom:
             animate_trajectory(system, vis_cfg)
             mlab.show()
 
-        return loss_trans_sum, loss_rot_sum, log
+        return loss_trans, loss_rot, log
 
     def evaluate(self, vis=False, debug=False):
         for path in self.data_paths:
@@ -386,16 +384,26 @@ class EvaluatorGeom:
                     self.writer.add_scalar(f'{os.path.basename(path)}/trans_diff', trans_diff, i)
                     self.writer.add_scalar(f'{os.path.basename(path)}/rot_diff', rot_diff, i)
                     self.writer.add_figure(f'{os.path.basename(path)}/fig', log['fig'], i)
+        self.writer.close()
 
-        trans_diff_final = np.nanmean(self.metrics['trans_diff'])
-        rot_diff_final = np.nanmean(self.metrics['rot_diff'])
-        print(f'Average loss translation: %.2f [m]' % trans_diff_final)
-        print(f'Average loss rotation: %.2f [deg]' % (rot_diff_final * 180 / np.pi))
+        trans_diff_avg = np.nanmean(self.metrics['trans_diff'])
+        rot_diff_avg = np.nanmean(self.metrics['rot_diff'])
+        print(f'Average loss translation: %.2f [m]' % trans_diff_avg)
+        print(f'Average loss rotation: %.2f [deg]' % (rot_diff_avg * 180 / np.pi))
+
+        # write to file
+        fpath = os.path.join(self.log_dir, f'all_eval_metrics_{self.__class__.__name__}.csv')
+        data = [['TE [m]', 'RE [deg]']]
+        for trans_diff, rot_diff in zip(self.metrics['trans_diff'], self.metrics['rot_diff']):
+            data.append([trans_diff, rot_diff * 180 / np.pi])
+        with open(fpath, 'w') as f:
+            for line in data:
+                f.write(','.join([str(x) for x in line]) + '\n')
 
         # write to file
         fpath = os.path.join(self.log_dir, f'eval_metrics_{self.__class__.__name__}.csv')
         data = [['ATE [m]', 'ARE [deg]'],
-                [trans_diff_final, rot_diff_final * 180 / np.pi]]
+                [trans_diff_avg, rot_diff_avg * 180 / np.pi]]
         with open(fpath, 'w') as f:
             for line in data:
                 f.write(','.join([str(x) for x in line]) + '\n')

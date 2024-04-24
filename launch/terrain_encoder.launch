@@ -12,7 +12,7 @@
     <arg name="n_cams" default="''"/>
 
     <!-- Terrain encoder node (LSS) -->
-    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder">
+    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder" output="screen">
         <rosparam subst_value="true">
             dphys_config_path: $(arg dphys_config_path)
             lss_config_path: $(arg lss_config_path)
@@ -24,6 +24,7 @@
             max_stale_msg_delay: $(arg max_stale_msg_delay)
             calib_path: $(arg calib_path)
             n_cams: $(arg n_cams)
+            debug: false
         </rosparam>
     </node>
 </launch>
