@@ -89,7 +89,6 @@ class DiffPhysics:
         max_path_cost = torch.tensor(-np.inf, device=self.device)
         min_path_cost = torch.tensor(np.inf, device=self.device)
         pose_step = 50
-        stamp = rospy.Time.now()
         for v, w in zip(linear_vels, angular_vels):
             # controls
             vs = v * torch.ones(self.dphys_cfg.n_samples)
@@ -106,6 +105,7 @@ class DiffPhysics:
             Ts[:, :3, :3] = Rs
             Ts[:, :3, 3:4] = xyz
             Ts[:, 3, 3] = 1.
+            Ts[:, 2, 3] += self.dphys_cfg.robot_clearance  # add robot clearance, TODO: not sure if needed
 
             # compute path cost
             path_cost = self.path_cost(states)
@@ -124,12 +124,15 @@ class DiffPhysics:
             green = np.array([0., 1., 0.])
             color = green + (red - green) * path_cost_norm.item()
             marker_msg = poses_to_marker(Ts, color=color)
-            marker_msg.header.stamp = stamp
             marker_msg.header.frame_id = self.hm_frame
             marker_msg.ns = 'paths'
             marker_msg.id = path_id
             path_id += 1
             marker_array.markers.append(marker_msg)
+        # set time stamps
+        stamp = rospy.Time.now()
+        for marker_msg in marker_array.markers:
+            marker_msg.header.stamp = stamp
 
         # publish all sampled paths
         self.sampled_paths_pub.publish(marker_array)
