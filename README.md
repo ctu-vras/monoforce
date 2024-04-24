@@ -41,7 +41,8 @@ python scripts/run --img-paths data/robingas/data/22-10-20-unhost/ugv_2022-10-20
 ```
 Please, refer to the [Terrain Encoder](./docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
 
-If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
+If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run
+(please make sure you have the [data](./docs/DATA.md) downloaded and located at `data/RobinGas/`):
 ```commandline
 cd docker/ && ./run.sh
 ```

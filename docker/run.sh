@@ -28,7 +28,7 @@ rviz -d ../config/rviz/monoforce_husky.rviz &
 RVIZ_PID=$!
 
 MONOFORCE_DIR=$(abspath "..")
-DATA_DIR=$(abspath "../data/robingas/")
+DATA_DIR=$(abspath "../data/RobinGas/")
 
 docker run \
   -it \
@@ -36,7 +36,7 @@ docker run \
   --gpus all \
   --net=host \
   -v ${MONOFORCE_DIR}:/root/catkin_ws/src/monoforce/ \
-  -v ${DATA_DIR}:/root/catkin_ws/src/monoforce/data/robingas/ \
+  -v ${DATA_DIR}:/root/catkin_ws/src/monoforce/data/RobinGas/ \
   agishrus/monoforce \
   /bin/bash -c \
   "cd /root/catkin_ws/; \
@@ -45,7 +45,7 @@ docker run \
       -DCMAKE_BUILD_TYPE=Release; \
       catkin build; \
       source devel/setup.bash; \
-      roslaunch monoforce monoforce.launch rviz:=false robot:=husky"
+      roslaunch monoforce monoforce_robingas.launch rviz:=false robot:=husky"
 
 wait $ROSCORE_PID
 wait $RVIZ_PID

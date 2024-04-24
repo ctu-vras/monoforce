@@ -21,7 +21,14 @@ cd ~/catkin_ws/ && catkin_make
 ## Docker
 
 We have prepared a [Docker](https://docs.docker.com/engine/install/ubuntu/) image to run the monoforce package.
-To build the image:
+
+To pull the image:
+```commandline
+cd ./docker/
+make pull
+```
+
+To build the image from scratch:
 ```commandline
 cd ./docker/
 make build
