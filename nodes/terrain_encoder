@@ -90,7 +90,7 @@ class LSS:
             rospy.logerr('Model weights file %s does not exist. Using random weights.' % modelf)
         else:
             rospy.loginfo('Loading LSS model from %s' % modelf)
-            model.load_state_dict(torch.load(modelf))
+            model.load_state_dict(torch.load(modelf, map_location=self.device))
         model.to(self.device)
         model.eval()
         return model

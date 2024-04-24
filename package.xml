@@ -18,7 +18,13 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>grid_map_msgs</depend>
-
+  <depend>ros_numpy</depend>
+  <depend>jsk_rviz_plugins</depend>
+  <depend>grid_map_rviz_plugin</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+  <depend>husky_description</depend>
+  
   <build_depend>message_generation</build_depend>
   <build_export_depend>message_generation</build_export_depend>
 </package>

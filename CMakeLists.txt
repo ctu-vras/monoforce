@@ -3,19 +3,16 @@ project(monoforce)
 
 find_package(PkgConfig REQUIRED)
 
+
 pkg_check_modules(lz4 REQUIRED liblz4)
 include_directories(${lz4_INCLUDE_DIRS})
 link_directories(${lz4_LIBRARY_DIRS})
 
 # Catkin
-set(CATKIN_DEPS
-    geometry_msgs
-    nav_msgs
-    sensor_msgs
-    grid_map_msgs
-    std_msgs
-    tf2_ros
-)
+find_package(catkin REQUIRED)
+catkin_python_setup()
+catkin_package()
+
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_DEPS})
 include_directories(${catkin_INCLUDE_DIRS})
 link_directories(${catkin_LIBRARY_DIRS})

@@ -10,10 +10,11 @@ Install Python dependencies:
 pip install -r singularity/requirements.txt
 ```
 
-Please clone and build the ROS package:
+Please clone the ROS package, install its dependencies, and build the workspace:
 ```commandline
 mkdir -p ~/catkin_ws/src/
 cd ~/catkin_ws/src/ && git clone https://github.com/ctu-vras/monoforce.git
+cd ~/catkin_ws/ && rosdep install --from-paths src --ignore-src -r -y
 cd ~/catkin_ws/ && catkin_make
 ```
 

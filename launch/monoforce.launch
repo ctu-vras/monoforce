@@ -1,33 +1,49 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="rviz" default="true"/>
-    <arg name="seq_i" default="0"/>
-    <arg name="sample_i" default="0"/>
-    <arg name="robot" default="tradr"/>
+    <arg name="robot" default="husky" doc="Robot type: husky, tradr or marv"/>
+    <arg name="diffphys" default="true" doc="Whether to run the diff physics node or not"/>
+    <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
+    <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg_$(arg robot).yaml"/>
+    <arg name="weights" default="$(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt"/>
 
-    <!-- Load robot description -->
-    <rosparam command="load" file="$(dirname)/../config/params/$(arg robot).params"/>
-    <remap if="$(eval robot == 'tradr')" from="robot_description" to="nifti_robot_description"/>
+    <!-- Husky robot arguments -->
+    <arg name="img_topics" default="['/camera_front/image_color/compressed',
+                                     '/camera_left/image_color/compressed',
+                                     '/camera_rear/image_color/compressed',
+                                     '/camera_right/image_color/compressed']"/>
+    <arg name="camera_info_topics" default="['/camera_front/camera_info',
+                                             '/camera_left/camera_info',
+                                             '/camera_rear/camera_info',
+                                             '/camera_right/camera_info']"/>
 
-    <!-- Robot state publisher -->
-    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
-    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
+    <!-- Terrain Encoder (LSS) node -->
+    <include file="$(dirname)/terrain_encoder.launch">
+        <arg name="img_topics" value="$(arg img_topics)"/>
+        <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
+        <arg name="hm_frame" value="base_link"/>
+        <arg name="dphys_config_path" value="$(arg dphys_config_path)"/>
+        <arg name="lss_config_path" value="$(arg lss_config_path)"/>
+        <arg name="weights" value="$(arg weights)"/>
+        <arg name="max_msgs_delay" value="0.2"/>
+        <arg name="max_stale_msg_delay" value="1.0"/>
+<!--         <arg name="n_cams" value="1"/> -->
+    </include>
 
-    <node pkg="monoforce" type="monoforce" name="monoforce" output="screen">
+    <!-- Diff Physics node -->
+    <node if="$(arg diffphys)" name="diff_physics" pkg="monoforce" type="diff_physics" output="screen">
         <rosparam subst_value="true">
             robot: $(arg robot)
-            total_sim_time: 7.0
-            n_samples: 700
-            seq_i: $(arg seq_i)
-            sample_i: $(arg sample_i)
-            lss_weights: $(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt
-            dphys_config_path: $(dirname)/../config/dphys_cfg.yaml
-            lss_config_path: $(dirname)/../config/lss_cfg_$(arg robot).yaml
-            pub_cloud: true
-            pub_path: true
+            hm_topic: /height_map
+            hm_frame: base_link
+            linear_vels: [0.5, 0.5, 0.5]
+            angular_vels: [0.3, 0.0, -0.3]
+            total_sim_time: 6.
+            max_stale_msg_delay: 0.5
         </rosparam>
     </node>
 
-    <node if="$(arg rviz)"
-          pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/monoforce_$(arg robot).rviz"/>
+    <!-- RVIZ -->
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(dirname)/../config/rviz/lss.rviz"/>
 </launch>
