@@ -6,8 +6,6 @@
     <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg_$(arg robot).yaml"/>
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt"/>
-
-    <!-- Husky robot arguments -->
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
                                      '/camera_left/image_color/compressed',
                                      '/camera_rear/image_color/compressed',

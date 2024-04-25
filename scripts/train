@@ -28,7 +28,7 @@ def arg_parser():
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
-    # parser.add_argument('--dataset', type=str, default='oru', help='Dataset name')
+    parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
     parser.add_argument('--dphys_cfg_path', type=str, default='../config/dphys_cfg.yaml', help='Path to DPhys config')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
@@ -48,6 +48,7 @@ class Trainer:
 
     Args:
     dataset: str, dataset name
+    robot: str, robot name
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     lss_cfg: dict, LSS model configuration
     bsz: int, batch size
@@ -67,6 +68,7 @@ class Trainer:
 
     def __init__(self,
                  dataset,
+                 robot,
                  dphys_cfg,
                  lss_cfg,
                  bsz=1,
@@ -83,9 +85,12 @@ class Trainer:
                  only_front_hm=False):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.dataset = dataset
+        assert dataset in ['rellis3d', 'robingas'], 'Unknown dataset: %s' % dataset
+        self.robot = robot
+        assert robot in ['husky', 'tradr', 'husky_oru'], 'Unknown robot: %s' % robot
         self.dphys_cfg = dphys_cfg
         self.lss_cfg = lss_cfg
-        self.dataset = dataset
         self.nepochs = nepochs
 
         self.min_loss = np.inf
@@ -105,12 +110,12 @@ class Trainer:
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'lss_{dataset}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+                                    f'lss_{dataset}_{robot}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
         write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
-        write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg_tradr.yaml'))
+        write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
     def load_model(self, modelf=None):
         model = compile_model(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf'], outC=1)
@@ -132,9 +137,7 @@ class Trainer:
         elif self.dataset == 'robingas':
             Data = RobinGas
             DataVis = RobinGasVis
-            # data_paths = robingas_seq_paths['husky']
-            # data_paths = robingas_seq_paths['husky_oru']
-            data_paths = robingas_seq_paths['tradr']
+            data_paths = robingas_seq_paths[self.robot]
         else:
             raise ValueError(f'Unknown dataset: {self.dataset}. Supported datasets are rellis3d and robingas.')
         print('Data paths:', data_paths)
@@ -371,18 +374,18 @@ def main():
     args = arg_parser()
     print(args)
 
+    # load configs: DPhys
     dphys_cfg = DPhysConfig()
     dphys_config_path = args.dphys_cfg_path
     assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
     dphys_cfg.from_yaml(dphys_config_path)
-    dphys_cfg.hm_interp_method = None
-
-    # load LSS config
+    # load configs: LSS
     lss_config_path = args.lss_cfg_path
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_cfg = read_yaml(lss_config_path)
 
-    trainer = Trainer(dataset=args.dataset,
+    # create trainer
+    trainer = Trainer(dataset=args.dataset, robot=args.robot,
                       dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
