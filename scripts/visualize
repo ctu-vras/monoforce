@@ -5,16 +5,14 @@ from monoforce.datasets.utils import explore_data
 from monoforce.utils import read_yaml
 
 
-def vis_data(dataset):
+def vis_data(dataset, robot='husky'):
     dphys_config_path = '../config/dphys_cfg.yaml'
-    # lss_config_path = '../config/lss_cfg_husky.yaml'
-    lss_config_path = '../config/lss_cfg_tradr.yaml'
-    # modelf = '../config/weights/lss/lss_robingas_tradr.pt'
+    lss_config_path = f'../config/lss_cfg_{robot}.yaml'
+    # modelf = f'../config/weights/lss/lss_robingas_{robot}.pt'
     modelf = None
 
     if dataset == 'robingas':
-        # data_paths = robingas_seq_paths['husky']
-        data_paths = robingas_seq_paths['tradr']
+        data_paths = robingas_seq_paths[robot]
         DataClass = RobinGasVis
     elif dataset == 'rellis3d':
         data_paths = rellis3d_seq_paths
@@ -32,9 +30,10 @@ def vis_data(dataset):
 
 
 def main():
-    # dataset = 'robingas'
-    dataset = 'rellis3d'
-    vis_data(dataset)
+    dataset = 'robingas'
+    # dataset = 'rellis3d'
+    robot = 'husky_oru'
+    vis_data(dataset, robot)
 
 
 if __name__ == '__main__':
