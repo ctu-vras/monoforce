@@ -61,8 +61,13 @@ robingas_seq_paths = {
         # os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-06-30-11-30-57'),
     ],
     'husky_oru': [
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-02-33_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-09-06_0'),
+        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-24-37_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-37-14_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-44-56_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-24-37_0'),
     ],
 }
 
@@ -167,6 +172,7 @@ class RobinGasBase(Dataset):
             i1 = i + n_frames
             i1 = np.clip(i1, 0, len(self))
             poses = copy.copy(self.poses[i:i1])
+            assert len(poses) > 0, f'No poses found for trajectory {ind}'
             # poses = Tr_robot_lidar @ poses
             poses = np.linalg.inv(poses[0]) @ poses
             # time stamps
@@ -630,7 +636,7 @@ class RobinGas(RobinGasBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_terrain_height_map(self, i, method='footprint', cached=True, dir_name=None, obstacle_classes=['person']):
+    def get_terrain_height_map(self, i, method='footprint', cached=True, dir_name=None):
         """
         Get height map from trajectory points.
         :param i: index of the sample
@@ -673,7 +679,7 @@ class RobinGas(RobinGasBase):
             if cached and os.path.exists(file_path):
                 hm_rigid = np.load(file_path, allow_pickle=True).item()
             else:
-                seg_points, _ = self.get_semantic_cloud(i, classes=obstacle_classes, vis=False)
+                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'], vis=False)
                 traj_points = self.get_footprint_traj_points(i)
                 points = np.concatenate((seg_points, traj_points), axis=0)
                 hm_rigid = self.estimate_heightmap(points, robot_radius=None)
@@ -900,8 +906,8 @@ def global_cloud_demo():
 def trajectory_footprint_heightmap():
     import open3d as o3d
 
-    # path = robingas_husky_seq_paths[0]
-    path = robingas_seq_paths['tradr'][0]
+    robot = 'husky_oru'
+    path = np.random.choice(robingas_seq_paths[robot])
     assert os.path.exists(path)
 
     cfg = DPhysConfig()

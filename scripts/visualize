@@ -30,10 +30,15 @@ def vis_data(dataset, robot='husky'):
 
 
 def main():
-    dataset = 'robingas'
-    # dataset = 'rellis3d'
-    robot = 'husky_oru'
-    vis_data(dataset, robot)
+    datasets = ['robingas']
+    robots = ['husky_oru']
+
+    for dataset in datasets:
+        for robot in robots:
+            vis_data(dataset, robot)
+            if dataset == 'rellis3d':
+                print('Rellis3D does not have multiple robots')
+                break
 
 
 if __name__ == '__main__':
