@@ -169,14 +169,17 @@ class RobinGasBase(Dataset):
         else:
             # get trajectory as sequence of `n_frames` future poses
             n_frames = 100
-            i1 = i + n_frames
-            i1 = np.clip(i1, 0, len(self))
-            poses = copy.copy(self.poses[i:i1])
+            all_poses = self.get_poses(return_stamps=False)
+            all_ids = list(self.get_ids())
+            il = all_ids.index(ind)
+            ir = il + n_frames
+            ir = np.clip(ir, 0, len(all_ids))
+            poses = all_poses[il:ir]
             assert len(poses) > 0, f'No poses found for trajectory {ind}'
             # poses = Tr_robot_lidar @ poses
             poses = np.linalg.inv(poses[0]) @ poses
             # time stamps
-            stamps = np.asarray(copy.copy(self.ts[i:i1]))
+            stamps = np.asarray(copy.copy(self.ts[il:ir]), dtype=np.float32)
 
         traj = {
             'stamps': stamps, 'poses': poses,
@@ -274,7 +277,7 @@ class RobinGasBase(Dataset):
         trajectory_points = np.concatenate(trajectory_points, axis=0)
         return trajectory_points
 
-    def global_cloud(self, vis=False, cached=True):
+    def get_global_cloud(self, vis=False, cached=True, save=False, step=1):
         path = os.path.join(self.path, 'global_map.pcd')
         if cached and os.path.exists(path):
             # print('Loading global cloud from file...')
@@ -282,11 +285,10 @@ class RobinGasBase(Dataset):
             global_cloud = np.asarray(pcd.points, dtype=np.float32)
         else:
             # create global cloud
-            poses = self.get_poses()
             global_cloud = None
-            for i in tqdm(range(len(self))):
+            for i in tqdm(range(len(self))[::step]):
                 cloud = self.get_cloud(i)
-                T = poses[i]
+                T = self.get_pose(i)
                 cloud = transform_cloud(cloud, T)
                 points = position(cloud)
                 points = filter_grid(points, self.dphys_cfg.grid_res, keep='first', log=False)
@@ -295,9 +297,10 @@ class RobinGasBase(Dataset):
                 else:
                     global_cloud = np.vstack((global_cloud, points))
             # save global cloud to file
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(global_cloud)
-            o3d.io.write_point_cloud(path, pcd)
+            if save:
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(global_cloud)
+                o3d.io.write_point_cloud(path, pcd)
 
         if vis:
             # remove nans
@@ -312,25 +315,6 @@ class RobinGasBase(Dataset):
             pcd.points = o3d.utility.Vector3dVector(global_cloud_vis)
             o3d.visualization.draw_geometries([pcd])
         return global_cloud
-
-    def global_hm_cloud(self, vis=False):
-        poses = self.poses
-        # create global heightmap cloud
-        global_hm_cloud = []
-        for i in tqdm(range(len(self))):
-            hm = self.get_geom_height_map(i)
-            hm_cloud = hm_to_cloud(hm[0], self.dphys_cfg, mask=hm[1])
-            hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), poses[i])
-            global_hm_cloud.append(hm_cloud)
-        global_hm_cloud = np.concatenate(global_hm_cloud, axis=0)
-
-        if vis:
-            import open3d as o3d
-            # plot global cloud with open3d
-            hm_pcd = o3d.geometry.PointCloud()
-            hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud)
-            o3d.visualization.draw_geometries([hm_pcd])
-        return global_hm_cloud
 
     def estimate_heightmap(self, points, **kwargs):
         # estimate heightmap from point cloud
@@ -610,6 +594,24 @@ class RobinGas(RobinGasBase):
             o3d.visualization.draw_geometries([pcd])
 
         return points, colors
+
+    def global_hm_cloud(self, vis=False):
+        # create global heightmap cloud
+        global_hm_cloud = []
+        for i in tqdm(range(len(self))):
+            hm = self.get_geom_height_map(i)
+            pose = self.get_pose(i)
+            hm_cloud = hm_to_cloud(hm[0], self.dphys_cfg, mask=hm[1])
+            hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), pose)
+            global_hm_cloud.append(hm_cloud)
+        global_hm_cloud = np.concatenate(global_hm_cloud, axis=0)
+
+        if vis:
+            # plot global cloud with open3d
+            hm_pcd = o3d.geometry.PointCloud()
+            hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud)
+            o3d.visualization.draw_geometries([hm_pcd])
+        return global_hm_cloud
 
     def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
         """
@@ -900,12 +902,10 @@ def global_cloud_demo():
     paths = robingas_seq_paths['husky_oru']
     for path in paths:
         ds = RobinGasBase(path=path)
-        ds.global_cloud(vis=True)
+        ds.get_global_cloud(vis=True)
 
 
 def trajectory_footprint_heightmap():
-    import open3d as o3d
-
     robot = 'husky_oru'
     path = np.random.choice(robingas_seq_paths[robot])
     assert os.path.exists(path)

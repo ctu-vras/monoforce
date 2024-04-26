@@ -27,6 +27,8 @@ import argparse
 
 
 date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+np.random.seed(0)
+torch.manual_seed(0)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Evaluate the model')
@@ -35,7 +37,6 @@ def parse_args():
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name: rellis3d or robingas')
     parser.add_argument('--robot', type=str, default='tradr', help='Robot name: husky or tradr')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize the results')
-    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode')
     return parser.parse_args()
 
 
@@ -368,14 +369,16 @@ class EvaluatorGeom:
 
         return loss_trans, loss_rot, log
 
-    def evaluate(self, vis=False, debug=False):
+    def evaluate(self, vis=False, val_fraction=0.1):
         for path in self.data_paths:
             print(f'Evaluation on {os.path.basename(path)}...')
             ds = self.DataClass(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg)
-            if debug:
-                ds = ds[:5]
-            for i in tqdm(range(len(ds))):
-                states_true, height = self.get_data(i, ds)
+            val_ds_size = int(val_fraction * len(ds))
+            val_ids = range(len(ds) - val_ds_size, len(ds))
+            # val_ids = np.random.choice(len(ds), val_ds_size, replace=False)
+            val_ds = ds[val_ids]
+            for i in tqdm(reversed(range(len(val_ds)))):
+                states_true, height = self.get_data(i, val_ds)
                 trans_diff, rot_diff, log = self.eval_diff_physics(height, states_true, vis=vis)
                 if rot_diff is not None and trans_diff is not None:
                     self.metrics['trans_diff'].append(trans_diff.item())
@@ -508,7 +511,7 @@ class EvaluatorKKT(EvaluatorGeom):
 def evaluate(dataset, robot='tradr',
              dphys_config_path=None,
              lss_config_path=None,
-             vis=False, debug=False):
+             vis=False):
     if dphys_config_path is None:
         dphys_config_path = '../config/dphys_cfg.yaml'
     if lss_config_path is None:
@@ -533,7 +536,7 @@ def evaluate(dataset, robot='tradr',
                              dataset=dataset, robot=robot,
                              model_path=model_path)
             print(evaluator)
-            evaluator.evaluate(vis=vis, debug=debug)
+            evaluator.evaluate(vis=vis)
 
 
 def main():
@@ -543,7 +546,7 @@ def main():
     evaluate(args.dataset, robot=args.robot,
              dphys_config_path=args.dphys_config,
              lss_config_path=args.lss_config,
-             vis=args.vis, debug=args.debug)
+             vis=args.vis)
 
 
 if __name__ == '__main__':

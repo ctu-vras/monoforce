@@ -6,7 +6,7 @@ ROBOT=tradr
 
 source $WS_PATH/devel/setup.bash
 
-./eval  --debug False --vis False \
+./eval  --vis False \
         --robot $ROBOT \
         --dataset robingas \
         --dphys_config $MONOFORCE_PATH/config/dphys_cfg.yaml \

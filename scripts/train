@@ -19,6 +19,9 @@ import matplotlib.pyplot as plt
 import argparse
 
 
+np.random.seed(0)
+torch.manual_seed(0)
+
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train LSS model')
     parser.add_argument('--bsz', type=int, default=1, help='Batch size')

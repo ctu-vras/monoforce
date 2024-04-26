@@ -1,4 +1,7 @@
 import os
+
+import numpy as np
+
 from monoforce.config import DPhysConfig
 from monoforce.datasets import robingas_seq_paths, RobinGasVis, rellis3d_seq_paths, Rellis3DVis
 from monoforce.datasets.utils import explore_data
@@ -26,6 +29,7 @@ def vis_data(dataset, robot='husky'):
         dphys_cfg = DPhysConfig()
         dphys_cfg.from_yaml(dphys_config_path)
         ds = DataClass(path, is_train=False, lss_cfg=lss_config, dphys_cfg=dphys_cfg)
+        ds = ds[np.random.choice(len(ds), 32, replace=False)]
         explore_data(ds, modelf=modelf, sample_range='random', save=False)
 
 
