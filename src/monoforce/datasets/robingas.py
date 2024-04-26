@@ -724,7 +724,7 @@ def heightmap_demo():
     from ..cloudproc import filter_grid, filter_range
     import matplotlib.pyplot as plt
 
-    # path = robingas_husky_seq_paths[0]
+    # path = robingas_seq_paths['husky'][0]
     path = robingas_seq_paths['tradr'][0]
     assert os.path.exists(path)
 
@@ -755,7 +755,7 @@ def extrinsics_demo():
     from mayavi import mlab
     from ..vis import draw_coord_frames, draw_coord_frame
 
-    # for path in robingas_husky_seq_paths:
+    # for path in robingas_seq_paths['husky']:
     for path in robingas_seq_paths['tradr']:
         assert os.path.exists(path)
 
@@ -799,7 +799,7 @@ def extrinsics_demo():
 
 
 def traversed_height_map():
-    # path = np.random.choice(robingas_husky_seq_paths)
+    # path = np.random.choice(robingas_seq_paths['husky'])
     path = np.random.choice(robingas_seq_paths['tradr'])
     assert os.path.exists(path)
 
@@ -873,7 +873,7 @@ def vis_estimated_height_map():
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 
-    # path = np.random.choice(robingas_husky_seq_paths)
+    # path = np.random.choice(robingas_seq_paths['husky'])
     path = np.random.choice(robingas_seq_paths['tradr'])
     ds = RobinGasBase(path=path, dphys_cfg=cfg)
 
@@ -897,7 +897,7 @@ def vis_estimated_height_map():
 
 
 def global_cloud_demo():
-    # paths = robingas_husky_seq_paths
+    # paths = robingas_seq_paths['husky']
     # paths = robingas_seq_paths['tradr']
     paths = robingas_seq_paths['husky_oru']
     for path in paths:
