@@ -63,11 +63,12 @@ robingas_seq_paths = {
     'husky_oru': [
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-02-33_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-09-06_0'),
-        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-24-37_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-24-37_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-37-14_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-44-56_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
     ],
 }
 

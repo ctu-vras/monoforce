@@ -49,3 +49,4 @@ obstacle_classes:
 - 'bicycle'
 - 'wall'
 - 'bench'
+- 'rock'
