@@ -37,7 +37,7 @@ def arg_parser():
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
-    parser.add_argument('--only_front_hm', type=str2bool, default=False, help='Use only front heightmap')
+    parser.add_argument('--only_front_cam', type=str2bool, default=False, help='Use only front heightmap')
     parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
     parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--hdiff_weight', type=float, default=0.001, help='Weight for height difference loss')
@@ -66,7 +66,7 @@ class Trainer:
     geom_hm_weight: float, weight for geometry heightmap loss
     terrain_hm_weight: float, weight for terrain heightmap loss
     hdiff_weight: float, weight for height difference loss
-    only_front_hm: bool, use only front heightmap part for training
+    only_front_cam: bool, use only front heightmap part for training
     """
 
     def __init__(self,
@@ -85,7 +85,7 @@ class Trainer:
                  geom_hm_weight=1.0,
                  terrain_hm_weight=10.0,
                  hdiff_weight=0.001,
-                 only_front_hm=False):
+                 only_front_cam=False):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.dataset = dataset
@@ -105,7 +105,7 @@ class Trainer:
         self.terrain_hm_weight = terrain_hm_weight
         self.hdiff_weight = hdiff_weight
 
-        self.only_front_hm = only_front_hm
+        self.only_front_cam = only_front_cam
 
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
         self.model = self.load_model(modelf=pretrained_model_path)
@@ -146,11 +146,11 @@ class Trainer:
         print('Data paths:', data_paths)
         for path in data_paths:
             assert os.path.exists(path)
-            train_ds = Data(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
-            val_ds = Data(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
+            train_ds = Data(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_cam=self.only_front_cam)
+            val_ds = Data(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_cam=self.only_front_cam)
 
             if vis:
-                train_ds_vis = DataVis(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_hm=self.only_front_hm)
+                train_ds_vis = DataVis(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_cam=self.only_front_cam)
                 explore_data(train_ds_vis)
 
             # randomly select a subset of the dataset
@@ -397,7 +397,7 @@ def main():
                       terrain_hm_weight=args.terrain_hm_weight,
                       hdiff_weight=args.hdiff_weight,
                       debug=args.debug, vis=args.vis,
-                      only_front_hm=args.only_front_hm)
+                      only_front_cam=args.only_front_cam)
     trainer.train()
 
 

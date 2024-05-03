@@ -4,13 +4,14 @@ import matplotlib as mpl
 import numpy as np
 import torch
 import torchvision
+from skimage.draw import polygon
 from torch.utils.data import Dataset
 from matplotlib import pyplot as plt
 from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
-from ..utils import position
+from ..utils import position, timing
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..utils import normalize
@@ -324,23 +325,6 @@ class RobinGasBase(Dataset):
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
-    def crop_front_height_map(self, hm, only_mask=False):
-        # square defining observation area on the ground
-        square = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]]) * self.dphys_cfg.d_max / 2
-        offset = np.asarray([0, self.dphys_cfg.d_max / 2, 0])
-        square = square + offset
-        h, w = hm.shape[1], hm.shape[2]
-        square_grid = square[:, :2] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
-        if only_mask:
-            mask = np.zeros((h, w), dtype=np.float32)
-            mask[int(square_grid[0, 1]):int(square_grid[2, 1]),
-            int(square_grid[0, 0]):int(square_grid[2, 0])] = 1.
-            return mask
-        # crop height map to observation area defined by square grid
-        hm_front = hm[:, int(square_grid[0, 1]):int(square_grid[2, 1]),
-                         int(square_grid[0, 0]):int(square_grid[2, 0])]
-        return hm_front
-
     def get_sample(self, i):
         cloud = self.get_cloud(i)
         points = position(cloud)
@@ -392,17 +376,17 @@ class RobinGas(RobinGasBase):
                  lss_cfg,
                  dphys_cfg=DPhysConfig(),
                  is_train=False,
-                 only_front_hm=False):
+                 only_front_cam=False):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
-        self.only_front_hm = only_front_hm
+        self.only_front_cam = only_front_cam
 
         # initialize image augmentations
         self.lss_cfg = lss_cfg
         self.img_augs = self.get_img_augs()
 
         # get camera names
-        self.cameras = self.get_camera_names()[:1] if only_front_hm else self.get_camera_names()
+        self.cameras = self.get_camera_names()[:1] if only_front_cam else self.get_camera_names()
 
     def get_img_augs(self):
         if self.is_train:
@@ -693,27 +677,58 @@ class RobinGas(RobinGasBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
+    def front_height_map_mask(self):
+        camera = self.cameras[0]
+        K = self.calib[camera]['camera_matrix']['data']
+        r, c = self.calib[camera]['camera_matrix']['rows'], self.calib[camera]['camera_matrix']['cols']
+        K = np.asarray(K, dtype=np.float32).reshape((r, c))
+
+        # get fov from camera intrinsics
+        img_h, img_w = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+        fx, fy = K[0, 0], K[1, 1]
+
+        fov_x = 2 * np.arctan2(img_h, 2 * fx)
+        fov_y = 2 * np.arctan2(img_w, 2 * fy)
+
+        # camera frustum mask
+        d = self.dphys_cfg.d_max
+        res = self.dphys_cfg.grid_res
+        h, w = 2 * d / res, 2 * d / res
+        h, w = int(h), int(w)
+        mask = np.zeros((h, w), dtype=np.float32)
+
+        to_grid = lambda x: np.array([x[1], x[0]]) / res + np.array([h // 2, w // 2])
+        A = to_grid([0, 0])
+        B = to_grid([d * np.tan(fov_y / 2), d])
+        C = to_grid([-d * np.tan(fov_y / 2), d])
+
+        # select triangle
+        rr, cc = polygon([A[0], B[0], C[0]], [A[1], B[1], C[1]], mask.shape)
+        mask[rr, cc] = 1.
+
+        return mask
+
     def get_sample(self, i):
         img, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i)
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
-        if self.only_front_hm:
-            mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
+        if self.only_front_cam:
+            mask = self.front_height_map_mask()
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         return img, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
 
 
 class RobinGasVis(RobinGas):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_hm=False):
-        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train, only_front_hm=only_front_hm)
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
+        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
-        if self.only_front_hm:
-            mask = self.crop_front_height_map(hm_terrain[1:2], only_mask=True)
+        if self.only_front_cam:
+            mask = self.front_height_map_mask()
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
