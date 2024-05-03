@@ -4,7 +4,7 @@ damping: 0.0
 elasticity: 0.0
 friction: 0.9
 grid_res: 0.1
-h_max: 1.5
+h_max: 1.0
 hm_interp_method: null
 weight_decay: 1e-7
 max_omega: 2.0

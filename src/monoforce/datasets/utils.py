@@ -183,8 +183,8 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
                 showimg = denormalize_img(img)
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
-                            s=1, alpha=0.2, cmap='jet', vmin=-1, vmax=1)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 0, mask],
+                            s=1, alpha=0.4, cmap='jet', vmin=1., vmax=6.4)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
