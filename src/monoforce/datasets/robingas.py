@@ -69,7 +69,7 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-44-56_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
-        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
     ],
 }
 
@@ -623,7 +623,7 @@ class RobinGas(RobinGasBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_terrain_height_map(self, i, method='footprint', cached=True, dir_name=None):
+    def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None):
         """
         Get height map from trajectory points.
         :param i: index of the sample
