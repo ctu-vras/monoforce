@@ -9,7 +9,7 @@ class DPhysConfig:
         self.grid_res = 0.1
         self.d_min = 1.0
         self.d_max = 6.4
-        self.h_max = 1.0  # above robot frame (base_link)
+        self.h_max_above_ground = 1.0  # above ground frame (base_footprint)
         self.damping = 0.
         self.elasticity = 0.
         self.friction = 0.9
@@ -21,7 +21,6 @@ class DPhysConfig:
         self.robot_inertia = (5. * np.eye(3)).tolist()
         self.robot_init_xyz = [0., 0., 1.]
         self.robot_init_q = [0., 0., 0., 1.]
-        self.robot_clearance = 0.132
         self.robot_size = (1.0, 0.6)
 
         # training parameters

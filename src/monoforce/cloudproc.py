@@ -214,7 +214,9 @@ def valid_point_mask(arr, discard_tf=None, discard_model=None):
         valid = np.logical_and(valid, ~discard_model.contains_point(y))
     return valid.reshape(arr.shape)
 
-def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_interp_method='nearest',
+def estimate_heightmap(points, d_min=1., d_max=6.4, grid_res=0.1,
+                       h_max_above_ground=1., robot_clearance=0.,
+                       hm_interp_method='nearest',
                        fill_value=0., robot_radius=None, return_filtered_points=False,
                        map_pose=np.eye(4)):
     assert points.ndim == 2
@@ -223,7 +225,7 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     assert isinstance(d_min, (float, int)) and d_min >= 0.
     assert isinstance(d_max, (float, int)) and d_max >= 0.
     assert isinstance(grid_res, (float, int)) and grid_res > 0.
-    assert isinstance(h_max, (float, int)) and h_max >= 0.
+    assert isinstance(h_max_above_ground, (float, int)) and h_max_above_ground >= 0.
     assert hm_interp_method in ['linear', 'nearest', 'cubic', None]
     assert fill_value is None or isinstance(fill_value, (float, int))
     assert robot_radius is None or isinstance(robot_radius, (float, int)) and robot_radius > 0.
@@ -239,8 +241,8 @@ def estimate_heightmap(points, d_min=1., d_max=12.8, grid_res=0.1, h_max=1., hm_
     R = rpy2rot(roll, pitch, 0.).cpu().numpy()
     points_grav = points @ R.T
 
-    # height above ground
-    mask_h = points_grav[:, 2] <= h_max
+    # filter points above ground
+    mask_h = points_grav[:, 2] + robot_clearance <= h_max_above_ground
 
     # filter point cloud in a square
     mask_sq = np.logical_and(np.abs(points[:, 0]) <= d_max, np.abs(points[:, 1]) <= d_max)

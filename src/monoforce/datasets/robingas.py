@@ -11,7 +11,7 @@ from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_onl
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
-from ..utils import position, timing
+from ..utils import position, timing, read_yaml
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..utils import normalize
@@ -125,6 +125,8 @@ class RobinGasBase(Dataset):
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.ts, self.poses = self.get_poses(return_stamps=True)
+        # get camera names
+        self.cameras = self.get_camera_names()
 
     def get_ids(self):
         ids = [f[:-4] for f in os.listdir(self.cloud_path)]
@@ -156,7 +158,15 @@ class RobinGasBase(Dataset):
     def get_pose(self, i):
         return self.poses[i]
 
-    def get_traj(self, i):
+    def get_camera_names(self):
+        cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
+        cams = [cam.replace('.yaml', '') for cam in cams_yaml]
+        if 'camera_up' in cams:
+            cams.remove('camera_up')
+        return sorted(cams)
+
+    def get_traj(self, i, n_frames=10):
+        # n_frames equals to the number of future poses (trajectory length)
         ind = self.ids[i]
         Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=np.float32).reshape((4, 4))
@@ -170,7 +180,6 @@ class RobinGasBase(Dataset):
             poses = Tr_robot_lidar @ poses
         else:
             # get trajectory as sequence of `n_frames` future poses
-            n_frames = 100
             all_poses = self.get_poses(return_stamps=False)
             all_ids = list(self.get_ids())
             il = all_ids.index(ind)
@@ -178,7 +187,6 @@ class RobinGasBase(Dataset):
             ir = np.clip(ir, 0, len(all_ids))
             poses = all_poses[il:ir]
             assert len(poses) > 0, f'No poses found for trajectory {ind}'
-            # poses = Tr_robot_lidar @ poses
             poses = np.linalg.inv(poses[0]) @ poses
             # time stamps
             stamps = np.asarray(copy.copy(self.ts[il:ir]), dtype=np.float32)
@@ -280,7 +288,7 @@ class RobinGasBase(Dataset):
         return trajectory_points
 
     def get_global_cloud(self, vis=False, cached=True, save=False, step=1):
-        path = os.path.join(self.path, 'global_map.pcd')
+        path = os.path.join(self.path, 'map', 'map.pcd')
         if cached and os.path.exists(path):
             # print('Loading global cloud from file...')
             pcd = o3d.io.read_point_cloud(path)
@@ -321,15 +329,16 @@ class RobinGasBase(Dataset):
     def estimate_heightmap(self, points, **kwargs):
         # estimate heightmap from point cloud
         height = estimate_heightmap(points, d_min=self.dphys_cfg.d_min, d_max=self.dphys_cfg.d_max,
-                                    grid_res=self.dphys_cfg.grid_res, h_max=self.dphys_cfg.h_max,
+                                    grid_res=self.dphys_cfg.grid_res,
+                                    h_max_above_ground=self.dphys_cfg.h_max_above_ground,
+                                    robot_clearance=self.calib['clearance'],
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
     def get_sample(self, i):
         cloud = self.get_cloud(i)
-        points = position(cloud)
         traj = self.get_traj(i)
-        height = self.estimate_heightmap(points, fill_value=0.)
+        height = self.estimate_heightmap(position(cloud), fill_value=0.)
         return cloud, traj, height
 
     def __getitem__(self, i):
@@ -380,13 +389,11 @@ class RobinGas(RobinGasBase):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_cam = only_front_cam
+        self.cameras = self.cameras[:1] if only_front_cam else self.cameras
 
         # initialize image augmentations
         self.lss_cfg = lss_cfg
         self.img_augs = self.get_img_augs()
-
-        # get camera names
-        self.cameras = self.get_camera_names()[:1] if only_front_cam else self.get_camera_names()
 
     def get_img_augs(self):
         if self.is_train:
@@ -422,13 +429,6 @@ class RobinGas(RobinGasBase):
         img = self.get_raw_image(i, cam)
         img = np.asarray(img)
         return img.shape[0], img.shape[1]
-
-    def get_camera_names(self):
-        cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
-        cams = [cam.replace('.yaml', '') for cam in cams_yaml]
-        if 'camera_up' in cams:
-            cams.remove('camera_up')
-        return sorted(cams)
 
     def get_image(self, i, camera=None, undistort=False):
         if camera is None:
@@ -638,8 +638,8 @@ class RobinGas(RobinGasBase):
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
         if method == 'dphysics':
             height = self.get_traj_dphyics_terrain(i)
-            h, w = int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res), int(
-                2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res)
+            h, w = (int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res),
+                    int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res))
             # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
             H, W = height.shape
             if H == 256 and W == 256:
@@ -740,8 +740,8 @@ def heightmap_demo():
     from ..cloudproc import filter_grid, filter_range
     import matplotlib.pyplot as plt
 
-    # path = robingas_seq_paths['husky'][0]
-    path = robingas_seq_paths['tradr'][0]
+    robot = 'husky_oru'
+    path = robingas_seq_paths[robot][0]
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
@@ -762,7 +762,7 @@ def heightmap_demo():
     plt.plot(traj[:, 0, 3], traj[:, 1, 3], traj[:, 2, 3], 'ro', markersize=4)
     # visualize height map as a surface
     ax = plt.gca()
-    ax.plot_surface(height['x'], height['y'], height['z'],
+    ax.plot_surface(height['y'], height['x'], height['z'],
                     rstride=1, cstride=1, cmap='viridis', edgecolor='none', alpha=0.7)
     plt.show()
 
@@ -771,8 +771,8 @@ def extrinsics_demo():
     from mayavi import mlab
     from ..vis import draw_coord_frames, draw_coord_frame
 
-    # for path in robingas_seq_paths['husky']:
-    for path in robingas_seq_paths['tradr']:
+    robot = 'husky_oru'
+    for path in robingas_seq_paths[robot]:
         assert os.path.exists(path)
 
         cfg = DPhysConfig()
@@ -785,21 +785,8 @@ def extrinsics_demo():
         Tr_robot_lidar = ds.calib['transformations'][f'T_{robot_frame}__{lidar_frame}']['data']
         Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
 
-        if 'robingas' in path:
-            if 'marv' in path:
-                camera_frames = ['camera_left', 'camera_right', 'camera_up', 'camera_fisheye_front',
-                                 'camera_fisheye_rear']
-            elif 'husky' in path:
-                camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear']
-            else:
-                camera_frames = ['camera_left', 'camera_right', 'camera_front', 'camera_rear_left', 'camera_rear_right', 'camera_up']
-        elif 'sim' in path:
-            camera_frames = ['realsense_left', 'realsense_right', 'realsense_front', 'realsense_rear']
-        else:
-            camera_frames = ['ids_camera']
-
         cam_poses = []
-        for frame in camera_frames:
+        for frame in ds.cameras:
             T_robot_cam = ds.calib['transformations'][f'T_{robot_frame}__{frame}']['data']
             T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
 
@@ -815,13 +802,16 @@ def extrinsics_demo():
 
 
 def traversed_height_map():
-    # path = np.random.choice(robingas_seq_paths['husky'])
-    path = np.random.choice(robingas_seq_paths['tradr'])
+    robot = 'husky_oru'
+    path = np.random.choice(robingas_seq_paths[robot])
     assert os.path.exists(path)
 
-    cfg = DPhysConfig()
+    dphys_cfg = DPhysConfig()
+    dphys_cfg.from_yaml(os.path.join(data_dir, '../config/dphys_cfg.yaml'))
 
-    ds = RobinGas(path, dphys_cfg=cfg)
+    lss_cfg = read_yaml(os.path.join(data_dir, f'../config/lss_cfg_{robot}.yaml'))
+
+    ds = RobinGas(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
     i = np.random.choice(range(len(ds)))
 
     # trajectory poses
@@ -837,16 +827,16 @@ def traversed_height_map():
     height_geom = heightmap['z']
     x_grid, y_grid = heightmap['x'], heightmap['y']
     # height map: optimized from robot-terrain interaction model
-    height_terrain = ds.get_traj_dphyics_terrain(i)
+    height_terrain = ds.get_terrain_height_map(i)[0]
 
     plt.figure(figsize=(12, 12))
     h, w = height_geom.shape
-    xy_grid = poses[:, :2, 3] / cfg.grid_res + np.array([w / 2, h / 2])
+    xy_grid = poses[:, :2, 3] / dphys_cfg.grid_res + np.array([w / 2, h / 2])
     plt.subplot(131)
-    plt.imshow(height_geom.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
+    plt.imshow(height_geom.T, origin='lower', vmin=-1, vmax=1, cmap='jet')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(132)
-    plt.imshow(height_terrain.T, origin='lower', vmin=-0.5, vmax=0.5, cmap='jet')
+    plt.imshow(height_terrain.T, origin='lower', vmin=-1, vmax=1, cmap='jet')
     plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
     plt.subplot(133)
     plt.imshow(img)
@@ -885,7 +875,7 @@ def vis_estimated_height_map():
     cfg.grid_res = 0.1
     cfg.d_max = 12.8
     cfg.d_min = 1.
-    cfg.h_max = 1.
+    cfg.h_max_above_ground = 1.
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 
@@ -913,55 +903,53 @@ def vis_estimated_height_map():
 
 
 def global_cloud_demo():
-    # paths = robingas_seq_paths['husky']
-    # paths = robingas_seq_paths['tradr']
-    paths = robingas_seq_paths['husky_oru']
+    robot = 'husky_oru'
+    assert robot in ['husky_oru', 'tradr', 'husky']
+    paths = robingas_seq_paths[robot]
     for path in paths:
         ds = RobinGasBase(path=path)
-        ds.get_global_cloud(vis=True)
+        ds.get_global_cloud(vis=True, cached=False, step=10)
 
 
 def trajectory_footprint_heightmap():
     robot = 'husky_oru'
-    path = np.random.choice(robingas_seq_paths[robot])
-    assert os.path.exists(path)
+    for path in robingas_seq_paths[robot]:
+        assert os.path.exists(path)
 
-    cfg = DPhysConfig()
-    ds = RobinGasBase(path, dphys_cfg=cfg)
+        cfg = DPhysConfig()
+        ds = RobinGasBase(path, dphys_cfg=cfg)
 
-    i = np.random.choice(range(len(ds)))
-    sample = ds[i]
-    cloud, traj, height = sample
-    points = position(cloud)
+        i = np.random.choice(range(len(ds)))
+        sample = ds[i]
+        cloud, traj, height = sample
+        points = position(cloud)
 
-    traj_points = ds.get_footprint_traj_points(i)
+        traj_points = ds.get_footprint_traj_points(i)
+        lidar_height = ds.estimate_heightmap(points)['z']
 
-    lidar_height = ds.estimate_heightmap(points)['z']
-    traj_hm = ds.estimate_heightmap(traj_points)
-    traj_height = traj_hm['z']
-    traj_mask = traj_hm['mask']
-    # print('lidar_height', lidar_height.shape)
-    # print('traj_height', traj_height.shape)
+        traj_hm = ds.estimate_heightmap(traj_points)
+        traj_height = traj_hm['z']
+        traj_mask = traj_hm['mask']
 
-    plt.figure()
-    plt.subplot(131)
-    plt.imshow(lidar_height.T, cmap='jet', vmin=-0.5, vmax=0.5, origin='lower')
-    plt.colorbar()
-    plt.subplot(132)
-    plt.imshow(traj_height.T, cmap='jet', vmin=-0.5, vmax=0.5, origin='lower')
-    plt.colorbar()
-    plt.subplot(133)
-    plt.imshow(traj_mask.T, cmap='gray', origin='lower')
-    plt.show()
+        # plt.figure(figsize=(12, 6))
+        # plt.subplot(131)
+        # plt.imshow(lidar_height.T, cmap='jet', vmin=-1., vmax=1., origin='lower')
+        # plt.colorbar()
+        # plt.subplot(132)
+        # plt.imshow(traj_height.T, cmap='jet', vmin=-1., vmax=1., origin='lower')
+        # plt.colorbar()
+        # plt.subplot(133)
+        # plt.imshow(traj_mask.T, cmap='gray', origin='lower')
+        # plt.show()
 
-    pcd1 = o3d.geometry.PointCloud()
-    pcd1.points = o3d.utility.Vector3dVector(points)
+        pcd1 = o3d.geometry.PointCloud()
+        pcd1.points = o3d.utility.Vector3dVector(points)
 
-    pcd2 = o3d.geometry.PointCloud()
-    pcd2.points = o3d.utility.Vector3dVector(traj_points)
-    pcd2.paint_uniform_color([1, 0, 0])
+        pcd2 = o3d.geometry.PointCloud()
+        pcd2.points = o3d.utility.Vector3dVector(traj_points)
+        pcd2.paint_uniform_color([1, 0, 0])
 
-    o3d.visualization.draw_geometries([pcd1, pcd2])
+        o3d.visualization.draw_geometries([pcd1, pcd2])
 
 
 def main():

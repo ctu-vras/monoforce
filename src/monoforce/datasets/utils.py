@@ -149,16 +149,12 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
 
     for sample_i in sample_range:
-        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 2)
-        fig = plt.figure(figsize=(5 * n_cols, 5 * n_rows))
-        gs = mpl.gridspec.GridSpec(n_rows, n_cols)
-        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
         # print('sample', sample_i, 'id', ds.ids[sample_i])
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_terrain, pts = sample
         height_rigid, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
+
         if modelf is not None:
             with torch.no_grad():
                 # replace height maps with model output
@@ -170,6 +166,13 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
                 pts = pts.unsqueeze(0)
 
         frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 2)
+        img_h, img_w = imgs.shape[-2], imgs.shape[-1]
+        ratio = img_h / img_w
+        fig = plt.figure(figsize=(n_cols * 4, n_rows * 4 * ratio))
+        gs = mpl.gridspec.GridSpec(n_rows, n_cols)
+        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
         for si in range(imgs.shape[0]):
             plt.clf()
@@ -183,8 +186,8 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
                 showimg = denormalize_img(img)
 
                 plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 0, mask],
-                            s=1, alpha=0.4, cmap='jet', vmin=1., vmax=6.4)
+                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
+                            s=1, alpha=0.4, cmap='jet', vmin=-1., vmax=1.)
                 plt.axis('off')
                 # camera name as text on image
                 plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
@@ -192,8 +195,8 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
                          transform=ax.transAxes, fontsize=10)
 
                 plt.sca(final_ax)
-                plt.plot(frustum_pts[si, imgi, :, :, :, 0].view(-1), frustum_pts[si, imgi, :, :, :, 1].view(-1), '.',
-                         label=cams[imgi].replace('_', ' '))
+                plt.plot(frustum_pts[si, imgi, :, :, :, 0].view(-1), frustum_pts[si, imgi, :, :, :, 1].view(-1),
+                         '.', label=cams[imgi].replace('_', ' '))
 
             plt.legend(loc='upper right')
             final_ax.set_aspect('equal')

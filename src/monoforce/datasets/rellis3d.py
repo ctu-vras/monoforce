@@ -392,7 +392,7 @@ class Rellis3D(Rellis3DBase):
     def estimate_heightmap(self, points, **kwargs):
         # estimate heightmap from point cloud
         height = estimate_heightmap(points, d_min=self.dphys_cfg.d_min, d_max=self.dphys_cfg.d_max,
-                                    grid_res=self.dphys_cfg.grid_res, h_max=self.dphys_cfg.h_max,
+                                    grid_res=self.dphys_cfg.grid_res, h_max_above_ground=self.dphys_cfg.h_max_above_ground,
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
