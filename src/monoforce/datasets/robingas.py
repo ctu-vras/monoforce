@@ -70,6 +70,7 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
+        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-01-15-48-29_0'),
     ],
 }
 
@@ -165,7 +166,7 @@ class RobinGasBase(Dataset):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_traj(self, i, n_frames=10):
+    def get_traj(self, i, n_frames=100):
         # n_frames equals to the number of future poses (trajectory length)
         ind = self.ids[i]
         Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
@@ -183,13 +184,15 @@ class RobinGasBase(Dataset):
             all_poses = self.get_poses(return_stamps=False)
             all_ids = list(self.get_ids())
             il = all_ids.index(ind)
-            ir = il + n_frames
-            ir = np.clip(ir, 0, len(all_ids))
-            poses = all_poses[il:ir]
+            if n_frames is None:
+                poses = copy.copy(all_poses)
+                stamps = np.asarray(copy.copy(self.ts), dtype=np.float32)
+            else:
+                ir = np.clip(il + n_frames, 0, len(all_ids))
+                poses = all_poses[il:ir]
+                stamps = np.asarray(copy.copy(self.ts[il:ir]), dtype=np.float32)
             assert len(poses) > 0, f'No poses found for trajectory {ind}'
             poses = np.linalg.inv(poses[0]) @ poses
-            # time stamps
-            stamps = np.asarray(copy.copy(self.ts[il:ir]), dtype=np.float32)
 
         traj = {
             'stamps': stamps, 'poses': poses,
@@ -250,9 +253,6 @@ class RobinGasBase(Dataset):
         cloud = self.get_raw_cloud(i)
         # remove nans from structured array with fields x, y, z
         cloud = cloud[~np.isnan(cloud['x'])]
-        # cloud = cloud[~np.isnan(cloud['y'])]
-        # cloud = cloud[~np.isnan(cloud['z'])]
-
         # move points to robot frame
         Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
@@ -323,7 +323,14 @@ class RobinGasBase(Dataset):
 
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(global_cloud_vis)
-            o3d.visualization.draw_geometries([pcd])
+
+            poses = self.get_poses()
+            pcd_poses = o3d.geometry.PointCloud()
+            pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
+            pcd_poses.paint_uniform_color([0.8, 0.1, 0.1])
+
+            # o3d.visualization.draw_geometries([pcd_poses])
+            o3d.visualization.draw_geometries([pcd, pcd_poses])
         return global_cloud
 
     def estimate_heightmap(self, points, **kwargs):

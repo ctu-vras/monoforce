@@ -153,6 +153,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         sample = [s[np.newaxis] for s in sample]
         # print('sample', sample_i, 'id', ds.ids[sample_i])
         imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_terrain, pts = sample
+        height_geom, mask_geom = hm_lidar[:, 0], hm_lidar[:, 1]
         height_rigid, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
 
         if modelf is not None:
@@ -167,7 +168,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
 
         frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
-        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 2)
+        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
         img_h, img_w = imgs.shape[-2], imgs.shape[-1]
         ratio = img_h / img_w
         fig = plt.figure(figsize=(n_cols * 4, n_rows * 4 * ratio))
@@ -202,6 +203,12 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
             final_ax.set_aspect('equal')
             plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
             plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
+
+            # plot height maps
+            ax = plt.subplot(gs[:, -3:-2])
+            plt.imshow(height_geom[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
+            plt.colorbar()
 
             ax = plt.subplot(gs[:, -2:-1])
             plt.imshow(height_rigid[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
