@@ -1,0 +1,213 @@
+#!/usr/bin/env python
+
+import os
+from time import time
+
+import torch
+import numpy as np
+import rospy
+from monoforce.ros import poses_to_marker, poses_to_path
+from nav_msgs.msg import Path
+from ros_numpy import numpify
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Float32
+from visualization_msgs.msg import MarkerArray
+from monoforce.models.dphysics_warp import TrackSimulator
+import warp as wp
+
+
+# initialize warp
+wp.init()
+
+
+class DiffPhysicsWarp:    
+    def __init__(self,
+                 hm_topic='/height_map',
+                 hm_frame='base_link',
+                 robot='tradr',
+                 robot_clearance=0.0,
+                 robot_size=(1.0, 0.5),
+                 grid_res=0.1,
+                 n_sim_trajs=40,
+                 max_stale_msg_delay=0.5):
+        self.robot = robot
+        self.robot_clearance = robot_clearance
+        self.robot_size = robot_size
+        self.dt = 0.001
+        self.grid_res = grid_res
+        self.n_sim_trajs = n_sim_trajs
+        self.device = 'cpu'  #'cuda' if torch.cuda.is_available() else 'cpu'
+        self.hm_frame = hm_frame
+        self.time_horizon = 5.0
+        self.n_sim_steps = int(self.time_horizon / self.dt)
+        self.max_stale_msg_delay = max_stale_msg_delay
+        
+        self.init_poses, self.track_vels, self.flipper_angles = self.init_controls()
+
+        # paths publisher
+        self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
+        # lower cost path publisher
+        self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
+        self.path_cost_pub = rospy.Publisher('/path_cost', Float32, queue_size=1)
+
+        # image subscriber
+        self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback)
+
+    def init_controls(self):
+        init_poses = np.zeros((self.n_sim_trajs, 7))
+        init_poses[:, 2] = 0.2  # robot's initial z coordinate
+        init_poses[:, 6] = 1.0  # quaternion w
+
+        T = self.n_sim_steps
+        assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
+        vel_max, omega_max = 1.0, 1.0
+        vels = np.concatenate([-vel_max * np.ones((self.n_sim_trajs // 2, T)), vel_max * np.ones((self.n_sim_trajs // 2, T))])
+        omegas = np.concatenate([np.linspace(-omega_max, omega_max, self.n_sim_trajs // 2),
+                                 np.linspace(-omega_max, omega_max, self.n_sim_trajs // 2)])
+
+        track_vels = np.zeros((self.n_sim_trajs, T, 2))
+        for i in range(self.n_sim_trajs):
+            r = self.robot_size[1]
+            v_r = vels[i] + r * omegas[i]
+            v_l = vels[i] - r * omegas[i]
+            track_vels[i, :, 0], track_vels[i, :, 1] = v_r, v_l
+        flipper_angles = np.zeros((self.n_sim_trajs, T, 4))
+        # flipper_angles[0, :, 0] = 0.5
+        
+        return init_poses, track_vels, flipper_angles
+
+    def hm_callback(self, msg):
+        assert isinstance(msg, PointCloud2)
+        # if message is stale do not process it
+        dt = rospy.Time.now() - msg.header.stamp
+        if dt.to_sec() > self.max_stale_msg_delay:
+            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_stale_msg_delay} [sec]), skipping')
+            return
+
+        height = numpify(msg)['z']
+        w = h = np.sqrt(height.size).astype(int)
+        height = height.reshape((h, w))
+        assert height.ndim == 2, 'Height map must be 2D'
+        height = height.T
+        rospy.loginfo('Received height map of shape: %s' % str(height.shape))
+
+        # predict path
+        with torch.no_grad():
+            self.predict_paths(height)
+
+    def predict_paths(self, height):
+        assert isinstance(height, np.ndarray)
+        assert height.shape[0] == height.shape[1]
+
+        np_heights = [height for _ in range(self.n_sim_trajs)]
+        np_kfs = [0.5 * np.ones(height.shape, dtype=np.float32) for _ in range(self.n_sim_trajs)]
+        res = [self.grid_res for _ in range(self.n_sim_trajs)]
+        
+        # create simulator
+        simulator = TrackSimulator(np_heights, np_kfs, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
+        simulator.set_control(self.track_vels, self.flipper_angles)
+        simulator.set_init_poses(self.init_poses)
+        
+        # simulate trajectories
+        t_start = time()
+        xyz_q = simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
+        rospy.loginfo('Simulation took %.3f [sec]' % (time() - t_start))
+
+        xyz_q_np = xyz_q.numpy()
+        forces_np = simulator.body_f.numpy()
+        rospy.logdebug('xyz_q: %s' % str(xyz_q_np.shape))
+        rospy.logdebug('forces: %s' % str(forces_np.shape))
+        assert xyz_q_np.shape == (self.n_sim_steps + 1, self.n_sim_trajs, 7)
+        assert forces_np.shape == (self.n_sim_steps, self.n_sim_trajs, 6)
+
+        # path with the smallest cost
+        path_costs = np.linalg.norm(forces_np[..., :3], axis=-1).sum(axis=0)
+        path_lengths = np.sum(np.linalg.norm(np.diff(xyz_q_np[:, :, :3], axis=0), axis=2), axis=0)
+        assert path_costs.shape == (self.n_sim_trajs,)
+        assert path_lengths.shape == (self.n_sim_trajs,)
+        unfeasible_paths = np.where(path_lengths > 100.0)[0]
+        rospy.logdebug('unfeasible paths: %s' % str(unfeasible_paths))
+
+        # remove unfeasible paths
+        path_costs = np.delete(path_costs, unfeasible_paths)
+        if len(path_costs) == 0:
+            rospy.logwarn('All paths are unfeasible')
+            return
+        xyz_q_np = np.delete(xyz_q_np, unfeasible_paths, axis=1)
+        forces_np = np.delete(forces_np, unfeasible_paths, axis=1)
+        best_traj_i = np.argmin(path_costs)
+        best_xyz_q = xyz_q_np[:, best_traj_i]
+        num_trajs = xyz_q_np.shape[1]
+        assert xyz_q_np.shape == (self.n_sim_steps + 1, num_trajs, 7)
+        assert path_costs.shape == (num_trajs,)
+        assert forces_np.shape == (self.n_sim_steps, num_trajs, 6)
+        assert best_xyz_q.shape == (self.n_sim_steps + 1, 7)
+        rospy.loginfo('Best path cost: %.3f' % path_costs[best_traj_i])
+
+        # publish paths
+        self.publish_paths(xyz_q_np, path_costs, best_xyz_q)
+
+    def publish_paths(self, xyz_q_np, path_costs, best_xyz_q, pose_step=50):
+        num_trajs = xyz_q_np.shape[1]
+        stamp = rospy.Time.now()
+        min_path_cost = np.min(path_costs)
+        max_path_cost = np.max(path_costs)
+        # paths marker array
+        marker_array = MarkerArray()
+        path_id = 0
+        red = np.array([1., 0., 0.])
+        green = np.array([0., 1., 0.])
+        for i in range(num_trajs):
+            path_cost = path_costs[i]
+            # normalize path cost
+            path_cost_norm = (path_cost - min_path_cost) / (max_path_cost - min_path_cost)
+            # map path cost to color (lower cost -> greener, higher cost -> redder)
+            color = green + (red - green) * path_cost_norm.item()
+            marker_msg = poses_to_marker(xyz_q_np[::pose_step, i], color=color)
+            marker_msg.header.frame_id = self.hm_frame
+            marker_msg.ns = 'paths'
+            marker_msg.id = path_id
+            path_id += 1
+            marker_array.markers.append(marker_msg)
+        # set time stamps
+        for marker_msg in marker_array.markers:
+            marker_msg.header.stamp = stamp
+        # publish all sampled paths
+        self.sampled_paths_pub.publish(marker_array)
+
+        # publish lower cost path
+        rospy.loginfo('Publishing lower cost path of length: %d' % len(best_xyz_q))
+        path_msg = poses_to_path(best_xyz_q, stamp=stamp, frame_id=self.hm_frame)
+        self.lc_path_pub.publish(path_msg)
+        # publish path cost
+        path_cost_msg = Float32()
+        path_cost_msg.data = min_path_cost
+        self.path_cost_pub.publish(path_cost_msg)
+
+    @staticmethod
+    def spin():
+        try:
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
+
+
+def main():
+    rospy.init_node('diff_physics', anonymous=True)
+
+    robot = rospy.get_param('~robot', 'tradr')
+    robot_clearance = rospy.get_param('~robot_clearance', 0.0)
+
+    hm_topic = rospy.get_param('~hm_topic')
+    hm_frame = rospy.get_param('~hm_frame')
+    # max time to wait for a message before it is considered stale
+    max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
+
+    node = DiffPhysicsWarp(robot=robot, robot_clearance=robot_clearance,
+                           hm_topic=hm_topic, hm_frame=hm_frame,
+                           max_stale_msg_delay=max_stale_msg_delay)
+    node.spin()
+
+
+if __name__ == '__main__':
+    main()

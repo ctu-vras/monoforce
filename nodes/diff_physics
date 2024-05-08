@@ -6,7 +6,7 @@ import numpy as np
 import rospy
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
-from monoforce.ros import poses_to_marker, to_path
+from monoforce.ros import poses_to_marker, poses_to_path
 from nav_msgs.msg import Path
 from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
@@ -142,7 +142,7 @@ class DiffPhysics:
         # publish lower cost path
         if lower_cost_poses is not None:
             rospy.loginfo('Publishing lower cost path of length: %d' % len(lower_cost_poses))
-            path_msg = to_path(lower_cost_poses, stamp=stamp, frame_id=self.hm_frame)
+            path_msg = poses_to_path(lower_cost_poses, stamp=stamp, frame_id=self.hm_frame)
             self.lc_path_pub.publish(path_msg)
             # publish path cost
             path_cost_msg = Float32()

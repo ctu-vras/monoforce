@@ -8,7 +8,7 @@ from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasVis, robingas_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
-from monoforce.ros import height_map_to_gridmap_msg, to_path, to_tf, xyz_to_point
+from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
 from monoforce.models.lss.model import compile_model
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
@@ -245,8 +245,8 @@ class MonoForce:
                 robot_points = robot_points.cpu().numpy()
                 rospy.loginfo('Robot contact points shape: %s' % str(robot_points.shape))
                 # publish paths
-                path_msg = to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
-                path_gt_msg = to_path(poses_gt, frame_id=self.robot_initial_frame, stamp=stamp)
+                path_msg = poses_to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
+                path_gt_msg = poses_to_path(poses_gt, frame_id=self.robot_initial_frame, stamp=stamp)
                 self.path_pub.publish(path_msg)
                 self.path_gt_pub.publish(path_gt_msg)
 

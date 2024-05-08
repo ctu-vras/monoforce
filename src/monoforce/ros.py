@@ -169,9 +169,13 @@ def to_pose_array(poses, stamp=None, frame_id=None):
     return pose_array
 
 
-def to_path(poses, stamp=None, frame_id=None):
+def poses_to_path(poses, stamp=None, frame_id=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
-    assert poses.shape[1:] == (4, 4)
+    assert poses.ndim == 3 or poses.ndim == 2
+    if poses.ndim == 3:
+        assert poses.shape[1:] == (4, 4)
+    elif poses.ndim == 2:
+        assert poses.shape[1] == 7
     if stamp is None:
         stamp = rospy.Time.now()
     if frame_id is None:
@@ -183,7 +187,16 @@ def to_path(poses, stamp=None, frame_id=None):
         pose = PoseStamped()
         pose.header.stamp = stamp
         pose.header.frame_id = frame_id
-        pose.pose = msgify(Pose, poses[i])
+        if poses.ndim == 3:
+            pose.pose = msgify(Pose, poses[i])
+        elif poses.ndim == 2:
+            pose.pose.position.x = poses[i, 0]
+            pose.pose.position.y = poses[i, 1]
+            pose.pose.position.z = poses[i, 2]
+            pose.pose.orientation.x = poses[i, 3]
+            pose.pose.orientation.y = poses[i, 4]
+            pose.pose.orientation.z = poses[i, 5]
+            pose.pose.orientation.w = poses[i, 6]
         path.poses.append(pose)
     return path
 
@@ -220,7 +233,11 @@ def to_box_msg(pose, size, stamp=None, frame_id=None):
 
 def poses_to_marker(poses, color=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
-    assert poses.shape[1:] == (4, 4)
+    assert poses.ndim == 3 or poses.ndim == 2
+    if poses.ndim == 3:
+        assert poses.shape[1:] == (4, 4)
+    elif poses.ndim == 2:
+        assert poses.shape[1] == 7
     marker = Marker()
     marker.type = Marker.LINE_STRIP
     marker.action = Marker.ADD
@@ -234,7 +251,14 @@ def poses_to_marker(poses, color=None):
     marker.color.a = 1.0
     for t in range(poses.shape[0]):
         p = poses[t]
-        marker.points.append(msgify(Pose, p).position)
+        if p.shape == (4, 4):
+            marker.points.append(msgify(Pose, p).position)
+        elif p.shape == (7,):
+            pose = Pose()
+            pose.position.x = p[0]
+            pose.position.y = p[1]
+            pose.position.z = p[2]
+            marker.points.append(pose.position)
     return marker
 
 

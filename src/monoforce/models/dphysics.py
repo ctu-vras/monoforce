@@ -11,6 +11,35 @@ from ..control import pose_control
 
 torch.set_default_dtype(torch.float32)
 
+
+def create_robot_model(model='husky'):
+    if 'tradr' in model:
+        size = (1.0, 0.5)
+        s_x, s_y = size
+        n_pts = 10
+        px = torch.hstack(
+            [torch.linspace(-s_x / 2., s_x / 2., n_pts // 2), torch.linspace(-s_x / 2., s_x / 2., n_pts // 2)])
+        py = torch.hstack([s_y / 2. * torch.ones(n_pts // 2), -s_y / 2. * torch.ones(n_pts // 2)])
+        pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])
+    elif 'husky' in model:
+        size = (0.9, 0.6)
+        s_x, s_y = size
+        n_pts = 10
+        px = torch.hstack(
+            [torch.linspace(-s_x / 2., s_x / 2., n_pts // 2), torch.linspace(-s_x / 2., s_x / 2., n_pts // 2)])
+        py = torch.hstack([s_y / 2. * torch.ones(n_pts // 2), -s_y / 2. * torch.ones(n_pts // 2)])
+        pz = torch.zeros(n_pts)
+    elif 'marv' in model:
+        raise NotImplementedError
+    elif 'warthog' in model:
+        raise NotImplementedError
+    else:
+        print(f'Unknown robot model: {model}')
+        raise NotImplementedError
+    robot_points = torch.stack((px, py, pz))
+    return robot_points, size
+
+
 class State:
     def __init__(self,
                  xyz=torch.zeros((3, 1)),
@@ -122,7 +151,7 @@ class RigidBodySoftTerrain(nn.Module):
 
         self.state = state
 
-        self.robot_points = nn.Parameter(self.create_robot_model(robot_model))
+        self.robot_points = nn.Parameter(create_robot_model(robot_model)[0].to(self.device))
         self.init_forces = nn.Parameter(torch.zeros_like(self.robot_points))
 
         self.mass = nn.Parameter(torch.tensor([mass]))
@@ -145,31 +174,6 @@ class RigidBodySoftTerrain(nn.Module):
         self.Kp_rho = nn.Parameter(torch.tensor([Kp_rho], device=self.device))
         self.Kp_theta = nn.Parameter(torch.tensor([Kp_theta], device=self.device))
         self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
-
-    def create_robot_model(self, model='husky'):
-        if 'tradr' in model:
-            size = (1.0, 0.5)
-            s_x, s_y = size
-            n_pts = 10
-            px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
-            py = torch.hstack([s_y/2. * torch.ones(n_pts//2), -s_y/2. * torch.ones(n_pts//2)])
-            pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])
-        elif 'husky' in model:
-            size = (0.9, 0.6)
-            s_x, s_y = size
-            n_pts = 10
-            px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
-            py = torch.hstack([s_y / 2. * torch.ones(n_pts // 2), -s_y / 2. * torch.ones(n_pts // 2)])
-            pz = torch.zeros(n_pts)
-        elif 'marv' in model:
-            raise NotImplementedError
-        elif 'warthog' in model:
-            raise NotImplementedError
-        else:
-            print(f'Unknown robot model: {model}')
-            raise NotImplementedError
-        robot_points = torch.stack((px, py, pz)).to(self.device)
-        return robot_points
 
     def forward(self, t, state):
         """
