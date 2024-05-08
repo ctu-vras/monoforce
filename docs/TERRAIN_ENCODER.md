@@ -24,8 +24,9 @@ python train
 
 The pretrained weights for the LSS terrain encoder can be downloaded from:
 - RobinGas: [lss_robingas_husky.pt](https://drive.google.com/file/d/1h1VieiIdGZB1Ml3QdIlh8ZJA67sJej4m/view?usp=sharing),
-            [lss_robingas_tradr.pt](https://drive.google.com/file/d/1jpsgXN-44Bbu9hfAWd5Z3te1DWp3s8cX/view?usp=sharing)
-- RELLIS-3D: [lss_rellis3d.pt](https://drive.google.com/file/d/1kK75mUxHn-4GadU4k8-c43hA9t3bZxw1/view?usp=sharing)
+            [lss_robingas_tradr.pt](https://drive.google.com/file/d/1jpsgXN-44Bbu9hfAWd5Z3te1DWp3s8cX/view?usp=sharing),
+            [lss_robingas_husky_oru.pt](https://drive.google.com/file/d/12v6EAvaw0LqdINYFyHYr0t5mlZn-VN6c/view?usp=sharing),
+- RELLIS-3D: [lss_rellis3d.pt](https://drive.google.com/file/d/1kK75mUxHn-4GadU4k8-c43hA9t3bZxw1/view?usp=sharing).
 
 Once downloaded put the weights to `config/weights/lss` folder.
 
