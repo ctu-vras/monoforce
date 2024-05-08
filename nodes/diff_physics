@@ -20,10 +20,12 @@ class DiffPhysics:
                  hm_topic='/height_map',
                  hm_frame='base_link',
                  robot='tradr',
+                 robot_clearance=0.0,
                  linear_vels=[1.],
                  angular_vels=[0.],
                  max_stale_msg_delay=0.5):
         self.robot = robot
+        self.robot_clearance = robot_clearance
         self.dphys_cfg = dphys_cfg
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.hm_frame = hm_frame
@@ -105,7 +107,8 @@ class DiffPhysics:
             Ts[:, :3, :3] = Rs
             Ts[:, :3, 3:4] = xyz
             Ts[:, 3, 3] = 1.
-            Ts[:, 2, 3] += self.dphys_cfg.robot_clearance  # add robot clearance, TODO: not sure if needed
+            # add robot clearance
+            Ts[:, 2, 3] += self.robot_clearance
 
             # compute path cost
             path_cost = self.path_cost(states)
@@ -146,6 +149,13 @@ class DiffPhysics:
             path_cost_msg.data = min_path_cost.item()
             self.path_cost_pub.publish(path_cost_msg)
 
+    @staticmethod
+    def spin():
+        try:
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
+
 
 def main():
     rospy.init_node('diff_physics', anonymous=True)
@@ -159,6 +169,7 @@ def main():
     dphys_cfg.n_samples = 100 * int(dphys_cfg.total_sim_time)
 
     robot = rospy.get_param('~robot', 'tradr')
+    robot_clearance = rospy.get_param('~robot_clearance', 0.0)
 
     hm_topic = rospy.get_param('~hm_topic')
     hm_frame = rospy.get_param('~hm_frame')
@@ -167,14 +178,13 @@ def main():
     angular_vels = rospy.get_param('~angular_vels', [0.])
     # max time to wait for a message before it is considered stale
     max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
-    try:
-        node = DiffPhysics(dphys_cfg=dphys_cfg, robot=robot,
-                           hm_topic=hm_topic, hm_frame=hm_frame,
-                           linear_vels=linear_vels, angular_vels=angular_vels,
-                           max_stale_msg_delay=max_stale_msg_delay)
-        rospy.spin()
-    except rospy.ROSInterruptException:
-        pass
+
+    node = DiffPhysics(dphys_cfg=dphys_cfg,
+                       robot=robot, robot_clearance=robot_clearance,
+                       hm_topic=hm_topic, hm_frame=hm_frame,
+                       linear_vels=linear_vels, angular_vels=angular_vels,
+                       max_stale_msg_delay=max_stale_msg_delay)
+    node.spin()
 
 
 if __name__ == '__main__':

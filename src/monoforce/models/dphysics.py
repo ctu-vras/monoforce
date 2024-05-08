@@ -147,23 +147,23 @@ class RigidBodySoftTerrain(nn.Module):
         self.Kp_yaw = nn.Parameter(torch.tensor([Kp_yaw], device=self.device))
 
     def create_robot_model(self, model='husky'):
-        if model == 'tradr':
+        if 'tradr' in model:
             size = (1.0, 0.5)
             s_x, s_y = size
             n_pts = 10
             px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
             py = torch.hstack([s_y/2. * torch.ones(n_pts//2), -s_y/2. * torch.ones(n_pts//2)])
             pz = torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0]), torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0])])
-        elif model == 'husky':
+        elif 'husky' in model:
             size = (0.9, 0.6)
             s_x, s_y = size
             n_pts = 10
             px = torch.hstack([torch.linspace(-s_x/2., s_x/2., n_pts//2), torch.linspace(-s_x/2., s_x/2., n_pts//2)])
             py = torch.hstack([s_y / 2. * torch.ones(n_pts // 2), -s_y / 2. * torch.ones(n_pts // 2)])
             pz = torch.zeros(n_pts)
-        elif model == 'marv':
+        elif 'marv' in model:
             raise NotImplementedError
-        elif model == 'warthog':
+        elif 'warthog' in model:
             raise NotImplementedError
         else:
             print(f'Unknown robot model: {model}')
