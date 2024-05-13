@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="robot" default="husky" doc="Robot name"/>
+    <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
+    <arg name="max_stale_msg_delay" default="1.0" doc="Maximum allowed inout height map message age"/>
+    <arg name="hm_topic" default="height_map" doc="Input height map topic"/>
+    <arg name="hm_frame" default="base_link" doc="Height map tf frame"/>
+    <arg name="total_sim_time" defaul="6.0" doc="Simulation time horizon of the trajectories"/>
+
+    <!-- Diff Physics node -->
+    <node unless="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics">
+        <rosparam subst_value="true">
+            robot: $(arg robot)
+            robot_clearance: 0.132
+            hm_topic: $(arg hm_topic)
+            hm_frame: $(arg hm_frame)
+            linear_vels: [0.5, 0.5, 0.5, -0.4]
+            angular_vels: [0.0, 0.3, -0.3, 0.0]
+            total_sim_time: $(arg total_sim_time)
+            max_stale_msg_delay: $(arg max_stale_msg_delay)
+        </rosparam>
+    </node>
+    <node if="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics_warp" output="screen">
+        <rosparam subst_value="true">
+            robot: $(arg robot)
+            hm_topic: $(arg hm_topic)
+            hm_frame: $(arg hm_frame)
+            max_stale_msg_delay: $(arg max_stale_msg_delay)
+            total_sim_time: $(arg total_sim_time)
+        </rosparam>
+    </node>
+</launch>

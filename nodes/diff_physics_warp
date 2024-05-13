@@ -29,7 +29,10 @@ class DiffPhysicsWarp:
                  robot_size=(1.0, 0.5),
                  grid_res=0.1,
                  n_sim_trajs=40,
-                 max_stale_msg_delay=0.5):
+                 max_stale_msg_delay=0.5,
+                 time_horizon=5.0,
+                 linear_vel=0.5,
+                 angular_vel_max=0.5):
         self.robot = robot
         self.robot_clearance = robot_clearance
         self.robot_size = robot_size
@@ -38,11 +41,11 @@ class DiffPhysicsWarp:
         self.n_sim_trajs = n_sim_trajs
         self.device = 'cpu'  #'cuda' if torch.cuda.is_available() else 'cpu'
         self.hm_frame = hm_frame
-        self.time_horizon = 5.0
+        self.time_horizon = time_horizon
         self.n_sim_steps = int(self.time_horizon / self.dt)
         self.max_stale_msg_delay = max_stale_msg_delay
         
-        self.init_poses, self.track_vels, self.flipper_angles = self.init_controls()
+        self.init_poses, self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max)
 
         # paths publisher
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
@@ -53,17 +56,26 @@ class DiffPhysicsWarp:
         # image subscriber
         self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback)
 
-    def init_controls(self):
+    def init_controls(self, linear_vel, angular_vel_max):
+        """
+        Initialize control commands through input linear and angular velocities.
+        The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
+        v_r(t) = v(t) + r * w(t)
+        v_l(t) = v(t) - r * w(t),
+
+        where v(t) = V = const for t in [0 .. T], linear velocity,
+        w(t) = [-W_max .. W_max], angular velocity.,
+        T is trajectories time horizon.
+        """
         init_poses = np.zeros((self.n_sim_trajs, 7))
         init_poses[:, 2] = 0.2  # robot's initial z coordinate
         init_poses[:, 6] = 1.0  # quaternion w
 
         T = self.n_sim_steps
         assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
-        vel_max, omega_max = 1.0, 1.0
-        vels = np.concatenate([-vel_max * np.ones((self.n_sim_trajs // 2, T)), vel_max * np.ones((self.n_sim_trajs // 2, T))])
-        omegas = np.concatenate([np.linspace(-omega_max, omega_max, self.n_sim_trajs // 2),
-                                 np.linspace(-omega_max, omega_max, self.n_sim_trajs // 2)])
+        vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)), linear_vel * np.ones((self.n_sim_trajs // 2, T))])
+        omegas = np.concatenate([np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
+                                 np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)])
 
         track_vels = np.zeros((self.n_sim_trajs, T, 2))
         for i in range(self.n_sim_trajs):
@@ -99,20 +111,22 @@ class DiffPhysicsWarp:
         assert isinstance(height, np.ndarray)
         assert height.shape[0] == height.shape[1]
 
+        t_start = time()
         np_heights = [height for _ in range(self.n_sim_trajs)]
         np_kfs = [0.5 * np.ones(height.shape, dtype=np.float32) for _ in range(self.n_sim_trajs)]
         res = [self.grid_res for _ in range(self.n_sim_trajs)]
-        
         # create simulator
         simulator = TrackSimulator(np_heights, np_kfs, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
         simulator.set_control(self.track_vels, self.flipper_angles)
         simulator.set_init_poses(self.init_poses)
+        rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
         
         # simulate trajectories
         t_start = time()
         xyz_q = simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
         rospy.loginfo('Simulation took %.3f [sec]' % (time() - t_start))
 
+        t_start = time()
         xyz_q_np = xyz_q.numpy()
         forces_np = simulator.body_f.numpy()
         rospy.logdebug('xyz_q: %s' % str(xyz_q_np.shape))
@@ -146,6 +160,7 @@ class DiffPhysicsWarp:
 
         # publish paths
         self.publish_paths(xyz_q_np, path_costs, best_xyz_q)
+        rospy.logdebug('Paths postprocessing and publishing took %.3f [sec]' % (time() - t_start))
 
     def publish_paths(self, xyz_q_np, path_costs, best_xyz_q, pose_step=50):
         num_trajs = xyz_q_np.shape[1]
@@ -193,19 +208,19 @@ class DiffPhysicsWarp:
 
 
 def main():
-    rospy.init_node('diff_physics', anonymous=True)
+    rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
 
     robot = rospy.get_param('~robot', 'tradr')
     robot_clearance = rospy.get_param('~robot_clearance', 0.0)
-
     hm_topic = rospy.get_param('~hm_topic')
     hm_frame = rospy.get_param('~hm_frame')
-    # max time to wait for a message before it is considered stale
     max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
+    time_horizon = rospy.get_param('~time_horizon', 5.0)
 
     node = DiffPhysicsWarp(robot=robot, robot_clearance=robot_clearance,
                            hm_topic=hm_topic, hm_frame=hm_frame,
-                           max_stale_msg_delay=max_stale_msg_delay)
+                           max_stale_msg_delay=max_stale_msg_delay,
+                           time_horizon=time_horizon)
     node.spin()
 
 
