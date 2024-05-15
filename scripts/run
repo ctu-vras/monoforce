@@ -90,7 +90,7 @@ class MonoForce:
         poses = np.stack([np.eye(4) for _ in range(len(xyz))])
         poses[:, :3, :3] = Rs
         poses[:, :3, 3:4] = xyz
-        poses[:, 2, 3] += self.dphys_cfg.robot_clearance + 0.1
+        poses[:, 2, 3] += 0.1
         # poses inside the heightmap
         mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
                (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
@@ -202,7 +202,6 @@ class MonoForce:
         for i in range(len(poses)):
             # robot-terrain contact points
             robot_points = poses[i, :3, :3] @ robot_points0 + poses[i, :3, 3:4]
-            robot_points[2] -= self.dphys_cfg.robot_clearance
             visu_robot.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :])
             visu_forces.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :],
                                         u=forces[i, 0, :], v=forces[i, 1, :], w=forces[i, 2, :])

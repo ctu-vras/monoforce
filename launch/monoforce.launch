@@ -18,7 +18,7 @@
         <arg name="lss_config_path" value="$(arg lss_config_path)"/>
         <arg name="weights" value="$(arg weights)"/>
         <arg name="max_msgs_delay" value="0.1"/>
-        <arg name="max_stale_msg_delay" value="0.1"/>
+        <arg name="max_stale_msg_delay" value="0.2"/>
 <!--         <arg name="n_cams" value="1"/> -->
     </include>
 
