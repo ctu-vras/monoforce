@@ -154,7 +154,7 @@ class MonoForce:
         poses = np.stack([np.eye(4) for _ in range(len(xyz))])
         poses[:, :3, :3] = Rs
         poses[:, :3, 3:4] = xyz
-        poses[:, 2, 3] += self.dphys_cfg.robot_clearance + 0.1
+        poses[:, 2, 3] += 0.1
         # poses inside the heightmap
         mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
                (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
