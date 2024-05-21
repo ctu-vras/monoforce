@@ -15,6 +15,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 - [Differentiable Physics](./docs/DPHYS.md)
 - [Running](#running)
 - [ROS Integration](#ros-integration)
+- [Navigation](#navigation)
 - [Citation](#citation)
 
 ## Running
@@ -62,6 +63,28 @@ which is then used to simulate robot trajectories.
 ```commandline
 roslaunch monoforce monoforce.launch
 ```
+
+## Navigation
+
+Navigation method only using RGB images.
+The package is used as robot-terrain interaction and path planning pipeline.
+
+![](./docs/imgs/cameras.png)
+![](./docs/imgs/husky_monoforce.png)
+
+Trajectories prediction is based on the
+[NVIDIA-Warp](https://github.com/NVIDIA/warp) and
+[ParallelTrackSimulator](https://github.com/tichyt11/ParallelTrackSimulator)
+packages.
+
+Navigation consists of the following stages:
+- **Height map prediction**: The Terrain Encoder part of the MonoForce is used to estimate terrain properties.
+- **Trajectories prediction**: The Diff Physics part of the MonoForce is used to shoot the robot trajectories.
+- **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
+- **Control**: The robot is controlled to follow the selected trajectory.
+
+Please, refer to [husky_sim](https://github.com/ctu-vras/husky_sim/tree/monoforce) package for the navigation example in
+[Gazebo](http://gazebosim.org/) simulator.
 
 ## Citation
 
