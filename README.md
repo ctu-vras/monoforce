@@ -10,7 +10,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ## Table of Contents
 - [Installation Instructions](./docs/INSTALL.md)
-- [Traversability Data Structure and Processing (RobinGas)](./docs/DATA.md)
+- [Data](./docs/DATA.md)
 - [Terrain Encoder](./docs/TERRAIN_ENCODER.md)
 - [Differentiable Physics](./docs/DPHYS.md)
 - [Running](#running)
@@ -47,8 +47,9 @@ If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](h
 cd docker/ && ./run.sh
 ```
 
-<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
-<img src="./docs/imgs/monoforce_mayavi.gif" width="800"/>
+<img src="./docs/imgs/tradr_rgb_input.png" width="400"/>
+
+![](./docs/imgs/monoforce_mayavi.gif)
 
 ## ROS Integration
 
