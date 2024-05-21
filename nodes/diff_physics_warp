@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
-import os
 from time import time
-
 import torch
 import numpy as np
 import rospy
@@ -12,7 +10,7 @@ from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float32
 from visualization_msgs.msg import MarkerArray
-from monoforce.models.dphysics_warp import TrackSimulator
+from monoforce.models.dphysics_warp import TrackSimulator, Heightmap
 import warp as wp
 
 
@@ -28,24 +26,28 @@ class DiffPhysicsWarp:
                  robot_clearance=0.0,
                  robot_size=(1.0, 0.5),
                  grid_res=0.1,
+                 hm_dims=(12.8, 12.8),
                  n_sim_trajs=40,
-                 max_stale_msg_delay=0.5,
-                 time_horizon=5.0,
+                 max_age=0.5,
+                 total_sim_time=5.0,
                  linear_vel=0.5,
-                 angular_vel_max=0.5):
+                 angular_vel_max=0.5,
+                 device='cpu'):
         self.robot = robot
         self.robot_clearance = robot_clearance
         self.robot_size = robot_size
         self.dt = 0.001
         self.grid_res = grid_res
         self.n_sim_trajs = n_sim_trajs
-        self.device = 'cpu'  #'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = device
         self.hm_frame = hm_frame
-        self.time_horizon = time_horizon
-        self.n_sim_steps = int(self.time_horizon / self.dt)
-        self.max_stale_msg_delay = max_stale_msg_delay
+        self.total_sim_time = total_sim_time
+        self.n_sim_steps = int(self.total_sim_time / self.dt)
+        self.max_age = max_age
         
         self.init_poses, self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max)
+        height = np.zeros((int(hm_dims[0] / grid_res), int(hm_dims[1] / grid_res)), dtype=np.float32)
+        self.simulator = self.init_simulator(height)
 
         # paths publisher
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
@@ -88,12 +90,34 @@ class DiffPhysicsWarp:
         
         return init_poses, track_vels, flipper_angles
 
+    def init_simulator(self, height):
+        t_start = time()
+        np_heights = [height for _ in range(self.n_sim_trajs)]
+        np_kfs = [0.5 * np.ones(height.shape, dtype=np.float32) for _ in range(self.n_sim_trajs)]
+        res = [self.grid_res for _ in range(self.n_sim_trajs)]
+        # create simulator
+        simulator = TrackSimulator(np_heights, np_kfs, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
+        simulator.set_control(self.track_vels, self.flipper_angles)
+        simulator.set_init_poses(self.init_poses)
+        rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
+        return simulator
+
+    def update_heightmap(self, height):
+        t_start = time()
+        assert self.simulator.n_robots == self.n_sim_trajs
+        n = self.n_sim_trajs
+        for traj_idx in range(n):
+            # self.simulator.heightmap_list[traj_idx].heights = wp.array(height, dtype=wp.float32, device=self.device)
+            self.simulator.heightmap_list[traj_idx].heights.assign(height)
+        self.simulator.heightmap_array = wp.array(self.simulator.heightmap_list, dtype=Heightmap, device=self.device)
+        rospy.logdebug('Height map update took %.3f [sec]' % (time() - t_start))
+
     def hm_callback(self, msg):
         assert isinstance(msg, PointCloud2)
         # if message is stale do not process it
         dt = rospy.Time.now() - msg.header.stamp
-        if dt.to_sec() > self.max_stale_msg_delay:
-            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_stale_msg_delay} [sec]), skipping')
+        if dt.to_sec() > self.max_age:
+            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
 
         height = numpify(msg)['z']
@@ -110,25 +134,16 @@ class DiffPhysicsWarp:
     def predict_paths(self, height):
         assert isinstance(height, np.ndarray)
         assert height.shape[0] == height.shape[1]
-
-        t_start = time()
-        np_heights = [height for _ in range(self.n_sim_trajs)]
-        np_kfs = [0.5 * np.ones(height.shape, dtype=np.float32) for _ in range(self.n_sim_trajs)]
-        res = [self.grid_res for _ in range(self.n_sim_trajs)]
-        # create simulator
-        simulator = TrackSimulator(np_heights, np_kfs, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
-        simulator.set_control(self.track_vels, self.flipper_angles)
-        simulator.set_init_poses(self.init_poses)
-        rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
         
         # simulate trajectories
         t_start = time()
-        xyz_q = simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
+        self.update_heightmap(height)
+        xyz_q = self.simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
         rospy.loginfo('Simulation took %.3f [sec]' % (time() - t_start))
 
         t_start = time()
         xyz_q_np = xyz_q.numpy()
-        forces_np = simulator.body_f.numpy()
+        forces_np = self.simulator.body_f.numpy()
         rospy.logdebug('xyz_q: %s' % str(xyz_q_np.shape))
         rospy.logdebug('forces: %s' % str(forces_np.shape))
         assert xyz_q_np.shape == (self.n_sim_steps + 1, self.n_sim_trajs, 7)
@@ -145,7 +160,7 @@ class DiffPhysicsWarp:
         # remove unfeasible paths
         path_costs = np.delete(path_costs, unfeasible_paths)
         if len(path_costs) == 0:
-            rospy.logwarn('All paths are unfeasible')
+            rospy.logwarn('All simulated paths are unfeasible')
             return
         xyz_q_np = np.delete(xyz_q_np, unfeasible_paths, axis=1)
         forces_np = np.delete(forces_np, unfeasible_paths, axis=1)
@@ -156,13 +171,14 @@ class DiffPhysicsWarp:
         assert path_costs.shape == (num_trajs,)
         assert forces_np.shape == (self.n_sim_steps, num_trajs, 6)
         assert best_xyz_q.shape == (self.n_sim_steps + 1, 7)
-        rospy.loginfo('Best path cost: %.3f' % path_costs[best_traj_i])
+        rospy.loginfo('Min path cost: %.3f' % path_costs[best_traj_i])
+        rospy.loginfo('Max path cost: %.3f' % np.max(path_costs))
 
         # publish paths
         self.publish_paths(xyz_q_np, path_costs, best_xyz_q)
         rospy.logdebug('Paths postprocessing and publishing took %.3f [sec]' % (time() - t_start))
 
-    def publish_paths(self, xyz_q_np, path_costs, best_xyz_q, pose_step=50):
+    def publish_paths(self, xyz_q_np, path_costs, best_xyz_q, pose_step=500):
         num_trajs = xyz_q_np.shape[1]
         stamp = rospy.Time.now()
         min_path_cost = np.min(path_costs)
@@ -191,8 +207,8 @@ class DiffPhysicsWarp:
         self.sampled_paths_pub.publish(marker_array)
 
         # publish lower cost path
-        rospy.loginfo('Publishing lower cost path of length: %d' % len(best_xyz_q))
-        path_msg = poses_to_path(best_xyz_q, stamp=stamp, frame_id=self.hm_frame)
+        rospy.loginfo('Publishing lower cost path of length: %d' % len(best_xyz_q[::pose_step]))
+        path_msg = poses_to_path(best_xyz_q[::pose_step], stamp=stamp, frame_id=self.hm_frame)
         self.lc_path_pub.publish(path_msg)
         # publish path cost
         path_cost_msg = Float32()
@@ -214,13 +230,17 @@ def main():
     robot_clearance = rospy.get_param('~robot_clearance', 0.0)
     hm_topic = rospy.get_param('~hm_topic')
     hm_frame = rospy.get_param('~hm_frame')
-    max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
-    time_horizon = rospy.get_param('~time_horizon', 5.0)
+    max_age = rospy.get_param('~max_age', 0.5)
+    total_sim_time = rospy.get_param('~total_sim_time', 5.0)
+    n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
+    device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
     node = DiffPhysicsWarp(robot=robot, robot_clearance=robot_clearance,
                            hm_topic=hm_topic, hm_frame=hm_frame,
-                           max_stale_msg_delay=max_stale_msg_delay,
-                           time_horizon=time_horizon)
+                           max_age=max_age,
+                           total_sim_time=total_sim_time,
+                           n_sim_trajs=n_sim_trajs,
+                           device=device)
     node.spin()
 
 

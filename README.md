@@ -49,7 +49,7 @@ If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](h
 cd docker/ && ./run.sh
 ```
 
-<img src="./docs/imgs/tradr_rgb_input.png" width="400"/>
+<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
 
 ![](./docs/imgs/monoforce_mayavi.gif)
 

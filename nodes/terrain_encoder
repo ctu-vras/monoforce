@@ -37,7 +37,7 @@ class LSS:
                  camera_info_topics=[],
                  calib_path='',
                  max_msgs_delay=0.1,
-                 max_stale_msg_delay=0.2,
+                 max_age=0.2,
                  n_cams=None):
         self.dphys_cfg = dphys_cfg
         self.lss_cfg = lss_cfg
@@ -70,7 +70,7 @@ class LSS:
         self.proc_lock = RLock()
 
         self.max_msgs_delay = max_msgs_delay
-        self.max_stale_msg_delay = max_stale_msg_delay
+        self.max_age = max_age
 
     def start(self):
         # subscribe to images with approximate time synchronization
@@ -212,9 +212,9 @@ class LSS:
         rospy.loginfo('Received %d messages' % len(msgs))
         # if message is stale do not process it
         dt = rospy.Time.now() - msgs[0].header.stamp
-        if dt.to_sec() > self.max_stale_msg_delay:
+        if dt.to_sec() > self.max_age:
             rospy.logdebug(
-                f'Stale image messages received ({dt.to_sec():.3f} > {self.max_stale_msg_delay} [sec]), skipping')
+                f'Stale image messages received ({dt.to_sec():.3f} > {self.max_age} [sec]), skipping')
             return
 
         t0 = time()
@@ -276,7 +276,7 @@ class LSSDebug(LSS):
                  points_topic='/points',
                  calib_path='',
                  max_msgs_delay=0.1,
-                 max_stale_msg_delay=0.2,
+                 max_age=0.2,
                  n_cams=None,
                  ):
         super(LSSDebug, self).__init__(
@@ -288,7 +288,7 @@ class LSSDebug(LSS):
             camera_info_topics=camera_info_topics,
             calib_path=calib_path,
             max_msgs_delay=max_msgs_delay,
-            max_stale_msg_delay=max_stale_msg_delay,
+            max_age=max_age,
             n_cams=n_cams,
         )
         self.points_topic = points_topic
@@ -466,7 +466,7 @@ def main():
     hm_frame = rospy.get_param('~hm_frame', 'base_link')
     weights = rospy.get_param('~weights', os.path.join(pkg_path, 'config/weights/lss/lss.pt'))
     max_msgs_delay = rospy.get_param('~max_msgs_delay', 0.1)
-    max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.2)
+    max_age = rospy.get_param('~max_age', 0.2)
     calib_path = rospy.get_param('~calib_path', '')
     n_cams = rospy.get_param('~n_cams', None)
 
@@ -476,7 +476,7 @@ def main():
                      img_topics=img_topics, camera_info_topics=camera_info_topics,
                      hm_frame=hm_frame,
                      max_msgs_delay=max_msgs_delay,
-                     max_stale_msg_delay=max_stale_msg_delay,
+                     max_age=max_age,
                      calib_path=calib_path,
                      n_cams=n_cams)
     node.start()

@@ -3,7 +3,7 @@
     <arg name="pts_topics" default="[points]"/>
     <arg name="robot_frame" default="base_link"/>
     <arg name="ground_frame" default="base_footprint"/>
-    <arg name="max_stale_msg_delay" default="0.2"/>
+    <arg name="max_age" default="0.2"/>
 
     <!-- Height map estimator node -->
     <node name="geom_hm_estimator" pkg="monoforce" type="geom_hm_estimator" output="screen">
@@ -12,7 +12,7 @@
             robot_frame: $(arg robot_frame)
             ground_frame: $(arg ground_frame)
             config_path: $(dirname)/../config/dphys_cfg.yaml
-            max_stale_msg_delay: $(arg max_stale_msg_delay)
+            max_age: $(arg max_age)
         </rosparam>
     </node>
 </launch>

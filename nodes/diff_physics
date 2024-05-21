@@ -23,7 +23,7 @@ class DiffPhysics:
                  robot_clearance=0.0,
                  linear_vels=[1.],
                  angular_vels=[0.],
-                 max_stale_msg_delay=0.5):
+                 max_age=0.5):
         self.robot = robot
         self.robot_clearance = robot_clearance
         self.dphys_cfg = dphys_cfg
@@ -31,7 +31,7 @@ class DiffPhysics:
         self.hm_frame = hm_frame
         self.linear_vels = linear_vels
         self.angular_vels = angular_vels
-        self.max_stale_msg_delay = max_stale_msg_delay
+        self.max_age = max_age
 
         # paths publisher
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
@@ -46,8 +46,8 @@ class DiffPhysics:
         assert isinstance(msg, PointCloud2)
         # if message is stale do not process it
         dt = rospy.Time.now() - msg.header.stamp
-        if dt.to_sec() > self.max_stale_msg_delay:
-            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_stale_msg_delay} [sec]), skipping')
+        if dt.to_sec() > self.max_age:
+            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
 
         height = numpify(msg)['z']
@@ -177,13 +177,13 @@ def main():
     linear_vels = rospy.get_param('~linear_vels', [1.])
     angular_vels = rospy.get_param('~angular_vels', [0.])
     # max time to wait for a message before it is considered stale
-    max_stale_msg_delay = rospy.get_param('~max_stale_msg_delay', 0.5)
+    max_age = rospy.get_param('~max_age', 0.5)
 
     node = DiffPhysics(dphys_cfg=dphys_cfg,
                        robot=robot, robot_clearance=robot_clearance,
                        hm_topic=hm_topic, hm_frame=hm_frame,
                        linear_vels=linear_vels, angular_vels=angular_vels,
-                       max_stale_msg_delay=max_stale_msg_delay)
+                       max_age=max_age)
     node.spin()
 
 

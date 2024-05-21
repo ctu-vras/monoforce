@@ -16,7 +16,7 @@
         <arg name="pts_topics" value="[points]"/>
         <arg name="robot_frame" value="base_link"/>
         <arg name="ground_frame" value="base_footprint"/>
-        <arg name="max_stale_msg_delay" value="0.2"/>
+        <arg name="max_age" value="0.2"/>
     </include>
 
     <!-- RVIZ -->
