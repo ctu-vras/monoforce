@@ -23,13 +23,10 @@ from visualization_msgs.msg import Marker, MarkerArray
 class MonoForce:
     def __init__(self, name='monoforce'):
         self.robot = rospy.get_param('~robot', 'husky')
-        # choose data sample
-        seqs = robingas_seq_paths['husky'] if self.robot == 'husky' else robingas_seq_paths['tradr']
-        seq_i = rospy.get_param('~seq_i', np.random.choice(range(len(seqs))))
-        self.data_seq = seqs[seq_i]
 
         self.dphys_cfg = DPhysConfig()
         self.pkg_path = rospkg.RosPack().get_path('monoforce')
+        self.data_seq = os.path.join(self.pkg_path, 'config/data_sample', self.robot)
         self.dphys_config_path = rospy.get_param('~dphys_config_path',
                                                  os.path.join(self.pkg_path, 'config/dphys_cfg.yaml'))
         assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
