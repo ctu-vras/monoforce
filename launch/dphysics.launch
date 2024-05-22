@@ -6,6 +6,7 @@
     <arg name="hm_topic" default="height_map" doc="Input height map topic"/>
     <arg name="hm_frame" default="base_link" doc="Height map tf frame"/>
     <arg name="total_sim_time" default="6.0" doc="Simulation time horizon of the trajectories"/>
+    <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
 
     <!-- Diff Physics node -->
     <node unless="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics">
@@ -28,7 +29,7 @@
             max_age: $(arg max_age)
             total_sim_time: $(arg total_sim_time)
             n_sim_trajs: 40
-            device: cpu
+            device: $(arg device)
         </rosparam>
     </node>
 </launch>

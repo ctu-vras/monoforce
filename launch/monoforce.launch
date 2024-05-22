@@ -2,12 +2,16 @@
 <launch>
     <arg name="rviz" default="false"/>
     <arg name="robot" default="husky" doc="Robot type: husky, tradr or marv"/>
-    <arg name="diffphys" default="true" doc="Whether to run the diff physics node or not"/>
     <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg_$(arg robot).yaml"/>
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt"/>
     <arg name="img_topics" default="[/ids_camera/image_raw/compressed]"/>
     <arg name="camera_info_topics" default="[/ids_camera/camera_info]"/>
+    <!-- dphysics arguments -->
+    <arg name="diffphys" default="true" doc="Whether to run the diff physics node or not"/>
+    <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
+    <arg name="traj_sim_time" default="8.0" doc="Simulation time horizon of the trajectories"/>
+    <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
 
     <!-- Terrain Encoder (LSS) node -->
     <include file="$(dirname)/terrain_encoder.launch">
@@ -23,17 +27,15 @@
     </include>
 
     <!-- Diff Physics node -->
-    <node if="$(arg diffphys)" name="diff_physics" pkg="monoforce" type="diff_physics" output="screen">
-        <rosparam subst_value="true">
-            robot: $(arg robot)
-            hm_topic: /height_map
-            hm_frame: base_link
-            linear_vels: [0.5, 0.5, 0.5]
-            angular_vels: [0.3, 0.0, -0.3]
-            total_sim_time: 6.
-            max_age: 0.5
-        </rosparam>
-    </node>
+    <include if="$(arg diffphys)" file="$(find monoforce)/launch/dphysics.launch">
+        <arg name="warp_dphys" value="$(arg warp_dphys)"/>
+        <arg name="robot" value="$(arg robot)"/>
+        <arg name="hm_topic" value="/height_map"/>
+        <arg name="hm_frame" value="base_link"/>
+        <arg name="max_age" value="2.0"/>
+        <arg name="total_sim_time" value="$(arg traj_sim_time)"/>
+        <arg name="device" value="$(arg device)"/>
+    </include>
 
     <!-- RVIZ -->
     <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
