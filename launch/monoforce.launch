@@ -12,6 +12,7 @@
     <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
     <arg name="traj_sim_time" default="8.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
+    <arg name="max_age" default="1.0" doc="Maximum age of the height map messages in seconds"/>
 
     <!-- Terrain Encoder (LSS) node -->
     <include file="$(dirname)/terrain_encoder.launch">
@@ -32,7 +33,7 @@
         <arg name="robot" value="$(arg robot)"/>
         <arg name="hm_topic" value="/height_map"/>
         <arg name="hm_frame" value="base_link"/>
-        <arg name="max_age" value="2.0"/>
+        <arg name="max_age" value="$(arg max_age)"/>
         <arg name="total_sim_time" value="$(arg traj_sim_time)"/>
         <arg name="device" value="$(arg device)"/>
     </include>
