@@ -8,9 +8,10 @@ from monoforce.ros import poses_to_marker, poses_to_path
 from nav_msgs.msg import Path
 from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
 from monoforce.models.dphysics_warp import TrackSimulator, Heightmap
+from monoforce.utils import normalize
 import warp as wp
 
 
@@ -45,7 +46,8 @@ class DiffPhysicsWarp:
         self.n_sim_steps = int(self.total_sim_time / self.dt)
         self.max_age = max_age
         
-        self.init_poses, self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max)
+        self.poses0 = self.init_poses()
+        self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max)
         height = np.zeros((int(hm_dims[0] / grid_res), int(hm_dims[1] / grid_res)), dtype=np.float32)
         self.simulator = self.init_simulator(height)
 
@@ -53,10 +55,19 @@ class DiffPhysicsWarp:
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         # lower cost path publisher
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
-        self.path_cost_pub = rospy.Publisher('/path_cost', Float32, queue_size=1)
+        self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
 
         # image subscriber
         self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback)
+
+    def init_poses(self):
+        """
+        Initialize robot poses.
+        """
+        poses0 = np.zeros((self.n_sim_trajs, 7))
+        poses0[:, 2] = 0.2  # robot's initial z coordinate
+        poses0[:, 6] = 1.0  # quaternion w
+        return poses0
 
     def init_controls(self, linear_vel, angular_vel_max):
         """
@@ -69,10 +80,6 @@ class DiffPhysicsWarp:
         w(t) = [-W_max .. W_max], angular velocity.,
         T is trajectories time horizon.
         """
-        init_poses = np.zeros((self.n_sim_trajs, 7))
-        init_poses[:, 2] = 0.2  # robot's initial z coordinate
-        init_poses[:, 6] = 1.0  # quaternion w
-
         T = self.n_sim_steps
         assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
         vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)), linear_vel * np.ones((self.n_sim_trajs // 2, T))])
@@ -88,17 +95,19 @@ class DiffPhysicsWarp:
         flipper_angles = np.zeros((self.n_sim_trajs, T, 4))
         # flipper_angles[0, :, 0] = 0.5
         
-        return init_poses, track_vels, flipper_angles
+        return track_vels, flipper_angles
 
     def init_simulator(self, height):
+        """
+        Initialize simulator with given height map.
+        """
         t_start = time()
         np_heights = [height for _ in range(self.n_sim_trajs)]
-        np_kfs = [0.5 * np.ones(height.shape, dtype=np.float32) for _ in range(self.n_sim_trajs)]
         res = [self.grid_res for _ in range(self.n_sim_trajs)]
         # create simulator
-        simulator = TrackSimulator(np_heights, np_kfs, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
+        simulator = TrackSimulator(np_heights, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
         simulator.set_control(self.track_vels, self.flipper_angles)
-        simulator.set_init_poses(self.init_poses)
+        simulator.set_init_poses(self.poses0)
         rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
         return simulator
 
@@ -107,7 +116,6 @@ class DiffPhysicsWarp:
         assert self.simulator.n_robots == self.n_sim_trajs
         n = self.n_sim_trajs
         for traj_idx in range(n):
-            # self.simulator.heightmap_list[traj_idx].heights = wp.array(height, dtype=wp.float32, device=self.device)
             self.simulator.heightmap_list[traj_idx].heights.assign(height)
         self.simulator.heightmap_array = wp.array(self.simulator.heightmap_list, dtype=Heightmap, device=self.device)
         rospy.logdebug('Height map update took %.3f [sec]' % (time() - t_start))
@@ -128,8 +136,7 @@ class DiffPhysicsWarp:
         rospy.loginfo('Received height map of shape: %s' % str(height.shape))
 
         # predict path
-        with torch.no_grad():
-            self.predict_paths(height)
+        self.predict_paths(height)
 
     def predict_paths(self, height):
         assert isinstance(height, np.ndarray)
@@ -164,41 +171,31 @@ class DiffPhysicsWarp:
             return
         xyz_q_np = np.delete(xyz_q_np, unfeasible_paths, axis=1)
         forces_np = np.delete(forces_np, unfeasible_paths, axis=1)
-        best_traj_i = np.argmin(path_costs)
-        best_xyz_q = xyz_q_np[:, best_traj_i]
         num_trajs = xyz_q_np.shape[1]
         assert xyz_q_np.shape == (self.n_sim_steps + 1, num_trajs, 7)
         assert path_costs.shape == (num_trajs,)
         assert forces_np.shape == (self.n_sim_steps, num_trajs, 6)
-        assert best_xyz_q.shape == (self.n_sim_steps + 1, 7)
-        rospy.loginfo('Min path cost: %.3f' % path_costs[best_traj_i])
-        rospy.loginfo('Max path cost: %.3f' % np.max(path_costs))
 
         # publish paths
-        self.publish_paths(xyz_q_np, path_costs, best_xyz_q)
+        self.publish_paths(xyz_q_np, path_costs)
         rospy.logdebug('Paths postprocessing and publishing took %.3f [sec]' % (time() - t_start))
 
-    def publish_paths(self, xyz_q_np, path_costs, best_xyz_q, pose_step=500):
+    def publish_paths(self, xyz_q_np, path_costs, pose_step=500):
         num_trajs = xyz_q_np.shape[1]
+        assert path_costs.shape == (num_trajs,)
         stamp = rospy.Time.now()
-        min_path_cost = np.min(path_costs)
-        max_path_cost = np.max(path_costs)
         # paths marker array
         marker_array = MarkerArray()
-        path_id = 0
         red = np.array([1., 0., 0.])
         green = np.array([0., 1., 0.])
+        path_costs_norm = normalize(path_costs)
         for i in range(num_trajs):
-            path_cost = path_costs[i]
-            # normalize path cost
-            path_cost_norm = (path_cost - min_path_cost) / (max_path_cost - min_path_cost)
             # map path cost to color (lower cost -> greener, higher cost -> redder)
-            color = green + (red - green) * path_cost_norm.item()
+            color = green + (red - green) * path_costs_norm[i]
             marker_msg = poses_to_marker(xyz_q_np[::pose_step, i], color=color)
             marker_msg.header.frame_id = self.hm_frame
             marker_msg.ns = 'paths'
-            marker_msg.id = path_id
-            path_id += 1
+            marker_msg.id = i
             marker_array.markers.append(marker_msg)
         # set time stamps
         for marker_msg in marker_array.markers:
@@ -207,13 +204,18 @@ class DiffPhysicsWarp:
         self.sampled_paths_pub.publish(marker_array)
 
         # publish lower cost path
+        best_traj_i = np.argmin(path_costs)
+        best_xyz_q = xyz_q_np[:, best_traj_i]
+        rospy.logdebug('Min path cost: %.3f' % path_costs[best_traj_i])
+        rospy.logdebug('Max path cost: %.3f' % path_costs.max())
         rospy.loginfo('Publishing lower cost path of length: %d' % len(best_xyz_q[::pose_step]))
         path_msg = poses_to_path(best_xyz_q[::pose_step], stamp=stamp, frame_id=self.hm_frame)
         self.lc_path_pub.publish(path_msg)
-        # publish path cost
-        path_cost_msg = Float32()
-        path_cost_msg.data = min_path_cost
-        self.path_cost_pub.publish(path_cost_msg)
+
+        # publish path costs
+        path_costs_msg = Float32MultiArray()
+        path_costs_msg.data = path_costs
+        self.path_costs_pub.publish(path_costs_msg)
 
     @staticmethod
     def spin():

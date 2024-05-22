@@ -249,6 +249,9 @@ class TrackSimulator:
     contacts_per_track = 3
     use_flippers = True
     dt = 0.001
+    ke = 1.0e4
+    kd = 150.0
+    kf = 0.5
     renderer = None
 
     cuda_graph = None
@@ -260,7 +263,7 @@ class TrackSimulator:
     track_velocities = None
     rendering_state = None
 
-    def __init__(self, np_hms, np_kfs, res, T=10, use_renderer=False, device="cpu"):
+    def __init__(self, np_hms, res, T=10, use_renderer=False, device="cpu"):
         # instantiate a tracked robot model consisting of a box and collision points
         self.n_robots = len(np_hms)  # number of simulated robots is based on number of heightmaps
         self.device = device
@@ -275,16 +278,15 @@ class TrackSimulator:
         self.heightmap_list = []
         for robot_idx in range(self.n_robots):
             current_hm = np_hms[robot_idx]
-            current_kf = np_kfs[robot_idx]
             current_res = res[robot_idx]
 
             current_shp = current_hm.shape
 
             current_heightmap = Heightmap()
             current_heightmap.heights = wp.array(current_hm, dtype=wp.float32, device=self.device)
-            current_heightmap.ke = wp.array(1.0e4 * np.ones(current_shp), dtype=wp.float32, device=self.device)
-            current_heightmap.kd = wp.array(150.0 * np.ones(current_shp), dtype=wp.float32, device=self.device)
-            current_heightmap.kf = wp.array(current_kf, dtype=wp.float32, device=self.device)
+            current_heightmap.ke = wp.array(self.ke * np.ones(current_shp), dtype=wp.float32, device=self.device)
+            current_heightmap.kd = wp.array(self.kd * np.ones(current_shp), dtype=wp.float32, device=self.device)
+            current_heightmap.kf = wp.array(self.kf * np.ones(current_shp), dtype=wp.float32, device=self.device)
             current_heightmap.origin = (-current_shp[0] * current_res / 2, -current_shp[1] * current_res / 2, 0.0)
             current_heightmap.resolution = current_res
             current_heightmap.width = current_shp[0]
