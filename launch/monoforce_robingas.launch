@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="rviz" default="true"/>
-    <arg name="seq_i" default="0"/>
-    <arg name="sample_i" default="0"/>
     <arg name="robot" default="tradr"/>
 
     <!-- Load robot description -->
@@ -18,9 +16,7 @@
             robot: $(arg robot)
             total_sim_time: 7.0
             n_samples: 700
-            seq_i: $(arg seq_i)
-            sample_i: $(arg sample_i)
-            lss_weights: $(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt
+            lss_weights_path: $(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt
             dphys_config_path: $(dirname)/../config/dphys_cfg.yaml
             lss_config_path: $(dirname)/../config/lss_cfg_$(arg robot).yaml
             pub_cloud: true
