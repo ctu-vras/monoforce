@@ -190,7 +190,7 @@ class RobinGasBase(Dataset):
             else:
                 ir = np.clip(il + n_frames, 0, len(all_ids))
                 poses = all_poses[il:ir]
-                stamps = np.asarray(copy.copy(self.ts[il:ir]), dtype=np.float32)
+                stamps = np.asarray(copy.copy(self.ts[il:ir]))
             assert len(poses) > 0, f'No poses found for trajectory {ind}'
             poses = np.linalg.inv(poses[0]) @ poses
 
