@@ -6,6 +6,7 @@
 
 Robot-terrain interaction prediction from only RGB images as input.
 
+![](./docs/imgs/pipeline.png)
 ![](./docs/imgs/monoforce.gif)
 
 ## Table of Contents
