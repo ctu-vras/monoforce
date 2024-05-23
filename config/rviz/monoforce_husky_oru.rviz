@@ -3,9 +3,7 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded:
-        - /Global Options1
-        - /Cameras1
+      Expanded: ~
       Splitter Ratio: 0.5
     Tree Height: 227
   - Class: rviz/Selection
@@ -25,7 +23,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: Image Front
+    SyncSource: Camera
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -460,7 +458,6 @@ Visualization Manager:
           Value: true
           Visibility:
             Cameras:
-              Camera: true
               CameraInfo Front: true
               Image Front: true
               Value: true

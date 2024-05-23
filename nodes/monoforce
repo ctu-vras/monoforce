@@ -34,7 +34,13 @@ class MonoForce:
 
         self.dphys_cfg = DPhysConfig()
         self.pkg_path = rospkg.RosPack().get_path('monoforce')
-        self.data_seq = os.path.join(self.pkg_path, 'config/data_sample', self.robot)
+
+        path = np.random.choice(robingas_seq_paths[self.robot])
+        if os.path.exists(path):
+            self.data_seq = path
+        else:
+            rospy.loginfo('Data sequence for robot %s does not exist. Using sample data.' % self.robot)
+            self.data_seq = os.path.join(self.pkg_path, 'config/data_sample', self.robot)
         self.dphys_config_path = dphys_config_path
         assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
         self.dphys_cfg.from_yaml(self.dphys_config_path)
