@@ -3,11 +3,6 @@ project(monoforce)
 
 find_package(PkgConfig REQUIRED)
 
-
-pkg_check_modules(lz4 REQUIRED liblz4)
-include_directories(${lz4_INCLUDE_DIRS})
-link_directories(${lz4_LIBRARY_DIRS})
-
 # Catkin
 find_package(catkin REQUIRED)
 catkin_python_setup()
@@ -24,6 +19,7 @@ catkin_package(
 install(
     PROGRAMS
         nodes/diff_physics
+        nodes/diff_physics_warp
         nodes/terrain_encoder
         nodes/play_tf_static
         nodes/monoforce

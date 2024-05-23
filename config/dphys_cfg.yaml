@@ -1,7 +1,7 @@
 d_max: 6.4
 d_min: 0.6
-damping: 0.0
-elasticity: 0.0
+damping: 10.0
+elasticity: 10.0
 friction: 0.9
 grid_res: 0.1
 h_max_above_ground: 1.0

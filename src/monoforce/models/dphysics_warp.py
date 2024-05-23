@@ -249,7 +249,7 @@ class TrackSimulator:
     contacts_per_track = 3
     use_flippers = True
     dt = 0.001
-    ke = 1.0e4
+    ke = 1000.0
     kd = 150.0
     kf = 0.5
     renderer = None

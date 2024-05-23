@@ -142,10 +142,11 @@ def to_pose_array(poses, stamp=None, frame_id=None):
 def poses_to_path(poses, stamp=None, frame_id=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
     assert poses.ndim == 3 or poses.ndim == 2
+    n_poses = poses.shape[0]
     if poses.ndim == 3:
-        assert poses.shape[1:] == (4, 4)
+        assert poses.shape == (n_poses, 4, 4)
     elif poses.ndim == 2:
-        assert poses.shape[1] == 7
+        assert poses.shape == (n_poses, 7)
     if stamp is None:
         stamp = rospy.Time.now()
     if frame_id is None:

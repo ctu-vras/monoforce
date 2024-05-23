@@ -11,7 +11,7 @@ from nav_msgs.msg import Path
 from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
 import rospkg
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
 
 
@@ -37,7 +37,7 @@ class DiffPhysics:
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         # lower cost path publisher
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
-        self.path_cost_pub = rospy.Publisher('/path_cost', Float32, queue_size=1)
+        self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
 
         # image subscriber
         self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback)
@@ -72,7 +72,7 @@ class DiffPhysics:
         cost = forces.norm(dim=1).mean()
         return cost
 
-    def predict_paths(self, height, linear_vels=None, angular_vels=None):
+    def predict_paths(self, height, linear_vels=None, angular_vels=None, pose_step=50):
         if angular_vels is None:
             angular_vels = [0.]
         if linear_vels is None:
@@ -90,7 +90,7 @@ class DiffPhysics:
         lower_cost_poses = None
         max_path_cost = torch.tensor(-np.inf, device=self.device)
         min_path_cost = torch.tensor(np.inf, device=self.device)
-        pose_step = 50
+        path_costs = []
         for v, w in zip(linear_vels, angular_vels):
             # controls
             vs = v * torch.ones(self.dphys_cfg.n_samples)
@@ -101,8 +101,8 @@ class DiffPhysics:
             states, _ = dphysics(height, controls, robot_model=self.robot, dphys_cfg=self.dphys_cfg, device=self.device)
 
             # create path message (Marker)
-            xyz = states[0].cpu().numpy()[::pose_step]
-            Rs = states[1].cpu().numpy()[::pose_step]
+            xyz = states[0][::pose_step].cpu().numpy()
+            Rs = states[1][::pose_step].cpu().numpy()
             Ts = np.zeros((len(xyz), 4, 4))
             Ts[:, :3, :3] = Rs
             Ts[:, :3, 3:4] = xyz
@@ -112,30 +112,36 @@ class DiffPhysics:
 
             # compute path cost
             path_cost = self.path_cost(states)
+            path_costs.append(path_cost.item())
             # rospy.logdebug('Path cost: %.3f' % path_cost.item())
             if path_cost > max_path_cost:
                 max_path_cost = path_cost.clone()
             if path_cost < min_path_cost:
                 min_path_cost = path_cost.clone()
-                lower_cost_poses = Ts
-            # normalize path cost
-            path_cost_norm = (path_cost - min_path_cost) / (max_path_cost - min_path_cost) if max_path_cost > min_path_cost else path_cost
-            # rospy.logdebug('Path cost normalized: %.3f' % path_cost_norm.item())
+                lower_cost_poses = Ts.copy()
 
-            # map path cost to color (lower cost -> greener, higher cost -> redder)
-            red = np.array([1., 0., 0.])
-            green = np.array([0., 1., 0.])
-            color = green + (red - green) * path_cost_norm.item()
-            marker_msg = poses_to_marker(Ts, color=color)
+            marker_msg = poses_to_marker(Ts)
             marker_msg.header.frame_id = self.hm_frame
             marker_msg.ns = 'paths'
             marker_msg.id = path_id
             path_id += 1
             marker_array.markers.append(marker_msg)
-        # set time stamps
+
+        red = np.array([1., 0., 0.])
+        green = np.array([0., 1., 0.])
+        path_costs_norm = torch.tensor(path_costs, device=self.device)
+        path_costs_norm = (path_costs_norm - min_path_cost) / (max_path_cost - min_path_cost)
         stamp = rospy.Time.now()
         for marker_msg in marker_array.markers:
+            # set time stamps
             marker_msg.header.stamp = stamp
+            # map path cost to color (lower cost -> greener, higher cost -> redder)
+            path_cost = path_costs_norm[marker_msg.id].item()
+            color = (1. - path_cost) * green + path_cost * red
+            marker_msg.color.r = color[0]
+            marker_msg.color.g = color[1]
+            marker_msg.color.b = color[2]
+            marker_msg.color.a = 1.0
 
         # publish all sampled paths
         self.sampled_paths_pub.publish(marker_array)
@@ -144,10 +150,11 @@ class DiffPhysics:
             rospy.loginfo('Publishing lower cost path of length: %d' % len(lower_cost_poses))
             path_msg = poses_to_path(lower_cost_poses, stamp=stamp, frame_id=self.hm_frame)
             self.lc_path_pub.publish(path_msg)
-            # publish path cost
-            path_cost_msg = Float32()
-            path_cost_msg.data = min_path_cost.item()
-            self.path_cost_pub.publish(path_cost_msg)
+
+        # publish path costs
+        path_costs_msg = Float32MultiArray()
+        path_costs_msg.data = path_costs
+        self.path_costs_pub.publish(path_costs_msg)
 
     @staticmethod
     def spin():

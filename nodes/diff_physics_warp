@@ -3,6 +3,7 @@
 from time import time
 import torch
 import numpy as np
+from threading import RLock
 import rospy
 from monoforce.ros import poses_to_marker, poses_to_path
 from nav_msgs.msg import Path
@@ -45,6 +46,7 @@ class DiffPhysicsWarp:
         self.total_sim_time = total_sim_time
         self.n_sim_steps = int(self.total_sim_time / self.dt)
         self.max_age = max_age
+        self.path_lock = RLock()
         
         self.poses0 = self.init_poses()
         self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max)
@@ -136,9 +138,15 @@ class DiffPhysicsWarp:
         rospy.loginfo('Received height map of shape: %s' % str(height.shape))
 
         # predict path
-        self.predict_paths(height)
+        with self.path_lock:
+            xyz_q_np, path_costs = self.predict_paths(height, unfeasible_path_length=10.0)
+            # publish paths
+            if xyz_q_np is not None:
+                t_start = time()
+                self.publish_paths(xyz_q_np, path_costs, stamp=rospy.Time.now())
+                rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t_start))
 
-    def predict_paths(self, height):
+    def predict_paths(self, height, unfeasible_path_length=100.0):
         assert isinstance(height, np.ndarray)
         assert height.shape[0] == height.shape[1]
         
@@ -157,33 +165,35 @@ class DiffPhysicsWarp:
         assert forces_np.shape == (self.n_sim_steps, self.n_sim_trajs, 6)
 
         # path with the smallest cost
-        path_costs = np.linalg.norm(forces_np[..., :3], axis=-1).sum(axis=0)
+        path_costs = (np.linalg.norm(forces_np[..., :3], axis=-1).sum(axis=0) +
+                      np.linalg.norm(forces_np[..., :3], axis=-1).std(axis=0))
         path_lengths = np.sum(np.linalg.norm(np.diff(xyz_q_np[:, :, :3], axis=0), axis=2), axis=0)
         assert path_costs.shape == (self.n_sim_trajs,)
         assert path_lengths.shape == (self.n_sim_trajs,)
-        unfeasible_paths = np.where(path_lengths > 100.0)[0]
-        rospy.logdebug('unfeasible paths: %s' % str(unfeasible_paths))
+        unfeasible_path_ids = np.where(path_lengths > unfeasible_path_length)[0]
+        rospy.logdebug('unfeasible path ids: %s' % str(unfeasible_path_ids))
 
         # remove unfeasible paths
-        path_costs = np.delete(path_costs, unfeasible_paths)
+        path_costs = np.delete(path_costs, unfeasible_path_ids)
         if len(path_costs) == 0:
             rospy.logwarn('All simulated paths are unfeasible')
-            return
-        xyz_q_np = np.delete(xyz_q_np, unfeasible_paths, axis=1)
-        forces_np = np.delete(forces_np, unfeasible_paths, axis=1)
+            return None, None
+
+        xyz_q_np = np.delete(xyz_q_np, unfeasible_path_ids, axis=1)
         num_trajs = xyz_q_np.shape[1]
         assert xyz_q_np.shape == (self.n_sim_steps + 1, num_trajs, 7)
         assert path_costs.shape == (num_trajs,)
-        assert forces_np.shape == (self.n_sim_steps, num_trajs, 6)
 
-        # publish paths
-        self.publish_paths(xyz_q_np, path_costs)
-        rospy.logdebug('Paths postprocessing and publishing took %.3f [sec]' % (time() - t_start))
+        rospy.logdebug('Paths post-processing took %.3f [sec]' % (time() - t_start))
+        return xyz_q_np, path_costs
 
-    def publish_paths(self, xyz_q_np, path_costs, pose_step=500):
+    def publish_paths(self, xyz_q_np, path_costs, stamp=None, pose_step=500):
+        if stamp is None:
+            stamp = rospy.Time.now()
+
         num_trajs = xyz_q_np.shape[1]
         assert path_costs.shape == (num_trajs,)
-        stamp = rospy.Time.now()
+
         # paths marker array
         marker_array = MarkerArray()
         red = np.array([1., 0., 0.])
@@ -194,12 +204,11 @@ class DiffPhysicsWarp:
             color = green + (red - green) * path_costs_norm[i]
             marker_msg = poses_to_marker(xyz_q_np[::pose_step, i], color=color)
             marker_msg.header.frame_id = self.hm_frame
+            marker_msg.header.stamp = stamp
             marker_msg.ns = 'paths'
             marker_msg.id = i
             marker_array.markers.append(marker_msg)
-        # set time stamps
-        for marker_msg in marker_array.markers:
-            marker_msg.header.stamp = stamp
+
         # publish all sampled paths
         self.sampled_paths_pub.publish(marker_array)
 
@@ -233,7 +242,7 @@ def main():
     hm_topic = rospy.get_param('~hm_topic')
     hm_frame = rospy.get_param('~hm_frame')
     max_age = rospy.get_param('~max_age', 0.5)
-    total_sim_time = rospy.get_param('~total_sim_time', 5.0)
+    total_sim_time = rospy.get_param('~total_sim_time', 10.0)
     n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
     device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
