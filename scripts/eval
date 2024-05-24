@@ -252,7 +252,7 @@ class EvaluatorGeom:
                                           omega=omega_true[0],
                                           device=self.device),
                                       device=self.device, use_ode=False,
-                                      interaction_model='diffdrive')
+                                      motion_model='diffdrive')
 
         # put models with their params to self.cfg.device
         system = system.to(self.device)

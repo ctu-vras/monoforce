@@ -237,17 +237,17 @@ class MonoForce:
                 self.publish_images(imgs_raw, Ks, stamp)
 
                 # predict path poses
-                v = np.random.uniform(0.6, 1.2)
-                # if robot has more than one camera, randomly change control direction
+                v = np.random.uniform(0.6, 0.9)
+                # if robot has more than one (front-facing) camera, randomly change commanded linear velocity direction
                 if len(self.camera_frames) > 1 and np.random.random() > 0.5:
                     v = -v
                 w = np.random.uniform(-0.4, 0.4)
-                # v = 0.4
-                # w = -0.13
+
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
                 states, robot_points = self.predict_states(height_terrain_pred, v=v, w=w)
                 # states, robot_points = self.predict_states(hm_terrain[0], v=v, w=w)
                 poses = self.poses_from_states(states)
+                poses[:, 2, 3] += 0.132  # add robot clearance
                 rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
                 forces = states[4].cpu().numpy()
                 rospy.loginfo('Predicted forces shape: %s' % str(forces.shape))

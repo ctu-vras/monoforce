@@ -31,7 +31,7 @@ robot_init_xyz:
 - 0.0
 - 1.0
 robot_mass: 10.0
-robot_terrain_interaction_model: diffdrive
+motion_model: diffdrive
 rot_cost_weight: 1.0
 trans_cost_weight: 1.0
 sample_len: 10
