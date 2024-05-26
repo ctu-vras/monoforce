@@ -125,7 +125,7 @@ class RigidBodySoftTerrain(nn.Module):
                  device=torch.device('cpu'),
                  use_ode=False,
                  soft_layer_height=0.2,
-                 interaction_model='diffdrive',
+                 motion_model='diffdrive',
                  Kp_rho=2.0,  # position proportional gain
                  Kp_theta=50.0,  # heading proportional gain
                  Kp_yaw=1.0,  # yaw (at a pose) proportional gain
@@ -168,7 +168,7 @@ class RigidBodySoftTerrain(nn.Module):
         self.vel_omega = None
         self.forces = None
 
-        self.interaction_model = interaction_model
+        self.motion_model = motion_model
 
         # controller parameters (path follower)
         self.Kp_rho = nn.Parameter(torch.tensor([Kp_rho], device=self.device))
@@ -182,13 +182,13 @@ class RigidBodySoftTerrain(nn.Module):
         @param state: state vector
         @return: state derivative
         """
-        if self.interaction_model == 'omni':
+        if self.motion_model == 'omni':
             return self.forward_omni(t, state)
-        elif self.interaction_model == 'diffdrive':
+        elif self.motion_model == 'diffdrive':
             return self.forward_diffdrive(t, state)
-        elif self.interaction_model == 'rigid_layer':
+        elif self.motion_model == 'rigid_layer':
             return self.forward_rigid_layer(t, state)
-        elif self.interaction_model == 'rigid_soft_layers':
+        elif self.motion_model == 'rigid_soft_layers':
             return self.forward_rigid_soft_layers(t, state)
         else:
             raise NotImplementedError
@@ -550,7 +550,7 @@ def dphysics(height, controls, robot_model='husky', state=None, dphys_cfg=None, 
                                   mass=dphys_cfg.robot_mass,
                                   state=state,
                                   device=device, use_ode=False,
-                                  interaction_model='diffdrive',
+                                  motion_model='diffdrive',
                                   robot_model=robot_model)
 
     # put models with their params to self.device

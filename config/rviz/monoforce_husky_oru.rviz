@@ -3,7 +3,9 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded: ~
+      Expanded:
+        - /GridMap1
+        - /Cameras1
       Splitter Ratio: 0.5
     Tree Height: 227
   - Class: rviz/Selection
@@ -389,11 +391,11 @@ Visualization Manager:
           Height Layer: elevation
           Height Transformer: GridMapLayer
           History Length: 1
-          Invert Rainbow: true
+          Invert Rainbow: false
           Max Color: 239; 41; 41
-          Max Intensity: 1
+          Max Intensity: 0.5
           Min Color: 138; 226; 52
-          Min Intensity: -1
+          Min Intensity: -1.5
           Name: GridMap Pred Terrain
           Show Grid Lines: true
           Topic: /grid_map_terrain_pred
@@ -487,10 +489,10 @@ Visualization Manager:
           alpha: 0.5
           color: 85; 255; 255
           edge color: 125; 125; 125
-          far clip: 6.400000095367432
+          far clip: 12.800000190734863
           not show side polygons: true
           show edges: true
-          show polygons: true
+          show polygons: false
           transport hints: raw
           use image: true
         - Class: rviz/Image
@@ -535,7 +537,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 8.42956829071045
+      Distance: 7.522579193115234
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -543,17 +545,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.5391402244567871
-        Y: 0.1049664318561554
-        Z: 0.9817581176757812
+        X: 1.1601444482803345
+        Y: 0.08664572983980179
+        Z: 2.2947428226470947
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 2
-      Pitch: 0.5
+      Near Clip Distance: 7
+      Pitch: 0.17499993741512299
       Target Frame: <Fixed Frame>
-      Yaw: 3.116499900817871
+      Yaw: 3.211500644683838
     Saved:
       - Class: rviz/Orbit
         Distance: 10

@@ -71,6 +71,7 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
         # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-01-15-48-29_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-24-13-21-28_0'),
     ],
 }
 
@@ -190,7 +191,7 @@ class RobinGasBase(Dataset):
             else:
                 ir = np.clip(il + n_frames, 0, len(all_ids))
                 poses = all_poses[il:ir]
-                stamps = np.asarray(copy.copy(self.ts[il:ir]), dtype=np.float32)
+                stamps = np.asarray(copy.copy(self.ts[il:ir]))
             assert len(poses) > 0, f'No poses found for trajectory {ind}'
             poses = np.linalg.inv(poses[0]) @ poses
 

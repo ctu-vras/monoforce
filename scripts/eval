@@ -252,7 +252,7 @@ class EvaluatorGeom:
                                           omega=omega_true[0],
                                           device=self.device),
                                       device=self.device, use_ode=False,
-                                      interaction_model='diffdrive')
+                                      motion_model='diffdrive')
 
         # put models with their params to self.cfg.device
         system = system.to(self.device)
@@ -275,9 +275,9 @@ class EvaluatorGeom:
         poses_gt = []
         for i in range(n_true_states - 1):
             # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
-            time_interval = tt[
-                            i * self.dphys_cfg.n_samples // (n_true_states - 1):(i + 1) * self.dphys_cfg.n_samples // (
-                                    n_true_states - 1)]
+            i_l = i * self.dphys_cfg.n_samples // (n_true_states - 1)
+            i_r = (i + 1) * self.dphys_cfg.n_samples // (n_true_states - 1)
+            time_interval = tt[i_l:i_r]
 
             pos_x, pos_R, vel_x, vel_omega, forces = state
             pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
@@ -292,7 +292,6 @@ class EvaluatorGeom:
             pose_gt[:3, :3] = rot_true[i + 1]
             poses_gt.append(pose_gt)
 
-            dist_xy = None
             for t in time_interval[1:]:
                 v, w, dist_xy = pose_control(state, pose_gt, allow_backwards=True,
                                              Kp_rho=10., Kp_theta=4., Kp_yaw=4., dist_reached=0.01, return_dist=True)
@@ -377,7 +376,7 @@ class EvaluatorGeom:
             val_ids = range(len(ds) - val_ds_size, len(ds))
             # val_ids = np.random.choice(len(ds), val_ds_size, replace=False)
             val_ds = ds[val_ids]
-            for i in tqdm(reversed(range(len(val_ds)))):
+            for i in tqdm(range(len(val_ds))):
                 states_true, height = self.get_data(i, val_ds)
                 trans_diff, rot_diff, log = self.eval_diff_physics(height, states_true, vis=vis)
                 if rot_diff is not None and trans_diff is not None:

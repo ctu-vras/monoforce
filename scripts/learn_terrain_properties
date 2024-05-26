@@ -67,7 +67,7 @@ class Learner:
                                           omega=states[3][0],
                                           forces=states[4][0], device=self.dphys_cfg.device),
                                       device=self.dphys_cfg.device, use_ode=False,
-                                      interaction_model=self.dphys_cfg.robot_terrain_interaction_model)
+                                      motion_model=self.dphys_cfg.motion_model)
         return system
 
     def learn(self):
@@ -133,7 +133,7 @@ class Learner:
                 v, w = pose_control(state, goal_pose, allow_backwards=True,
                                     Kp_rho=1.5, Kp_theta=20., Kp_yaw=0.5)
 
-                if self.dphys_cfg.robot_terrain_interaction_model in ['rigid_layer', 'rigid_soft_layers']:
+                if self.dphys_cfg.motion_model in ['rigid_layer', 'rigid_soft_layers']:
                     # two tracks (flippers) robot model
                     u1 = v - w * tracks_distance / 4.
                     u2 = v + w * tracks_distance / 4.
@@ -282,7 +282,7 @@ def main():
     dhpys_cfg = DPhysConfig()
     dhpys_cfg.from_yaml('../config/dphys_cfg.yaml')
     dhpys_cfg.vel_tracks = args.vel_tracks * np.asarray([1., 1.])
-    dhpys_cfg.robot_terrain_interaction_model = args.control_model
+    dhpys_cfg.motion_model = args.control_model
     dhpys_cfg.device = args.device
 
     lss_cfg = read_yaml('../config/lss_cfg_tradr.yaml')

@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="rviz" default="true"/>
     <arg name="robot" default="tradr"/>
+    <arg name="lss_config_path" default="$(find monoforce)/config/lss_cfg_$(arg robot).yaml"/>
+    <arg name="dphys_config_path" default="$(find monoforce)/config/dphys_cfg.yaml"/>
+    <arg name="weights" default="$(find monoforce)/config/weights/lss/lss_robingas_$(arg robot).pt"/>
+    <arg name="rviz" default="true"/>
 
     <!-- Load robot description -->
     <rosparam command="load" file="$(dirname)/../config/params/$(arg robot).params"/>
@@ -16,9 +19,9 @@
             robot: $(arg robot)
             total_sim_time: 7.0
             n_samples: 700
-            lss_weights_path: $(dirname)/../config/weights/lss/lss_robingas_$(arg robot).pt
-            dphys_config_path: $(dirname)/../config/dphys_cfg.yaml
-            lss_config_path: $(dirname)/../config/lss_cfg_$(arg robot).yaml
+            lss_weights_path: $(arg weights)
+            dphys_config_path: $(arg dphys_config_path)
+            lss_config_path: $(arg lss_config_path)
             pub_cloud: true
             pub_path: true
         </rosparam>
