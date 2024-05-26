@@ -161,12 +161,11 @@ cython_debug/
 
 data/*
 gen/
-*pth
+*.pth
+*.pt
 *.bak
 config/weights/
-runs/
 tb_runs/
-*.csv
 
 # sbatch jobs logging
 *.err
