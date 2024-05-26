@@ -156,7 +156,7 @@ def learn_terrain_omni(device='cpu', lr=0.03, n_train_iters=100):
                                               omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=device, use_ode=False,
-                                  interaction_model='omni')
+                                  motion_model='omni')
 
     # put models with their params to device
     system = system.to(device)
@@ -251,7 +251,7 @@ def learn_terrain_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.
                                               # omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=device, use_ode=False,
-                                  interaction_model='diffdrive')
+                                  motion_model='diffdrive')
 
     # put models with their params to device
     system = system.to(device)
@@ -387,7 +387,7 @@ def learn_terrain_cmd_vel(regularization=True, vis=True, device='cpu', lr=0.03, 
                                               omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=device, use_ode=False,
-                                  interaction_model='diffdrive')
+                                  motion_model='diffdrive')
 
     # put models with their params to device
     system = system.to(device)
@@ -513,7 +513,7 @@ def learn_terrain_p_track_vels(regularization=True, max_vel=np.inf, vis=True, de
                                               # omega=omega_true[0],
                                               forces=forces_true[0]),
                                   device=device, use_ode=False,
-                                  interaction_model='rigid_soft_layers')
+                                  motion_model='rigid_soft_layers')
 
     # put models with their params to device
     system = system.to(device)
