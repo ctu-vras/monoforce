@@ -45,10 +45,11 @@ python scripts/run --img-paths config/data_sample/tradr/images/1666267171_394104
 ```
 Please, refer to the [Terrain Encoder](./docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
 
-If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run
-(please make sure you have the [data](./docs/DATA.md) downloaded and located at `data/RobinGas/`):
+If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
 ```commandline
-cd docker/ && ./run.sh
+docker pull agishrus/monoforce
+cd docker/
+./run.sh
 ```
 
 <img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
