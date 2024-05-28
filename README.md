@@ -6,7 +6,12 @@
 
 Robot-terrain interaction prediction from only RGB images as input.
 
-![](./docs/imgs/pipeline.png)
+<img src="./docs/imgs/examples/ramp_success.png" width="200"/>
+<img src="./docs/imgs/examples/stone.png" width="200"/>
+<img src="./docs/imgs/examples/high_grass2.png" width="200"/>
+<img src="./docs/imgs/examples/wall3.png" width="200"/>
+<img src="./docs/imgs/examples/snow.png" width="200"/>
+
 ![](./docs/imgs/monoforce.gif)
 
 ## Table of Contents
@@ -20,6 +25,8 @@ Robot-terrain interaction prediction from only RGB images as input.
 - [Citation](#citation)
 
 ## Running
+
+![](./docs/imgs/pipeline.png)
 
 The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Physics modules.
 Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
@@ -58,9 +65,8 @@ cd docker/
 
 ## ROS Integration
 
-We provide a ROS node that integrates the trained Terrain Encoder model with the Differentiable Physics module.
-Given the input RGB images and cameras calibration, the Terrain Encoder predicts the terrain shape,
-which is then used to simulate robot trajectories.
+We provide a ROS nodes for both the trained Terrain Encoder model and the Differentiable Physics module.
+They are integrated into the launch file:
 
 ```commandline
 roslaunch monoforce monoforce.launch
