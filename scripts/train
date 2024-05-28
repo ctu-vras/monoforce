@@ -6,9 +6,9 @@ import numpy as np
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 from monoforce.models.lss.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets import RobinGas, RobinGasVis
+from monoforce.datasets import RobinGas, RobinGasPoints
 from monoforce.datasets.utils import explore_data
-from monoforce.datasets import Rellis3D, Rellis3DVis
+from monoforce.datasets import Rellis3D, Rellis3DPoints
 from monoforce.datasets import robingas_seq_paths, rellis3d_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.utils import read_yaml, write_to_yaml, str2bool
@@ -135,11 +135,11 @@ class Trainer:
         val_datasets = []
         if self.dataset == 'rellis3d':
             Data = Rellis3D
-            DataVis = Rellis3DVis
+            DataVis = Rellis3DPoints
             data_paths = rellis3d_seq_paths
         elif self.dataset == 'robingas':
             Data = RobinGas
-            DataVis = RobinGasVis
+            DataVis = RobinGasPoints
             data_paths = robingas_seq_paths[self.robot]
         else:
             raise ValueError(f'Unknown dataset: {self.dataset}. Supported datasets are rellis3d and robingas.')

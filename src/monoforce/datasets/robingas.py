@@ -37,7 +37,7 @@ __all__ = [
     'data_dir',
     'RobinGasBase',
     'RobinGas',
-    'RobinGasVis',
+    'RobinGasPoints',
     'robingas_seq_paths',
 ]
 
@@ -115,8 +115,8 @@ class RobinGasBase(Dataset):
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
         # assert os.path.exists(self.cloud_path)
-        self.cloud_color_path = os.path.join(path, 'cloud_colors')
-        # assert os.path.exists(self.cloud_color_path)
+        self.radar_cloud_path = os.path.join(path, 'radar_clouds')
+        # assert os.path.exists(self.radar_cloud_path)
         self.traj_path = os.path.join(path, 'trajectories')
         # global pose of the robot (initial trajectory pose on a map) path (from SLAM)
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
@@ -250,7 +250,7 @@ class RobinGasBase(Dataset):
             cloud = cloud.reshape((-1,))
         return cloud
 
-    def get_cloud(self, i):
+    def get_lidar_cloud(self, i):
         cloud = self.get_raw_cloud(i)
         # remove nans from structured array with fields x, y, z
         cloud = cloud[~np.isnan(cloud['x'])]
@@ -259,6 +259,37 @@ class RobinGasBase(Dataset):
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
         return cloud
+    
+    def get_raw_radar_cloud(self, i):
+        ind = self.ids[i]
+        cloud_path = os.path.join(self.radar_cloud_path, '%s.npz' % ind)
+        assert os.path.exists(cloud_path), f'Cloud path {cloud_path} does not exist'
+        cloud = np.load(cloud_path)['cloud']
+        if cloud.ndim == 2:
+            cloud = cloud.reshape((-1,))
+        return cloud
+    
+    def get_radar_cloud(self, i):
+        cloud = self.get_raw_radar_cloud(i)
+        # remove nans from structured array with fields x, y, z
+        cloud = cloud[~np.isnan(cloud['x'])]
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__hugin_radar']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
+        return cloud
+
+    def get_cloud(self, i, points_source='lidar'):
+        assert points_source in ['lidar', 'radar', 'lidar_radar']
+        if points_source == 'lidar':
+            return self.get_lidar_cloud(i)
+        elif points_source == 'radar':
+            return self.get_radar_cloud(i)
+        else:
+            lidar_points = self.get_lidar_cloud(i)
+            radar_points = self.get_radar_cloud(i)
+            cloud = np.concatenate((lidar_points[['x', 'y', 'z']], radar_points[['x', 'y', 'z']]))
+            return cloud
 
     def get_traj_dphyics_terrain(self, i):
         ind = self.ids[i]
@@ -532,7 +563,7 @@ class RobinGas(RobinGasBase):
         seg = transform(seg)
         return seg
     
-    def get_semantic_cloud(self, i, classes=None, vis=False):
+    def get_semantic_cloud(self, i, classes=None, vis=False, points_source='lidar'):
         coco_classes = [i['name'].replace('-merged', '').replace('-other', '') for i in COCO_CATEGORIES] + ['void']
         if classes is None:
             classes = np.copy(coco_classes)
@@ -542,7 +573,7 @@ class RobinGas(RobinGasBase):
             if c in coco_classes:
                 selected_labels.append(coco_classes.index(c))
 
-        lidar_points = position(self.get_cloud(i))
+        lidar_points = position(self.get_cloud(i, points_source=points_source))
         points = []
         labels = []
         for cam in self.cameras[::-1]:
@@ -606,7 +637,7 @@ class RobinGas(RobinGasBase):
             o3d.visualization.draw_geometries([hm_pcd])
         return global_hm_cloud
 
-    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
+    def get_geom_height_map(self, i, cached=True, dir_name=None, points_source='lidar', **kwargs):
         """
         Get height map from lidar point cloud.
         :param i: index of the sample
@@ -621,7 +652,7 @@ class RobinGas(RobinGasBase):
         if cached and os.path.exists(file_path):
             lidar_hm = np.load(file_path, allow_pickle=True).item()
         else:
-            cloud = self.get_cloud(i)
+            cloud = self.get_cloud(i, points_source=points_source)
             points = position(cloud)
             lidar_hm = self.estimate_heightmap(points, **kwargs)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -631,7 +662,7 @@ class RobinGas(RobinGasBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None):
+    def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None, points_source='lidar'):
         """
         Get height map from trajectory points.
         :param i: index of the sample
@@ -674,7 +705,8 @@ class RobinGas(RobinGasBase):
             if cached and os.path.exists(file_path):
                 hm_rigid = np.load(file_path, allow_pickle=True).item()
             else:
-                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'], vis=False)
+                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
+                                                        points_source=points_source, vis=False)
                 traj_points = self.get_footprint_traj_points(i)
                 points = np.concatenate((seg_points, traj_points), axis=0)
                 hm_rigid = self.estimate_heightmap(points, robot_radius=None)
@@ -727,20 +759,23 @@ class RobinGas(RobinGasBase):
         return img, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
 
 
-class RobinGasVis(RobinGas):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
-        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+class RobinGasPoints(RobinGas):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False, points_source='lidar'):
+        super(RobinGasPoints, self).__init__(path, lss_cfg,
+                                             dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+        assert points_source in ['lidar', 'radar', 'lidar_radar']
+        self.points_source = points_source
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_height_map(i)
+        hm_geom = self.get_geom_height_map(i, points_source=self.points_source)
+        hm_terrain = self.get_terrain_height_map(i, points_source=self.points_source)
         if self.only_front_cam:
             mask = self.front_height_map_mask()
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts
+        points = torch.as_tensor(position(self.get_cloud(i, points_source=self.points_source))).T
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, points
 
 
 def heightmap_demo():

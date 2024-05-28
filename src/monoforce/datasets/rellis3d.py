@@ -23,7 +23,7 @@ import albumentations as A
 __all__ = [
     'Rellis3DBase',
     'Rellis3D',
-    'Rellis3DVis',
+    'Rellis3DPoints',
     'rellis3d_seq_paths',
 ]
 
@@ -542,7 +542,7 @@ class Rellis3D(Rellis3DBase):
         return img, rot, tran, K, post_rot, post_tran, hm_geom, hm_terrain
 
 
-class Rellis3DVis(Rellis3D):
+class Rellis3DPoints(Rellis3D):
     def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=False, only_front_hm=False):
         super().__init__(path, lss_cfg, dphys_cfg, is_train, only_front_hm)
 
