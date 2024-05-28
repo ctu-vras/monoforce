@@ -8,8 +8,6 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 <img src="./docs/imgs/examples/ramp_success.png" width="200"/> <img src="./docs/imgs/examples/high_grass2.png" width="200"/> <img src="./docs/imgs/examples/wall3.png" width="200"/> <img src="./docs/imgs/examples/snow.png" width="200"/>
 
-![](./docs/imgs/monoforce.gif)
-
 ## Table of Contents
 - [Installation Instructions](./docs/INSTALL.md)
 - [Data](./docs/DATA.md)
@@ -22,7 +20,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ## Running
 
-![](./docs/imgs/pipeline.png)
+<img src="./docs/imgs/pipeline.png" width="800"/>
 
 The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Physics modules.
 Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
@@ -33,6 +31,10 @@ Please run the following command to explore the MonoForce pipeline:
 ```commandline
 python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
+
+<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+
+![](./docs/imgs/monoforce_mayavi.gif)
 
 For example if you want to test the model with the provided images from the RobinGas dataset:
 ```commandline
@@ -55,9 +57,8 @@ cd docker/
 ./run.sh
 ```
 
-<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+<img src="./docs/imgs/monoforce.gif" width="800"/>
 
-![](./docs/imgs/monoforce_mayavi.gif)
 
 ## ROS Integration
 
@@ -73,8 +74,9 @@ roslaunch monoforce monoforce.launch
 Navigation method only using RGB images.
 The package is used as robot-terrain interaction and path planning pipeline.
 
-![](./docs/imgs/cameras.png)
-![](./docs/imgs/husky_monoforce.png)
+<img src="./docs/imgs/cameras.png" width="800"/>
+<img src="./docs/imgs/husky_monoforce.png" width="800"/>
+
 
 Trajectories prediction is based on the
 [NVIDIA-Warp](https://github.com/NVIDIA/warp) and
