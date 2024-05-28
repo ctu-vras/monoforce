@@ -6,7 +6,7 @@
 
 Robot-terrain interaction prediction from only RGB images as input.
 
-<img src="./docs/imgs/examples/ramp_success.png" width="200"/><img src="./docs/imgs/examples/stone.png" width="200"/><img src="./docs/imgs/examples/high_grass2.png" width="200"/><img src="./docs/imgs/examples/wall3.png" width="200"/><img src="./docs/imgs/examples/snow.png" width="200"/>
+<img src="./docs/imgs/examples/ramp_success.png" width="200"/> <img src="./docs/imgs/examples/high_grass2.png" width="200"/> <img src="./docs/imgs/examples/wall3.png" width="200"/> <img src="./docs/imgs/examples/snow.png" width="200"/>
 
 ![](./docs/imgs/monoforce.gif)
 
