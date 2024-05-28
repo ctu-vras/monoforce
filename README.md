@@ -6,8 +6,7 @@
 
 Robot-terrain interaction prediction from only RGB images as input.
 
-![](./docs/imgs/pipeline.png)
-![](./docs/imgs/monoforce.gif)
+<img src="./docs/imgs/examples/ramp_success.png" width="200"/> <img src="./docs/imgs/examples/high_grass2.png" width="200"/> <img src="./docs/imgs/examples/wall3.png" width="200"/> <img src="./docs/imgs/examples/snow.png" width="200"/>
 
 ## Table of Contents
 - [Installation Instructions](./docs/INSTALL.md)
@@ -21,6 +20,8 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ## Running
 
+<img src="./docs/imgs/pipeline.png" width="800"/>
+
 The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Physics modules.
 Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
 Then the Differentiable Physics module simulates robot trajectory and interaction forces on the predicted terrain
@@ -30,6 +31,10 @@ Please run the following command to explore the MonoForce pipeline:
 ```commandline
 python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
+
+<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+
+![](./docs/imgs/monoforce_mayavi.gif)
 
 For example if you want to test the model with the provided images from the RobinGas dataset:
 ```commandline
@@ -45,21 +50,20 @@ python scripts/run --img-paths config/data_sample/tradr/images/1666267171_394104
 ```
 Please, refer to the [Terrain Encoder](./docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
 
-If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run
-(please make sure you have the [data](./docs/DATA.md) downloaded and located at `data/RobinGas/`):
+If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
 ```commandline
-cd docker/ && ./run.sh
+docker pull agishrus/monoforce
+cd docker/
+./run.sh
 ```
 
-<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+<img src="./docs/imgs/monoforce.gif" width="800"/>
 
-![](./docs/imgs/monoforce_mayavi.gif)
 
 ## ROS Integration
 
-We provide a ROS node that integrates the trained Terrain Encoder model with the Differentiable Physics module.
-Given the input RGB images and cameras calibration, the Terrain Encoder predicts the terrain shape,
-which is then used to simulate robot trajectories.
+We provide a ROS nodes for both the trained Terrain Encoder model and the Differentiable Physics module.
+They are integrated into the launch file:
 
 ```commandline
 roslaunch monoforce monoforce.launch
@@ -70,15 +74,16 @@ roslaunch monoforce monoforce.launch
 Navigation method only using RGB images.
 The package is used as robot-terrain interaction and path planning pipeline.
 
-![](./docs/imgs/cameras.png)
-![](./docs/imgs/husky_monoforce.png)
+<img src="./docs/imgs/cameras.png" width="800"/>
+<img src="./docs/imgs/husky_monoforce.png" width="800"/>
+
 
 Trajectories prediction is based on the
 [NVIDIA-Warp](https://github.com/NVIDIA/warp) and
 [ParallelTrackSimulator](https://github.com/tichyt11/ParallelTrackSimulator)
 packages.
 
-Navigation consists of the following stages:
+Navigation consists of the following stages, [video](https://drive.google.com/file/d/1OLnTtedNLX23HjNnXV7Sct_3xSFGxe2H/view?usp=sharing):
 - **Height map prediction**: The Terrain Encoder part of the MonoForce is used to estimate terrain properties.
 - **Trajectories prediction**: The Diff Physics part of the MonoForce is used to shoot the robot trajectories.
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
