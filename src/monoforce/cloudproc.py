@@ -16,6 +16,10 @@ __all__ = [
     'estimate_heightmap',
     'hm_to_cloud',
     'position',
+    'affine',
+    'inverse',
+    'within_bounds',
+    'points2range_img',
 ]
 
 def affine(tf, x):
@@ -324,3 +328,63 @@ def hm_to_cloud(height, cfg, mask=None):
         hm_cloud = hm_cloud[mask]
     hm_cloud = hm_cloud.reshape([-1, 3])
     return hm_cloud
+
+def points2range_img(x, y, z,
+                     H=None, W=None,
+                     fov_up=None, fov_down=None, fov_left=None, fov_right=None, ang_res=np.pi/180.):
+    """
+    Convert 3D points to depth image.
+
+    @param x: x-coordinates of the points.
+    @param y: y-coordinates of the points.
+    @param z: z-coordinates of the points.
+    @param H: height of the depth image.
+    @param W: width of the depth image.
+    @param fov_up: upper bound of the vertical field of view.
+    @param fov_down: lower bound of the vertical field of view.
+    @param fov_left: left bound of the horizontal field of view.
+    @param fov_right: right bound of the horizontal field of view.
+    @param ang_res: angular resolution of the depth image.
+    @return: depth image.
+
+    Example:
+    ```
+    points = np.random.rand(100, 3)
+    depth_img = points2depth_img(points)
+    ```
+    If you want to specify the size of the depth image, you can do:
+    ```
+    depth_img = points2depth_img(points, H=64, W=256)
+    ```
+    If FOV is not specified, it will be computed from the points.
+    You can specify the FOV or the shape of the depth image.
+    """
+    assert len(x) == len(y) == len(z)
+
+    points = np.stack([x, y, z], axis=1)
+    depth = np.linalg.norm(points, axis=1)
+    elev = np.arctan2(z, np.sqrt(x ** 2 + y ** 2))
+    azim = -np.arctan2(y, x)
+
+    if fov_up is None:
+        fov_up = elev.max()
+    if fov_down is None:
+        fov_down = elev.min()
+    if fov_left is None:
+        fov_left = azim.min()
+    if fov_right is None:
+        fov_right = azim.max()
+
+    if H is None or W is None:
+        n_bins = int((fov_up - fov_down) / ang_res)
+        n_cols = int((fov_right - fov_left) / ang_res)
+    else:
+        n_bins, n_cols = H, W
+
+    depth_img = np.zeros((n_bins, n_cols))
+    azim_bins = np.digitize(azim, np.linspace(fov_left, fov_right, n_cols)) - 1  # 0-based
+    elev_bins = np.digitize(elev, np.linspace(fov_down, fov_up, n_bins)) - 1
+
+    depth_img[elev_bins, azim_bins] = depth
+
+    return depth_img

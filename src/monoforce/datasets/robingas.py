@@ -38,6 +38,7 @@ __all__ = [
     'RobinGasBase',
     'RobinGas',
     'RobinGasPoints',
+    'RobinGasDepth',
     'robingas_seq_paths',
 ]
 
@@ -535,11 +536,11 @@ class RobinGas(RobinGasBase):
             post_rots.append(post_rot)
             post_trans.append(post_tran)
 
-        outputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
-                   torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
-        outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
+        inputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
+                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
 
-        return outputs
+        return inputs
 
     def seg_label_to_color(self, seg_label):
         coco_colors = [(np.array(color['color'])).tolist() for color in COCO_CATEGORIES] + [[0, 0, 0]]
@@ -776,6 +777,113 @@ class RobinGasPoints(RobinGas):
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         points = torch.as_tensor(position(self.get_cloud(i, points_source=self.points_source))).T
         return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, points
+
+
+class RobinGasDepth(RobinGas):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
+        super(RobinGasDepth, self).__init__(path, lss_cfg,
+                                            dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+
+    def get_depth_image(self, i, camera=None, points_source='lidar'):
+        if camera is None:
+            camera = self.cameras[0]
+        cloud = self.get_cloud(i, points_source=points_source)
+        points = position(cloud)
+
+        Tr_robot_cam = self.calib['transformations'][f'T_base_link__{camera}']['data']
+        Tr_robot_cam = np.asarray(Tr_robot_cam, dtype=np.float32).reshape((4, 4))
+        Tr_cam_robot = np.linalg.inv(Tr_robot_cam)
+        K = self.calib[camera]['camera_matrix']['data']
+        K = np.asarray(K, dtype=np.float32).reshape((3, 3))
+        H, W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+
+        points_cam = transform_cloud(points, Tr_cam_robot)
+        points_uv = (K @ points_cam.T).T
+        points_uv[:, :2] /= points_uv[:, 2][:, None]
+        fov_mask = (points_uv[:, 0] >= 0) & (points_uv[:, 0] < W) & (points_uv[:, 1] >= 0) & (points_uv[:, 1] < H) & \
+                   (points_cam[:, 2] > 0)
+        points_uv = points_uv[fov_mask]
+        points_cam = points_cam[fov_mask]
+
+        depth_img = np.zeros((H, W))
+        depth_img[points_uv[:, 1].astype(int), points_uv[:, 0].astype(int)] = points_cam[:, 2]
+
+        return depth_img, points_uv
+
+    def get_images_data(self, i, points_source='lidar'):
+        rgbds = []
+        rots = []
+        trans = []
+        post_rots = []
+        post_trans = []
+        intrins = []
+
+        for cam in self.cameras:
+            rgb, K = self.get_image(i, cam, undistort=False)
+            depth, _ = self.get_depth_image(i, cam, points_source=points_source)
+            depth = Image.fromarray(depth)
+
+            post_rot = torch.eye(2)
+            post_tran = torch.zeros(2)
+
+            # augmentation (resize, crop, horizontal flip, rotate)
+            resize, resize_dims, crop, flip, rotate = sample_augmentation(self.lss_cfg, is_train=self.is_train)
+            rgb, post_rot2, post_tran2 = img_transform(rgb, post_rot, post_tran,
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate)
+            depth = img_transform(depth, post_rot, post_tran,
+                                  resize=resize,
+                                  resize_dims=resize_dims,
+                                  crop=crop,
+                                  flip=flip,
+                                  rotate=rotate)[0]
+
+            # for convenience, make augmentation matrices 3x3
+            post_tran = torch.zeros(3)
+            post_rot = torch.eye(3)
+            post_tran[:2] = post_tran2
+            post_rot[:2, :2] = post_rot2
+
+            # rgb and intrinsics
+            rgb = normalize_img(rgb)
+            K = torch.as_tensor(K)
+
+            # rgb and depth
+            rgb = torch.as_tensor(rgb)
+            depth = torch.as_tensor(np.asarray(depth)[None])
+            rgbd = torch.cat((rgb, depth), dim=0)
+
+            # extrinsics
+            T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+            rot = torch.as_tensor(T_robot_cam[:3, :3])
+            tran = torch.as_tensor(T_robot_cam[:3, 3])
+
+            rgbds.append(rgbd)
+            rots.append(rot)
+            trans.append(tran)
+            intrins.append(K)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+
+        inputs = [torch.stack(rgbds), torch.stack(rots), torch.stack(trans),
+                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+
+        return inputs
+
+    def get_sample(self, i):
+        rgbd, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i, points_source='radar')
+        hm_geom = self.get_geom_height_map(i, points_source='lidar')
+        hm_terrain = self.get_terrain_height_map(i, points_source='lidar')
+        if self.only_front_cam:
+            mask = self.front_height_map_mask()
+            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
+            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
+        return rgbd, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
 
 
 def heightmap_demo():
