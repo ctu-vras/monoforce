@@ -121,7 +121,8 @@ def load_calib(calib_path):
         transforms = yaml.load(f, Loader=yaml.FullLoader)
     f.close()
     calib['transformations'] = transforms
-    calib['clearance'] = np.abs(np.asarray(calib['transformations']['T_base_link__base_footprint']['data'], dtype=np.float32).reshape((4, 4))[2, 3])
+    T = np.asarray(calib['transformations']['T_base_link__base_footprint']['data'], dtype=np.float32).reshape((4, 4))
+    calib['clearance'] = np.abs(T[2, 3])
 
     return calib
 
@@ -207,12 +208,12 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
             # plot height maps
             ax = plt.subplot(gs[:, -3:-2])
             plt.imshow(height_geom[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
+            # plt.axis('off')
             plt.colorbar()
 
             ax = plt.subplot(gs[:, -2:-1])
             plt.imshow(height_rigid[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
+            # plt.axis('off')
             plt.colorbar()
 
             if save:

@@ -14,8 +14,8 @@ from torch.utils.tensorboard import SummaryWriter
 from monoforce.models import RigidBodySoftTerrain, State
 from monoforce.models.lss.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets.robingas import RobinGasVis
-from monoforce.datasets.rellis3d import Rellis3DVis
+from monoforce.datasets.robingas import RobinGasPoints
+from monoforce.datasets.rellis3d import Rellis3DPoints
 from monoforce.config import DPhysConfig
 from monoforce.datasets import rellis3d_seq_paths, robingas_seq_paths
 from monoforce.utils import read_yaml, str2bool
@@ -51,10 +51,10 @@ class EvaluatorGeom:
         self.dataset = dataset
         if dataset == 'robingas':
             self.data_paths = robingas_seq_paths[robot]
-            self.DataClass = RobinGasVis
+            self.DataClass = RobinGasPoints
         elif dataset == 'rellis3d':
             self.data_paths = rellis3d_seq_paths
-            self.DataClass = Rellis3DVis
+            self.DataClass = Rellis3DPoints
         else:
             raise ValueError('Invalid dataset %s. Supported: rellis3d and robingas' % dataset)
         self.dphys_cfg = DPhysConfig()
@@ -183,18 +183,18 @@ class EvaluatorGeom:
 
         return all_seqs_mean_geom_loss, all_seqs_mean_rigid_loss
 
-    def get_states(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
+    def get_states(self, i: int, ds: Union[RobinGasPoints, Rellis3DPoints]):
         id = ds.ids[i] if self.dataset == 'rellis3d' else i
         states = ds.get_states_traj(id, start_from_zero=True)
         return states
 
-    def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
+    def get_height(self, i: int, ds: Union[RobinGasPoints, Rellis3DPoints]):
         id = ds.ids[i] if self.dataset == 'rellis3d' else i
         hm_geom = ds.get_geom_height_map(id)
         height = hm_geom[0]
         return height
 
-    def get_data(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
+    def get_data(self, i: int, ds: Union[RobinGasPoints, Rellis3DPoints]):
         """
         Get ground truth data sample from the dataset
 
@@ -427,7 +427,7 @@ class EvaluatorLSS(EvaluatorGeom):
         model.to(self.device)
         return model
 
-    def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
+    def get_height(self, i: int, ds: Union[RobinGasPoints, Rellis3DPoints]):
         sample = ds[i]
         imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = sample
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -457,7 +457,7 @@ class EvaluatorLSSGeom(EvaluatorLSS):
     def __init__(self, dphys_config_path, lss_config_path, dataset, robot, model_path):
         super().__init__(dphys_config_path, lss_config_path, dataset, robot, model_path)
 
-    def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
+    def get_height(self, i: int, ds: Union[RobinGasPoints, Rellis3DPoints]):
         sample = ds[i]
         imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = sample
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
@@ -483,7 +483,7 @@ class EvaluatorKKT(EvaluatorGeom):
         model.to(self.device)
         return model
 
-    def get_height(self, i: int, ds: Union[RobinGasVis, Rellis3DVis]):
+    def get_height(self, i: int, ds: Union[RobinGasPoints, Rellis3DPoints]):
         sample = ds[i]
         imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts = sample
         input = torch.as_tensor(hm_geom[None], device=self.device)

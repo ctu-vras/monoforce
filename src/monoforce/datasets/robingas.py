@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
-from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range
 from ..utils import position, timing, read_yaml
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
@@ -37,7 +37,8 @@ __all__ = [
     'data_dir',
     'RobinGasBase',
     'RobinGas',
-    'RobinGasVis',
+    'RobinGasPoints',
+    'RobinGasRGBD',
     'robingas_seq_paths',
 ]
 
@@ -68,10 +69,10 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-37-14_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-44-56_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),  # no radar
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
-        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-01-15-48-29_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-24-13-21-28_0'),
+        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-01-15-48-29_0'),  # localization must be fixed
+        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-24-13-21-28_0'),  # no radar
     ],
 }
 
@@ -115,8 +116,8 @@ class RobinGasBase(Dataset):
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
         # assert os.path.exists(self.cloud_path)
-        self.cloud_color_path = os.path.join(path, 'cloud_colors')
-        # assert os.path.exists(self.cloud_color_path)
+        self.radar_cloud_path = os.path.join(path, 'radar_clouds')
+        # assert os.path.exists(self.radar_cloud_path)
         self.traj_path = os.path.join(path, 'trajectories')
         # global pose of the robot (initial trajectory pose on a map) path (from SLAM)
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
@@ -250,7 +251,7 @@ class RobinGasBase(Dataset):
             cloud = cloud.reshape((-1,))
         return cloud
 
-    def get_cloud(self, i):
+    def get_lidar_cloud(self, i):
         cloud = self.get_raw_cloud(i)
         # remove nans from structured array with fields x, y, z
         cloud = cloud[~np.isnan(cloud['x'])]
@@ -259,6 +260,39 @@ class RobinGasBase(Dataset):
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
         return cloud
+    
+    def get_raw_radar_cloud(self, i):
+        ind = self.ids[i]
+        cloud_path = os.path.join(self.radar_cloud_path, '%s.npz' % ind)
+        assert os.path.exists(cloud_path), f'Cloud path {cloud_path} does not exist'
+        cloud = np.load(cloud_path)['cloud']
+        if cloud.ndim == 2:
+            cloud = cloud.reshape((-1,))
+        return cloud
+    
+    def get_radar_cloud(self, i):
+        cloud = self.get_raw_radar_cloud(i)
+        # remove nans from structured array with fields x, y, z
+        cloud = cloud[~np.isnan(cloud['x'])]
+        # close by points contain noise
+        cloud = filter_range(cloud, 3.0, np.inf)
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__hugin_radar']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
+        return cloud
+
+    def get_cloud(self, i, points_source='lidar'):
+        assert points_source in ['lidar', 'radar', 'lidar_radar']
+        if points_source == 'lidar':
+            return self.get_lidar_cloud(i)
+        elif points_source == 'radar':
+            return self.get_radar_cloud(i)
+        else:
+            lidar_points = self.get_lidar_cloud(i)
+            radar_points = self.get_radar_cloud(i)
+            cloud = np.concatenate((lidar_points[['x', 'y', 'z']], radar_points[['x', 'y', 'z']]))
+            return cloud
 
     def get_traj_dphyics_terrain(self, i):
         ind = self.ids[i]
@@ -504,11 +538,11 @@ class RobinGas(RobinGasBase):
             post_rots.append(post_rot)
             post_trans.append(post_tran)
 
-        outputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
-                   torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
-        outputs = [torch.as_tensor(i, dtype=torch.float32) for i in outputs]
+        inputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
+                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
 
-        return outputs
+        return inputs
 
     def seg_label_to_color(self, seg_label):
         coco_colors = [(np.array(color['color'])).tolist() for color in COCO_CATEGORIES] + [[0, 0, 0]]
@@ -532,7 +566,7 @@ class RobinGas(RobinGasBase):
         seg = transform(seg)
         return seg
     
-    def get_semantic_cloud(self, i, classes=None, vis=False):
+    def get_semantic_cloud(self, i, classes=None, vis=False, points_source='lidar'):
         coco_classes = [i['name'].replace('-merged', '').replace('-other', '') for i in COCO_CATEGORIES] + ['void']
         if classes is None:
             classes = np.copy(coco_classes)
@@ -542,7 +576,7 @@ class RobinGas(RobinGasBase):
             if c in coco_classes:
                 selected_labels.append(coco_classes.index(c))
 
-        lidar_points = position(self.get_cloud(i))
+        lidar_points = position(self.get_cloud(i, points_source=points_source))
         points = []
         labels = []
         for cam in self.cameras[::-1]:
@@ -606,7 +640,7 @@ class RobinGas(RobinGasBase):
             o3d.visualization.draw_geometries([hm_pcd])
         return global_hm_cloud
 
-    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
+    def get_geom_height_map(self, i, cached=True, dir_name=None, points_source='lidar', **kwargs):
         """
         Get height map from lidar point cloud.
         :param i: index of the sample
@@ -621,7 +655,7 @@ class RobinGas(RobinGasBase):
         if cached and os.path.exists(file_path):
             lidar_hm = np.load(file_path, allow_pickle=True).item()
         else:
-            cloud = self.get_cloud(i)
+            cloud = self.get_cloud(i, points_source=points_source)
             points = position(cloud)
             lidar_hm = self.estimate_heightmap(points, **kwargs)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -631,7 +665,7 @@ class RobinGas(RobinGasBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None):
+    def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None, points_source='lidar'):
         """
         Get height map from trajectory points.
         :param i: index of the sample
@@ -674,7 +708,8 @@ class RobinGas(RobinGasBase):
             if cached and os.path.exists(file_path):
                 hm_rigid = np.load(file_path, allow_pickle=True).item()
             else:
-                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'], vis=False)
+                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
+                                                        points_source=points_source, vis=False)
                 traj_points = self.get_footprint_traj_points(i)
                 points = np.concatenate((seg_points, traj_points), axis=0)
                 hm_rigid = self.estimate_heightmap(points, robot_radius=None)
@@ -727,20 +762,131 @@ class RobinGas(RobinGasBase):
         return img, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
 
 
-class RobinGasVis(RobinGas):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
-        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+class RobinGasPoints(RobinGas):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False, points_source='lidar'):
+        super(RobinGasPoints, self).__init__(path, lss_cfg,
+                                             dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+        assert points_source in ['lidar', 'radar', 'lidar_radar']
+        self.points_source = points_source
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_height_map(i)
+        hm_geom = self.get_geom_height_map(i, points_source=self.points_source)
+        hm_terrain = self.get_terrain_height_map(i, points_source=self.points_source)
         if self.only_front_cam:
             mask = self.front_height_map_mask()
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        lidar_pts = torch.as_tensor(position(self.get_cloud(i))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, lidar_pts
+        points = torch.as_tensor(position(self.get_cloud(i, points_source=self.points_source))).T
+        return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, points
+
+
+class RobinGasRGBD(RobinGas):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
+        super(RobinGasRGBD, self).__init__(path, lss_cfg,
+                                           dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+
+    def get_depth_image(self, i, camera=None, points_source='lidar'):
+        if camera is None:
+            camera = self.cameras[0]
+        cloud = self.get_cloud(i, points_source=points_source)
+        points = position(cloud)
+
+        Tr_robot_cam = self.calib['transformations'][f'T_base_link__{camera}']['data']
+        Tr_robot_cam = np.asarray(Tr_robot_cam, dtype=np.float32).reshape((4, 4))
+        Tr_cam_robot = np.linalg.inv(Tr_robot_cam)
+        K = self.calib[camera]['camera_matrix']['data']
+        K = np.asarray(K, dtype=np.float32).reshape((3, 3))
+        H, W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+
+        points_cam = transform_cloud(points, Tr_cam_robot)
+        points_uv = (K @ points_cam.T).T
+        points_uv[:, :2] /= points_uv[:, 2][:, None]
+        fov_mask = ((points_uv[:, 0] >= 0) & (points_uv[:, 0] < W) &
+                    (points_uv[:, 1] >= 0) & (points_uv[:, 1] < H) &
+                    (points_cam[:, 2] > 0))
+        points_uv = points_uv[fov_mask]
+        points_cam = points_cam[fov_mask]
+
+        depth_img = np.zeros((H, W))
+        depth_img[points_uv[:, 1].astype(int), points_uv[:, 0].astype(int)] = points_cam[:, 2]
+
+        return depth_img, points_uv
+
+    def get_images_data(self, i, points_source='lidar'):
+        rgbds = []
+        rots = []
+        trans = []
+        post_rots = []
+        post_trans = []
+        intrins = []
+
+        for cam in self.cameras:
+            rgb, K = self.get_image(i, cam, undistort=False)
+            depth, _ = self.get_depth_image(i, cam, points_source=points_source)
+            depth = Image.fromarray(depth)
+
+            post_rot = torch.eye(2)
+            post_tran = torch.zeros(2)
+
+            # augmentation (resize, crop, horizontal flip, rotate)
+            resize, resize_dims, crop, flip, rotate = sample_augmentation(self.lss_cfg, is_train=self.is_train)
+            rgb, post_rot2, post_tran2 = img_transform(rgb, post_rot, post_tran,
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate)
+            depth = img_transform(depth, post_rot, post_tran,
+                                  resize=resize,
+                                  resize_dims=resize_dims,
+                                  crop=crop,
+                                  flip=flip,
+                                  rotate=rotate)[0]
+
+            # for convenience, make augmentation matrices 3x3
+            post_tran = torch.zeros(3)
+            post_rot = torch.eye(3)
+            post_tran[:2] = post_tran2
+            post_rot[:2, :2] = post_rot2
+
+            # rgb and intrinsics
+            rgb = normalize_img(rgb)
+            K = torch.as_tensor(K)
+
+            # rgb and depth
+            rgb = torch.as_tensor(rgb)
+            depth = torch.as_tensor(np.asarray(depth).copy()[None])
+            rgbd = torch.cat((rgb, depth), dim=0)
+
+            # extrinsics
+            T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+            rot = torch.as_tensor(T_robot_cam[:3, :3])
+            tran = torch.as_tensor(T_robot_cam[:3, 3])
+
+            rgbds.append(rgbd)
+            rots.append(rot)
+            trans.append(tran)
+            intrins.append(K)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+
+        inputs = [torch.stack(rgbds), torch.stack(rots), torch.stack(trans),
+                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+
+        return inputs
+
+    def get_sample(self, i):
+        rgbd, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i, points_source='radar')
+        hm_geom = self.get_geom_height_map(i, points_source='lidar')
+        hm_terrain = self.get_terrain_height_map(i, points_source='lidar')
+        if self.only_front_cam:
+            mask = self.front_height_map_mask()
+            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
+            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
+        return rgbd, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
 
 
 def heightmap_demo():
