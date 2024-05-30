@@ -18,5 +18,6 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
         --robot $ROBOT \
         --dphys_cfg_path ../config/dphys_cfg.yaml \
         --lss_cfg_path ../config/lss_cfg_$ROBOT.yaml \
-	      --only_front_cam ${ONLY_FRONT_CAM} \
+        --only_front_cam ${ONLY_FRONT_CAM} \
         --pretrained_model_path ${WEIGHTS}
+
