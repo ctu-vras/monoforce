@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
-from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range
 from ..utils import position, timing, read_yaml
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
@@ -274,6 +274,8 @@ class RobinGasBase(Dataset):
         cloud = self.get_raw_radar_cloud(i)
         # remove nans from structured array with fields x, y, z
         cloud = cloud[~np.isnan(cloud['x'])]
+        # close by points contain noise
+        cloud = filter_range(cloud, 3.0, np.inf)
         # move points to robot frame
         Tr = self.calib['transformations']['T_base_link__hugin_radar']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
