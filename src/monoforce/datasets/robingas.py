@@ -38,7 +38,7 @@ __all__ = [
     'RobinGasBase',
     'RobinGas',
     'RobinGasPoints',
-    'RobinGasDepth',
+    'RobinGasRGBD',
     'robingas_seq_paths',
 ]
 
@@ -779,10 +779,10 @@ class RobinGasPoints(RobinGas):
         return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, points
 
 
-class RobinGasDepth(RobinGas):
+class RobinGasRGBD(RobinGas):
     def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
-        super(RobinGasDepth, self).__init__(path, lss_cfg,
-                                            dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+        super(RobinGasRGBD, self).__init__(path, lss_cfg,
+                                           dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
 
     def get_depth_image(self, i, camera=None, points_source='lidar'):
         if camera is None:
@@ -800,8 +800,9 @@ class RobinGasDepth(RobinGas):
         points_cam = transform_cloud(points, Tr_cam_robot)
         points_uv = (K @ points_cam.T).T
         points_uv[:, :2] /= points_uv[:, 2][:, None]
-        fov_mask = (points_uv[:, 0] >= 0) & (points_uv[:, 0] < W) & (points_uv[:, 1] >= 0) & (points_uv[:, 1] < H) & \
-                   (points_cam[:, 2] > 0)
+        fov_mask = ((points_uv[:, 0] >= 0) & (points_uv[:, 0] < W) &
+                    (points_uv[:, 1] >= 0) & (points_uv[:, 1] < H) &
+                    (points_cam[:, 2] > 0))
         points_uv = points_uv[fov_mask]
         points_cam = points_cam[fov_mask]
 
@@ -853,7 +854,7 @@ class RobinGasDepth(RobinGas):
 
             # rgb and depth
             rgb = torch.as_tensor(rgb)
-            depth = torch.as_tensor(np.asarray(depth)[None])
+            depth = torch.as_tensor(np.asarray(depth).copy()[None])
             rgbd = torch.cat((rgb, depth), dim=0)
 
             # extrinsics

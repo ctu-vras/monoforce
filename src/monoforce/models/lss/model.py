@@ -34,12 +34,12 @@ class Up(nn.Module):
 
 
 class CamEncode(nn.Module):
-    def __init__(self, D, C, downsample):
+    def __init__(self, D, C, in_channels):
         super(CamEncode, self).__init__()
         self.D = D
         self.C = C
 
-        self.trunk = EfficientNet.from_pretrained("efficientnet-b0")
+        self.trunk = EfficientNet.from_pretrained("efficientnet-b0", in_channels=in_channels)
 
         self.up1 = Up(320+112, 512)
         self.depthnet = nn.Conv2d(512, self.D + self.C, kernel_size=1, padding=0)
@@ -148,7 +148,7 @@ class BevEncode(nn.Module):
 
 
 class LiftSplatShoot(nn.Module):
-    def __init__(self, grid_conf, data_aug_conf, outC):
+    def __init__(self, grid_conf, data_aug_conf, inpC=3, outC=1):
         super(LiftSplatShoot, self).__init__()
         self.grid_conf = grid_conf
         self.data_aug_conf = data_aug_conf
@@ -165,7 +165,7 @@ class LiftSplatShoot(nn.Module):
         self.camC = 64
         self.frustum = self.create_frustum()
         self.D, _, _, _ = self.frustum.shape
-        self.camencode = CamEncode(self.D, self.camC, self.downsample)
+        self.camencode = CamEncode(self.D, self.camC, in_channels=inpC)
         self.bevencode = BevEncode(inC=self.camC, outC=outC)
 
         # toggle using QuickCumsum vs. autograd
@@ -277,5 +277,5 @@ class LiftSplatShoot(nn.Module):
         return x
 
 
-def compile_model(grid_conf, data_aug_conf, outC):
-    return LiftSplatShoot(grid_conf, data_aug_conf, outC)
+def compile_model(grid_conf, data_aug_conf, inpC=3, outC=1):
+    return LiftSplatShoot(grid_conf, data_aug_conf, inpC, outC)

@@ -2,6 +2,7 @@
 
 ROBOT=husky_oru
 DATASET=robingas
+INPUT_TYPE=rgb
 ONLY_FRONT_CAM=True
 DEBUG=False
 VIS=False
@@ -15,6 +16,7 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
         --debug $DEBUG --vis $VIS \
         --geom_hm_weight 1.0 --terrain_hm_weight 100.0 --hdiff_weight 1e-6 \
         --dataset $DATASET \
+        --input_type $INPUT_TYPE \
         --robot $ROBOT \
         --dphys_cfg_path ../config/dphys_cfg.yaml \
         --lss_cfg_path ../config/lss_cfg_$ROBOT.yaml \
