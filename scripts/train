@@ -116,7 +116,7 @@ class Trainer:
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'lss_{dataset}_{robot}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+                                    f'lss_{dataset}_{robot}_{input_type}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir

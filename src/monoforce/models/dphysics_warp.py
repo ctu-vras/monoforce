@@ -245,7 +245,7 @@ def update_flipper_contacts(flipper_centers: wp.array(dtype=wp.vec3), flipper_an
 class RenderingState:
     body_q = None
 
-class TrackSimulator:
+class DiffSim:
     contacts_per_track = 3
     use_flippers = True
     dt = 0.001

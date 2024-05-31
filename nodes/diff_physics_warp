@@ -11,7 +11,7 @@ from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
-from monoforce.models.dphysics_warp import TrackSimulator, Heightmap
+from monoforce.models.dphysics_warp import DiffSim, Heightmap
 from monoforce.utils import normalize
 import warp as wp
 
@@ -107,7 +107,7 @@ class DiffPhysicsWarp:
         np_heights = [height for _ in range(self.n_sim_trajs)]
         res = [self.grid_res for _ in range(self.n_sim_trajs)]
         # create simulator
-        simulator = TrackSimulator(np_heights, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
+        simulator = DiffSim(np_heights, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
         simulator.set_control(self.track_vels, self.flipper_angles)
         simulator.set_init_poses(self.poses0)
         rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
