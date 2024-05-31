@@ -650,7 +650,7 @@ class RobinGas(RobinGasBase):
         :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'lidar')
+            dir_name = os.path.join(self.path, f'terrain_{2*self.dphys_cfg.d_max}x{2*self.dphys_cfg.d_max}', 'lidar')
         file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
         if cached and os.path.exists(file_path):
             lidar_hm = np.load(file_path, allow_pickle=True).item()
