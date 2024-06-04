@@ -1,0 +1,149 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import rospy
+from grid_map_msgs.msg import GridMap
+from monoforce.config import DPhysConfig
+from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.transformations import transform_cloud
+from monoforce.utils import position
+from ros_numpy import numpify, msgify
+from sensor_msgs.msg import PointCloud2
+import rospkg
+import tf2_ros
+from time import time
+from scipy.spatial import cKDTree
+
+pkg_path = rospkg.RosPack().get_path('monoforce')
+
+
+class HeightMapsMerger:
+    def __init__(self, cfg: DPhysConfig,
+                 hm_topic='height',
+                 robot_frame='base_link',
+                 map_frame='map'):
+        self.cfg = cfg
+        self.robot_frame = robot_frame
+        self.map_frame = map_frame
+
+        # tf buffer
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        # point cloud publisher
+        self.hm_cloud_pub = rospy.Publisher('/height_map_merged', PointCloud2, queue_size=1)
+        # grid map publisher
+        self.hm_grid_pub = rospy.Publisher('/grid_map_merged/terrain', GridMap, queue_size=1)
+
+        # max message delay
+        self.max_age = rospy.get_param('~max_age', 1.0)
+        
+        self.local_cloud = None
+
+        # heightmap subscriber
+        self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback, queue_size=1)
+
+    def get_map_pose(self, frame, stamp=None):
+        if stamp is None:
+            stamp = rospy.Time(0)
+        try:
+            tf = self.tf_buffer.lookup_transform(self.map_frame, frame, stamp, rospy.Duration(1.0))
+        except Exception as ex:
+            rospy.logerr('Could not transform from %s to %s: %s.', frame, self.map_frame, ex)
+            return None
+        pose = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        return pose
+
+    def hm_callback(self, msg):
+        assert isinstance(msg, PointCloud2)
+        # if message is stale do not process it
+        dt = rospy.Time.now() - msg.header.stamp
+        if dt.to_sec() > self.max_age:
+            rospy.logdebug(
+                f'Stale image messages received ({dt.to_sec():.3f} > {self.max_age} [sec]), skipping')
+            return
+
+        cloud = numpify(msg)
+        if cloud.ndim > 1:
+            cloud = cloud.ravel()
+
+        # transform cloud to map frame
+        pose = self.get_map_pose(msg.header.frame_id)
+        cloud = transform_cloud(cloud, pose)
+
+        # merge heightmaps
+        if self.local_cloud is None:
+            self.local_cloud = cloud
+        else:
+            self.merge_heightmaps(cloud)
+
+        H, W = int(2 * self.cfg.d_max / self.cfg.grid_res), int(2 * self.cfg.d_max / self.cfg.grid_res)
+        height = self.local_cloud['z'].reshape(H, W)
+        rospy.logdebug('Merged heightmap shape: %s', height.shape)
+
+        # publish heightmap as point cloud
+        stamp = rospy.Time.now()
+        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res)
+        cloud_msg.header.stamp = stamp
+        cloud_msg.header.frame_id = self.robot_frame
+        self.hm_cloud_pub.publish(cloud_msg)
+
+        # publish heightmap as grid map
+        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res)
+        grid_msg.info.header.stamp = stamp
+        grid_msg.info.header.frame_id = self.robot_frame
+        self.hm_grid_pub.publish(grid_msg)
+
+    def merge_heightmaps(self, cloud):
+        """
+        Ones new cloud is received, find the overlapping region with the existing cloud and merge them
+        """
+        # find overlapping region
+        tree = cKDTree(position(self.local_cloud))
+        points = position(cloud)
+        dists, idxs = tree.query(points, k=1)
+        common_points_mask = dists <= self.cfg.grid_res
+        if not np.any(common_points_mask):
+            rospy.logdebug('No common points found')
+            return
+
+        X = cloud['x']
+        Y = cloud['y']
+        Z = cloud['z']
+        # update heightmap
+        Z_old = self.local_cloud[idxs[common_points_mask]]['z']
+        Z_new = Z[common_points_mask]
+        Z[common_points_mask] = np.mean([Z_old, Z_new], axis=0)
+        assert len(X) == len(Y) == len(Z), 'Invalid cloud shape'
+
+        # update local cloud
+        self.local_cloud['x'] = X
+        self.local_cloud['y'] = Y
+        self.local_cloud['z'] = Z
+        rospy.logdebug('Merged cloud shape: %s', self.local_cloud.shape)
+    
+    def spin(self):
+        try:
+            rospy.spin()
+        except KeyboardInterrupt:
+            print('Shutting down')
+    
+
+def main():
+    rospy.init_node('hms_merger', anonymous=True, log_level=rospy.DEBUG)
+
+    cfg = DPhysConfig()
+    config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    cfg.from_yaml(config_path)
+
+    hm_topic = rospy.get_param('~hm_topic', '/height_map')
+    robot_frame = rospy.get_param('~robot_frame', 'base_link')
+    map_frame = rospy.get_param('~map_frame', 'map')
+    node = HeightMapsMerger(cfg=cfg, hm_topic=hm_topic, robot_frame=robot_frame, map_frame=map_frame)
+    node.spin()
+
+
+if __name__ == '__main__':
+    main()

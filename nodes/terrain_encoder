@@ -61,7 +61,7 @@ class LSS:
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         # grid map publisher
-        self.hm_rigid_pub = rospy.Publisher('/grid_map/rigid', GridMap, queue_size=1)
+        self.hm_rigid_pub = rospy.Publisher('/grid_map/terrain', GridMap, queue_size=1)
 
         # height map publisher
         self.hm_pub = rospy.Publisher('/height_map', PointCloud2, queue_size=1)

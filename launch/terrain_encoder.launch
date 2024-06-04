@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="img_topics" default="[]"/>
+    <arg name="output_topic" default="height_map"/>
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
     <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
@@ -26,5 +27,6 @@
             n_cams: $(arg n_cams)
             debug: false
         </rosparam>
+        <remap from="height_map" to="$(arg output_topic)"/>
     </node>
 </launch>

@@ -29,16 +29,12 @@ class HeightMapEstimator:
         self.ground_frame = ground_frame
         self.robot_clearance= None
 
-        # cv bridge
-        self.cv_bridge = CvBridge()
         # tf buffer
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
 
-        # height map publisher
-        self.hm_img_pub = rospy.Publisher('/height_map/image', Image, queue_size=1)
         # point cloud publisher
-        self.hm_cloud_pub = rospy.Publisher('/height_map/points', PointCloud2, queue_size=1)
+        self.hm_cloud_pub = rospy.Publisher('/height_map', PointCloud2, queue_size=1)
         # grid map publisher
         self.hm_grid_pub = rospy.Publisher('/grid_map/terrain', GridMap, queue_size=1)
 
@@ -155,7 +151,7 @@ class HeightMapEstimator:
 
 
 def main():
-    rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.DEBUG)
+    rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.INFO)
 
     cfg = DPhysConfig()
     config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
