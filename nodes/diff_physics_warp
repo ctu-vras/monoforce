@@ -34,6 +34,7 @@ class DiffPhysicsWarp:
                  total_sim_time=5.0,
                  linear_vel=0.5,
                  angular_vel_max=0.5,
+                 allow_backward=True,
                  device='cpu'):
         self.robot = robot
         self.robot_clearance = robot_clearance
@@ -49,7 +50,7 @@ class DiffPhysicsWarp:
         self.path_lock = RLock()
         
         self.poses0 = self.init_poses()
-        self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max)
+        self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max, allow_backward)
         height = np.zeros((int(hm_dims[0] / grid_res), int(hm_dims[1] / grid_res)), dtype=np.float32)
         self.simulator = self.init_simulator(height)
 
@@ -71,7 +72,7 @@ class DiffPhysicsWarp:
         poses0[:, 6] = 1.0  # quaternion w
         return poses0
 
-    def init_controls(self, linear_vel, angular_vel_max):
+    def init_controls(self, linear_vel, angular_vel_max, allow_backward=True):
         """
         Initialize control commands through input linear and angular velocities.
         The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
@@ -84,7 +85,11 @@ class DiffPhysicsWarp:
         """
         T = self.n_sim_steps
         assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
-        vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)), linear_vel * np.ones((self.n_sim_trajs // 2, T))])
+        if allow_backward:
+            vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)),
+                                   linear_vel * np.ones((self.n_sim_trajs // 2, T))])
+        else:
+            vels = linear_vel * np.ones((self.n_sim_trajs, T))
         omegas = np.concatenate([np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
                                  np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)])
 
@@ -244,6 +249,7 @@ def main():
     max_age = rospy.get_param('~max_age', 0.5)
     total_sim_time = rospy.get_param('~total_sim_time', 10.0)
     n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
+    allow_backward = rospy.get_param('~allow_backward', True)
     device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
     node = DiffPhysicsWarp(robot=robot, robot_clearance=robot_clearance,
@@ -251,6 +257,7 @@ def main():
                            max_age=max_age,
                            total_sim_time=total_sim_time,
                            n_sim_trajs=n_sim_trajs,
+                           allow_backward=allow_backward,
                            device=device)
     node.spin()
 

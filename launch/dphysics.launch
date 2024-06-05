@@ -29,6 +29,7 @@
             max_age: $(arg max_age)
             total_sim_time: $(arg total_sim_time)
             n_sim_trajs: 40
+            allow_backward: true
             device: $(arg device)
         </rosparam>
     </node>

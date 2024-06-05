@@ -39,7 +39,7 @@ class HeightMapsMerger:
         # max message delay
         self.max_age = rospy.get_param('~max_age', 1.0)
         
-        self.local_cloud = None
+        self.merged_cloud = None
 
         # heightmap subscriber
         self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback, queue_size=1)
@@ -60,8 +60,7 @@ class HeightMapsMerger:
         # if message is stale do not process it
         dt = rospy.Time.now() - msg.header.stamp
         if dt.to_sec() > self.max_age:
-            rospy.logdebug(
-                f'Stale image messages received ({dt.to_sec():.3f} > {self.max_age} [sec]), skipping')
+            rospy.logwarn(f'Stale heightmap messages received ({dt.to_sec():.3f} > {self.max_age} [sec]), skipping')
             return
 
         cloud = numpify(msg)
@@ -73,13 +72,13 @@ class HeightMapsMerger:
         cloud = transform_cloud(cloud, pose)
 
         # merge heightmaps
-        if self.local_cloud is None:
-            self.local_cloud = cloud
+        if self.merged_cloud is None:
+            self.merged_cloud = cloud
         else:
             self.merge_heightmaps(cloud)
 
         H, W = int(2 * self.cfg.d_max / self.cfg.grid_res), int(2 * self.cfg.d_max / self.cfg.grid_res)
-        height = self.local_cloud['z'].reshape(H, W)
+        height = self.merged_cloud['z'].reshape(H, W).T
         rospy.logdebug('Merged heightmap shape: %s', height.shape)
 
         # publish heightmap as point cloud
@@ -100,10 +99,11 @@ class HeightMapsMerger:
         Ones new cloud is received, find the overlapping region with the existing cloud and merge them
         """
         # find overlapping region
-        tree = cKDTree(position(self.local_cloud))
+        tree = cKDTree(position(self.merged_cloud)[:, :2])
         points = position(cloud)
-        dists, idxs = tree.query(points, k=1)
-        common_points_mask = dists <= self.cfg.grid_res
+        dists, idxs = tree.query(points[:, :2], k=1)
+        common_points_mask = dists <= self.cfg.grid_res / 2.
+        rospy.logdebug('Common points ratio: %s', np.mean(common_points_mask))
         if not np.any(common_points_mask):
             rospy.logdebug('No common points found')
             return
@@ -112,16 +112,16 @@ class HeightMapsMerger:
         Y = cloud['y']
         Z = cloud['z']
         # update heightmap
-        Z_old = self.local_cloud[idxs[common_points_mask]]['z']
+        Z_old = self.merged_cloud[idxs[common_points_mask]]['z']
         Z_new = Z[common_points_mask]
         Z[common_points_mask] = np.mean([Z_old, Z_new], axis=0)
         assert len(X) == len(Y) == len(Z), 'Invalid cloud shape'
 
         # update local cloud
-        self.local_cloud['x'] = X
-        self.local_cloud['y'] = Y
-        self.local_cloud['z'] = Z
-        rospy.logdebug('Merged cloud shape: %s', self.local_cloud.shape)
+        self.merged_cloud['x'] = X
+        self.merged_cloud['y'] = Y
+        self.merged_cloud['z'] = Z
+        rospy.logdebug('Merged cloud shape: %s', self.merged_cloud.shape)
     
     def spin(self):
         try:
