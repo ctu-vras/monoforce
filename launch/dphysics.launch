@@ -16,7 +16,7 @@
             hm_topic: $(arg hm_topic)
             hm_frame: $(arg hm_frame)
             linear_vels: [0.5, 0.5, 0.5, -0.4]
-            angular_vels: [0.0, 0.3, -0.3, 0.0]
+            angular_vels: [0.0, 0.2, -0.2, 0.0]
             total_sim_time: $(arg total_sim_time)
             max_age: $(arg max_age)
         </rosparam>
