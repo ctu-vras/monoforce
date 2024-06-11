@@ -26,7 +26,6 @@ scipy==1.8.1
 torchdiffeq==0.2.3
 pyquaternion==0.9.9
 tensorboardX==2.4
-numpy<1.24.0
+numpy==1.23.5
 pycryptodomex==3.20.0
 tensorboard==2.14.0
-warp-lang

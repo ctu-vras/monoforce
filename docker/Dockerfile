@@ -36,6 +36,9 @@ ENV CATKIN_WS /root/catkin_ws
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
+# NVIDIA Warp
+RUN pip install https://github.com/NVIDIA/warp/releases/download/v1.0.2/warp_lang-1.0.2-py3-none-manylinux2014_x86_64.whl
+
 # Set python3 as default
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
