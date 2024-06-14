@@ -50,7 +50,8 @@ class DiffPhysicsWarp:
         self.path_lock = RLock()
         
         self.poses0 = self.init_poses()
-        self.track_vels, self.flipper_angles = self.init_controls(linear_vel, angular_vel_max, allow_backward)
+        self.track_vels = self.init_controls(linear_vel, angular_vel_max, allow_backward)
+        self.flipper_angles = self.init_flippers()
         height = np.zeros((int(hm_dims[0] / grid_res), int(hm_dims[1] / grid_res)), dtype=np.float32)
         self.simulator = self.init_simulator(height)
 
@@ -99,10 +100,20 @@ class DiffPhysicsWarp:
             v_r = vels[i] + r * omegas[i]
             v_l = vels[i] - r * omegas[i]
             track_vels[i, :, 0], track_vels[i, :, 1] = v_r, v_l
-        flipper_angles = np.zeros((self.n_sim_trajs, T, 4))
+
+        # control input to rotate 180 degrees
+        track_vels[-1, :, 0] = -linear_vel
+        track_vels[-1, :, 1] = linear_vel
+
+        return track_vels
+
+    def init_flippers(self):
+        """
+        Initialize flipper angles.
+        """
+        flipper_angles = np.zeros((self.n_sim_trajs, self.n_sim_steps, 4))
         # flipper_angles[0, :, 0] = 0.5
-        
-        return track_vels, flipper_angles
+        return flipper_angles
 
     def init_simulator(self, height):
         """
