@@ -118,15 +118,6 @@ class DiffPhysicsWarp:
         rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
         return simulator
 
-    def update_heightmap(self, height):
-        t_start = time()
-        assert self.simulator.n_robots == self.n_sim_trajs
-        n = self.n_sim_trajs
-        for traj_idx in range(n):
-            self.simulator.heightmap_list[traj_idx].heights.assign(height)
-        self.simulator.heightmap_array = wp.array(self.simulator.heightmap_list, dtype=Heightmap, device=self.device)
-        rospy.logdebug('Height map update took %.3f [sec]' % (time() - t_start))
-
     def hm_callback(self, msg):
         assert isinstance(msg, PointCloud2)
         # if message is stale do not process it
@@ -144,20 +135,22 @@ class DiffPhysicsWarp:
 
         # predict path
         with self.path_lock:
-            xyz_q_np, path_costs = self.predict_paths(height, unfeasible_path_length=10.0)
+            xyz_q_np, path_costs = self.predict_paths(height, unfeasible_path_length=100.)
             # publish paths
             if xyz_q_np is not None:
                 t_start = time()
                 self.publish_paths(xyz_q_np, path_costs, stamp=rospy.Time.now())
                 rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t_start))
 
-    def predict_paths(self, height, unfeasible_path_length=100.0):
+    def predict_paths(self, height, unfeasible_path_length=np.inf):
         assert isinstance(height, np.ndarray)
         assert height.shape[0] == height.shape[1]
         
         # simulate trajectories
         t_start = time()
-        self.update_heightmap(height)
+        heights = [height for _ in range(self.n_sim_trajs)]
+        # TODO: does not work with CUDA, warp simulation breaks
+        self.simulator.update_heightmaps(heights)
         xyz_q = self.simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
         rospy.loginfo('Simulation took %.3f [sec]' % (time() - t_start))
 
