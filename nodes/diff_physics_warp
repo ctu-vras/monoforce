@@ -101,9 +101,10 @@ class DiffPhysicsWarp:
             v_l = vels[i] - r * omegas[i]
             track_vels[i, :, 0], track_vels[i, :, 1] = v_r, v_l
 
-        # control input to rotate 180 degrees
-        track_vels[-1, :, 0] = -linear_vel
-        track_vels[-1, :, 1] = linear_vel
+        if not allow_backward:
+            # control input to rotate 180 degrees
+            track_vels[-1, :, 0] = -linear_vel
+            track_vels[-1, :, 1] = linear_vel
 
         return track_vels
 
@@ -254,6 +255,8 @@ def main():
     total_sim_time = rospy.get_param('~total_sim_time', 10.0)
     n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
     allow_backward = rospy.get_param('~allow_backward', True)
+    linear_vel = rospy.get_param('~linear_vel', 0.5)
+    angular_vel_max = rospy.get_param('~angular_vel_max', 0.5)
     device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
     node = DiffPhysicsWarp(robot=robot, robot_clearance=robot_clearance,
@@ -262,6 +265,8 @@ def main():
                            total_sim_time=total_sim_time,
                            n_sim_trajs=n_sim_trajs,
                            allow_backward=allow_backward,
+                           linear_vel=linear_vel,
+                           angular_vel_max=angular_vel_max,
                            device=device)
     node.spin()
 

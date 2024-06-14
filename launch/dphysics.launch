@@ -15,8 +15,8 @@
             robot_clearance: 0.132
             hm_topic: $(arg hm_topic)
             hm_frame: $(arg hm_frame)
-            linear_vels: [0.5, 0.5, 0.5, -0.4]
-            angular_vels: [0.0, 0.3, -0.3, 0.0]
+            linear_vels: [0.5, 0.5, 0.5, -0.4, 0.0]
+            angular_vels: [0.0, 0.3, -0.3, 0.0, 0.2]
             total_sim_time: $(arg total_sim_time)
             max_age: $(arg max_age)
         </rosparam>
@@ -28,8 +28,10 @@
             hm_frame: $(arg hm_frame)
             max_age: $(arg max_age)
             total_sim_time: $(arg total_sim_time)
-            n_sim_trajs: 40
+            n_sim_trajs: 60
             allow_backward: true
+            linear_vel: 0.5
+            angular_vel_max: 0.6
             device: $(arg device)
         </rosparam>
     </node>
