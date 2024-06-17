@@ -89,7 +89,7 @@ Navigation consists of the following stages, [video](https://drive.google.com/fi
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
-Please, refer to [husky_sim](https://github.com/ctu-vras/husky_sim/tree/monoforce) package for the navigation example in
+Please, refer to [husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation example in
 [Gazebo](http://gazebosim.org/) simulator.
 
 ## Citation

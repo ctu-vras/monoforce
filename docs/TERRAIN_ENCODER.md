@@ -7,7 +7,7 @@ The demo video is available via the [link](https://drive.google.com/file/d/17GtA
 
 ### Training
 
-![](./imgs/terrain_encoder_training.png)
+![](./imgs/architecture_v3.png)
 
 1. Using the Differentiable Physics module, the terrain shape under the robot trajectory is optimized in order to match the ground-truth trajectory as closely as possible.
 2. The optimized terrain shape is used as a label to train the terrain shape predictor. This model takes as input an RGB-image and predicts the shape of the supporting terrain in front of a robot.

@@ -328,6 +328,13 @@ class DiffSim:
         if self.renderer is not None:
             self.renderer.clear()
 
+    def update_heightmaps(self, heights):
+        assert len(heights) == self.n_robots
+        n = self.n_robots
+        for traj_idx in range(n):
+            self.heightmap_list[traj_idx].heights.assign(heights[traj_idx])
+        self.heightmap_array = wp.array(self.heightmap_list, dtype=Heightmap, device=self.device)
+
     def set_control(self, control_np, flipper_angles_np):
         assert control_np.shape == (self.n_robots, self.T, 2)
         assert flipper_angles_np.shape == (self.n_robots, self.T, 4)

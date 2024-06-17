@@ -8,32 +8,49 @@
     <arg name="img_topics" default="[/ids_camera/image_raw/compressed]"/>
     <arg name="camera_info_topics" default="[/ids_camera/camera_info]"/>
     <!-- dphysics arguments -->
-    <arg name="diffphys" default="true" doc="Whether to run the diff physics node or not"/>
     <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
     <arg name="traj_sim_time" default="8.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
-    <arg name="max_age" default="1.0" doc="Maximum age of the height map messages in seconds"/>
 
-    <!-- Terrain Encoder (LSS) node -->
+    <!-- RGB Terrain Encoder -->
     <include file="$(dirname)/terrain_encoder.launch">
         <arg name="img_topics" value="$(arg img_topics)"/>
         <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
+        <arg name="output_topic" value="height_map"/>
         <arg name="hm_frame" value="base_link"/>
+        <arg name="max_msgs_delay" value="0.2"/>
+        <arg name="max_age" value="0.5"/>
+        <arg name="weights" value="$(arg weights)"/>
         <arg name="dphys_config_path" value="$(arg dphys_config_path)"/>
         <arg name="lss_config_path" value="$(arg lss_config_path)"/>
-        <arg name="weights" value="$(arg weights)"/>
-        <arg name="max_msgs_delay" value="0.1"/>
-        <arg name="max_age" value="0.2"/>
-<!--         <arg name="n_cams" value="1"/> -->
     </include>
 
-    <!-- Diff Physics node -->
-    <include if="$(arg diffphys)" file="$(find monoforce)/launch/dphysics.launch">
+    <!-- Lidar Terrain Encoder -->
+    <include if="0" file="$(dirname)/geom_hm_estimator.launch">
+        <arg name="pts_topics" value="[/points]"/>
+        <arg name="output_topic" value="height_map"/>
+    </include>
+
+    <!-- Averaging height map predictions -->
+    <node if="0" name="heightmaps_merger" pkg="monoforce" type="heightmaps_merger" output="screen">
+        <rosparam subst_value="true">
+            robot_frame: base_link
+            map_frame: map
+            hm_topic: height_map
+            max_age: 2.0
+        </rosparam>
+        <remap from="height_map_merged" to="height_map_merged"/>
+        <remap from="grid_map_merged/terrain" to="grid_map_merged/terrain"/>
+    </node>
+
+    <!-- Diff Physics: paths sampling -->
+    <include file="$(dirname)/dphysics.launch">
         <arg name="warp_dphys" value="$(arg warp_dphys)"/>
-        <arg name="robot" value="$(arg robot)"/>
-        <arg name="hm_topic" value="/height_map"/>
+        <arg name="robot" value="husky"/>
+        <arg name="hm_topic" value="height_map"/>
+<!--         <arg name="hm_topic" value="height_map_merged"/> -->
         <arg name="hm_frame" value="base_link"/>
-        <arg name="max_age" value="$(arg max_age)"/>
+        <arg name="max_age" value="2.0"/>
         <arg name="total_sim_time" value="$(arg traj_sim_time)"/>
         <arg name="device" value="$(arg device)"/>
     </include>
