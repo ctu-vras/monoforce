@@ -13,7 +13,7 @@
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
 
     <!-- RGB Terrain Encoder -->
-    <include file="$(dirname)/terrain_encoder.launch">
+    <include if="1" file="$(dirname)/terrain_encoder.launch">
         <arg name="img_topics" value="$(arg img_topics)"/>
         <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
         <arg name="output_topic" value="height_map"/>

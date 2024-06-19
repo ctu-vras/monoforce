@@ -217,13 +217,12 @@ class LSS:
                 f'Stale image messages received ({dt.to_sec():.3f} > {self.max_age} [sec]), skipping')
             return
 
-        t0 = time()
         with torch.no_grad():
             with self.proc_lock:
                 self.proc(*msgs)
-        rospy.logdebug('Processing time: %.3f [sec]' % (time() - t0))
 
     def proc(self, *msgs):
+        t0 = time()
         n = len(msgs)
         assert n % 2 == 0
         for i in range(n // 2):
@@ -238,8 +237,9 @@ class LSS:
         inputs = [i.to(self.device) for i in inputs]
 
         # model inference
+        t1 = time()
         height_pred_rigid = self.model(*inputs)
-
+        rospy.logdebug('LSS Processing time: %.3f [sec]' % (time() - t1))
         rospy.loginfo('Predicted height map shape: %s' % str(height_pred_rigid.shape))
 
         # publish height map as grid map
@@ -448,7 +448,7 @@ class LSSDebug(LSS):
 
 
 def main():
-    rospy.init_node('lss', anonymous=True)
+    rospy.init_node('lss', anonymous=True, log_level=rospy.DEBUG)
     pkg_path = rospkg.RosPack().get_path('monoforce')
 
     dphys_cfg = DPhysConfig()

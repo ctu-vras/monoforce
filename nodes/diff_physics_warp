@@ -164,7 +164,7 @@ class DiffPhysicsWarp:
         # TODO: does not work with CUDA, warp simulation breaks
         self.simulator.update_heightmaps(heights)
         xyz_q = self.simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
-        rospy.loginfo('Simulation took %.3f [sec]' % (time() - t_start))
+        rospy.loginfo('WARP Simulation took %.3f [sec]' % (time() - t_start))
 
         t_start = time()
         xyz_q_np = xyz_q.numpy()
