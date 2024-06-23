@@ -4,16 +4,15 @@ import os
 import numpy as np
 import rospy
 from grid_map_msgs.msg import GridMap
+from monoforce.cloudproc import merge_heightmaps
 from monoforce.config import DPhysConfig
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.transformations import transform_cloud
 from monoforce.utils import position
-from ros_numpy import numpify, msgify
+from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
 import rospkg
 import tf2_ros
-from time import time
-from scipy.spatial import cKDTree
 
 pkg_path = rospkg.RosPack().get_path('monoforce')
 
@@ -37,7 +36,7 @@ class HeightMapsMerger:
         # max message delay
         self.max_age = rospy.get_param('~max_age', 1.0)
         
-        self.merged_cloud = None
+        self.merged_points = None
 
         # heightmap subscriber
         self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback, queue_size=1)
@@ -68,15 +67,16 @@ class HeightMapsMerger:
         # transform cloud to map frame
         pose = self.get_map_pose(msg.header.frame_id)
         cloud = transform_cloud(cloud, pose)
+        points = position(cloud)
 
         # merge heightmaps
-        if self.merged_cloud is None:
-            self.merged_cloud = cloud
+        if self.merged_points is None:
+            self.merged_points = points.copy()
         else:
-            self.merge_heightmaps(cloud)
+            self.merged_points = merge_heightmaps(points.copy(), self.merged_points.copy(), self.cfg.grid_res)
 
         H, W = int(2 * self.cfg.d_max / self.cfg.grid_res), int(2 * self.cfg.d_max / self.cfg.grid_res)
-        height = self.merged_cloud['z'].reshape(H, W).T
+        height = self.merged_points[:, 2].reshape(H, W).T
         rospy.logdebug('Merged heightmap shape: %s', height.shape)
 
         # publish heightmap as grid map
@@ -86,35 +86,6 @@ class HeightMapsMerger:
         grid_msg.info.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(grid_msg)
 
-    def merge_heightmaps(self, cloud):
-        """
-        Ones new cloud is received, find the overlapping region with the existing cloud and merge them
-        """
-        # find overlapping region
-        tree = cKDTree(position(self.merged_cloud)[:, :2])
-        points = position(cloud)
-        dists, idxs = tree.query(points[:, :2], k=1)
-        common_points_mask = dists <= self.cfg.grid_res / 2.
-        rospy.logdebug('Common points ratio: %s', np.mean(common_points_mask))
-        if not np.any(common_points_mask):
-            rospy.logdebug('No common points found')
-            return
-
-        X = cloud['x']
-        Y = cloud['y']
-        Z = cloud['z']
-        # update heightmap
-        Z_old = self.merged_cloud[idxs[common_points_mask]]['z']
-        Z_new = Z[common_points_mask]
-        Z[common_points_mask] = np.mean([Z_old, Z_new], axis=0)
-        assert len(X) == len(Y) == len(Z), 'Invalid cloud shape'
-
-        # update local cloud
-        self.merged_cloud['x'] = X
-        self.merged_cloud['y'] = Y
-        self.merged_cloud['z'] = Z
-        rospy.logdebug('Merged cloud shape: %s', self.merged_cloud.shape)
-    
     def spin(self):
         try:
             rospy.spin()
