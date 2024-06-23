@@ -2,10 +2,9 @@
 <launch>
     <arg name="robot" default="husky" doc="Robot name"/>
     <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
-    <arg name="max_age" default="1.0" doc="Maximum allowed inout height map message age"/>
-    <arg name="hm_topic" default="height_map" doc="Input height map topic"/>
-    <arg name="hm_frame" default="base_link" doc="Height map tf frame"/>
-    <arg name="total_sim_time" default="6.0" doc="Simulation time horizon of the trajectories"/>
+    <arg name="gridmap_topic" default="height_map" doc="Input height map topic"/>
+    <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>
+    <arg name="traj_sim_time" default="10.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
 
     <!-- Diff Physics node -->
@@ -13,22 +12,22 @@
         <rosparam subst_value="true">
             robot: $(arg robot)
             robot_clearance: 0.132
-            hm_topic: $(arg hm_topic)
-            hm_frame: $(arg hm_frame)
+            gridmap_topic: $(arg gridmap_topic)
+            gridmap_frame: $(arg gridmap_frame)
             linear_vels: [0.5, 0.5, 0.5, -0.4, 0.0]
             angular_vels: [0.0, 0.3, -0.3, 0.0, 0.2]
-            total_sim_time: $(arg total_sim_time)
-            max_age: $(arg max_age)
+            traj_sim_time: $(arg traj_sim_time)
+            max_age: 2.0
         </rosparam>
     </node>
     <node if="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics_warp" output="screen">
         <rosparam subst_value="true">
             robot: $(arg robot)
-            hm_topic: $(arg hm_topic)
-            hm_frame: $(arg hm_frame)
-            max_age: $(arg max_age)
-            total_sim_time: $(arg total_sim_time)
-            n_sim_trajs: 60
+            gridmap_topic: $(arg gridmap_topic)
+            gridmap_frame: $(arg gridmap_frame)
+            max_age: 5.0
+            traj_sim_time: $(arg traj_sim_time)
+            n_sim_trajs: 40
             allow_backward: true
             linear_vel: 0.5
             angular_vel_max: 0.6

@@ -483,7 +483,7 @@ def test_closest_points():
     from .vis import set_axes_equal
 
     cfg = DPhysConfig()
-    cfg.total_sim_time = 3.
+    cfg.traj_sim_time = 3.
 
     # pts1 = np.random.uniform(-1, 1, (10, 3))
     # R = Rotation.from_euler('xyz', (0, 0, 30), degrees=True).as_matrix()
@@ -508,7 +508,7 @@ def test_closest_points():
                                   vel_tracks=np.array([2.5, 2.5]),
                                   use_ode=False)
 
-    tt = torch.linspace(0., cfg.total_sim_time, int(cfg.total_sim_time) * 100)
+    tt = torch.linspace(0., cfg.traj_sim_time, int(cfg.traj_sim_time) * 100)
     t0, st0 = system.get_initial_state()
     states = system.sim(st0, tt)
 

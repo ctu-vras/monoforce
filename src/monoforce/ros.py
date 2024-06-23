@@ -258,3 +258,22 @@ def xyz_to_point(xyz):
     point.y = xyz[1]
     point.z = xyz[2]
     return point
+
+
+def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
+    # Extract metadata
+    width = grid_map_msg.info.length_x / grid_map_msg.info.resolution
+    height = grid_map_msg.info.length_y / grid_map_msg.info.resolution
+    width = int(np.round(width))
+    height = int(np.round(height))
+
+    # Find the index of the layer
+    layer_index = grid_map_msg.layers.index(layer_name)
+
+    # Extract the data for the layer
+    height = np.array(grid_map_msg.data[layer_index].data, dtype=np.float32).reshape((height, width))
+
+    height = height.T
+    height = rotate(height, 180)
+
+    return height

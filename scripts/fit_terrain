@@ -113,7 +113,7 @@ def get_test_data(cfg: DPhysConfig):
     height = np.zeros((h, w))
 
     n_true_states = len(xyz_true)
-    tt_true = torch.linspace(0., cfg.total_sim_time, n_true_states)[None].T
+    tt_true = torch.linspace(0., cfg.traj_sim_time, n_true_states)[None].T
 
     dps = torch.diff(xyz_true, dim=0)
     dt = torch.diff(tt_true, dim=0)
@@ -160,7 +160,7 @@ def learn_terrain_omni(device='cpu', lr=0.03, n_train_iters=100):
 
     # put models with their params to device
     system = system.to(device)
-    tt = torch.linspace(0, dphys_cfg.total_sim_time, dphys_cfg.n_samples).to(device)
+    tt = torch.linspace(0, dphys_cfg.traj_sim_time, dphys_cfg.n_samples).to(device)
     s0 = system.state
     states = system.sim(s0, tt)
 
@@ -255,7 +255,7 @@ def learn_terrain_p_diffdrive(regularization=True, max_vel=np.inf, max_omega=np.
 
     # put models with their params to device
     system = system.to(device)
-    tt = torch.linspace(0, dphys_cfg.total_sim_time, dphys_cfg.n_samples).to(device)
+    tt = torch.linspace(0, dphys_cfg.traj_sim_time, dphys_cfg.n_samples).to(device)
     s0 = system.state
     states = system.sim(s0, tt)
 
@@ -391,7 +391,7 @@ def learn_terrain_cmd_vel(regularization=True, vis=True, device='cpu', lr=0.03, 
 
     # put models with their params to device
     system = system.to(device)
-    tt = torch.linspace(0, dphys_cfg.total_sim_time, dphys_cfg.n_samples).to(device)
+    tt = torch.linspace(0, dphys_cfg.traj_sim_time, dphys_cfg.n_samples).to(device)
     s0 = system.state
     states = system.sim(s0, tt)
 
@@ -517,7 +517,7 @@ def learn_terrain_p_track_vels(regularization=True, max_vel=np.inf, vis=True, de
 
     # put models with their params to device
     system = system.to(device)
-    tt = torch.linspace(0, dphys_cfg.total_sim_time, dphys_cfg.n_samples).to(device)
+    tt = torch.linspace(0, dphys_cfg.traj_sim_time, dphys_cfg.n_samples).to(device)
 
     """ Set-up visualization """
     if vis:

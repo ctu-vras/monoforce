@@ -35,7 +35,7 @@ motion_model: diffdrive
 rot_cost_weight: 1.0
 trans_cost_weight: 1.0
 sample_len: 10
-total_sim_time: 10.0
+traj_sim_time: 10.0
 vel_tracks:
 - 0.0
 - 0.0

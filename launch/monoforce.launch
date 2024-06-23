@@ -47,11 +47,9 @@
     <include file="$(dirname)/dphysics.launch">
         <arg name="warp_dphys" value="$(arg warp_dphys)"/>
         <arg name="robot" value="husky"/>
-        <arg name="hm_topic" value="height_map"/>
-<!--         <arg name="hm_topic" value="height_map_merged"/> -->
-        <arg name="hm_frame" value="base_link"/>
-        <arg name="max_age" value="2.0"/>
-        <arg name="total_sim_time" value="$(arg traj_sim_time)"/>
+        <arg name="gridmap_topic" value="grid_map/terrain"/>
+        <arg name="gridmap_frame" value="base_link"/>
+        <arg name="traj_sim_time" value="$(arg traj_sim_time)"/>
         <arg name="device" value="$(arg device)"/>
     </include>
 
