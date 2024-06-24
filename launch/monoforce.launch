@@ -32,14 +32,13 @@
     </include>
 
     <!-- Averaging height map predictions -->
-    <node if="0" name="heightmaps_merger" pkg="monoforce" type="heightmaps_merger" output="screen">
+    <node if="0" name="gridmaps_merger" pkg="monoforce" type="gridmaps_merger" output="screen">
         <rosparam subst_value="true">
             robot_frame: base_link
             map_frame: map
-            hm_topic: height_map
+            gridmap_topic: grid_map/terrain
             max_age: 2.0
         </rosparam>
-        <remap from="height_map_merged" to="height_map_merged"/>
         <remap from="grid_map_merged/terrain" to="grid_map_merged/terrain"/>
     </node>
 
@@ -48,6 +47,7 @@
         <arg name="warp_dphys" value="$(arg warp_dphys)"/>
         <arg name="robot" value="husky"/>
         <arg name="gridmap_topic" value="grid_map/terrain"/>
+<!--         <arg name="gridmap_topic" value="grid_map_merged/terrain"/> -->
         <arg name="gridmap_frame" value="base_link"/>
         <arg name="traj_sim_time" value="$(arg traj_sim_time)"/>
         <arg name="device" value="$(arg device)"/>
