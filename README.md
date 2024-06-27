@@ -79,8 +79,8 @@ The package is used as robot-terrain interaction and path planning pipeline.
 
 
 Trajectories prediction is based on the
-[NVIDIA-Warp](https://github.com/NVIDIA/warp) and
-[ParallelTrackSimulator](https://github.com/tichyt11/ParallelTrackSimulator)
+[NVIDIA/warp](https://github.com/NVIDIA/warp) and
+[ctu-vras/diffsim](https://github.com/ctu-vras/diffsim/tree/monoforce)
 packages.
 
 Navigation consists of the following stages, [video](https://drive.google.com/file/d/1OLnTtedNLX23HjNnXV7Sct_3xSFGxe2H/view?usp=sharing):
@@ -89,7 +89,7 @@ Navigation consists of the following stages, [video](https://drive.google.com/fi
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
-Please, refer to [husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation example in
+Please, refer to [ctu-vras/husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation example in
 [Gazebo](http://gazebosim.org/) simulator.
 
 ## Citation
