@@ -28,7 +28,7 @@
     <!-- Lidar Terrain Encoder -->
     <include if="0" file="$(dirname)/geom_hm_estimator.launch">
         <arg name="pts_topics" value="[/points]"/>
-        <arg name="output_topic" value="height_map"/>
+        <arg name="output_topic" value="grid_map/terrain"/>
     </include>
 
     <!-- Averaging height map predictions -->

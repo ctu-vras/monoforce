@@ -41,32 +41,27 @@ class RMSE:
             return loss
 
 
-def slerp(q1, q2, t, diff_thresh=0.9995):
+def slerp(q1, q2, t_interval, diff_thresh=0.9995):
     assert isinstance(q1, torch.Tensor) and isinstance(q2, torch.Tensor)
     assert q1.shape == q2.shape == (4,)
-    assert isinstance(t, torch.Tensor)
+    assert isinstance(t_interval, torch.Tensor)
     # https://en.wikipedia.org/wiki/Slerp#Quaternion_Slerp
-    #
-    # q1 = [w1, x1, y1, z1]
-    # q2 = [w2, x2, y2, z2]
-    # q3 = [w3, x3, y3, z3]
 
     # dot product
     dot = (q1 * q2).sum()
     # if q1 and q2 are close, use linear interpolation
     if dot > diff_thresh:
-        q3 = (q1[:, None] + t * (q2 - q1)[:, None]).T
+        q3 = (q1[:, None] + t_interval * (q2 - q1)[:, None]).T
         return q3 / torch.norm(q3)
     # if q1 and q2 are not close, use spherical interpolation
     theta_0 = torch.acos(dot)
-    theta = theta_0 * t
+    theta = theta_0 * t_interval
     sin_theta = torch.sin(theta)
     sin_theta_0 = torch.sin(theta_0)
     s0 = torch.cos(theta) - dot * sin_theta / sin_theta_0
     s1 = sin_theta / sin_theta_0
     q3 = s0[:, None] * q1 + s1[:, None] * q2
     return q3 / torch.norm(q3, dim=1, keepdim=True)
-
 
 def linear_interpolation(xyz_from, xyz_to, t_interval):
     assert isinstance(xyz_from, torch.Tensor) and isinstance(xyz_to, torch.Tensor)
@@ -76,16 +71,16 @@ def linear_interpolation(xyz_from, xyz_to, t_interval):
     xyz_interp = xyz_interp.reshape(N, 3, 1)
     return xyz_interp
 
-def interpolate_rotations(R_from, R_to, t, normalize_time=True):
+def interpolate_rotations(R_from, R_to, t_interval, normalize_time=True):
     assert isinstance(R_from, torch.Tensor) and isinstance(R_to, torch.Tensor)
     assert R_from.shape == R_to.shape == (3, 3)
-    assert isinstance(t, torch.Tensor)
+    assert isinstance(t_interval, torch.Tensor)
     if normalize_time:
-        t = t - t.min()
-        t = t / t.max()
+        t_interval = t_interval - t_interval.min()
+        t_interval = t_interval / t_interval.max()
     q1 = matrix_to_quaternion(R_from)
     q2 = matrix_to_quaternion(R_to)
-    q3 = slerp(q1, q2, t)
+    q3 = slerp(q1, q2, t_interval)
     return quaternion_to_matrix(q3)
 
 
