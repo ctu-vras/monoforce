@@ -80,7 +80,7 @@ The package is used as robot-terrain interaction and path planning pipeline.
 
 Trajectories prediction is based on the
 [NVIDIA/warp](https://github.com/NVIDIA/warp) and
-[ctu-vras/diffsim](https://github.com/ctu-vras/diffsim/tree/monoforce)
+[ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
 packages.
 
 Navigation consists of the following stages, [video](https://drive.google.com/file/d/1OLnTtedNLX23HjNnXV7Sct_3xSFGxe2H/view?usp=sharing):
