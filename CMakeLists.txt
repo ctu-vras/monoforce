@@ -24,7 +24,7 @@ install(
         nodes/play_tf_static
         nodes/monoforce
         nodes/geom_hm_estimator
-        nodes/heighmaps_merger
+        nodes/gridmaps_merger
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -60,7 +60,7 @@ def get_test_data():
     height = np.zeros((40, 40))
 
     n_true_states = len(xyz_true)
-    tt_true = torch.linspace(0., cfg.total_sim_time, n_true_states)[None].T
+    tt_true = torch.linspace(0., cfg.traj_sim_time, n_true_states)[None].T
 
     dps = torch.diff(xyz_true, dim=0)
     dt = torch.diff(tt_true, dim=0)
@@ -138,7 +138,7 @@ def no_feedback_control():
                                   motion_model='diffdrive')
 
     t0, s0 = 0., system.state
-    tt = torch.linspace(float(t0), cfg.total_sim_time, cfg.n_samples)
+    tt = torch.linspace(float(t0), cfg.traj_sim_time, cfg.n_samples)
     states = system.sim(s0, tt)
 
     vis_cfg = setup_visualization(system, states, cfg=cfg)
@@ -172,7 +172,7 @@ def p_control_omni():
     # put models with their params to cfg.device
     system = system.to(device)
     s0 = system.state
-    tt = torch.linspace(0, cfg.total_sim_time, cfg.n_samples).to(device)
+    tt = torch.linspace(0, cfg.traj_sim_time, cfg.n_samples).to(device)
     states = system.sim(s0, tt)
 
     """ Set-up visualization """
@@ -241,7 +241,7 @@ def p_control_diffdrive():
     # put models with their params to cfg.device
     system = system.to(device)
     s0 = system.state
-    tt = torch.linspace(0, cfg.total_sim_time, cfg.n_samples).to(device)
+    tt = torch.linspace(0, cfg.traj_sim_time, cfg.n_samples).to(device)
     states = system.sim(s0, tt)
 
     """ Set-up visualization """
@@ -516,7 +516,7 @@ def cmd_vel_diffdrive():
     # put models with their params to cfg.device
     system = system.to(device)
     s0 = system.state
-    tt = torch.linspace(0, cfg.total_sim_time, cfg.n_samples).to(device)
+    tt = torch.linspace(0, cfg.traj_sim_time, cfg.n_samples).to(device)
     states = system.sim(s0, tt)
 
     """ Set-up visualization """

@@ -66,7 +66,7 @@ class MonoForce:
         self.lss_config = read_yaml(self.lss_config_path)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if self.dphys_cfg.n_samples / self.dphys_cfg.total_sim_time != 100:
+        if self.dphys_cfg.n_samples / self.dphys_cfg.traj_sim_time != 100:
             raise 'Simulated time and number of predicted trajectory samples do not match the default rate of 100 Hz.'
         self.model_path = model_path
         self.model = self.load_model()
@@ -102,7 +102,7 @@ class MonoForce:
         if isinstance(height, torch.Tensor):
             height = height.squeeze().cpu().numpy()
         # constant linear and angular velocities as control inputs
-        tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
+        tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples)
         vs = v * torch.ones(self.dphys_cfg.n_samples)
         ws = w * torch.ones(self.dphys_cfg.n_samples)
         controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}

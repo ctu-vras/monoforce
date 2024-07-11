@@ -3,14 +3,13 @@
 import os
 import numpy as np
 import rospy
-from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.config import DPhysConfig
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.cloudproc import estimate_heightmap, filter_grid, filter_range
 from monoforce.utils import position
-from ros_numpy import numpify, msgify
-from sensor_msgs.msg import Image, CompressedImage, PointCloud2
+from ros_numpy import numpify
+from sensor_msgs.msg import PointCloud2
 import rospkg
 import tf2_ros
 from time import time
@@ -33,10 +32,8 @@ class HeightMapEstimator:
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
 
-        # point cloud publisher
-        self.hm_cloud_pub = rospy.Publisher('/height_map', PointCloud2, queue_size=1)
         # grid map publisher
-        self.hm_grid_pub = rospy.Publisher('/grid_map/terrain', GridMap, queue_size=1)
+        self.gridmap_pub = rospy.Publisher('/grid_map/terrain', GridMap, queue_size=1)
 
         # max message delay
         self.max_age = rospy.get_param('~max_age', 1.0)
@@ -101,20 +98,13 @@ class HeightMapEstimator:
         rospy.logdebug('Estimated height map shape: %s' % str(height.shape))
         rospy.logdebug('HM estimation time: %.3f' % (time() - t0))
 
-        # publish point cloud
-        t1 = time()
-        cloud_msg = height_map_to_point_cloud_msg(height, self.cfg.grid_res,
-                                                  xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
-        cloud_msg.header.stamp = msg.header.stamp
-        cloud_msg.header.frame_id = self.ground_frame
-        self.hm_cloud_pub.publish(cloud_msg)
-
         # publish grid map
+        t1 = time()
         grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
                                              xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = msg.header.stamp
         grid_msg.info.header.frame_id = self.ground_frame
-        self.hm_grid_pub.publish(grid_msg)
+        self.gridmap_pub.publish(grid_msg)
         rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
 
     def msgs_to_points(self, msgs):

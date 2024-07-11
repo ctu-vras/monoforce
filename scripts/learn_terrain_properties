@@ -96,7 +96,7 @@ class Learner:
             system = system.to(self.dphys_cfg.device)
 
             t0, s0 = 0., system.state
-            tt = torch.linspace(float(t0), float(t0) + self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
+            tt = torch.linspace(float(t0), float(t0) + self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples)
             states = system.sim(s0, tt)
             vis_cfg = setup_visualization(system=system, states=states, states_true=states_true,
                                           cfg=self.dphys_cfg) if self.vis else None

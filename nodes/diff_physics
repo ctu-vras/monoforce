@@ -4,9 +4,10 @@ import os
 import torch
 import numpy as np
 import rospy
+from grid_map_msgs.msg import GridMap
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
-from monoforce.ros import poses_to_marker, poses_to_path
+from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from nav_msgs.msg import Path
 from ros_numpy import numpify
 from sensor_msgs.msg import PointCloud2
@@ -17,8 +18,8 @@ from visualization_msgs.msg import MarkerArray
 
 class DiffPhysics:
     def __init__(self, dphys_cfg: DPhysConfig,
-                 hm_topic='/height_map',
-                 hm_frame='base_link',
+                 gridmap_topic='/grid_map/terrain',
+                 gridmap_frame='base_link',
                  robot='tradr',
                  robot_clearance=0.0,
                  linear_vels=[1.],
@@ -28,7 +29,7 @@ class DiffPhysics:
         self.robot_clearance = robot_clearance
         self.dphys_cfg = dphys_cfg
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.hm_frame = hm_frame
+        self.gridmap_frame = gridmap_frame
         self.linear_vels = linear_vels
         self.angular_vels = angular_vels
         self.max_age = max_age
@@ -40,20 +41,19 @@ class DiffPhysics:
         self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
 
         # image subscriber
-        self.hm_sub = rospy.Subscriber(hm_topic, PointCloud2, self.hm_callback)
-
-    def hm_callback(self, msg):
-        assert isinstance(msg, PointCloud2)
+        self.hm_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback, queue_size=1)
+    
+    def gridmap_callback(self, msg):
+        assert isinstance(msg, GridMap)
         # if message is stale do not process it
-        dt = rospy.Time.now() - msg.header.stamp
+        dt = rospy.Time.now() - msg.info.header.stamp
         if dt.to_sec() > self.max_age:
-            rospy.logwarn(f'Stale height map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
+            rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
 
-        height = numpify(msg)['z']
-        h = w = int(2 * self.dphys_cfg.d_max / self.dphys_cfg.grid_res)
-        height = height.reshape((h, w))
-        height = height.T
+        # convert grid map to height map
+        height = gridmap_msg_to_numpy(msg, 'elevation')
+        assert height.ndim == 2, 'Height map must be 2D'
         rospy.loginfo('Received height map of shape: %s' % str(height.shape))
 
         # predict path
@@ -83,7 +83,7 @@ class DiffPhysics:
         assert isinstance(angular_vels, list)
         assert len(linear_vels) == len(angular_vels)
 
-        tt = torch.linspace(0., self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples)
+        tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples)
         # paths marker array
         marker_array = MarkerArray()
         path_id = 0
@@ -121,7 +121,7 @@ class DiffPhysics:
                 lower_cost_poses = Ts.copy()
 
             marker_msg = poses_to_marker(Ts)
-            marker_msg.header.frame_id = self.hm_frame
+            marker_msg.header.frame_id = self.gridmap_frame
             marker_msg.ns = 'paths'
             marker_msg.id = path_id
             path_id += 1
@@ -148,7 +148,7 @@ class DiffPhysics:
         # publish lower cost path
         if lower_cost_poses is not None:
             rospy.loginfo('Publishing lower cost path of length: %d' % len(lower_cost_poses))
-            path_msg = poses_to_path(lower_cost_poses, stamp=stamp, frame_id=self.hm_frame)
+            path_msg = poses_to_path(lower_cost_poses, stamp=stamp, frame_id=self.gridmap_frame)
             self.lc_path_pub.publish(path_msg)
 
         # publish path costs
@@ -172,14 +172,14 @@ def main():
     config_path = rospy.get_param('~config_path', os.path.join(pkg_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     dphys_cfg.from_yaml(config_path)
-    dphys_cfg.total_sim_time = rospy.get_param('~total_sim_time', 5.)
-    dphys_cfg.n_samples = 100 * int(dphys_cfg.total_sim_time)
+    dphys_cfg.traj_sim_time = rospy.get_param('~traj_sim_time', 5.)
+    dphys_cfg.n_samples = 100 * int(dphys_cfg.traj_sim_time)
 
     robot = rospy.get_param('~robot', 'tradr')
     robot_clearance = rospy.get_param('~robot_clearance', 0.0)
 
-    hm_topic = rospy.get_param('~hm_topic')
-    hm_frame = rospy.get_param('~hm_frame')
+    gridmap_topic = rospy.get_param('~gridmap_topic')
+    gridmap_frame = rospy.get_param('~gridmap_frame')
     # control parameters
     linear_vels = rospy.get_param('~linear_vels', [1.])
     angular_vels = rospy.get_param('~angular_vels', [0.])
@@ -188,7 +188,7 @@ def main():
 
     node = DiffPhysics(dphys_cfg=dphys_cfg,
                        robot=robot, robot_clearance=robot_clearance,
-                       hm_topic=hm_topic, hm_frame=hm_frame,
+                       gridmap_topic=gridmap_topic, gridmap_frame=gridmap_frame,
                        linear_vels=linear_vels, angular_vels=angular_vels,
                        max_age=max_age)
     node.spin()

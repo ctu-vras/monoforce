@@ -1,4 +1,5 @@
 import torch
+from scipy.spatial import cKDTree
 from .transformations import rot2rpy, rpy2rot
 from .utils import position
 import numpy as np
@@ -20,6 +21,7 @@ __all__ = [
     'inverse',
     'within_bounds',
     'points2range_img',
+    'merge_heightmaps',
 ]
 
 def affine(tf, x):
@@ -388,3 +390,38 @@ def points2range_img(x, y, z,
     depth_img[elev_bins, azim_bins] = depth
 
     return depth_img
+
+
+def merge_heightmaps(new_points, prev_points, grid_res=None):
+    """
+    Ones new cloud is received, find the overlapping region with the existing cloud and merge them
+    """
+    assert new_points.ndim == 2 and new_points.shape[1] >= 3, 'Invalid cloud shape %s' % new_points.shape
+    assert prev_points.ndim == 2 and prev_points.shape[1] >= 3, 'Invalid cloud shape %s' % prev_points.shape
+    if grid_res is not None:
+        assert isinstance(grid_res, (float, int)) and grid_res > 0.
+    else:
+        grid_res = np.mean([np.mean(np.diff(np.unique(new_points[:, 0]))),
+                            np.mean(np.diff(np.unique(new_points[:, 1])))])
+        print('Grid resolution not provided, using estimated %.3f m' % grid_res)
+
+    # find overlapping region
+    tree = cKDTree(prev_points[:, :2])
+    dists, idxs = tree.query(new_points[:, :2], k=1)
+    common_points_mask = dists < grid_res
+    if not np.any(common_points_mask):
+        print('No common points found')
+        return prev_points
+
+    X = new_points[:, 0]
+    Y = new_points[:, 1]
+    Z = new_points[:, 2]
+    # update heightmap
+    Z_prev = prev_points[idxs[common_points_mask], 2]
+    Z[common_points_mask] = np.mean([Z_prev, Z[common_points_mask]], axis=0)
+    assert len(X) == len(Y) == len(Z), 'Invalid cloud shape'
+
+    # update current points
+    prev_points = np.column_stack((X, Y, Z))
+
+    return prev_points

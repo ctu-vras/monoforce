@@ -235,7 +235,7 @@ class EvaluatorGeom:
         states_true = tuple([s.to(self.device) for s in states_true])
         xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
         n_true_states = len(xyz_true)
-        tt_true = torch.linspace(0, self.dphys_cfg.total_sim_time, n_true_states - 1)
+        tt_true = torch.linspace(0, self.dphys_cfg.traj_sim_time, n_true_states - 1)
 
         if n_true_states < 2:
             print('Not enough waypoints to evaluate')
@@ -257,7 +257,7 @@ class EvaluatorGeom:
         # put models with their params to self.cfg.device
         system = system.to(self.device)
         s0 = system.state
-        tt = torch.linspace(0, self.dphys_cfg.total_sim_time, self.dphys_cfg.n_samples).to(self.device)
+        tt = torch.linspace(0, self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples).to(self.device)
 
         if vis:
             states = system.sim(s0, tt)

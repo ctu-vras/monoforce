@@ -79,8 +79,8 @@ The package is used as robot-terrain interaction and path planning pipeline.
 
 
 Trajectories prediction is based on the
-[NVIDIA-Warp](https://github.com/NVIDIA/warp) and
-[ParallelTrackSimulator](https://github.com/tichyt11/ParallelTrackSimulator)
+[NVIDIA/warp](https://github.com/NVIDIA/warp) and
+[ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
 packages.
 
 Navigation consists of the following stages, [video](https://drive.google.com/file/d/1OLnTtedNLX23HjNnXV7Sct_3xSFGxe2H/view?usp=sharing):
@@ -89,12 +89,12 @@ Navigation consists of the following stages, [video](https://drive.google.com/fi
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
-Please, refer to [husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation example in
+Please, refer to [ctu-vras/husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation example in
 [Gazebo](http://gazebosim.org/) simulator.
 
 ## Citation
 
-Consider citing the paper if you find it relevant to your research:
+Consider citing the papers if you find the work relevant to your research:
 
 ```bibtex
 @article{agishev2023monoforce,
@@ -104,5 +104,15 @@ Consider citing the paper if you find it relevant to your research:
     eprint={2309.09007},
     archivePrefix={arXiv},
     primaryClass={cs.RO}
+}
+```
+
+```bibtex
+@inproceedings{agishev2024endtoend,
+    title={End-to-end Differentiable Model of Robot-terrain Interactions},
+    author={Ruslan Agishev and Vladim{\'\i}r Kubelka and Martin Pecka and Tomas Svoboda and Karel Zimmermann},
+    booktitle={ICML 2024 Workshop on Differentiable Almost Everything: Differentiable Relaxations, Algorithms, Operators, and Simulators},
+    year={2024},
+    url={https://openreview.net/forum?id=XuVysF8Aon}
 }
 ```

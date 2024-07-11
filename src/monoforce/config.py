@@ -24,8 +24,8 @@ class DPhysConfig:
         self.robot_size = (1.0, 0.6)
 
         # training parameters
-        self.total_sim_time = 10.0
-        self.n_samples = 100 * int(self.total_sim_time)
+        self.traj_sim_time = 10.0
+        self.n_samples = 100 * int(self.traj_sim_time)
         self.sample_len = 10
 
         # control parameters

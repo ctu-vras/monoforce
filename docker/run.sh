@@ -35,6 +35,7 @@ docker run \
   --gpus all \
   --net=host \
   -v ${MONOFORCE_DIR}:/root/catkin_ws/src/monoforce/ \
+  -v $HOME/.cache/torch/:/root/.cache/torch/ \
   agishrus/monoforce \
   /bin/bash -c \
   "cd /root/catkin_ws/; \
