@@ -250,7 +250,7 @@ class DiffSim:
     use_flippers = True
     dt = 0.001
     ke = 1000.0
-    kd = 150.0
+    kd = 100.0
     kf = 0.5
     renderer = None
 

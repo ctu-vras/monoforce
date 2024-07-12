@@ -8,7 +8,7 @@
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
 
     <!-- Diff Physics node -->
-    <node unless="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics" output="screen">
+    <node unless="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics">
         <rosparam subst_value="true">
             robot: $(arg robot)
             robot_clearance: 0.132
@@ -24,7 +24,6 @@
         <rosparam subst_value="true">
             robot: $(arg robot)
             gridmap_topic: $(arg gridmap_topic)
-            gridmap_frame: $(arg gridmap_frame)
             max_age: 5.0
             traj_sim_time: $(arg traj_sim_time)
             n_sim_trajs: 40

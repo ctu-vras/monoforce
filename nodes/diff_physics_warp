@@ -22,9 +22,7 @@ wp.init()
 class DiffPhysicsWarp:
     def __init__(self,
                  gridmap_topic='/grid_map/terrain',
-                 gridmap_frame='base_link',
                  robot='tradr',
-                 robot_clearance=0.0,
                  robot_size=(1.0, 0.5),
                  grid_res=0.1,
                  gridmap_dims=(12.8, 12.8),
@@ -36,13 +34,12 @@ class DiffPhysicsWarp:
                  allow_backward=True,
                  device='cpu'):
         self.robot = robot
-        self.robot_clearance = robot_clearance
         self.robot_size = robot_size
         self.dt = 0.001
         self.grid_res = grid_res
         self.n_sim_trajs = n_sim_trajs
         self.device = device
-        self.gridmap_frame = gridmap_frame
+        self.gridmap_frame = None
         self.traj_sim_time = traj_sim_time
         self.n_sim_steps = int(self.traj_sim_time / self.dt)
         self.max_age = max_age
@@ -136,6 +133,8 @@ class DiffPhysicsWarp:
         if dt.to_sec() > self.max_age:
             rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
+        if self.gridmap_frame is None:
+            self.gridmap_frame = msg.info.header.frame_id
 
         # convert grid map to height map
         height = gridmap_msg_to_numpy(msg, 'elevation')
@@ -246,9 +245,7 @@ def main():
     rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
 
     robot = rospy.get_param('~robot', 'tradr')
-    robot_clearance = rospy.get_param('~robot_clearance', 0.0)
     gridmap_topic = rospy.get_param('~gridmap_topic')
-    gridmap_frame = rospy.get_param('~gridmap_frame')
     max_age = rospy.get_param('~max_age', 0.5)
     traj_sim_time = rospy.get_param('~traj_sim_time', 10.0)
     n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
@@ -257,8 +254,8 @@ def main():
     angular_vel_max = rospy.get_param('~angular_vel_max', 0.5)
     device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
-    node = DiffPhysicsWarp(robot=robot, robot_clearance=robot_clearance,
-                           gridmap_topic=gridmap_topic, gridmap_frame=gridmap_frame,
+    node = DiffPhysicsWarp(robot=robot,
+                           gridmap_topic=gridmap_topic,
                            max_age=max_age,
                            traj_sim_time=traj_sim_time,
                            n_sim_trajs=n_sim_trajs,
