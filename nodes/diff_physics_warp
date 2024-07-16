@@ -97,11 +97,6 @@ class DiffPhysicsWarp:
             v_l = vels[i] - r * omegas[i]
             track_vels[i, :, 0], track_vels[i, :, 1] = v_r, v_l
 
-        if not allow_backward:
-            # control input to rotate 180 degrees
-            track_vels[-1, :, 0] = -linear_vel
-            track_vels[-1, :, 1] = linear_vel
-
         return track_vels
 
     def init_flippers(self):
