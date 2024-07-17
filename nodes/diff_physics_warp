@@ -131,16 +131,20 @@ class DiffPhysicsWarp:
         if dt.to_sec() > self.max_age:
             rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
+
         if self.gridmap_frame is None:
             self.gridmap_frame = msg.info.header.frame_id
 
         # convert grid map to height map
         height = gridmap_msg_to_numpy(msg, 'elevation')
+        assert not np.all(np.isnan(height))
+        assert np.all(np.isfinite(height))
         assert height.ndim == 2, 'Height map must be 2D'
         rospy.loginfo('Received height map of shape: %s' % str(height.shape))
 
         # predict path
         with self.path_lock:
+            # height = np.zeros_like(height)
             xyz_q_np, path_costs = self.predict_paths(height, unfeasible_path_length=100.)
 
             # publish paths
@@ -175,6 +179,7 @@ class DiffPhysicsWarp:
         path_lengths = np.sum(np.linalg.norm(np.diff(xyz_q_np[:, :, :3], axis=0), axis=2), axis=0)
         assert path_costs.shape == (self.n_sim_trajs,)
         assert path_lengths.shape == (self.n_sim_trajs,)
+        print(path_lengths)
         unfeasible_path_ids = np.where(path_lengths > unfeasible_path_length)[0]
         rospy.logdebug('unfeasible path ids: %s' % str(unfeasible_path_ids))
 
