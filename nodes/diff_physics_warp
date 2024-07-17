@@ -37,7 +37,7 @@ class DiffPhysicsWarp:
         self.robot_size = robot_size
         self.dt = 0.001
         self.grid_res = grid_res
-        self.n_sim_trajs = n_sim_trajs
+        self.n_sim_trajs = n_sim_trajs if n_sim_trajs % 2 == 0 else n_sim_trajs + 1
         self.device = device
         self.gridmap_frame = None
         self.traj_sim_time = traj_sim_time
@@ -84,11 +84,14 @@ class DiffPhysicsWarp:
         assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
         if allow_backward:
             vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)),
-                                   linear_vel * np.ones((self.n_sim_trajs // 2, T))])
+                                   +linear_vel * np.ones((self.n_sim_trajs // 2, T))])
+            omegas = np.concatenate([np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
+                                     np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)])
         else:
             vels = linear_vel * np.ones((self.n_sim_trajs, T))
-        omegas = np.concatenate([np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
-                                 np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)])
+            omegas = np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs)
+        assert vels.shape == (self.n_sim_trajs, T), 'vels shape: %s' % str(vels.shape)
+        assert omegas.shape == (self.n_sim_trajs,), 'omegas shape: %s' % str(omegas.shape)
 
         track_vels = np.zeros((self.n_sim_trajs, T, 2))
         for i in range(self.n_sim_trajs):
