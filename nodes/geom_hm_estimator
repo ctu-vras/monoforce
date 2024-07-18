@@ -100,10 +100,10 @@ class HeightMapEstimator:
 
         # publish grid map
         t1 = time()
-        grid_msg = height_map_to_gridmap_msg(height, self.cfg.grid_res,
+        grid_msg = height_map_to_gridmap_msg(height - self.robot_clearance, self.cfg.grid_res,
                                              xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = msg.header.stamp
-        grid_msg.info.header.frame_id = self.ground_frame
+        grid_msg.info.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(grid_msg)
         rospy.logdebug('Height map publishing took %.3f' % (time() - t1))
 
