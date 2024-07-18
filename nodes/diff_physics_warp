@@ -150,7 +150,8 @@ class DiffPhysicsWarp:
             # publish paths
             if xyz_q_np is not None:
                 t_start = time()
-                self.publish_paths(xyz_q_np, path_costs, stamp=rospy.Time.now())
+                # self.publish_paths(xyz_q_np, path_costs, stamp=rospy.Time.now())
+                self.publish_paths(xyz_q_np, path_costs, stamp=msg.info.header.stamp)
                 rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t_start))
 
     def predict_paths(self, height, unfeasible_path_length=np.inf):
@@ -179,7 +180,6 @@ class DiffPhysicsWarp:
         path_lengths = np.sum(np.linalg.norm(np.diff(xyz_q_np[:, :, :3], axis=0), axis=2), axis=0)
         assert path_costs.shape == (self.n_sim_trajs,)
         assert path_lengths.shape == (self.n_sim_trajs,)
-        print(path_lengths)
         unfeasible_path_ids = np.where(path_lengths > unfeasible_path_length)[0]
         rospy.logdebug('unfeasible path ids: %s' % str(unfeasible_path_ids))
 

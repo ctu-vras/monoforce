@@ -12,7 +12,7 @@
     <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
     <arg name="traj_sim_time" default="8.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
-    <arg name="hm_max_age" default="2.0"/>
+    <arg name="hm_max_age" default="0.5"/>
 
     <!-- RGB Terrain Encoder -->
     <include if="1" file="$(dirname)/terrain_encoder.launch">
@@ -31,6 +31,7 @@
     <include if="0" file="$(dirname)/geom_hm_estimator.launch">
         <arg name="pts_topics" value="[/points]"/>
         <arg name="output_topic" value="grid_map/terrain"/>
+        <arg name="max_age" value="$(arg hm_max_age)"/>
     </include>
 
     <!-- Averaging height map predictions -->
@@ -53,6 +54,7 @@
         <arg name="gridmap_frame" value="base_link"/>
         <arg name="traj_sim_time" value="$(arg traj_sim_time)"/>
         <arg name="device" value="$(arg device)"/>
+        <arg name="max_age" value="$(arg hm_max_age)"/>
     </include>
 
     <!-- RVIZ -->
