@@ -27,6 +27,7 @@ The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Ph
 Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
 Then the Differentiable Physics module simulates robot trajectory and interaction forces on the predicted terrain
 for a provided control sequence (linear and angular velocities).
+Refer to the [examples](./examples) folder for implementation details.
 
 Please run the following command to explore the MonoForce pipeline:
 ```commandline
@@ -83,6 +84,9 @@ Trajectories prediction is based on the
 [NVIDIA/warp](https://github.com/NVIDIA/warp) and
 [ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
 packages.
+Take a look at the
+[trajectory_shooting_with_warp_diff_physics.ipynb](./examples/trajectory_shooting_with_warp_diff_physics.ipynb)
+notebook for the example of the trajectories prediction.
 
 Navigation consists of the following stages, [video](https://drive.google.com/file/d/1OLnTtedNLX23HjNnXV7Sct_3xSFGxe2H/view?usp=sharing):
 - **Height map prediction**: The Terrain Encoder part of the MonoForce is used to estimate terrain properties.
