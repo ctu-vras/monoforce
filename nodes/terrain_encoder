@@ -12,7 +12,7 @@ from monoforce.config import DPhysConfig
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.utils import img_transform, normalize_img, sample_augmentation, ego_to_cam, \
     get_only_in_img_mask
-from monoforce.ros import height_map_to_point_cloud_msg, height_map_to_gridmap_msg
+from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.utils import normalize, read_yaml, timing, position
 from monoforce.datasets.utils import load_calib
 from sensor_msgs.msg import CompressedImage, PointCloud2, CameraInfo

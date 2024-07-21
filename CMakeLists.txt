@@ -21,7 +21,6 @@ install(
         nodes/diff_physics
         nodes/diff_physics_warp
         nodes/terrain_encoder
-        nodes/play_tf_static
         nodes/monoforce
         nodes/geom_hm_estimator
         nodes/gridmaps_merger

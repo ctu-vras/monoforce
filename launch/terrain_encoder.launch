@@ -4,9 +4,9 @@
     <arg name="output_topic" default="height_map"/>
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
-    <arg name="weights" default="$(dirname)/../config/weights/lss/lss.pt"/>
+    <arg name="weights" default="$(dirname)/../config/weights/lss/lss_robingas_husky.pt"/>
     <arg name="dphys_config_path" default="$(dirname)/../config/dphys_cfg.yaml"/>
-    <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg.yaml"/>
+    <arg name="lss_config_path" default="$(dirname)/../config/lss_cfg_husky.yaml"/>
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_age" default="0.2"/>
     <arg name="calib_path" default="''"/>
