@@ -1,5 +1,7 @@
 # MonoForce
 
+![](./docs/imgs/monoforce_mayavi.gif)
+
 [![Arxiv](http://img.shields.io/badge/paper-arxiv.2303.01123-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
 [![Slides](http://img.shields.io/badge/presentation-slides-orange.svg?style=plastic)](https://docs.google.com/presentation/d/1pJFHBYVeOULi-w19_mLEbDTqvvk6klcVrrYc796-2Hw/edit?usp=sharing)
 [![Video](http://img.shields.io/badge/video-1min-blue.svg?style=plastic)](https://drive.google.com/file/d/1tTt1Oi5k1jKPDYn3CnzArhV3NPSNxKvD/view?usp=sharing)
@@ -35,8 +37,6 @@ python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 
 ```
 
 <img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
-
-![](./docs/imgs/monoforce_mayavi.gif)
 
 For example if you want to test the model with the provided images from the RobinGas dataset:
 ```commandline
@@ -108,7 +108,9 @@ Consider citing the papers if you find the work relevant to your research:
     year={2023},
     eprint={2309.09007},
     archivePrefix={arXiv},
-    primaryClass={cs.RO}
+    primaryClass={cs.RO},
+    note={accepted to IROS2024}
+    url={https://arxiv.org/abs/2309.09007}
 }
 ```
 
