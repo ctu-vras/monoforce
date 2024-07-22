@@ -5,7 +5,9 @@
 [![Video](http://img.shields.io/badge/video-1min-blue.svg?style=plastic)](https://drive.google.com/file/d/1tTt1Oi5k1jKPDYn3CnzArhV3NPSNxKvD/view?usp=sharing)
 [![Data](http://img.shields.io/badge/data-RobinGas-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing)
 
+<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
 ![](./docs/imgs/monoforce_mayavi.gif)
+The three people are visible as the pillars within the blue area.
 
 Robot-terrain interaction prediction from only RGB images as input.
 
@@ -35,8 +37,6 @@ Please run the following command to explore the MonoForce pipeline:
 ```commandline
 python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
-
-<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
 
 For example if you want to test the model with the provided images from the RobinGas dataset:
 ```commandline
