@@ -5,6 +5,10 @@
 [![Video](http://img.shields.io/badge/video-1min-blue.svg?style=plastic)](https://drive.google.com/file/d/1tTt1Oi5k1jKPDYn3CnzArhV3NPSNxKvD/view?usp=sharing)
 [![Data](http://img.shields.io/badge/data-RobinGas-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing)
 
+
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/JGi-OzTBG1k/0.jpg)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
+
+
 <img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
 
 ![](./docs/imgs/monoforce_mayavi.gif)
