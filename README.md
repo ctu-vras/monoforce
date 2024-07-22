@@ -6,7 +6,9 @@
 [![Data](http://img.shields.io/badge/data-RobinGas-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing)
 
 <img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+
 ![](./docs/imgs/monoforce_mayavi.gif)
+
 The three people are visible as the pillars within the blue area.
 
 Robot-terrain interaction prediction from only RGB images as input.
