@@ -6,7 +6,7 @@
     <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>
     <arg name="traj_sim_time" default="10.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
-    <arg name="max_age" default="2.0"/>
+    <arg name="max_age" default="1.0"/>
 
     <!-- Diff Physics node -->
     <node unless="$(arg warp_dphys)" name="diff_physics" pkg="monoforce" type="diff_physics">
@@ -27,10 +27,10 @@
             gridmap_topic: $(arg gridmap_topic)
             max_age: $(arg max_age)
             traj_sim_time: $(arg traj_sim_time)
-            n_sim_trajs: 20
-            allow_backward: false
+            n_sim_trajs: 40
+            allow_backward: true
             linear_vel: 0.5
-            angular_vel_max: 0.2
+            angular_vel_max: 0.4
             device: $(arg device)
         </rosparam>
     </node>

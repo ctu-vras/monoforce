@@ -10,9 +10,9 @@
     <arg name="imgs_max_age" default="0.5"/>
     <!-- dphysics arguments -->
     <arg name="warp_dphys" default="false" doc="Using NVIDIA Warp-based differentiable physics or not"/>
-    <arg name="traj_sim_time" default="8.0" doc="Simulation time horizon of the trajectories"/>
+    <arg name="traj_sim_time" default="10.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
-    <arg name="hm_max_age" default="0.5"/>
+    <arg name="hm_max_age" default="1.0"/>
 
     <!-- RGB Terrain Encoder -->
     <include if="1" file="$(dirname)/terrain_encoder.launch">
