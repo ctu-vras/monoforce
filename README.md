@@ -85,9 +85,11 @@ roslaunch monoforce monoforce.launch
 Navigation method only using RGB images.
 The package is used as robot-terrain interaction and path planning pipeline.
 
-<img src="./docs/imgs/cameras.png" width="800"/>
-<img src="./docs/imgs/husky_monoforce.png" width="800"/>
-
+<p align="center">
+  <a href="https://drive.google.com/file/d/1mqKEh_3VHZo4kDcJXP572SD1BVw37hSf/view?usp=drive_link">
+  <img src="docs/imgs/forest_navigation_video_teaser.png" alt="5 minute CVPR presentation video link">
+  </a>
+</p>
 
 Trajectories prediction is based on the
 [NVIDIA/warp](https://github.com/NVIDIA/warp) and
@@ -97,14 +99,13 @@ Take a look at the
 [trajectory_shooting_with_warp_diff_physics.ipynb](./examples/trajectory_shooting_with_warp_diff_physics.ipynb)
 notebook for the example of the trajectories prediction.
 
-Navigation consists of the following stages, [video](https://drive.google.com/file/d/1OLnTtedNLX23HjNnXV7Sct_3xSFGxe2H/view?usp=sharing):
+Navigation consists of the following stages:
 - **Height map prediction**: The Terrain Encoder part of the MonoForce is used to estimate terrain properties.
 - **Trajectories prediction**: The Diff Physics part of the MonoForce is used to shoot the robot trajectories.
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
-Please, refer to [ctu-vras/husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation example in
-[Gazebo](http://gazebosim.org/) simulator.
+Please, refer to the [ctu-vras/husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation pipeline deployment example.
 
 ## Citation
 
