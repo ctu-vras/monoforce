@@ -11,7 +11,6 @@ from grid_map_msgs.msg import GridMap
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
 from monoforce.models.dphysics_warp import DiffSim
-from monoforce.utils import normalize
 import warp as wp
 
 
@@ -54,6 +53,8 @@ class DiffPhysicsWarp:
         # paths publisher
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         # lower cost path publisher
+        self.path_cost_min = np.inf
+        self.path_cost_max = -np.inf
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
         self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
 
@@ -147,6 +148,13 @@ class DiffPhysicsWarp:
             # height = np.zeros_like(height)
             xyz_q_np, path_costs = self.predict_paths(height, unfeasible_path_length=100.)
 
+            # update path cost bounds
+            if path_costs is not None:
+                self.path_cost_min = min(self.path_cost_min, path_costs.min())
+                self.path_cost_max = max(self.path_cost_max, path_costs.max())
+                rospy.logdebug('Path cost min: %.3f' % self.path_cost_min)
+                rospy.logdebug('Path cost max: %.3f' % self.path_cost_max)
+
             # publish paths
             if xyz_q_np is not None:
                 t_start = time()
@@ -208,7 +216,7 @@ class DiffPhysicsWarp:
         marker_array = MarkerArray()
         red = np.array([1., 0., 0.])
         green = np.array([0., 1., 0.])
-        path_costs_norm = normalize(path_costs)
+        path_costs_norm = (path_costs - self.path_cost_min) / (self.path_cost_max - self.path_cost_min)
         for i in range(num_trajs):
             # map path cost to color (lower cost -> greener, higher cost -> redder)
             color = green + (red - green) * path_costs_norm[i]
