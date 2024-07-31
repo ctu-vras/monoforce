@@ -3,8 +3,7 @@ import torch
 import numpy as np
 from scipy.ndimage import rotate
 from cv_bridge import CvBridge
-from jsk_recognition_msgs.msg import BoundingBox
-from monoforce.utils import slots, timing
+from monoforce.utils import slots
 from nav_msgs.msg import Path
 from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray, TransformStamped
 from tf.transformations import quaternion_from_matrix, quaternion_matrix
@@ -179,28 +178,6 @@ def transform_path(path, pose):
         path_pose = np.matmul(pose, numpify(path.poses[i].pose))
         path.poses[i].pose = msgify(Pose, path_pose)
     return path
-
-def to_box_msg(pose, size, stamp=None, frame_id=None):
-    assert isinstance(pose, np.ndarray) or isinstance(pose, torch.Tensor)
-    assert pose.shape == (4, 4)
-    assert isinstance(size, np.ndarray) or isinstance(size, torch.Tensor)
-    assert size.shape == (3,)
-    box = BoundingBox()
-    box.header.stamp = stamp
-    box.header.frame_id = frame_id
-    box.pose.position.x = pose[0, 3]
-    box.pose.position.y = pose[1, 3]
-    box.pose.position.z = pose[2, 3]
-    q = quaternion_from_matrix(pose)
-    box.pose.orientation.x = q[0]
-    box.pose.orientation.y = q[1]
-    box.pose.orientation.z = q[2]
-    box.pose.orientation.w = q[3]
-    box.dimensions.x = size[0]
-    box.dimensions.y = size[1]
-    box.dimensions.z = size[2]
-    return box
-
 
 def poses_to_marker(poses, color=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)

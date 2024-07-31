@@ -9,8 +9,6 @@ from monoforce.config import DPhysConfig
 from monoforce.models import dphysics
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from nav_msgs.msg import Path
-from ros_numpy import numpify
-from sensor_msgs.msg import PointCloud2
 import rospkg
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray

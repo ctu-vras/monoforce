@@ -1,7 +1,6 @@
 import torch
+from numpy.lib.recfunctions import structured_to_unstructured
 from scipy.spatial import cKDTree
-from .transformations import rot2rpy, rpy2rot
-from .utils import position
 import numpy as np
 from scipy.interpolate import griddata
 
@@ -16,13 +15,47 @@ __all__ = [
     'valid_point_mask',
     'estimate_heightmap',
     'hm_to_cloud',
-    'position',
     'affine',
     'inverse',
     'within_bounds',
     'points2range_img',
     'merge_heightmaps',
 ]
+
+def position(cloud):
+    """Cloud to point positions (xyz)."""
+    if cloud.dtype.names:
+        x = structured_to_unstructured(cloud[['x', 'y', 'z']])
+    else:
+        x = cloud
+    return x
+
+def rot2rpy(R):
+    assert isinstance(R, torch.Tensor) or isinstance(R, np.ndarray)
+    assert R.shape == (3, 3)
+    if isinstance(R, np.ndarray):
+        R = torch.as_tensor(R)
+    roll = torch.atan2(R[2, 1], R[2, 2])
+    pitch = torch.atan2(-R[2, 0], torch.sqrt(R[2, 1] ** 2 + R[2, 2] ** 2))
+    yaw = torch.atan2(R[1, 0], R[0, 0])
+    return roll, pitch, yaw
+
+def rpy2rot(roll, pitch, yaw):
+    roll = torch.as_tensor(roll)
+    pitch = torch.as_tensor(pitch)
+    yaw = torch.as_tensor(yaw)
+    RX = torch.tensor([[1, 0, 0],
+                       [0, torch.cos(roll), -torch.sin(roll)],
+                       [0, torch.sin(roll), torch.cos(roll)]], dtype=torch.float32)
+
+    RY = torch.tensor([[torch.cos(pitch), 0, torch.sin(pitch)],
+                       [0, 1, 0],
+                       [-torch.sin(pitch), 0, torch.cos(pitch)]], dtype=torch.float32)
+
+    RZ = torch.tensor([[torch.cos(yaw), -torch.sin(yaw), 0],
+                       [torch.sin(yaw), torch.cos(yaw), 0],
+                       [0, 0, 1]], dtype=torch.float32)
+    return RZ @ RY @ RX
 
 def affine(tf, x):
     """Apply an affine transform to points."""

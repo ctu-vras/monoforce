@@ -10,10 +10,13 @@ help:
 	@echo ""
 
 build:
-	@docker build --tag agishrus/monoforce -f ./Dockerfile .
+	@docker build --tag agishrus/monoforce_deploy -f ./Dockerfile .
 
 clean:
-	@docker rmi -f agishrus/monoforce
+	@docker rmi -f agishrus/monoforce_deploy
 
 pull:
-	@docker pull agishrus/monoforce
+	@docker pull agishrus/monoforce_deploy
+
+shell:
+	@docker run -it --rm --gpus all --net host -v /home:/home agishrus/monoforce_deploy /bin/bash

@@ -5,14 +5,13 @@ import numpy as np
 import torch
 from PIL import Image
 from mayavi import mlab
+import matplotlib.pyplot as plt
 import argparse
 from monoforce.config import DPhysConfig
-from monoforce.datasets.utils import load_calib
 from monoforce.models import dphysics
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
-from monoforce.utils import read_yaml
-from monoforce.vis import visualize_imgs
+from monoforce.utils import read_yaml, load_calib
 
 
 def arg_parser():
@@ -32,6 +31,22 @@ def arg_parser():
     parser.add_argument('--angular-vel', type=float, default=None, help='Angular velocity of the robot')
 
     return parser.parse_args()
+
+
+def visualize_imgs(images, names=None):
+    n = len(images)
+    figsize = (n * 5, 5)
+    plt.figure(figsize=figsize)
+    for i, image in enumerate(images):
+        plt.subplot(1, n, i + 1)
+        plt.xticks([])
+        plt.yticks([])
+        plt.imshow(image)
+        if names is not None:
+            assert len(names) >= n, f'Number of names {len(names)} must not be smaller than the number of images {n}'
+            plt.title(names[i])
+    plt.tight_layout()
+    plt.show()
 
 
 class MonoForce:

@@ -1,8 +1,8 @@
 from __future__ import absolute_import, division, print_function
 import numpy as np
 import torch
+from numpy.lib.recfunctions import structured_to_unstructured
 from scipy.spatial.transform import Rotation
-from .utils import position
 
 
 __all__ = [
@@ -11,6 +11,15 @@ __all__ = [
     'rot2rpy',
     'rpy2rot',
 ]
+
+
+def position(cloud):
+    """Cloud to point positions (xyz)."""
+    if cloud.dtype.names:
+        x = structured_to_unstructured(cloud[['x', 'y', 'z']])
+    else:
+        x = cloud
+    return x
 
 
 def transform_cloud(cloud, Tr):

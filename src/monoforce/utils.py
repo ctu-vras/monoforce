@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
 from timeit import default_timer as timer
@@ -15,6 +16,7 @@ __all__ = [
     'str2bool',
     'position',
     'color',
+    'load_calib'
 ]
 
 
@@ -88,3 +90,29 @@ def color(cloud):
     else:
         rgb = cloud
     return rgb
+
+
+def load_calib(calib_path):
+    calib = {}
+    # read camera calibration
+    cams_path = os.path.join(calib_path, 'cameras')
+    if not os.path.exists(cams_path):
+        print('No cameras calibration found in path {}'.format(cams_path))
+        return None
+
+    for file in os.listdir(cams_path):
+        if file.endswith('.yaml'):
+            with open(os.path.join(cams_path, file), 'r') as f:
+                cam_info = yaml.load(f, Loader=yaml.FullLoader)
+                calib[file.replace('.yaml', '')] = cam_info
+            f.close()
+    # read cameras-lidar transformations
+    trans_path = os.path.join(calib_path, 'transformations.yaml')
+    with open(trans_path, 'r') as f:
+        transforms = yaml.load(f, Loader=yaml.FullLoader)
+    f.close()
+    calib['transformations'] = transforms
+    T = np.asarray(calib['transformations']['T_base_link__base_footprint']['data'], dtype=np.float32).reshape((4, 4))
+    calib['clearance'] = np.abs(T[2, 3])
+
+    return calib

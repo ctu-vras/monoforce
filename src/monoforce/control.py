@@ -1,89 +1,23 @@
 import torch
 import numpy as np
-from .transformations import rot2rpy
 import time
 
 
 __all__ = [
-    'keyboard_controller',
-    'velocity_controller',
     'pose_controller',
     'pose_control',
     'cmd_vel_from_goal'
 ]
 
-
-def keyboard_controller(system, key):
-    # assert isinstance(system, RigidBodySoftTerrain)
-
-    # print('\nYou Entered {0}'.format(key))
-    vel_step = 0.1
-    try:
-        if key.char == 'w':
-            system.vel_tracks += vel_step
-        if key.char == 'x':
-            system.vel_tracks -= vel_step
-        if key.char == 'a':
-            system.vel_tracks[0] -= vel_step
-            system.vel_tracks[1] += vel_step
-        if key.char == 'd':
-            system.vel_tracks[0] += vel_step
-            system.vel_tracks[1] -= vel_step
-    except AttributeError:
-        system.vel_tracks[0] = 0
-        system.vel_tracks[1] = 0
-    system.vel_tracks = torch.clip(system.vel_tracks, min=-2, max=2)
-    print('current track velocities:', system.vel_tracks.detach().cpu().numpy())
-
-    if key == keyboard.Key.delete:
-        # Stop listener
-        return False
-
-
-def velocity_controller(system, cmd_vels, rate=10., vel_max=2.):
-    """
-    Open-loop velocity controller for a two-tracks robot model.
-    Function updates tracks velocities (system.vel_tracks) with velocities from cmd_vels.
-
-    :param system: RigidBodySoftTerrain
-    :param cmd_vels: dict with keys 'linear', 'angular', 'stamps'
-    :param rate: float
-    :param vel_max: float
-    """
-    # assert isinstance(system, RigidBodySoftTerrain)
-    assert isinstance(cmd_vels, dict)
-    assert 'linear' in cmd_vels.keys()
-    assert 'angular' in cmd_vels.keys()
-    assert 'stamps' in cmd_vels.keys()
-    N = cmd_vels['linear'].shape[0]
-    assert cmd_vels['linear'].shape == (N, 3)
-    assert cmd_vels['angular'].shape == (N, 1)
-    assert cmd_vels['stamps'].shape == (N, 1)
-
-    goal_i = 0
-    tracks_distance = system.robot_points[1].max() - system.robot_points[1].min()
-    t = 0.
-    dt = 1. / rate
-    while t < cmd_vels['stamps'][-1]:
-        v = cmd_vels['linear'][goal_i].squeeze().norm()
-        w = cmd_vels['angular'][goal_i].squeeze()
-
-        # two tracks robot model
-        u1 = v + w * tracks_distance / 4.
-        u2 = v - w * tracks_distance / 4.
-
-        system.vel_tracks = torch.tensor([u1, u2], device=system.device)
-        system.vel_tracks = torch.clip(system.vel_tracks, min=-vel_max, max=vel_max)
-
-        t += dt
-        if t > cmd_vels['stamps'][goal_i+1]:
-            goal_i += 1
-
-        time.sleep(dt)
-    else:
-        print('Done!')
-        system.vel_tracks = torch.tensor([0., 0.], device=system.device)
-
+def rot2rpy(R):
+    assert isinstance(R, torch.Tensor) or isinstance(R, np.ndarray)
+    assert R.shape == (3, 3)
+    if isinstance(R, np.ndarray):
+        R = torch.as_tensor(R)
+    roll = torch.atan2(R[2, 1], R[2, 2])
+    pitch = torch.atan2(-R[2, 0], torch.sqrt(R[2, 1] ** 2 + R[2, 2] ** 2))
+    yaw = torch.atan2(R[1, 0], R[0, 0])
+    return roll, pitch, yaw
 
 def pose_control(state, goal_pose, Kp_rho=1., Kp_theta=1., Kp_yaw=1.,
                  return_dist=False, allow_backwards=True, dist_reached=0.01):
