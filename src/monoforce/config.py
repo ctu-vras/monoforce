@@ -16,7 +16,7 @@ class DPhysConfig:
         self.hm_interp_method = None
 
         # robot parameters
-        self.vel_tracks = [0., 0.]
+        self.track_vels = [0., 0.]
         self.robot_mass = 10.
         self.robot_inertia = (5. * np.eye(3)).tolist()
         self.robot_init_xyz = [0., 0., 1.]
@@ -29,7 +29,6 @@ class DPhysConfig:
         self.sample_len = 10
 
         # control parameters
-        self.robot_terrain_interaction_model = 'diffdrive'
         self.max_vel = 2.  # m/s
         self.max_omega = 2.  # rad/s
 

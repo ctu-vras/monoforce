@@ -86,8 +86,8 @@ def pose_controller(system, goal_poses, rate=10., vel_max=2.5,
         u1 = v - w * tracks_distance / 4.
         u2 = v + w * tracks_distance / 4.
 
-        system.vel_tracks = torch.tensor([u1, u2], device=system.device)
-        system.vel_tracks = torch.clip(system.vel_tracks, min=-vel_max, max=vel_max)
+        system.track_vels = torch.tensor([u1, u2], device=system.device)
+        system.track_vels = torch.clip(system.track_vels, min=-vel_max, max=vel_max)
 
         # if not moving much switch to next goal
         dists_history.append(rho.item())
@@ -103,7 +103,7 @@ def pose_controller(system, goal_poses, rate=10., vel_max=2.5,
         time.sleep(1 / rate)
     else:
         print('Done!')
-        system.vel_tracks = torch.tensor([0., 0.], device=system.device)
+        system.track_vels = torch.tensor([0., 0.], device=system.device)
 
 
 def cmd_vel_from_goal(x, y, yaw, x_g, y_g, T):

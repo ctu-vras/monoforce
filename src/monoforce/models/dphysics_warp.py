@@ -64,18 +64,19 @@ def copy_init_poses(init_poses: wp.array(dtype=wp.transformf), body_q: wp.array2
     robot_idx = wp.tid()
     body_q[0, robot_idx] = init_poses[robot_idx]
 
-
 @wp.kernel
-def eval_heightmap_collisions_array(height_map_array: wp.array(dtype=Heightmap),
-                                    body_q: wp.array2d(dtype=wp.transformf),
-                                    body_qd: wp.array2d(dtype=wp.spatial_vectorf),
-                                    sim_idx: int,
-                                    track_velocities: wp.array3d(dtype=wp.float32),
-                                    contact_points: wp.array2d(dtype=wp.vec3),
-                                    constraint_forces: wp.array2d(dtype=wp.vec3),
-                                    friction_forces: wp.array2d(dtype=wp.vec3),
-                                    collisions: wp.array2d(dtype=wp.vec3),
-                                    body_f: wp.array2d(dtype=wp.spatial_vectorf)):
+def eval_heightmap_collisions_array(
+    height_map_array: wp.array(dtype=Heightmap),
+    body_q: wp.array2d(dtype=wp.transformf),
+    body_qd: wp.array2d(dtype=wp.spatial_vectorf),
+    sim_idx: int,
+    track_velocities: wp.array3d(dtype=wp.float32),
+    contact_points: wp.array2d(dtype=wp.vec3),
+    constraint_forces: wp.array2d(dtype=wp.vec3),
+    friction_forces: wp.array2d(dtype=wp.vec3),
+    collisions: wp.array2d(dtype=wp.vec3),
+    body_f: wp.array2d(dtype=wp.spatial_vectorf)
+):
     robot_idx, contact_idx = wp.tid()
 
     height_map = height_map_array[robot_idx]
@@ -95,8 +96,7 @@ def eval_heightmap_collisions_array(height_map_array: wp.array(dtype=Heightmap),
 
     forward_to_world = wp.transform_vector(robot_to_world, wp.vec3(1.0, 0.0, 0.0))
     wheel_to_world_pos = wp.transform_point(robot_to_world, wheel_to_robot_pos)
-    wheel_to_world_vel = wp.cross(wp.spatial_top(robot_to_world_speed), wheel_to_robot_pos) + wp.spatial_bottom(
-        robot_to_world_speed)
+    wheel_to_world_vel = wp.cross(wp.spatial_top(robot_to_world_speed), wheel_to_robot_pos) + wp.spatial_bottom(robot_to_world_speed)
     wheel_to_hm = wheel_to_world_pos - hm_origin
 
     # x, y normalized by the heightmap resolution
@@ -106,14 +106,13 @@ def eval_heightmap_collisions_array(height_map_array: wp.array(dtype=Heightmap),
     u = wp.int(wp.floor(x_n))
     v = wp.int(wp.floor(y_n))
 
-    # hm_height = hm[x_id, z_id]
-
-    if u < 0 or u >= width or v < 0 or v >= length:  # outside heightmap
+    # Check if the point is outside the heightmap bounds
+    if u < 0 or u >= width or v < 0 or v >= length:
         return
 
     # relative position of the wheel inside the cell
-    x_r = x_n - wp.float(u)
-    y_r = y_n - wp.float(v)
+    x_r = x_n - wp.float32(u)
+    y_r = y_n - wp.float32(v)
 
     # useful terms for height and terrain normal
     a = heights[u, v]
@@ -144,7 +143,7 @@ def eval_heightmap_collisions_array(height_map_array: wp.array(dtype=Heightmap),
     v_t = wheel_to_world_vel - n * v_n
 
     # compute the track velocity at the wheel position
-    tangential_track_direction = forward_to_world - n*wp.dot(forward_to_world, n)
+    tangential_track_direction = forward_to_world - n * wp.dot(forward_to_world, n)
     tangential_track_velocity = wp.vec3(0.0, 0.0, 0.0)
     if wp.length(tangential_track_direction) > 1e-4:
         vel_idx = (contact_idx % 2)
@@ -167,7 +166,6 @@ def eval_heightmap_collisions_array(height_map_array: wp.array(dtype=Heightmap),
     friction_forces[sim_idx, contact_idx] = friction_force
     collisions[sim_idx, contact_idx] = wp.vec3(wheel_to_world_pos[0], wheel_to_world_pos[1], hm_height + hm_origin[2])
 
-
 @wp.kernel
 def integrate_bodies_array(
     body_q: wp.array2d(dtype=wp.transform),
@@ -175,7 +173,6 @@ def integrate_bodies_array(
     sim_idx: int,
     body_f: wp.array2d(dtype=wp.spatial_vector),
     body_com: wp.array(dtype=wp.vec3),
-    m: wp.array(dtype=float),
     I: wp.array(dtype=wp.mat33),
     inv_m: wp.array(dtype=float),
     inv_I: wp.array(dtype=wp.mat33),
@@ -191,7 +188,6 @@ def integrate_bodies_array(
     f = body_f[sim_idx, tid]
 
     # masses
-    mass = m[tid]
     inv_mass = inv_m[tid]  # 1 / mass
 
     inertia = I[tid]
@@ -227,6 +223,7 @@ def integrate_bodies_array(
 
     body_q[sim_idx + 1, tid] = wp.transform(x1 - wp.quat_rotate(r1, body_com[tid]), r1)
     body_qd[sim_idx + 1, tid] = wp.spatial_vector(w1, v1)
+
 
 @wp.kernel
 def update_flipper_contacts(flipper_centers: wp.array(dtype=wp.vec3), flipper_angles: wp.array3d(dtype=wp.float32), sim_idx: int,
@@ -327,13 +324,6 @@ class DiffSim:
     def __del__(self):
         if self.renderer is not None:
             self.renderer.clear()
-
-    def update_heightmaps(self, heights):
-        assert len(heights) == self.n_robots
-        n = self.n_robots
-        for traj_idx in range(n):
-            self.heightmap_list[traj_idx].heights.assign(heights[traj_idx])
-        self.heightmap_array = wp.array(self.heightmap_list, dtype=Heightmap, device=self.device)
 
     def set_control(self, control_np, flipper_angles_np):
         assert control_np.shape == (self.n_robots, self.T, 2)
@@ -442,7 +432,6 @@ class DiffSim:
                     sim_idx,
                     self.body_f,
                     self.model.body_com,
-                    self.model.body_mass,
                     self.model.body_inertia,
                     self.model.body_inv_mass,
                     self.model.body_inv_inertia,

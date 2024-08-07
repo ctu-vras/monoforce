@@ -15,7 +15,7 @@
                                              '/camera_right/camera_info']"/>
     <arg name="imgs_max_age" default="0.5"/>
     <!-- dphysics arguments -->
-    <arg name="warp_dphys" default="true" doc="Using NVIDIA Warp-based differentiable physics or not"/>
+    <arg name="engine" default="warp" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
     <arg name="traj_sim_time" default="10.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
     <arg name="hm_max_age" default="1.0"/>
@@ -53,7 +53,7 @@
 
     <!-- Diff Physics: paths sampling -->
     <include file="$(dirname)/dphysics.launch">
-        <arg name="warp_dphys" value="$(arg warp_dphys)"/>
+        <arg name="engine" value="$(arg engine)"/>
         <arg name="robot" value="husky"/>
         <arg name="gridmap_topic" value="grid_map/terrain"/>
 <!--         <arg name="gridmap_topic" value="grid_map_merged/terrain"/> -->

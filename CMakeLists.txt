@@ -19,7 +19,6 @@ catkin_package(
 install(
     PROGRAMS
         nodes/diff_physics
-        nodes/diff_physics_warp
         nodes/terrain_encoder
         nodes/monoforce
         nodes/geom_hm_estimator

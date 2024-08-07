@@ -10,6 +10,7 @@ __all__ = [
     'xyz_rpy_to_matrix',
     'rot2rpy',
     'rpy2rot',
+    'pose_to_xyz_q',
 ]
 
 
@@ -72,3 +73,15 @@ def rpy2rot(roll, pitch, yaw):
                        [torch.sin(yaw), torch.cos(yaw), 0],
                        [0, 0, 1]], dtype=torch.float32)
     return RZ @ RY @ RX
+
+
+def pose_to_xyz_q(pose):
+    assert isinstance(pose, np.ndarray) or isinstance(pose, torch.Tensor)
+    assert pose.shape == (4, 4)
+    if isinstance(pose, np.ndarray):
+        pose = torch.as_tensor(pose)
+    xyz = pose[:3, 3]
+    quat = Rotation.from_matrix(pose[:3, :3]).as_quat()
+    quat = torch.as_tensor(quat)
+    xyz_q = torch.cat([xyz, quat])
+    return xyz_q

@@ -119,7 +119,7 @@ class RigidBodySoftTerrain(nn.Module):
                  mass=10.0, gravity=9.8,
                  inertia=5.0 * np.eye(3),
                  state=State(),
-                 vel_tracks=np.zeros(2),
+                 track_vels=np.zeros(2),
                  adjoint=False,
                  device=torch.device('cpu'),
                  use_ode=False,
@@ -157,7 +157,7 @@ class RigidBodySoftTerrain(nn.Module):
         self.inertia = torch.tensor(inertia, dtype=self.height.dtype, device=self.device)
         self.inertia_inv = torch.inverse(self.inertia)
         # self.vel_tracks = nn.Parameter(torch.tensor(vel_tracks, device=self.device))
-        self.vel_tracks = torch.tensor(vel_tracks, device=self.device)
+        self.vel_tracks = torch.tensor(track_vels, device=self.device)
 
         self.odeint = odeint_adjoint if adjoint else odeint
 
@@ -505,7 +505,7 @@ def make_dphysics_model(height, dphys_cfg: DPhysConfig):
                                   damping=dphys_cfg.damping, elasticity=dphys_cfg.elasticity, friction=dphys_cfg.friction,
                                   mass=dphys_cfg.robot_mass,
                                   state=State(xyz=dphys_cfg.robot_init_xyz),
-                                  vel_tracks=dphys_cfg.vel_tracks)
+                                  track_vels=dphys_cfg.track_vels)
     return system
 
 
@@ -552,7 +552,7 @@ def dphysics(height, controls, robot_model='husky', state=None, dphys_cfg=None, 
                                   motion_model='diffdrive',
                                   robot_model=robot_model)
 
-    # put models with their params to self.device
+    # put models with their params to device
     system = system.to(device)
     tt = controls['stamps'].to(device)
 
