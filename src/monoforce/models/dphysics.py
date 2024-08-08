@@ -572,7 +572,7 @@ def dphysics(height, controls, robot_model='husky', state=None, dphys_cfg=None, 
 
         roll, pitch, yaw = rot2rpy(state[1].squeeze())
         if torch.abs(roll) > np.pi / 2. or torch.abs(pitch) > np.pi / 2.:
-            print('Robot is flipped over!')
+            # print('Robot is flipped over!')
             break
 
         xyz.append(state[0])
