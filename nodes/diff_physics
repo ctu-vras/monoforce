@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation
 from threading import RLock
 import rospy
 import tf2_ros
+from geometry_msgs.msg import TransformStamped
 from monoforce.config import DPhysConfig
 from monoforce.models import dphysics, State
 from monoforce.models.dphysics_warp import DiffSim, Heightmap
@@ -20,6 +21,8 @@ from grid_map_msgs.msg import GridMap
 from ros_numpy import numpify
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
+from tf2_ros import TransformBroadcaster
+
 
 # initialize warp
 wp.init()
@@ -27,6 +30,7 @@ wp.init()
 
 class DiffPhysBase:
     def __init__(self,
+                 gridmap_topic='/grid_map/terrain',
                  gridmap_layer='elevation',
                  robot='tradr',
                  robot_frame='base_link',
@@ -42,6 +46,7 @@ class DiffPhysBase:
         self.dphys_cfg = dphys_cfg
         self.gridmap_layer = gridmap_layer
         self.gridmap_frame = None
+        self.gridmap_center_frame = 'grid_map_link'
         self.dt = dt
         self.n_sim_steps = int(dphys_cfg.traj_sim_time / self.dt)
         self.max_age = max_age
@@ -59,6 +64,22 @@ class DiffPhysBase:
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
         self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
+        self.tf_broadcaster = TransformBroadcaster()
+
+        # grid map subscriber to publish grid map tf
+        self.gridmap_tf_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_tf_callback)
+
+    def gridmap_tf_callback(self, gridmap_msg):
+        # publish grid map pose tf frame: create tf message from grid map pose
+        grid_map_tf = TransformStamped()
+        grid_map_tf.header.stamp = gridmap_msg.info.header.stamp
+        grid_map_tf.header.frame_id = gridmap_msg.info.header.frame_id
+        grid_map_tf.child_frame_id = self.gridmap_center_frame
+        grid_map_tf.transform.translation.x = gridmap_msg.info.pose.position.x
+        grid_map_tf.transform.translation.y = gridmap_msg.info.pose.position.y
+        grid_map_tf.transform.translation.z = gridmap_msg.info.pose.position.z
+        grid_map_tf.transform.rotation = gridmap_msg.info.pose.orientation
+        self.tf_broadcaster.sendTransform(grid_map_tf)
 
     def get_robot_size(self):
         # TODO: add other robots, calculate bbox sizes from URDF models
@@ -126,12 +147,10 @@ class DiffPhysBase:
         pose = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
         return pose
 
-    def publish_paths(self, xyz_q_np, path_costs, stamp=None, frame=None, pose_step=1):
+    def publish_paths_and_costs(self, xyz_q_np, path_costs, frame, stamp=None, pose_step=1):
         assert len(xyz_q_np) == len(path_costs), 'xyz_q_np: %s, path_costs: %s' % (str(xyz_q_np.shape), str(path_costs.shape))
         if stamp is None:
             stamp = rospy.Time.now()
-        if frame is None:
-            frame = self.robot_frame
 
         num_trajs = len(xyz_q_np)
 
@@ -167,32 +186,33 @@ class DiffPhysBase:
         path_costs_msg.data = path_costs
         self.path_costs_pub.publish(path_costs_msg)
 
-    def gridmap_callback(self, msg):
-        assert isinstance(msg, GridMap)
+    def gridmap_callback(self, gridmap_msg):
+        assert isinstance(gridmap_msg, GridMap)
         # if message is stale do not process it
-        dt = rospy.Time.now() - msg.info.header.stamp
+        dt = rospy.Time.now() - gridmap_msg.info.header.stamp
         if dt.to_sec() > self.max_age:
             rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
 
         if self.gridmap_frame is None:
-            self.gridmap_frame = msg.info.header.frame_id
+            self.gridmap_frame = gridmap_msg.info.header.frame_id
 
         # convert grid map to height map
-        grid_map = gridmap_msg_to_numpy(msg, self.gridmap_layer)
+        grid_map = gridmap_msg_to_numpy(gridmap_msg, self.gridmap_layer)
         assert not np.all(np.isnan(grid_map)) and np.all(np.isfinite(grid_map))
         assert grid_map.ndim == 2, 'Height map must be 2D'
         rospy.loginfo('Received height map of shape: %s' % str(grid_map.shape))
 
-        grid_map_pose = numpify(msg.info.pose).reshape((4, 4))
+        grid_map_pose = numpify(gridmap_msg.info.pose).reshape((4, 4))
         robot_pose = self.get_pose(target_frame=self.gridmap_frame, source_frame=self.robot_frame,
-                                   stamp=msg.info.header.stamp)
+                                   stamp=gridmap_msg.info.header.stamp)
         if robot_pose is None:
             rospy.logwarn('Could not get robot pose')
             return
         robot_pose_wrt_gridmap = np.linalg.inv(grid_map_pose) @ robot_pose
         robot_xyz_q_wrt_gridmap = pose_to_xyz_q(robot_pose_wrt_gridmap)
-        # rospy.logdebug('Robot xyzq wrt gridmap:\n%s\n' % str(robot_xyz_q_wrt_gridmap))
+        # rpy = Rotation.from_quat(robot_xyz_q_wrt_gridmap[3:]).as_euler('xyz')
+        # rospy.logdebug('Robot xyz_rpy wrt gridmap: %s' % str(np.concatenate([robot_xyz_q_wrt_gridmap[:3], rpy])))
 
         # predict path
         with self.path_lock:
@@ -211,7 +231,8 @@ class DiffPhysBase:
             # publish paths
             if xyz_qs is not None:
                 t_start = time()
-                self.publish_paths(xyz_qs, path_costs, stamp=msg.info.header.stamp, pose_step=self.pose_step)
+                self.publish_paths_and_costs(xyz_qs, path_costs, stamp=gridmap_msg.info.header.stamp,
+                                             frame=self.gridmap_center_frame, pose_step=self.pose_step)
                 rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t_start))
 
     @staticmethod
@@ -240,7 +261,7 @@ class DiffPhysicsWarp(DiffPhysBase):
                  dt=0.001,
                  pose_step=500,
                  device='cpu'):
-        super().__init__(dphys_cfg=dphys_cfg, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
+        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
                          max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
         self.n_sim_trajs = n_sim_trajs if n_sim_trajs % 2 == 0 else n_sim_trajs + 1
 
@@ -339,24 +360,12 @@ class DiffPhysicsTorch(DiffPhysBase):
                  dt=0.01,
                  pose_step=50,
                  device='cpu'):
-        super().__init__(dphys_cfg=dphys_cfg, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
+        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
                          max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
         _, self.linear_vels, self.angular_vels = self.init_controls(linear_vel, angular_vel_max,
                                                                     wheels_dist=self.robot_size[1], allow_backward=allow_backward)
         # grid map subscriber
         self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
-
-    def path_cost(self, states):
-        assert isinstance(states, list)
-        assert len(states) == 5
-        xyz, Rs, linear_v, angular_w, forces = states
-        # path cost as a sum of force magnitudes
-        assert forces.ndim == 3  # (n_sim_steps, 3, n_points)
-        # reduce forces acting on all robot points
-        forces = forces.sum(dim=2)
-        assert forces.shape[1] == 3
-        cost = forces.norm(dim=1).mean()
-        return cost
 
     def predict_paths(self, grid_maps, xyz_qs_init):
         assert len(grid_maps) == self.n_sim_trajs == len(xyz_qs_init)
@@ -389,7 +398,10 @@ class DiffPhysicsTorch(DiffPhysBase):
             xyz_qs.append(xyz_q)
 
             # calculate path cost for each trajectory
-            path_costs.append(self.path_cost(states))
+            forces = states[4].cpu()
+            # reduce forces acting on all robot points, cost = sum of force magnitudes
+            path_cost = forces.sum(dim=2).norm(dim=1).mean()
+            path_costs.append(path_cost)
 
         return xyz_qs, path_costs
 
