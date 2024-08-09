@@ -239,18 +239,25 @@ def xyz_to_point(xyz):
 
 def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
     # Extract metadata
-    width = grid_map_msg.info.length_x / grid_map_msg.info.resolution
-    height = grid_map_msg.info.length_y / grid_map_msg.info.resolution
-    width = int(np.round(width))
-    height = int(np.round(height))
+    W = grid_map_msg.info.length_x // grid_map_msg.info.resolution
+    H = grid_map_msg.info.length_y // grid_map_msg.info.resolution
+    W = int(W)
+    H = int(H)
 
     # Find the index of the layer
     layer_index = grid_map_msg.layers.index(layer_name)
 
     # Extract the data for the layer
-    height = np.array(grid_map_msg.data[layer_index].data, dtype=np.float32).reshape((height, width))
+    grid_map = np.array(grid_map_msg.data[layer_index].data, dtype=np.float32).reshape((H, W))
 
-    height = height.T
-    height = rotate(height, 180)
+    # Correct indexing based on start indices
+    outer_start_index = grid_map_msg.outer_start_index
+    inner_start_index = grid_map_msg.inner_start_index
+    # Shift the data using outer and inner indices to correct its position
+    grid_map = np.roll(grid_map, shift=-outer_start_index, axis=1)
+    grid_map = np.roll(grid_map, shift=-inner_start_index, axis=0)
 
-    return height
+    grid_map = grid_map.T
+    grid_map = rotate(grid_map, 180)
+
+    return grid_map

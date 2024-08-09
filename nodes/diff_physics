@@ -24,10 +24,6 @@ from visualization_msgs.msg import MarkerArray
 from tf2_ros import TransformBroadcaster
 
 
-# initialize warp
-wp.init()
-
-
 class DiffPhysBase:
     def __init__(self,
                  gridmap_topic='/grid_map/terrain',
@@ -263,6 +259,9 @@ class DiffPhysicsWarp(DiffPhysBase):
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
                          max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
+        # initialize warp
+        wp.init()
+
         self.n_sim_trajs = n_sim_trajs if n_sim_trajs % 2 == 0 else n_sim_trajs + 1
 
         self.xyz_q0 = self.init_poses()
@@ -377,12 +376,12 @@ class DiffPhysicsTorch(DiffPhysBase):
         path_costs = []
         xyz_qs = []
         for xyz_q_init, grid_map, vs, W in zip(xyz_qs_init, grid_maps, self.linear_vels, self.angular_vels):
-            # controls
+            # controls: time stamps, linear and angular velocities
             ws = W * np.ones_like(vs)
             controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
             assert tt.shape == vs.shape == ws.shape, 'Shapes: %s, %s, %s' % (str(tt.shape), str(vs.shape), str(ws.shape))
 
-            # initial state
+            # initial robot state
             xyz0 = torch.as_tensor(xyz_q_init[:3], dtype=torch.float32, device=self.device).view(3, 1)
             R0 = torch.as_tensor(Rotation.from_quat(xyz_q_init[3:]).as_matrix(), dtype=torch.float32, device=self.device).view(3, 3)
             state0 = State(xyz=xyz0, rot=R0, device=self.device)
@@ -392,6 +391,7 @@ class DiffPhysicsTorch(DiffPhysBase):
 
             # create xyz_q trajectory
             xyz = states[0].cpu().numpy().squeeze()
+            xyz[:, 2] += 0.1  # robot's z coordinate offset, TODO: not sure why this is needed
             Rs = states[1].cpu().numpy().squeeze()
             qs = Rotation.from_matrix(Rs).as_quat()
             xyz_q = np.concatenate([xyz, qs], axis=1)
