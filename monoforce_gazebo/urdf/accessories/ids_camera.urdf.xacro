@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+    <xacro:macro name="ids_sensor" params="xyz rpy parent topic label">
+      
+      <joint name="ids_joint_${label}" type="fixed">
+        <origin xyz="${xyz}" rpy="${rpy}"/>
+        <parent link="${parent}"/>
+        <child link="camera_${label}"/>
+      </joint>
+
+      <!-- Camera -->
+      <link name="camera_${label}"/>
+
+      <!-- Virtual camera Z-front frame -->
+      <link name="camera_${label}_gazebo"/>
+      <joint name="ids_joint_${label}_gazebo" type="fixed">
+       <parent link="camera_${label}"/>
+       <child link="camera_${label}_gazebo"/>
+       <origin xyz="0.0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
+     </joint>
+
+      <gazebo reference="camera_${label}">
+        <sensor type="camera" name="ids_camera_${label}">
+          <update_rate>10.0</update_rate>
+          <camera name="head">
+            <horizontal_fov>1.2257772057691048</horizontal_fov>
+            <image>
+              <width>2056</width>
+              <height>1542</height>
+              <format>RGB8</format>
+            </image>
+            <clip>
+              <near>0.02</near>
+              <far>300</far>
+            </clip>
+            <noise>
+              <type>gaussian</type>
+              <!-- Noise is sampled independently per pixel on each frame.
+                   That pixel's noise value is added to each of its color
+                   channels, which at that point lie in the range [0,1]. -->
+              <mean>0.0</mean>
+              <stddev>0.007</stddev>
+            </noise>
+          </camera>
+          <plugin name="ids_controller" filename="libgazebo_ros_camera.so">
+            <alwaysOn>true</alwaysOn>
+            <updateRate>10.0</updateRate>
+            <cameraName>${topic}_${label}</cameraName>
+            <imageTopicName>image_raw</imageTopicName>
+            <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+            <frameName>camera_${label}_gazebo</frameName>
+            <hackBaseline>0.07</hackBaseline>
+            <distortionK1>-0.036581</distortionK1>
+            <distortionK2>0.063865</distortionK2>
+            <distortionK3>0.0</distortionK3>
+            <distortionT1>0.000594</distortionT1>
+            <distortionT2>-0.000878</distortionT2>
+          </plugin>
+        </sensor>
+      </gazebo>
+
+    </xacro:macro>
+
+</robot>

@@ -1,0 +1,48 @@
+data_aug_conf:
+  H: 1616
+  W: 1232
+  bot_pct_lim:
+  - 0.0
+  - 0.0
+  final_dim:
+  - 320
+  - 256
+  rand_flip: false
+  resize_lim:
+  - 0.193
+  - 0.225
+  rot_lim:
+  - -5.4
+  - 5.4
+
+grid_conf:
+  dbound:
+  - 0.6
+  - 6.4
+  - 0.1
+  xbound:
+  - -6.4
+  - 6.4
+  - 0.1
+  ybound:
+  - -6.4
+  - 6.4
+  - 0.1
+  zbound:
+  - -10.0
+  - 10.0
+  - 20.0
+
+# use ImageNet mean and std
+img_mean:
+- 0.485
+- 0.456
+- 0.406
+img_std:
+- 0.229
+- 0.224
+- 0.225
+
+# Semantic obstacle class for Segment Anything
+obstacle_classes:
+- 'person'

@@ -1,0 +1,229 @@
+<?xml version="1.0"?>
+<!--
+Software License Agreement (BSD)
+
+\file      husky.urdf.xacro
+\authors   Paul Bovbel <pbovbel@clearpathrobotics.com>, Devon Ash <dash@clearpathrobotics.com>
+\copyright Copyright (c) 2015, Clearpath Robotics, Inc., All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+the following conditions are met:
+ * Redistributions of source code must retain the above copyright notice, this list of conditions and the
+   following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+   following disclaimer in the documentation and/or other materials provided with the distribution.
+ * Neither the name of Clearpath Robotics nor the names of its contributors may be used to endorse or promote
+   products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WAR-
+RANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, IN-
+DIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+<robot name="husky" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- IMU Link -->
+  <xacro:arg name="imu_xyz"     default="$(optenv HUSKY_IMU_XYZ 0.19 0 0.149)"/>
+  <xacro:arg name="imu_rpy"     default="$(optenv HUSKY_IMU_RPY 0 -1.5708 3.1416)"/>
+  <xacro:arg name="imu_parent"  default="$(optenv HUSKY_IMU_PARENT base_link)"/>
+
+  <!-- FRONT IDS Camera -->
+  <xacro:arg name="ids_front_enabled"             default="$(optenv HUSKY_IDS_FRONT_ENABLED 1)" />
+  <xacro:arg name="ids_front_xyz"                 default="$(optenv HUSKY_IDS_FRONT_XYZ 0.4 0 0.1)"/>
+  <xacro:arg name="ids_front_rpy"                 default="$(optenv HUSKY_IDS_FRONT_RPY 0 0 0)"/>
+  <xacro:arg name="ids_front_parent"              default="$(optenv HUSKY_IDS_FRONT_PARENT top_plate_link)"/>
+  <xacro:arg name="ids_front_topic"               default="$(optenv HUSKY_IDS_FRONT_TOPIC ids_camera)"/>
+  <xacro:arg name="ids_front_label"               default="$(optenv HUSKY_IDS_FRONT_LABEL front)"/>
+  <!-- Left IDS Camera -->
+  <xacro:arg name="ids_left_enabled"               default="$(optenv HUSKY_IDS_LEFT_ENABLED 1)" />
+  <xacro:arg name="ids_left_xyz"                   default="$(optenv HUSKY_IDS_LEFT_XYZ 0 0.2 0.1)"/>
+  <xacro:arg name="ids_left_rpy"                   default="$(optenv HUSKY_IDS_LEFT_RPY 0 0 1.57)"/>
+  <xacro:arg name="ids_left_parent"                default="$(optenv HUSKY_IDS_LEFT_PARENT top_plate_link)"/>
+  <xacro:arg name="ids_left_topic"                 default="$(optenv HUSKY_IDS_LEFT_TOPIC ids_camera)"/>
+  <xacro:arg name="ids_left_label"                 default="$(optenv HUSKY_IDS_LEFT_LABEL left)"/>
+  <!-- Right IDS Camera -->
+  <xacro:arg name="ids_right_enabled"              default="$(optenv HUSKY_IDS_RIGHT_ENABLED 1)" />
+  <xacro:arg name="ids_right_xyz"                  default="$(optenv HUSKY_IDS_RIGHT_XYZ 0 -0.2 0.1)"/>
+  <xacro:arg name="ids_right_rpy"                  default="$(optenv HUSKY_IDS_RIGHT_RPY 0 0 -1.57)"/>
+  <xacro:arg name="ids_right_parent"               default="$(optenv HUSKY_IDS_RIGHT_PARENT top_plate_link)"/>
+  <xacro:arg name="ids_right_topic"                default="$(optenv HUSKY_IDS_RIGHT_TOPIC ids_camera)"/>
+  <xacro:arg name="ids_right_label"                default="$(optenv HUSKY_IDS_RIGHT_LABEL right)"/>
+  <!-- Rear IDS Camera -->
+  <xacro:arg name="ids_rear_enabled"               default="$(optenv HUSKY_IDS_REAR_ENABLED 1)" />
+  <xacro:arg name="ids_rear_xyz"                   default="$(optenv HUSKY_IDS_REAR_XYZ -0.4 0 0.1)"/>
+  <xacro:arg name="ids_rear_rpy"                   default="$(optenv HUSKY_IDS_REAR_RPY 0 0 3.14)"/>
+  <xacro:arg name="ids_rear_parent"                default="$(optenv HUSKY_IDS_REAR_PARENT top_plate_link)"/>
+  <xacro:arg name="ids_rear_topic"                 default="$(optenv HUSKY_IDS_REAR_TOPIC ids_camera)"/>
+  <xacro:arg name="ids_rear_label"                 default="$(optenv HUSKY_IDS_REAR_LABEL rear)"/>
+
+  <!-- LiDAR -->
+  <xacro:arg name="ouster_enabled"              default="$(optenv HUSKY_OUSTER_ENABLED 1)" />
+  <xacro:arg name="ouster_topic"                default="$(optenv HUSKY_OUSTER_TOPIC points)"/>
+  <xacro:arg name="ouster_tower"                default="$(optenv HUSKY_OUSTER_TOWER 1)"/>
+  <xacro:arg name="ouster_prefix"               default="$(optenv HUSKY_OUSTER_PREFIX )"/>
+  <xacro:arg name="ouster_parent"               default="$(optenv HUSKY_OUSTER_PARENT top_plate_link)"/>
+  <xacro:arg name="ouster_xyz"                  default="$(optenv HUSKY_OUSTER_XYZ 0 0 0.4)" />
+  <xacro:arg name="ouster_rpy"                  default="$(optenv HUSKY_OUSTER_RPY 0 0 0)" />
+
+  <!-- Bumper Extension -->
+  <xacro:property name="husky_front_bumper_extend"  value="$(optenv HUSKY_FRONT_BUMPER_EXTEND 0)" />
+  <xacro:property name="husky_rear_bumper_extend"   value="$(optenv HUSKY_REAR_BUMPER_EXTEND 0)" />
+
+  <!-- Extras -->
+  <xacro:arg name="robot_namespace" default="$(optenv ROBOT_NAMESPACE /)" />
+  <xacro:arg name="urdf_extras"     default="$(optenv HUSKY_URDF_EXTRAS empty.urdf)" />
+  <xacro:arg name="cpr_urdf_extras" default="$(optenv CPR_URDF_EXTRAS empty.urdf)" />
+
+  <xacro:arg name="gpu" default="true"/>
+  <xacro:property name="gpu" value="$(arg gpu)" />
+
+  <!-- Included URDF/XACRO Files -->
+  <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/ids_camera.urdf.xacro"/>
+  <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/ouster_lidar.urdf.xacro"/>
+  <xacro:include filename="$(find ouster_description)/urdf/OS0-32.urdf.xacro"/>
+  <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/imu.urdf.xacro"/>
+  <xacro:include filename="$(find monoforce_gazebo)/urdf/decorations.urdf.xacro" />
+  <xacro:include filename="$(find monoforce_gazebo)/urdf/wheel.urdf.xacro" />
+
+  <xacro:property name="M_PI" value="3.14159"/>
+
+  <!-- Base Size -->
+  <xacro:property name="base_x_size" value="0.98740000" />
+  <xacro:property name="base_y_size" value="0.57090000" />
+  <xacro:property name="base_z_size" value="0.24750000" />
+
+  <!-- Wheel Mounting Positions -->
+  <xacro:property name="wheelbase" value="0.5120" />
+  <xacro:property name="track" value="0.5708" />
+  <xacro:property name="wheel_vertical_offset" value="0.03282" />
+
+  <!-- Wheel Properties -->
+  <xacro:property name="wheel_length" value="0.1143" />
+  <xacro:property name="wheel_radius" value="0.1651" />
+
+  <!-- Base link is the center of the robot's bottom plate -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://husky_description/meshes/base_link.dae" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="${( husky_front_bumper_extend - husky_rear_bumper_extend ) / 2.0} 0 ${base_z_size/4}" rpy="0 0 0" />
+      <geometry>
+        <box size="${ base_x_size + husky_front_bumper_extend + husky_rear_bumper_extend } ${base_y_size} ${base_z_size/2}"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 ${base_z_size*3/4-0.01}" rpy="0 0 0" />
+      <geometry>
+        <box size="${base_x_size*4/5} ${base_y_size} ${base_z_size/2-0.02}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Base footprint is on the ground under the robot -->
+  <link name="base_footprint"/>
+  <joint name="base_footprint_joint" type="fixed">
+    <origin xyz="0 0 ${wheel_vertical_offset - wheel_radius}" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="base_footprint" />
+  </joint>
+
+  <!-- Inertial link stores the robot's inertial information -->
+  <link name="inertial_link">
+    <inertial>
+      <mass value="46.034" />
+      <origin xyz="-0.00065 -0.085 0.062" />
+      <inertia ixx="0.6022" ixy="-0.02364" ixz="-0.1197" iyy="1.7386" iyz="-0.001544" izz="2.0296" />
+    </inertial>
+  </link>
+  <joint name="inertial_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="inertial_link" />
+  </joint>
+
+  <!-- Husky wheel macros -->
+  <xacro:husky_wheel wheel_prefix="front_left">
+    <origin xyz="${wheelbase/2} ${track/2} ${wheel_vertical_offset}" rpy="0 0 0" />
+  </xacro:husky_wheel>
+  <xacro:husky_wheel wheel_prefix="front_right">
+    <origin xyz="${wheelbase/2} ${-track/2} ${wheel_vertical_offset}" rpy="0 0 0" />
+  </xacro:husky_wheel>
+  <xacro:husky_wheel wheel_prefix="rear_left">
+    <origin xyz="${-wheelbase/2} ${track/2} ${wheel_vertical_offset}" rpy="0 0 0" />
+  </xacro:husky_wheel>
+  <xacro:husky_wheel wheel_prefix="rear_right">
+    <origin xyz="${-wheelbase/2} ${-track/2} ${wheel_vertical_offset}" rpy="0 0 0" />
+  </xacro:husky_wheel>
+
+  <!-- Husky Decorations -->
+  <xacro:husky_decorate />
+
+  <!-- IDS Cameras -->
+  <xacro:if value="$(arg ids_front_enabled)">
+      <xacro:ids_sensor xyz="$(arg ids_front_xyz)"
+                        rpy="$(arg ids_front_rpy)"
+                        parent="$(arg ids_front_parent)"
+                        topic="$(arg ids_front_topic)"
+                        label="$(arg ids_front_label)">
+      </xacro:ids_sensor>
+  </xacro:if>
+  <xacro:if value="$(arg ids_left_enabled)">
+      <xacro:ids_sensor xyz="$(arg ids_left_xyz)"
+                          rpy="$(arg ids_left_rpy)"
+                          parent="$(arg ids_left_parent)"
+                          topic="$(arg ids_left_topic)"
+                          label="$(arg ids_left_label)">
+      </xacro:ids_sensor>
+  </xacro:if>
+  <xacro:if value="$(arg ids_right_enabled)">
+      <xacro:ids_sensor xyz="$(arg ids_right_xyz)"
+                          rpy="$(arg ids_right_rpy)"
+                          parent="$(arg ids_right_parent)"
+                          topic="$(arg ids_right_topic)"
+                          label="$(arg ids_right_label)">
+      </xacro:ids_sensor>
+  </xacro:if>
+  <xacro:if value="$(arg ids_rear_enabled)">
+      <xacro:ids_sensor xyz="$(arg ids_rear_xyz)"
+                          rpy="$(arg ids_rear_rpy)"
+                          parent="$(arg ids_rear_parent)"
+                          topic="$(arg ids_rear_topic)"
+                          label="$(arg ids_rear_label)">
+      </xacro:ids_sensor>
+  </xacro:if>
+
+  <!-- Ouster LiDAR -->
+  <xacro:if value="$(arg ouster_enabled)">
+    <xacro:ouster_sensor xyz="$(arg ouster_xyz)"
+                         rpy="$(arg ouster_rpy)"
+                         parent="$(arg ouster_parent)">
+    </xacro:ouster_sensor>
+  </xacro:if>
+
+  <!-- IMU -->
+  <xacro:imu_sensor xyz="$(arg imu_xyz)"
+                    rpy="$(arg imu_rpy)"
+                    parent="$(arg imu_parent)"
+                    robot_namespace="$(arg robot_namespace)"/>
+
+  <!-- Gazebo control plugin -->
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>$(arg robot_namespace)</robotNamespace>
+      <legacyModeNS>true</legacyModeNS>
+    </plugin>
+  </gazebo>
+
+  <!-- Optional custom includes. -->
+  <xacro:include filename="$(arg urdf_extras)" />
+
+  <!-- Optional for Clearpath internal softwares -->
+  <xacro:include filename="$(arg cpr_urdf_extras)" />
+
+</robot>

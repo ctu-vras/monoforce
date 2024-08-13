@@ -10,23 +10,23 @@ Examples of predicted trajectories and autonomous traversal through vegetation:
 
 Input: onboard camera images:
 
-<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
+<img src="./monoforce/docs/imgs/tradr_rgb_input.png" width="800"/>
 
 Output: predicted trajectory, terrain shape and properties, interaction forces and contacts:
 
-![](./docs/imgs/monoforce_mayavi.gif)
+![](./monoforce/docs/imgs/monoforce_mayavi.gif)
 
 The three people are visible as the pillars within the blue area.
 
 Robot-terrain interaction prediction from only RGB images as input.
 
-<img src="./docs/imgs/examples/ramp_success.png" width="200"/> <img src="./docs/imgs/examples/high_grass2.png" width="200"/> <img src="./docs/imgs/examples/wall3.png" width="200"/> <img src="./docs/imgs/examples/snow.png" width="200"/>
+<img src="./monoforce/docs/imgs/examples/ramp_success.png" width="200"/> <img src="./monoforce/docs/imgs/examples/high_grass2.png" width="200"/> <img src="./monoforce/docs/imgs/examples/wall3.png" width="200"/> <img src="./monoforce/docs/imgs/examples/snow.png" width="200"/>
 
 ## Table of Contents
-- [Installation Instructions](./docs/INSTALL.md)
-- [Data](./docs/DATA.md)
-- [Terrain Encoder](./docs/TERRAIN_ENCODER.md)
-- [Differentiable Physics](./docs/DPHYS.md)
+- [Installation Instructions](./monoforce/docs/INSTALL.md)
+- [Data](./monoforce/docs/DATA.md)
+- [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md)
+- [Differentiable Physics](./monoforce/docs/DPHYS.md)
 - [Running](#running)
 - [ROS Integration](#ros-integration)
 - [Navigation](#navigation)
@@ -34,21 +34,23 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ## Running
 
-<img src="./docs/imgs/pipeline.png" width="800"/>
+<img src="./monoforce/docs/imgs/pipeline.png" width="800"/>
 
 The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Physics modules.
 Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
 Then the Differentiable Physics module simulates robot trajectory and interaction forces on the predicted terrain
 for a provided control sequence (linear and angular velocities).
-Refer to the [examples](./examples) folder for implementation details.
+Refer to the [monoforce/examples](./monoforce/examples) folder for implementation details.
 
 Please run the following command to explore the MonoForce pipeline:
 ```commandline
+cd monoforce/
 python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
 
 For example if you want to test the model with the provided images from the RobinGas dataset:
 ```commandline
+cd monoforce/
 python scripts/run --img-paths config/data_sample/tradr/images/1666267171_394104004_camera_front.png \
                                config/data_sample/tradr/images/1666267171_394104004_camera_left.png \
                                config/data_sample/tradr/images/1666267171_394104004_camera_right.png \
@@ -59,16 +61,16 @@ python scripts/run --img-paths config/data_sample/tradr/images/1666267171_394104
                    --lss_cfg_path config/lss_cfg_tradr.yaml --model_path config/weights/lss/lss_robingas_tradr.pt --dphys_cfg_path config/dphys_cfg.yaml \
                    --linear-vel 0.5 --angular-vel -0.1
 ```
-Please, refer to the [Terrain Encoder](./docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
+Please, refer to the [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
 
 If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
 ```commandline
 docker pull agishrus/monoforce
-cd docker/
-./run.sh
+cd monoforce_demos/scripts/
+./demo.sh
 ```
 
-<img src="./docs/imgs/monoforce.gif" width="800"/>
+<img src="./monoforce/docs/imgs/monoforce.gif" width="800"/>
 
 
 ## ROS Integration
@@ -87,7 +89,7 @@ The package is used as robot-terrain interaction and path planning pipeline.
 
 <p align="center">
   <a href="https://drive.google.com/file/d/1mqKEh_3VHZo4kDcJXP572SD1BVw37hSf/view?usp=drive_link">
-  <img src="docs/imgs/forest_navigation_video_teaser.png" alt="5 minute CVPR presentation video link">
+  <img src="monoforce/docs/imgs/forest_navigation_video_teaser.png" alt="video link">
   </a>
 </p>
 
@@ -96,7 +98,7 @@ Trajectories prediction is based on the
 [ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
 packages.
 Take a look at the
-[trajectory_shooting_with_warp_diff_physics.ipynb](./examples/trajectory_shooting_with_warp_diff_physics.ipynb)
+[trajectory_shooting_with_warp_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_warp_diff_physics.ipynb)
 notebook for the example of the trajectories prediction.
 
 Navigation consists of the following stages:
@@ -105,7 +107,6 @@ Navigation consists of the following stages:
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
-Please, refer to the [ctu-vras/husky_nav](https://github.com/ctu-vras/husky_nav/tree/monoforce) package for the navigation pipeline deployment example.
 
 ## Citation
 

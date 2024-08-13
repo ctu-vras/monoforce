@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
+    <arg name="rviz" default="false" doc="Launch RViz or not"/>
+    <arg name="world" default=""/>
+
+    <param name="use_sim_time" value="true"/>
+
+    <!-- Gazebo world and spawn Husky robot -->
+    <include unless="$(eval 'inspection' in world)" file="$(dirname)/husky_gazebo.launch">
+        <arg name="world" value="$(arg world)"/>
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="rviz" value="false"/>
+    </include>
+
+    <!-- Inspection world and spawn Husky robot -->
+    <include if="$(eval 'inspection' in world)" file="$(dirname)/husky_inspection_world.launch">
+        <arg name="gui" value="$(arg gui)"/>
+    </include>
+
+    <!-- RViz -->
+    <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz" args="-d $(dirname)/../config/rviz/husky.rviz"/>
+</launch>

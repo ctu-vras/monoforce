@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="cloud" default="cloud"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="map_frame" default="map"/>
+    <arg name="robot_frame" default="base_link"/>
+    <arg name="delay" default="0.0"/>
+    <arg name="node_start_delay" default="0.0"/>
+
+    <node pkg="norlab_icp_mapper_ros" type="mapper_node" name="mapper_node"
+          launch-prefix="bash -c 'sleep $(arg node_start_delay); $0 $@'">
+		<remap from="points_in" to="$(arg cloud)"/>
+		<param name="robot_frame" value="$(arg robot_frame)"/>
+		<param name="odom_frame" value="$(arg odom_frame)"/>
+		<param name="icp_config" value="$(dirname)/../config/slam/realtime_icp_config.yaml"/>
+		<param name="input_filters_config" value="$(dirname)/../config/slam/realtime_input_filters.yaml"/>
+		<param name="map_post_filters_config" value="$(dirname)/../config/slam/realtime_post_filters.yaml"/>
+		<param name="map_update_condition" value="delay"/>
+		<param name="map_update_delay" value="1.5"/>
+		<param name="sensor_max_range" value="60"/>
+		<param name="min_dist_new_point" value="0.15"/>
+		<param name="compute_prob_dynamic" value="true"/>
+		<param name="map_tf_publish_rate" value="100"/>
+	</node>
+</launch>

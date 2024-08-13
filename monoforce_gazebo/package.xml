@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>monoforce_gazebo</name>
+  <version>0.0.1</version>
+  <description>Gazebo simulator models and launchers for MonoForce navigation pipeline</description>
+
+  <!-- One maintainer tag required, multiple allowed, one person per tag -->
+  <maintainer email="agishrus@felk.cvut.cz">Ruslan Agishev</maintainer>
+  <license>BSD</license>
+  <url type="website">https://github.com/ctu-vras/monoforce</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>gazebo_ros</depend>
+  <depend>std_msgs</depend>
+  <depend>ros_numpy</depend>
+  <depend>visualization_msgs</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+  <depend>husky_description</depend>
+  <depend>realsense2_description</depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <gazebo_ros gazebo_model_path="${prefix}/models"/>
+    <gazebo_ros gazebo_media_path="${prefix}/worlds"/>
+  </export>
+</package>

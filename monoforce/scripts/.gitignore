@@ -1,0 +1,6 @@
+# sbatch jobs logging
+*.err
+*.out
+
+# slurm files for remote jobs launching
+*.batch

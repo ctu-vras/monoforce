@@ -1,0 +1,41 @@
+d_max: 6.4
+d_min: 0.6
+damping: 10.0
+elasticity: 10.0
+friction: 0.9
+grid_res: 0.1
+h_max_above_ground: 1.0
+hm_interp_method: null
+weight_decay: 1e-7
+max_omega: 2.0
+max_vel: 2.0
+n_samples: 1000
+num_robot_points: 5
+robot_inertia:
+- - 5.0
+  - 0.0
+  - 0.0
+- - 0.0
+  - 5.0
+  - 0.0
+- - 0.0
+  - 0.0
+  - 5.0
+robot_init_q:
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+robot_init_xyz:
+- 0.0
+- 0.0
+- 1.0
+robot_mass: 10.0
+motion_model: diffdrive
+rot_cost_weight: 1.0
+trans_cost_weight: 1.0
+sample_len: 10
+traj_sim_time: 10.0
+vel_tracks:
+- 0.0
+- 0.0

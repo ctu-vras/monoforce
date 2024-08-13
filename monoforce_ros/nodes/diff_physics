@@ -1,0 +1,449 @@
+#!/usr/bin/env python
+
+import os
+from time import time
+import rospkg
+import torch
+import warp as wp
+import numpy as np
+from scipy.spatial.transform import Rotation
+from threading import RLock
+import rospy
+import tf2_ros
+from geometry_msgs.msg import TransformStamped
+from monoforce.config import DPhysConfig
+from monoforce.models import dphysics, State
+from monoforce.models.dphysics_warp import DiffSim, Heightmap
+from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
+from monoforce.transformations import pose_to_xyz_q
+from nav_msgs.msg import Path
+from grid_map_msgs.msg import GridMap
+from ros_numpy import numpify
+from std_msgs.msg import Float32MultiArray
+from visualization_msgs.msg import MarkerArray
+from tf2_ros import TransformBroadcaster
+
+
+class DiffPhysBase:
+    def __init__(self,
+                 gridmap_topic='/grid_map/terrain',
+                 gridmap_layer='elevation',
+                 robot='tradr',
+                 robot_frame='base_link',
+                 dphys_cfg: DPhysConfig = None,
+                 max_age=0.5,
+                 device='cpu',
+                 n_sim_trajs=1,
+                 dt=0.001,
+                 pose_step=1):
+        self.robot = robot
+        self.robot_size = self.get_robot_size()
+        self.robot_frame = robot_frame
+        self.dphys_cfg = dphys_cfg
+        self.gridmap_layer = gridmap_layer
+        self.gridmap_frame = None
+        self.gridmap_center_frame = 'grid_map_link'
+        self.dt = dt
+        self.n_sim_steps = int(dphys_cfg.traj_sim_time / self.dt)
+        self.max_age = max_age
+        self.device = device
+        self.n_sim_trajs = n_sim_trajs
+
+        self.path_lock = RLock()
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        self.path_cost_min = np.inf
+        self.path_cost_max = -np.inf
+        self.pose_step = pose_step
+
+        self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
+        self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
+        self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
+        self.tf_broadcaster = TransformBroadcaster()
+
+        # grid map subscriber to publish grid map tf
+        self.gridmap_tf_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_tf_callback)
+
+    def gridmap_tf_callback(self, gridmap_msg):
+        # publish grid map pose tf frame: create tf message from grid map pose
+        grid_map_tf = TransformStamped()
+        grid_map_tf.header.stamp = gridmap_msg.info.header.stamp
+        grid_map_tf.header.frame_id = gridmap_msg.info.header.frame_id
+        grid_map_tf.child_frame_id = self.gridmap_center_frame
+        grid_map_tf.transform.translation.x = gridmap_msg.info.pose.position.x
+        grid_map_tf.transform.translation.y = gridmap_msg.info.pose.position.y
+        grid_map_tf.transform.translation.z = gridmap_msg.info.pose.position.z
+        grid_map_tf.transform.rotation = gridmap_msg.info.pose.orientation
+        self.tf_broadcaster.sendTransform(grid_map_tf)
+
+    def get_robot_size(self):
+        # TODO: add other robots, calculate bbox sizes from URDF models
+        if self.robot == 'tradr':
+            return np.array([1.0, 0.5, 0.4])
+        elif self.robot == 'husky':
+            return np.array([1.0, 0.5, 0.7])
+        elif self.robot == 'husky_oru':
+            return np.array([1.0, 0.5, 1.2])
+        else:
+            raise ValueError('Unknown robot: %s' % self.robot)
+
+    def init_poses(self):
+        """
+        Initialize robot poses.
+        """
+        xyz_q = np.zeros((self.n_sim_trajs, 7))
+        xyz_q[:, 2] = 0.2  # robot's initial z coordinate
+        xyz_q[:, 6] = 1.0  # quaternion w
+        return xyz_q
+
+    def init_controls(self, linear_vel, angular_vel_max, wheels_dist, allow_backward=True):
+        """
+        Initialize control commands through input linear and angular velocities.
+        The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
+        v_r(t) = v(t) + d * w(t)
+        v_l(t) = v(t) - d * w(t),
+        d is the distance between the robot's wheels.
+
+        where v(t) = V = const for t in [0 .. T], linear velocity,
+        w(t) = [-W_max .. W_max], angular velocity.,
+        T is trajectories time horizon.
+        """
+        T = self.n_sim_steps
+        assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
+        if allow_backward:
+            vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)),
+                                   +linear_vel * np.ones((self.n_sim_trajs // 2, T))])
+            omegas = np.concatenate([np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
+                                     np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)])
+        else:
+            vels = linear_vel * np.ones((self.n_sim_trajs, T))
+            omegas = np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs)
+        assert vels.shape == (self.n_sim_trajs, T), 'vels shape: %s' % str(vels.shape)
+        assert omegas.shape == (self.n_sim_trajs,), 'omegas shape: %s' % str(omegas.shape)
+
+        track_vels = np.zeros((self.n_sim_trajs, T, 2))
+        for i in range(self.n_sim_trajs):
+            d = wheels_dist
+            v_r = vels[i] + d * omegas[i]
+            v_l = vels[i] - d * omegas[i]
+            track_vels[i, :, 0], track_vels[i, :, 1] = v_r, v_l
+
+        return track_vels, vels, omegas
+
+    def get_pose(self, target_frame, source_frame, stamp=None):
+        if stamp is None:
+            stamp = rospy.Time(0)
+        try:
+            tf = self.tf_buffer.lookup_transform(target_frame=target_frame, source_frame=source_frame,
+                                                 time=stamp, timeout=rospy.Duration(1.0))
+        except Exception as ex:
+            rospy.logerr('Could not transform from %s to %s: %s.', source_frame, target_frame, ex)
+            return None
+        pose = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        return pose
+
+    def publish_paths_and_costs(self, xyz_q_np, path_costs, frame, stamp=None, pose_step=1):
+        assert len(xyz_q_np) == len(path_costs), 'xyz_q_np: %s, path_costs: %s' % (str(xyz_q_np.shape), str(path_costs.shape))
+        if stamp is None:
+            stamp = rospy.Time.now()
+
+        num_trajs = len(xyz_q_np)
+
+        # paths marker array
+        marker_array = MarkerArray()
+        red = np.array([1., 0., 0.])
+        green = np.array([0., 1., 0.])
+        path_costs_norm = (path_costs - self.path_cost_min) / (self.path_cost_max - self.path_cost_min)
+        for i in range(num_trajs):
+            # map path cost to color (lower cost -> greener, higher cost -> redder)
+            color = green + (red - green) * path_costs_norm[i]
+            marker_msg = poses_to_marker(xyz_q_np[i][::pose_step], color=color)
+            marker_msg.header.frame_id = frame
+            marker_msg.header.stamp = stamp
+            marker_msg.ns = 'paths'
+            marker_msg.id = i
+            marker_array.markers.append(marker_msg)
+
+        # publish all sampled paths
+        self.sampled_paths_pub.publish(marker_array)
+
+        # publish lower cost path
+        lower_cost_traj_i = np.argmin(path_costs)
+        lower_cost_xyz_q = xyz_q_np[lower_cost_traj_i]
+        rospy.logdebug('Min path cost: %.3f' % path_costs[lower_cost_traj_i])
+        rospy.logdebug('Max path cost: %.3f' % np.max(path_costs))
+        rospy.loginfo('Publishing lower cost path of length: %d' % len(lower_cost_xyz_q[::pose_step]))
+        path_msg = poses_to_path(lower_cost_xyz_q[::pose_step], stamp=stamp, frame_id=self.gridmap_frame)
+        self.lc_path_pub.publish(path_msg)
+
+        # publish path costs
+        path_costs_msg = Float32MultiArray()
+        path_costs_msg.data = path_costs
+        self.path_costs_pub.publish(path_costs_msg)
+
+    def gridmap_callback(self, gridmap_msg):
+        assert isinstance(gridmap_msg, GridMap)
+        # if message is stale do not process it
+        dt = rospy.Time.now() - gridmap_msg.info.header.stamp
+        if dt.to_sec() > self.max_age:
+            rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
+            return
+
+        if self.gridmap_frame is None:
+            self.gridmap_frame = gridmap_msg.info.header.frame_id
+
+        # convert grid map to height map
+        grid_map = gridmap_msg_to_numpy(gridmap_msg, self.gridmap_layer)
+        assert not np.all(np.isnan(grid_map)) and np.all(np.isfinite(grid_map))
+        assert grid_map.ndim == 2, 'Height map must be 2D'
+        rospy.loginfo('Received height map of shape: %s' % str(grid_map.shape))
+
+        grid_map_pose = numpify(gridmap_msg.info.pose).reshape((4, 4))
+        robot_pose = self.get_pose(target_frame=self.gridmap_frame, source_frame=self.robot_frame,
+                                   stamp=gridmap_msg.info.header.stamp)
+        if robot_pose is None:
+            rospy.logwarn('Could not get robot pose')
+            return
+        robot_pose_wrt_gridmap = np.linalg.inv(grid_map_pose) @ robot_pose
+        robot_xyz_q_wrt_gridmap = pose_to_xyz_q(robot_pose_wrt_gridmap)
+        # rpy = Rotation.from_quat(robot_xyz_q_wrt_gridmap[3:]).as_euler('xyz')
+        # rospy.logdebug('Robot xyz_rpy wrt gridmap: %s' % str(np.concatenate([robot_xyz_q_wrt_gridmap[:3], rpy])))
+
+        # predict path
+        with self.path_lock:
+            grid_maps = [grid_map for _ in range(self.n_sim_trajs)]
+            xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None, :], self.n_sim_trajs, axis=0)
+            with torch.no_grad():
+                xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
+
+            # update path cost bounds
+            if path_costs is not None:
+                self.path_cost_min = min(self.path_cost_min, np.min(path_costs))
+                self.path_cost_max = max(self.path_cost_max, np.max(path_costs))
+                rospy.logdebug('Path cost min: %.3f' % self.path_cost_min)
+                rospy.logdebug('Path cost max: %.3f' % self.path_cost_max)
+
+            # publish paths
+            if xyz_qs is not None:
+                t_start = time()
+                self.publish_paths_and_costs(xyz_qs, path_costs, stamp=gridmap_msg.info.header.stamp,
+                                             frame=self.gridmap_center_frame, pose_step=self.pose_step)
+                rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t_start))
+
+    @staticmethod
+    def spin():
+        try:
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
+
+    def predict_paths(self, grid_maps, xyz_qs_init):
+        raise NotImplementedError
+
+
+class DiffPhysicsWarp(DiffPhysBase):
+    def __init__(self,
+                 dphys_cfg: DPhysConfig = None,
+                 gridmap_topic='/grid_map/terrain',
+                 gridmap_layer='elevation',
+                 robot='tradr',
+                 robot_frame='base_link',
+                 max_age=0.5,
+                 n_sim_trajs=40,
+                 linear_vel=0.5,
+                 angular_vel_max=0.5,
+                 allow_backward=True,
+                 dt=0.001,
+                 pose_step=500,
+                 device='cpu'):
+        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
+                         max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
+        # initialize warp
+        wp.init()
+
+        self.n_sim_trajs = n_sim_trajs if n_sim_trajs % 2 == 0 else n_sim_trajs + 1
+
+        self.xyz_q0 = self.init_poses()
+        self.track_vels, _, _ = self.init_controls(linear_vel, angular_vel_max, wheels_dist=self.robot_size[1], allow_backward=allow_backward)
+        self.flipper_angles = self.init_flippers()
+        height0 = np.zeros((int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res),
+                            int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res)))
+        self.simulator = self.init_simulator(height=height0)
+
+        # grid map subscriber
+        self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
+
+    def init_flippers(self):
+        """
+        Initialize flipper angles.
+        """
+        flipper_angles = np.zeros((self.n_sim_trajs, self.n_sim_steps, 4))
+        # flipper_angles[0, :, 0] = 0.5
+        return flipper_angles
+
+    def init_simulator(self, height):
+        """
+        Initialize simulator with given height map.
+        """
+        t_start = time()
+        np_heights = [height for _ in range(self.n_sim_trajs)]
+        res = [self.dphys_cfg.grid_res for _ in range(self.n_sim_trajs)]
+        # create simulator
+        simulator = DiffSim(np_heights, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
+        simulator.set_control(self.track_vels, self.flipper_angles)
+        simulator.set_init_poses(self.xyz_q0)
+        rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
+        return simulator
+
+    def update_heightmaps(self, heights):
+        assert len(heights) == self.simulator.n_robots
+        n = self.simulator.n_robots
+        for traj_idx in range(n):
+            self.simulator.heightmap_list[traj_idx].heights.assign(heights[traj_idx])
+        self.simulator.heightmap_array = wp.array(self.simulator.heightmap_list, dtype=Heightmap, device=self.device)
+
+    def update_robot_poses(self, xyz_q):
+        assert xyz_q.shape == (self.n_sim_trajs, 7)
+        self.simulator.body_q.assign(xyz_q)
+
+    def predict_paths(self, grid_maps, xyz_qs_init=None):
+        for grid_map in grid_maps:
+            assert isinstance(grid_map, np.ndarray)
+            assert grid_map.shape[0] == grid_map.shape[1]
+        if xyz_qs_init is None:
+            xyz_qs_init = self.xyz_q0
+        assert xyz_qs_init.shape == (self.n_sim_trajs, 7), 'xyz_q0 shape: %s' % str(xyz_qs_init.shape)
+
+        # simulate trajectories
+        t_start = time()
+        # TODO: does not work with CUDA, warp simulation breaks
+        self.update_heightmaps(heights=grid_maps)
+        self.update_robot_poses(xyz_q=xyz_qs_init)
+        xyz_qs = self.simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
+        rospy.loginfo('WARP Simulation took %.3f [sec]' % (time() - t_start))
+
+        t_start = time()
+        xyz_qs_np = xyz_qs.numpy().transpose(1, 0, 2)
+        forces_np = self.simulator.body_f.numpy().transpose(1, 0, 2)
+        rospy.logdebug('xyz_qs: %s' % str(xyz_qs_np.shape))
+        rospy.logdebug('forces: %s' % str(forces_np.shape))
+        assert xyz_qs_np.shape == (self.n_sim_trajs, self.n_sim_steps + 1, 7)
+        assert forces_np.shape == (self.n_sim_trajs, self.n_sim_steps, 6)
+
+        # path cost as a sum of force magnitudes
+        path_costs = np.linalg.norm(forces_np, axis=2).sum(axis=1) / self.n_sim_steps
+        assert path_costs.shape == (self.n_sim_trajs,)
+
+        # remove unfeasible paths
+        if len(path_costs) == 0:
+            rospy.logwarn('All simulated paths are unfeasible')
+            return None, None
+
+        rospy.logdebug('Paths post-processing took %.3f [sec]' % (time() - t_start))
+        return xyz_qs_np, path_costs
+
+
+class DiffPhysicsTorch(DiffPhysBase):
+    def __init__(self,
+                 dphys_cfg: DPhysConfig,
+                 gridmap_topic='/grid_map/terrain',
+                 gridmap_layer='elevation',
+                 robot='tradr',
+                 robot_frame='base_link',
+                 max_age=0.5,
+                 n_sim_trajs=1,
+                 allow_backward=False,
+                 linear_vel=None,
+                 angular_vel_max=None,
+                 dt=0.01,
+                 pose_step=50,
+                 device='cpu'):
+        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
+                         max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
+        _, self.linear_vels, self.angular_vels = self.init_controls(linear_vel, angular_vel_max,
+                                                                    wheels_dist=self.robot_size[1], allow_backward=allow_backward)
+        # grid map subscriber
+        self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
+
+    def predict_paths(self, grid_maps, xyz_qs_init):
+        assert len(grid_maps) == self.n_sim_trajs == len(xyz_qs_init)
+        for grid_map in grid_maps:
+            assert isinstance(grid_map, np.ndarray)
+            assert grid_map.shape[0] == grid_map.shape[1]
+
+        tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.n_sim_steps)
+        path_costs = []
+        xyz_qs = []
+        for xyz_q_init, grid_map, vs, W in zip(xyz_qs_init, grid_maps, self.linear_vels, self.angular_vels):
+            # controls: time stamps, linear and angular velocities
+            ws = W * np.ones_like(vs)
+            controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
+            assert tt.shape == vs.shape == ws.shape, 'Shapes: %s, %s, %s' % (str(tt.shape), str(vs.shape), str(ws.shape))
+
+            # initial robot state
+            xyz0 = torch.as_tensor(xyz_q_init[:3], dtype=torch.float32, device=self.device).view(3, 1)
+            R0 = torch.as_tensor(Rotation.from_quat(xyz_q_init[3:]).as_matrix(), dtype=torch.float32, device=self.device).view(3, 3)
+            state0 = State(xyz=xyz0, rot=R0, device=self.device)
+
+            # predict states
+            states, _ = dphysics(grid_map, controls, robot_model=self.robot, state=state0, dphys_cfg=self.dphys_cfg, device=self.device)
+
+            # create xyz_q trajectory
+            xyz = states[0].cpu().numpy().squeeze()
+            xyz[:, 2] += 0.1  # robot's z coordinate offset, TODO: not sure why this is needed
+            Rs = states[1].cpu().numpy().squeeze()
+            qs = Rotation.from_matrix(Rs).as_quat()
+            xyz_q = np.concatenate([xyz, qs], axis=1)
+            xyz_qs.append(xyz_q)
+
+            # calculate path cost for each trajectory
+            forces = states[4].cpu()
+            # reduce forces acting on all robot points, cost = sum of force magnitudes
+            path_cost = forces.sum(dim=2).norm(dim=1).mean()
+            path_costs.append(path_cost)
+
+        return xyz_qs, path_costs
+
+
+def main():
+    rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
+
+    lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
+    dphys_cfg = DPhysConfig()
+    config_path = rospy.get_param('~config_path', os.path.join(lib_path, 'config/dphys_cfg.yaml'))
+    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
+    dphys_cfg.from_yaml(config_path)
+    dphys_cfg.traj_sim_time = rospy.get_param('~traj_sim_time', 5.)
+
+    robot = rospy.get_param('~robot', 'tradr')
+    robot_frame = rospy.get_param('~robot_frame', 'base_link')
+    gridmap_topic = rospy.get_param('~gridmap_topic')
+    gridmap_layer = rospy.get_param('~gridmap_layer', 'elevation')
+    max_age = rospy.get_param('~max_age', 0.5)
+    n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
+    allow_backward = rospy.get_param('~allow_backward', True)
+    linear_vel = rospy.get_param('~linear_vel', 0.5)
+    angular_vel_max = rospy.get_param('~angular_vel_max', 0.5)
+    device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
+    engine = rospy.get_param('~engine', 'torch')
+    assert engine in ['torch', 'warp'], 'Unknown engine: %s' % engine
+
+    DPhysEngine = DiffPhysicsTorch if engine == 'torch' else DiffPhysicsWarp
+
+    node = DPhysEngine(dphys_cfg=dphys_cfg,
+                       robot=robot,
+                       robot_frame=robot_frame,
+                       gridmap_topic=gridmap_topic,
+                       gridmap_layer=gridmap_layer,
+                       max_age=max_age,
+                       n_sim_trajs=n_sim_trajs,
+                       allow_backward=allow_backward,
+                       linear_vel=linear_vel,
+                       angular_vel_max=angular_vel_max,
+                       device=device)
+    node.spin()
+
+
+if __name__ == '__main__':
+    main()

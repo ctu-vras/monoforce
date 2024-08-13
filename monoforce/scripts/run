@@ -1,0 +1,232 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import torch
+from PIL import Image
+from mayavi import mlab
+import argparse
+from monoforce.config import DPhysConfig
+from monoforce.datasets.utils import load_calib
+from monoforce.models import dphysics
+from monoforce.models.lss.model import compile_model
+from monoforce.models.lss.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
+from monoforce.utils import read_yaml
+from monoforce.vis import visualize_imgs
+
+
+def arg_parser():
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    parser = argparse.ArgumentParser(description='Run MonoForce')
+    parser.add_argument('--dphys_cfg_path', type=str,
+                        default=os.path.join(base_path, 'config/dphys_cfg.yaml'), help='Path to the DPhys config file')
+    parser.add_argument('--lss_cfg_path', type=str,
+                        default=os.path.join(base_path, 'config/lss_cfg_tradr.yaml'), help='Path to the LSS config file')
+    parser.add_argument('--model_path', type=str,
+                        default=os.path.join(base_path, 'config/weights/lss/lss_robingas_tradr.pt'), help='Path to the LSS model')
+    parser.add_argument('--img-paths', type=str, required=True, nargs='+', help='Paths to the input RGB images')
+    parser.add_argument('--calibration-path', type=str, required=True, help='Path to the calibration files')
+    parser.add_argument('--cameras', type=str, nargs='+', default=None, help='Camera names')
+    parser.add_argument('--linear-vel', type=float, default=None, help='Linear velocity of the robot')
+    parser.add_argument('--angular-vel', type=float, default=None, help='Angular velocity of the robot')
+
+    return parser.parse_args()
+
+
+class MonoForce:
+    def __init__(self, imgs_path, calib_path,
+                 cameras=None,
+                 linear_vel=None, angular_vel=None,
+                 dphys_cfg_path=os.path.join('..', 'config/dphys_cfg.yaml'),
+                 lss_cfg_path=os.path.join('..', 'config/lss_cfg_tradr.yaml'),
+                 model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
+        self.imgs_path = imgs_path
+        self.calib_path = calib_path
+        self.linear_vel = linear_vel
+        self.angular_vel = angular_vel
+        if linear_vel is None:
+            v = np.random.uniform(0.4, 0.8)
+            if np.random.random() > 0.5:
+                v = -v
+            self.linear_vel = v
+        if angular_vel is None:
+            w = np.random.uniform(-0.2, 0.2)
+            self.angular_vel = w
+
+        # load DPhys config
+        self.dphys_cfg = DPhysConfig()
+        self.dphys_config_path = dphys_cfg_path
+        assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
+        self.dphys_cfg.from_yaml(self.dphys_config_path)
+
+        # load LSS config
+        self.lss_config_path = lss_cfg_path
+        assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
+        self.lss_config = read_yaml(self.lss_config_path)
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if self.dphys_cfg.n_samples / self.dphys_cfg.traj_sim_time != 100:
+            raise 'Simulated time and number of predicted trajectory samples do not match the default rate of 100 Hz.'
+        self.model_path = model_path
+        self.model = self.load_model()
+
+        # load calibration
+        self.calib = load_calib(calib_path=self.calib_path)
+        self.cameras = self.get_cameras() if cameras is None else cameras
+        assert len(self.cameras) > 0, 'No camera calibration found in path %s' % self.calib_path
+
+    def load_model(self):
+        model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
+        print('Loading model from: %s' % self.model_path)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.load_state_dict(torch.load(self.model_path, map_location=device))
+        model.eval()
+        return model
+
+    def poses_from_states(self, states):
+        xyz = states[0].cpu().numpy()
+        Rs = states[1].cpu().numpy()
+        poses = np.stack([np.eye(4) for _ in range(len(xyz))])
+        poses[:, :3, :3] = Rs
+        poses[:, :3, 3:4] = xyz
+        poses[:, 2, 3] += 0.1
+        # poses inside the heightmap
+        mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
+               (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
+        mask = np.asarray(mask, dtype=bool).flatten()
+        poses = poses[mask]
+        return poses
+
+    def predict_states(self, height, v, w):
+        if isinstance(height, torch.Tensor):
+            height = height.squeeze().cpu().numpy()
+        # constant linear and angular velocities as control inputs
+        tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples)
+        vs = v * torch.ones(self.dphys_cfg.n_samples)
+        ws = w * torch.ones(self.dphys_cfg.n_samples)
+        controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
+        states, system = dphysics(height, controls, dphys_cfg=self.dphys_cfg, device=self.device)
+        return states, system.robot_points
+
+    def get_cameras(self):
+        cams_yaml = os.listdir(os.path.join(self.calib_path, 'cameras'))
+        cams = [cam.replace('.yaml', '') for cam in cams_yaml]
+        if 'camera_up' in cams:
+            cams.remove('camera_up')
+        return sorted(cams)
+
+    def get_preprocessed_data(self):
+        imgs = []
+        rots = []
+        trans = []
+        post_rots = []
+        post_trans = []
+        intrins = []
+        for cam, img_path in zip(self.cameras, self.imgs_path):
+            img = Image.open(img_path)
+            K = self.calib[cam]['camera_matrix']['data']
+            K = np.asarray(K, dtype=np.float32).reshape((3, 3))
+            post_rot = torch.eye(2)
+            post_tran = torch.zeros(2)
+            # augmentation (resize, crop, horizontal flip, rotate)
+            resize, resize_dims, crop, flip, rotate = sample_augmentation(self.lss_config)
+            img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate)
+            # for convenience, make augmentation matrices 3x3
+            post_tran = torch.zeros(3)
+            post_rot = torch.eye(3)
+            post_tran[:2] = post_tran2
+            post_rot[:2, :2] = post_rot2
+            # rgb and intrinsics
+            img = normalize_img(img)
+            K = torch.as_tensor(K)
+            # extrinsics
+            T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
+            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+            rot = torch.as_tensor(T_robot_cam[:3, :3])
+            tran = torch.as_tensor(T_robot_cam[:3, 3])
+            imgs.append(img)
+            rots.append(rot)
+            trans.append(tran)
+            intrins.append(K)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+        inputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
+                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+
+        return inputs
+
+    def run(self):
+        # load data
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_preprocessed_data()
+
+        # draw input images
+        imgs_vis = [np.asarray(denormalize_img(img)) for img in imgs]
+        visualize_imgs(imgs_vis, names=self.cameras)
+
+        # get heightmap prediction
+        with torch.no_grad():
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i[None]) for i in inputs]
+            height_terrain_pred = self.model(*inputs)
+            height = height_terrain_pred.squeeze().cpu().numpy()
+
+            # predict trajectory and interaction forces
+            v, w = self.linear_vel, self.angular_vel
+            print('Predicting path with v=%.3f, w=%.3f' % (v, w))
+            states, robot_points0 = self.predict_states(height, v=v, w=w)
+            poses = self.poses_from_states(states)
+            print('Predicted poses shape: %s' % str(poses.shape))
+            forces = states[4].cpu().numpy()
+            print('Predicted forces shape: %s' % str(forces.shape))
+            robot_points0 = robot_points0.cpu().numpy()
+            print('Robot contact points shape: %s' % str(robot_points0.shape))
+
+        # visualize: - heightmap, - robot poses, - robot contact points, - interaction forces
+        mlab.figure(bgcolor=(1, 1, 1), size=(800, 800))
+        h, w = height.shape
+        x_grid, y_grid = np.mgrid[-h//2:h//2, -w//2:w//2] * self.dphys_cfg.grid_res
+        mlab.surf(x_grid, y_grid, height, colormap='terrain')
+        mlab.plot3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(0, 0, 0), line_width=2.0)
+        visu_robot = mlab.points3d(robot_points0[0, :], robot_points0[1, :], robot_points0[2, :],
+                                   color=(0, 0, 1), scale_factor=0.2)
+        visu_forces = mlab.quiver3d(robot_points0[0, :], robot_points0[1, :], robot_points0[2, :],
+                                    forces[0, 0, :], forces[0, 1, :], forces[0, 2, :],
+                                    line_width=4.0, scale_factor=0.005)
+        for i in range(len(poses)):
+            # robot-terrain contact points
+            robot_points = poses[i, :3, :3] @ robot_points0 + poses[i, :3, 3:4]
+            visu_robot.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :])
+            visu_forces.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :],
+                                        u=forces[i, 0, :], v=forces[i, 1, :], w=forces[i, 2, :])
+            mlab.view(azimuth=i/5, elevation=60, distance=20)
+            # mlab pause
+            if i % 5 == 0:
+                os.makedirs('./gen', exist_ok=True)
+                mlab.savefig(f'./gen/pose_{i//5}.png')
+        mlab.show()
+
+
+def main():
+    args = arg_parser()
+    print('Loading MonoForce with the following arguments:')
+    print(args)
+    monoforce = MonoForce(imgs_path=args.img_paths,
+                          calib_path=args.calibration_path,
+                          cameras=args.cameras,
+                          linear_vel=args.linear_vel,
+                          angular_vel=args.angular_vel,
+                          dphys_cfg_path=args.dphys_cfg_path,
+                          lss_cfg_path=args.lss_cfg_path,
+                          model_path=args.model_path)
+    monoforce.run()
+
+
+if __name__ == '__main__':
+    main()

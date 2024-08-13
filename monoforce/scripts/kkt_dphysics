@@ -1,0 +1,262 @@
+#!/usr/bin/env python
+
+import torch
+import numpy as np
+from monoforce.models import RigidBodySoftTerrain, State
+import os
+from mayavi import mlab
+import sys
+sys.path.append('../../pose-consistency-KKT-loss/scripts/')
+import network_sf2d
+import network_d2t
+import torch.nn as nn
+import dataset_sf2d
+import dataset_real_rpz
+from matplotlib import pyplot as plt
+from scipy.spatial.transform import Rotation
+
+
+torch.set_default_dtype(torch.float64)
+GRID_RES = 0.1
+MIN_X, MAX_X = -12.75, 12.85
+MIN_Y, MAX_Y = -12.75, 12.85
+# DEVICE = 'cuda:0'
+DEVICE = 'cpu'
+total_time = 4.
+number_of_samples = 100 * int(total_time)
+
+
+def setup_visualization(system, states, height, pos_x_gt, show=False):
+    pos_x, pos_R, vel_x, vel_omega, forces = states
+
+    # h, w = height.shape
+    # x_grid, y_grid = np.mgrid[-h // 2:h // 2, -w // 2:w // 2] * GRID_RES
+    x_grid, y_grid = np.meshgrid(np.arange(MIN_X, MAX_X, GRID_RES), np.arange(MIN_Y, MAX_Y, GRID_RES))
+    points = system.robot_points.detach().cpu().numpy()
+
+    """ Set-up visualization """
+    mlab.figure(size=(1280, 720))  # bgcolor=(1, 1, 1), fgcolor=(0.2, 0.2, 0.2))
+    mlab.clf()
+    mlab.plot3d(pos_x[:, 0].detach().cpu().numpy(), pos_x[:, 1].detach().cpu().numpy(),
+                pos_x[:, 2].detach().cpu().numpy(),
+                color=(0, 0, 1), line_width=2.0)
+    visu_trajectory = mlab.plot3d(pos_x[:, 0].detach().cpu().numpy(), pos_x[:, 1].detach().cpu().numpy(),
+                                  pos_x[:, 2].detach().cpu().numpy(), color=(1, 0, 0), line_width=2.0)
+    visu_trajectory_gt = mlab.plot3d(pos_x_gt[:, 0], pos_x_gt[:, 1], pos_x_gt[:, 2], color=(0, 1, 0), line_width=2.0)
+    visu_rigid_mesh = mlab.mesh(x_grid, y_grid, system.height.detach().cpu().numpy(),
+                                scalars=system.friction.detach().cpu().numpy(), opacity=0.7, vmax=1.0, vmin=0.5,
+                                colormap='copper', representation='surface')  # color=(0.15, 0.07, 0.0)
+    visu_rigid_wires = mlab.surf(x_grid, y_grid, system.height.detach().cpu().numpy(), opacity=0.5,
+                                 color=(0.6, 0.5, 0.4), representation='wireframe', line_width=5.0)
+    visu_robot = mlab.points3d(points[0, :], points[1, :], 0.1 + points[2, :], scale_factor=0.25)
+    visu_forces = mlab.quiver3d(points[0, :], points[1, :], points[2, :], forces[0, 0, :].detach().cpu().numpy(),
+                                forces[0, 1, :].detach().cpu().numpy(), forces[0, 2, :].detach().cpu().numpy(),
+                                line_width=4.0,
+                                scale_factor=0.005)  # , color=(0.8, 0.8, 0.8))
+    # visu_view = mlab.view(azimuth=150, elevation=80, distance=16.0)
+
+    # mlab.colorbar(object=visu_rigid_mesh, title="Terrain friction coefficient")
+    if show:
+        mlab.show()
+    return visu_robot, visu_forces, visu_trajectory, visu_trajectory_gt, visu_rigid_mesh, visu_rigid_wires
+
+def animate_trajectory(system, pos_x_gt, visu_robot, visu_forces, visu_trajectory, visu_trajectory_gt, visu_rigid_mesh, visu_rigid_wires, z_margin=0.1):
+    points = system.robot_points.detach().cpu().numpy()
+    h_r = system.height.detach().cpu().numpy()
+    h = h_r + system.height_soft.detach().cpu().numpy()
+    visu_rigid_mesh.mlab_source.z = np.asarray(h_r, 'd')
+    visu_rigid_wires.mlab_source.scalars = np.asarray(h_r, 'd')
+    # visu_soft_mesh.mlab_source.z = np.asarray(h, 'd')
+    # visu_soft_wires.mlab_source.scalars = np.asarray(h, 'd')
+    # visu_soft_mesh.mlab_source.scalars = np.asarray(self.friction.detach().cpu().numpy(), 'd')
+    visu_rigid_mesh.mlab_source.scalars = np.asarray(system.friction.detach().cpu().numpy(), 'd')
+
+    # visu_terrain_wires.mlab_source.set(scalars=np.asarray(self.height.detach().cpu().numpy(), 'd'), z=np.asarray(self.friction.detach().cpu().numpy(), 'd'))
+    k = 0
+    for t in range(system.pos_x.shape[0]):
+        system.cog = system.pos_x[t]
+        system.rot_p = system.pos_R[t] @ points
+        system.forces_p = system.forces[t]
+        visu_robot.mlab_source.set(x=system.cog[0] + system.rot_p[0, :],
+                                   y=system.cog[1] + system.rot_p[1, :],
+                                   z=z_margin + system.cog[2] + system.rot_p[2, :])
+        # visu_robot.mlab_source.scalars = ((self.forces_p**2).sum(axis=0)>0).astype(int)+1
+        visu_forces.mlab_source.set(x=system.cog[0] + system.rot_p[0, :],
+                                    y=system.cog[1] + system.rot_p[1, :],
+                                    z=z_margin + system.cog[2] + system.rot_p[2, :],
+                                    u=system.forces_p[0, :],
+                                    v=system.forces_p[1, :], w=system.forces_p[2, :])
+        visu_trajectory.mlab_source.set(x=system.pos_x[:, 0].squeeze(),
+                                        y=system.pos_x[:, 1].squeeze(),
+                                        z=system.pos_x[:, 2].squeeze())
+        visu_trajectory_gt.mlab_source.set(x=pos_x_gt[:, 0], y=pos_x_gt[:, 1], z=pos_x_gt[:, 2])
+
+        if t % 5 == 0:
+            # mlab.view(azimuth=150 - k, elevation=80, distance=12.0)
+            if not os.path.exists('./gen'):
+                os.makedirs('./gen')
+            mlab.savefig(filename='gen/' + '{:04d}_frame'.format(k) + '.png', magnification=1.0)
+            k += 1
+
+def get_data(device, random=False, vis=False):
+    path = '../data/kkt/data/'
+    os.listdir(path)
+
+    dataset = dataset_real_rpz.Dataset(os.path.join(path, 's2d_tst/'))
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=random, num_workers=0)
+
+    data = next(iter(dataloader))
+
+    label_dem = torch.as_tensor(data['label_dem'], dtype=torch.float64).to(device)
+
+    height_label = label_dem.squeeze().detach().cpu().numpy()
+
+    # get trajectory
+    roll_label = data['label_rpz'].squeeze()[0].cpu().numpy().T
+    pitch_label = data['label_rpz'].squeeze()[1].cpu().numpy().T
+    z_label = data['label_rpz'].squeeze()[2].cpu().numpy().T
+    yaw_label = data['yaw'].squeeze().cpu().numpy().T
+    xy_grid = 1. - np.isnan(z_label)
+    # find non zero elements ids of the 2D array
+    x_grid, y_grid = np.where(xy_grid)
+    z = z_label[x_grid, y_grid]
+    roll = roll_label[x_grid, y_grid]
+    pitch = pitch_label[x_grid, y_grid]
+    yaw = yaw_label[x_grid, y_grid]
+    x = x_grid * GRID_RES + MIN_X
+    y = y_grid * GRID_RES + MIN_Y
+    xyz_rpy = np.vstack((x, y, z, roll, pitch, yaw)).T
+
+    if vis:
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        plt.title('Ground truth height map')
+        plt.imshow(height_label)
+
+        plt.subplot(1, 2, 2)
+        z_vis = z_label.copy().T
+        z_vis[np.isnan(z_vis)] = 0.
+        plt.title('Robot trajectory')
+        plt.plot(x_grid, y_grid, 'rx-')
+        # show grayscale image with trajectory
+        plt.imshow(z_vis, cmap='gray')
+
+        plt.show()
+
+    return height_label, xyz_rpy
+
+def get_pred_data(device, random=False, vis=False):
+    path = '../data/kkt/data/'
+    os.listdir(path)
+
+    model_s2d = network_sf2d.Net()
+    model_s2d.load_state_dict(torch.load("../config/weights/kkt/network_weights_s2df", map_location=device))
+    model_s2d.to(device)
+
+    model_d2t = network_d2t.Net()
+    model_d2t.load_state_dict(torch.load("../config/weights/kkt/network_weights_df2t_rpz", map_location=device))
+    model_d2t.to(device)
+
+    dataset = dataset_sf2d.Dataset(os.path.join(path, "sf2d_val/"), augment=False)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=random, num_workers=0)
+
+    data = next(iter(dataloader))
+
+    input = torch.as_tensor(data['input'], dtype=torch.float64)
+    input_mask = torch.as_tensor(data['mask'], dtype=torch.float64)
+
+    input, input_mask = input.to(device), input_mask.to(device)
+
+    features = data['features'][:, 0, :, :].to(device)
+    pool = nn.MaxPool2d(3, stride=1, padding=1)
+    features = pool(features)
+
+    input_w_mask = torch.cat([input, input_mask], 1)
+
+    output_DEM = model_s2d(input_w_mask)
+    relu = nn.LeakyReLU(0.0001)
+
+    dense = torch.cat([output_DEM[:, 0:1, :, :], input_mask, features], 1)
+    diff_terrain = relu(model_d2t(dense))
+    support_terrain = output_DEM[:, 0, :, :][np.newaxis] - diff_terrain[:, 0, :, :][np.newaxis]
+
+    height = support_terrain.squeeze().detach().cpu().numpy()
+
+    # get trajectory
+    roll_label = data['label_rpz'].squeeze()[0].cpu().numpy().T
+    pitch_label = data['label_rpz'].squeeze()[1].cpu().numpy().T
+    z_label = data['label_rpz'].squeeze()[2].cpu().numpy().T
+    yaw_label = data['label_yaw'].squeeze().cpu().numpy().T
+    xy_grid = 1. - np.isnan(z_label)
+    # find non zero elements ids of the 2D array
+    x_grid, y_grid = np.where(xy_grid)
+    x = x_grid * GRID_RES + MIN_X
+    y = y_grid * GRID_RES + MIN_Y
+    z = z_label[x_grid, y_grid]
+    roll = roll_label[x_grid, y_grid]
+    pitch = pitch_label[x_grid, y_grid]
+    yaw = yaw_label[x_grid, y_grid]
+    xyz_rpy = np.vstack((x, y, z, roll, pitch, yaw)).T
+
+    if vis:
+        plt.figure(figsize=(15, 5))
+        plt.subplot(1, 3, 1)
+        plt.title('Predicted height map')
+        plt.plot(x_grid, y_grid, 'rx-')
+        plt.imshow(height)
+
+        plt.subplot(1, 3, 2)
+        z_vis = z_label.copy().T
+        z_vis[np.isnan(z_vis)] = 0.
+        plt.title('Robot Z trajectory')
+        # plt.plot(x_grid, y_grid, 'rx-')
+        # show grayscale image with trajectory
+        plt.imshow(z_vis, cmap='gray')
+
+        plt.subplot(1, 3, 3)
+        yaw_vis = yaw_label.copy().T
+        yaw_vis[np.isnan(yaw_vis)] = 0.
+        plt.title('Robot YAW trajectory')
+        # plt.plot(x_grid, y_grid, 'rx-')
+        # show grayscale image with trajectory
+        plt.imshow(yaw_vis, cmap='gray')
+
+        plt.show()
+
+    return height, xyz_rpy
+
+def main():
+    device = torch.device(DEVICE)
+
+    """ Create height map """
+    height, xyz_rpy = get_data(device, random=True, vis=True)
+    # height, xyz_rpy = get_pred_data(device, random=True, vis=True)
+    # print('Robot trajectory: ', xyz_rpy)
+    # return
+
+    """ Create robot-terrain interaction models (ground truth and initial one to train) """
+    system = RigidBodySoftTerrain(height=height,
+                                  grid_res=GRID_RES,
+                                  damping=10.0, elasticity=10.0, friction=0.9, mass=10.0,
+                                  state=State(xyz=xyz_rpy[0, :3] + np.array([0., 0., 1.]),
+                                              rot=Rotation.from_euler('xyz', xyz_rpy[0, 3:]).as_matrix()),
+                                  vel_tracks=np.array([2.5, 2.5]),
+                                  motion_model='rigid_soft_layers',
+                                  device=device, use_ode=False)
+
+    # put models with their params to device
+    system = system.to(device)
+
+    t0, state = 0, system.state
+    tt = torch.linspace(float(t0), total_time, number_of_samples).to(device)
+    states = system.sim(state, tt)
+
+    visu_robot, visu_forces, visu_trajectory, visu_trajectory_gt, visu_rigid_mesh, visu_rigid_wires = setup_visualization(system, states, height, xyz_rpy)
+
+    system.update_trajectory(tt)
+    animate_trajectory(system, xyz_rpy, visu_robot, visu_forces, visu_trajectory, visu_trajectory_gt, visu_rigid_mesh, visu_rigid_wires)
+    mlab.show()
+
+
+if __name__ == '__main__':
+    main()
