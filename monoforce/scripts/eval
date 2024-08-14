@@ -18,7 +18,7 @@ from monoforce.datasets.robingas import RobinGasPoints
 from monoforce.datasets.rellis3d import Rellis3DPoints
 from monoforce.config import DPhysConfig
 from monoforce.datasets import rellis3d_seq_paths, robingas_seq_paths
-from monoforce.utils import read_yaml, str2bool
+from monoforce.utils import read_yaml, str2bool, compile_data
 from monoforce.control import pose_control
 from monoforce.losses import translation_difference, rotation_difference
 from monoforce.transformations import rot2rpy
