@@ -28,5 +28,5 @@ The pretrained weights for the LSS terrain encoder can be downloaded from:
             [lss_robingas_husky_oru.pt](https://drive.google.com/file/d/12v6EAvaw0LqdINYFyHYr0t5mlZn-VN6c/view?usp=sharing),
 - RELLIS-3D: [lss_rellis3d.pt](https://drive.google.com/file/d/1kK75mUxHn-4GadU4k8-c43hA9t3bZxw1/view?usp=sharing).
 
-Once downloaded put the weights to `config/weights/lss` folder.
+Once downloaded put the weights to `monoforce/config/weights/lss` folder.
 
