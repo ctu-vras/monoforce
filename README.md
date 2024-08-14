@@ -7,7 +7,8 @@
 [![Data](http://img.shields.io/badge/data-RobinGas-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing)
 
 Examples of predicted trajectories and autonomous traversal through vegetation:
-[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/JGi-OzTBG1k/0.jpg)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
+
+[![](https://img.youtube.com/vi/JGi-OzTBG1k/0.jpg)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
 
 Input: onboard camera images:
 

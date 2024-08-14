@@ -2,15 +2,26 @@
 
 Install Python dependencies:
 ```commandline
-pip install -r singularity/requirements.txt
+pip install -r ../singularity/requirements.txt
 ```
 
 Please clone the ROS package, install its dependencies, and build the workspace:
 ```commandline
 mkdir -p ~/catkin_ws/src/
-cd ~/catkin_ws/src/ && git clone https://github.com/ctu-vras/monoforce.git
-cd ~/catkin_ws/ && rosdep install --from-paths src --ignore-src -r -y
-cd ~/catkin_ws/ && catkin_make
+cd ~/catkin_ws/src/
+git clone https://github.com/ctu-vras/monoforce.git
+
+wstool init
+wstool merge monoforce/monoforce_gazebo/dependencies.rosinstall
+wstool merge monoforce/monoforce_navigation/dependencies.rosinstall
+wstool up -j 4
+
+cd ~/catkin_ws/
+catkin init
+catkin config --extend /opt/ros/$ROS_DISTRO/
+catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
+rosdep install --from-paths src --ignore-src -r -y
+catkin build
 ```
 
 ## Docker

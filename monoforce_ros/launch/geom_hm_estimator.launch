@@ -12,7 +12,7 @@
             pts_topics: $(arg pts_topics)
             robot_frame: $(arg robot_frame)
             ground_frame: $(arg ground_frame)
-            config_path: $(dirname)/../config/dphys_cfg.yaml
+            config_path: $(dirname)/../../monoforce/config/dphys_cfg.yaml
             max_age: $(arg max_age)
         </rosparam>
         <remap from="grid_map/terrain" to="$(arg output_topic)"/>
