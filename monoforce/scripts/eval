@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument('--lss_config', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to the lss config file')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name: rellis3d or robingas')
     parser.add_argument('--robot', type=str, default='tradr', help='Robot name: husky or tradr')
+    parser.add_argument('--val_fraction', type=float, default=0.1, help='Fraction of the dataset to use for validation')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize the results')
     return parser.parse_args()
 
@@ -373,8 +374,8 @@ class EvaluatorGeom:
             print(f'Evaluation on {os.path.basename(path)}...')
             ds = self.DataClass(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg)
             val_ds_size = int(val_fraction * len(ds))
-            val_ids = range(len(ds) - val_ds_size, len(ds))
-            # val_ids = np.random.choice(len(ds), val_ds_size, replace=False)
+            # val_ids = range(len(ds) - val_ds_size, len(ds))
+            val_ids = np.random.choice(len(ds), val_ds_size, replace=False)
             val_ds = ds[val_ids]
             for i in tqdm(range(len(val_ds))):
                 states_true, height = self.get_data(i, val_ds)
@@ -475,10 +476,10 @@ class EvaluatorKKT(EvaluatorGeom):
     def load_model(self):
         print('Loading KKT model')
         import sys
-        sys.path.append('../../pose-consistency-KKT-loss/scripts/')
+        sys.path.append('../../../pose-consistency-KKT-loss/scripts/')
         import network_s2d
         model = network_s2d.Net()
-        model.load_state_dict(torch.load('../../pose-consistency-KKT-loss/weights/network_weights_s2d'))
+        model.load_state_dict(torch.load('../../../pose-consistency-KKT-loss/weights/network_weights_s2d'))
         model.eval()
         model.to(self.device)
         return model
@@ -510,6 +511,7 @@ class EvaluatorKKT(EvaluatorGeom):
 def evaluate(dataset, robot='tradr',
              dphys_config_path=None,
              lss_config_path=None,
+             val_fraction=0.1,
              vis=False):
     if dphys_config_path is None:
         dphys_config_path = '../config/dphys_cfg.yaml'
@@ -535,7 +537,7 @@ def evaluate(dataset, robot='tradr',
                              dataset=dataset, robot=robot,
                              model_path=model_path)
             print(evaluator)
-            evaluator.evaluate(vis=vis)
+            evaluator.evaluate(vis=vis, val_fraction=val_fraction)
 
 
 def main():
@@ -545,6 +547,7 @@ def main():
     evaluate(args.dataset, robot=args.robot,
              dphys_config_path=args.dphys_config,
              lss_config_path=args.lss_config,
+             val_fraction=args.val_fraction,
              vis=args.vis)
 
 
