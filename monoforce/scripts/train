@@ -3,15 +3,11 @@
 import os
 import torch
 import numpy as np
-from torch.utils.data import ConcatDataset, DataLoader, Subset
+from torch.utils.data import DataLoader
 from monoforce.models.lss.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.lss.model import compile_model
-from monoforce.datasets import RobinGas, RobinGasPoints, RobinGasRGBD
-from monoforce.datasets.utils import explore_data
-from monoforce.datasets import Rellis3D, Rellis3DPoints
-from monoforce.datasets import robingas_seq_paths, rellis3d_seq_paths
 from monoforce.config import DPhysConfig
-from monoforce.utils import read_yaml, write_to_yaml, str2bool
+from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -19,8 +15,9 @@ import matplotlib.pyplot as plt
 import argparse
 
 
-np.random.seed(0)
-torch.manual_seed(0)
+np.random.seed(42)
+torch.manual_seed(42)
+
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train LSS model')
@@ -31,7 +28,6 @@ def arg_parser():
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
-    parser.add_argument('--input_type', type=str, default='rgb', help='Input type: rgb or rgbd')
     parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
     parser.add_argument('--dphys_cfg_path', type=str, default='../config/dphys_cfg.yaml', help='Path to DPhys config')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
@@ -39,12 +35,12 @@ def arg_parser():
     parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--only_front_cam', type=str2bool, default=False, help='Use only front heightmap')
+    parser.add_argument('--use_rigid_semantics', type=str2bool, default=True, help='Use SAM semantics for rigid objects')
     parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
     parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--hdiff_weight', type=float, default=1e-4, help='Weight for height difference loss')
 
     return parser.parse_args()
-
 
 class Trainer:
     """
@@ -75,7 +71,6 @@ class Trainer:
                  robot,
                  dphys_cfg,
                  lss_cfg,
-                 input_type='rgb',
                  bsz=1,
                  nworkers=10,
                  lr=1e-3,
@@ -87,7 +82,8 @@ class Trainer:
                  geom_hm_weight=1.0,
                  terrain_hm_weight=10.0,
                  hdiff_weight=0.001,
-                 only_front_cam=False):
+                 only_front_cam=False,
+                 use_rigid_semantics=True):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.dataset = dataset
@@ -96,7 +92,6 @@ class Trainer:
         assert robot in ['husky', 'tradr', 'husky_oru'], 'Unknown robot: %s' % robot
         self.dphys_cfg = dphys_cfg
         self.lss_cfg = lss_cfg
-        self.input_type = input_type
 
         self.nepochs = nepochs
         self.min_loss = np.inf
@@ -109,6 +104,7 @@ class Trainer:
         self.hdiff_weight = hdiff_weight
 
         self.only_front_cam = only_front_cam
+        self.use_rigid_semantics = use_rigid_semantics
 
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
         self.model = self.load_model(modelf=pretrained_model_path)
@@ -116,7 +112,7 @@ class Trainer:
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'lss_{dataset}_{robot}_{input_type}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+                                    f'lss_{dataset}_{robot}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
@@ -124,7 +120,7 @@ class Trainer:
         write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
     def load_model(self, modelf=None):
-        in_channels = 3 if self.input_type == 'rgb' else 4
+        in_channels = 3
         model = compile_model(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf'], inpC=in_channels, outC=1)
         if modelf is not None:
             print('Loading pretrained LSS model from', modelf)
@@ -133,54 +129,13 @@ class Trainer:
         model.train()
         return model
 
-    def create_dataloaders(self, val_fraction=0.1, bsz=1, nworkers=1, debug=False, vis=False):
+    def create_dataloaders(self, bsz=1, nworkers=1, debug=False, vis=False):
         # create dataset for LSS model training
-        train_datasets = []
-        val_datasets = []
-        if self.dataset == 'rellis3d':
-            Data = Rellis3D
-            DataVis = Rellis3DPoints
-            data_paths = rellis3d_seq_paths
-        elif self.dataset == 'robingas':
-            Data = RobinGas if self.input_type == 'rgb' else RobinGasRGBD
-            DataVis = RobinGasPoints
-            data_paths = robingas_seq_paths[self.robot]
-        else:
-            raise ValueError(f'Unknown dataset: {self.dataset}. Supported datasets are rellis3d and robingas.')
-        print('Data paths:', data_paths)
-        for path in data_paths:
-            assert os.path.exists(path)
-            train_ds = Data(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_cam=self.only_front_cam)
-            val_ds = Data(path, is_train=False, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_cam=self.only_front_cam)
-
-            if vis:
-                train_ds_vis = DataVis(path, is_train=True, lss_cfg=self.lss_cfg, dphys_cfg=self.dphys_cfg, only_front_cam=self.only_front_cam)
-                explore_data(train_ds_vis)
-
-            # randomly select a subset of the dataset
-            val_ds_size = int(val_fraction * len(train_ds))
-            val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
-            train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
-            assert len(train_ids) + len(val_ids) == len(train_ds)
-            # check that there is no overlap between train and val ids
-            assert len(np.intersect1d(train_ids, val_ids)) == 0
-
-            train_ds = train_ds[train_ids]
-            val_ds = val_ds[val_ids]
-            print(f'Train dataset from path {path} size is {len(train_ds)}')
-            print(f'Validation dataset from path {path} size is {len(val_ds)}')
-
-            train_datasets.append(train_ds)
-            val_datasets.append(val_ds)
-
-        # concatenate datasets
-        train_ds = ConcatDataset(train_datasets)
-        val_ds = ConcatDataset(val_datasets)
-        if debug:
-            print('Debug mode: using small datasets')
-            train_ds = Subset(train_ds, np.random.choice(len(train_ds), min(32, len(train_ds)), replace=False))
-            val_ds = Subset(val_ds, np.random.choice(len(val_ds), min(8, len(val_ds)), replace=False))
-        print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
+        train_ds, val_ds = compile_data(dataset=self.dataset, robot=self.robot,
+                                        dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
+                                        small_data=debug, vis=vis,
+                                        only_front_cam=self.only_front_cam,
+                                        use_rigid_semantics=self.use_rigid_semantics)
 
         # create dataloaders
         train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, num_workers=nworkers)
@@ -394,7 +349,6 @@ def main():
     # create trainer
     trainer = Trainer(dataset=args.dataset, robot=args.robot,
                       dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
-                      input_type=args.input_type,
                       bsz=args.bsz, nworkers=args.nworkers, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,
@@ -402,7 +356,8 @@ def main():
                       terrain_hm_weight=args.terrain_hm_weight,
                       hdiff_weight=args.hdiff_weight,
                       debug=args.debug, vis=args.vis,
-                      only_front_cam=args.only_front_cam)
+                      only_front_cam=args.only_front_cam,
+                      use_rigid_semantics=args.use_rigid_semantics)
     trainer.train()
 
 

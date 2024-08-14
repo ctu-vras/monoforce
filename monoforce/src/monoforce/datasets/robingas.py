@@ -14,8 +14,7 @@ from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range
 from ..utils import position, timing, read_yaml
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
-from ..utils import normalize
-from .utils import load_calib
+from ..utils import normalize, load_calib
 from .coco import COCO_CATEGORIES
 import cv2
 import albumentations as A
@@ -428,10 +427,12 @@ class RobinGas(RobinGasBase):
                  lss_cfg,
                  dphys_cfg=DPhysConfig(),
                  is_train=False,
-                 only_front_cam=False):
+                 only_front_cam=False,
+                 use_rigid_semantics=False):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_cam = only_front_cam
+        self.use_rigid_semantics = use_rigid_semantics
         self.cameras = self.cameras[:1] if only_front_cam else self.cameras
 
         # initialize image augmentations
@@ -709,10 +710,13 @@ class RobinGas(RobinGasBase):
             if cached and os.path.exists(file_path):
                 hm_rigid = np.load(file_path, allow_pickle=True).item()
             else:
-                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
-                                                        points_source=points_source, vis=False)
                 traj_points = self.get_footprint_traj_points(i)
-                points = np.concatenate((seg_points, traj_points), axis=0)
+                if self.use_rigid_semantics:
+                    seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
+                                                            points_source=points_source, vis=False)
+                    points = np.concatenate((seg_points, traj_points), axis=0)
+                else:
+                    points = traj_points
                 hm_rigid = self.estimate_heightmap(points, robot_radius=None)
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 np.save(file_path, hm_rigid)
@@ -764,9 +768,10 @@ class RobinGas(RobinGasBase):
 
 
 class RobinGasPoints(RobinGas):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False, points_source='lidar'):
-        super(RobinGasPoints, self).__init__(path, lss_cfg,
-                                             dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True,
+                 only_front_cam=False, use_rigid_semantics=True, points_source='lidar'):
+        super(RobinGasPoints, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
+                                             only_front_cam=only_front_cam, use_rigid_semantics=use_rigid_semantics)
         assert points_source in ['lidar', 'radar', 'lidar_radar']
         self.points_source = points_source
 

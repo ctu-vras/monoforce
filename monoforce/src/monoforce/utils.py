@@ -116,3 +116,72 @@ def load_calib(calib_path):
     calib['clearance'] = np.abs(T[2, 3])
 
     return calib
+
+
+def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=False, **kwargs):
+    from torch.utils.data import ConcatDataset, Subset
+    from monoforce.datasets import Rellis3D, Rellis3DPoints, rellis3d_seq_paths
+    from monoforce.datasets import RobinGas, RobinGasPoints, robingas_seq_paths
+    from monoforce.datasets.utils import explore_data
+    """
+    Compile datasets for LSS model training
+
+    :param dataset: str, dataset name
+    :param robot: str, robot name
+    :param lss_cfg: dict, LSS model configuration
+    :param dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
+    :param val_fraction: float, fraction of the dataset to use for validation
+    :param small_data: bool, debug mode: use small datasets
+    :param vis: bool, visualize training samples
+    :param kwargs: additional arguments
+
+    :return: train_ds, val_ds
+    """
+    train_datasets = []
+    val_datasets = []
+    if dataset == 'rellis3d':
+        Data = Rellis3D
+        DataVis = Rellis3DPoints
+        data_paths = rellis3d_seq_paths
+    elif dataset == 'robingas':
+        Data = RobinGas
+        DataVis = RobinGasPoints
+        data_paths = robingas_seq_paths[robot]
+    else:
+        raise ValueError(f'Unknown dataset: {dataset}. Supported datasets are rellis3d and robingas.')
+    print('Data paths:', data_paths)
+    for path in data_paths:
+        assert os.path.exists(path)
+        train_ds = Data(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
+        val_ds = Data(path, is_train=False, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
+
+        if vis:
+            train_ds_vis = DataVis(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
+            explore_data(train_ds_vis)
+
+        # randomly select a subset of the dataset
+        val_ds_size = int(val_fraction * len(train_ds))
+        val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
+        train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
+        assert len(train_ids) + len(val_ids) == len(train_ds)
+        # check that there is no overlap between train and val ids
+        assert len(np.intersect1d(train_ids, val_ids)) == 0
+
+        train_ds = train_ds[train_ids]
+        val_ds = val_ds[val_ids]
+        print(f'Train dataset from path {path} size is {len(train_ds)}')
+        print(f'Validation dataset from path {path} size is {len(val_ds)}')
+
+        train_datasets.append(train_ds)
+        val_datasets.append(val_ds)
+
+    # concatenate datasets
+    train_ds = ConcatDataset(train_datasets)
+    val_ds = ConcatDataset(val_datasets)
+    if small_data:
+        print('Debug mode: using small datasets')
+        train_ds = Subset(train_ds, np.random.choice(len(train_ds), min(32, len(train_ds)), replace=False))
+        val_ds = Subset(val_ds, np.random.choice(len(val_ds), min(8, len(val_ds)), replace=False))
+    print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
+
+    return train_ds, val_ds

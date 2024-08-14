@@ -7,11 +7,10 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.config import DPhysConfig
-from monoforce.datasets.utils import load_calib
 from monoforce.models import dphysics
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
-from monoforce.utils import read_yaml
+from monoforce.utils import read_yaml, load_calib
 from monoforce.vis import visualize_imgs
 
 

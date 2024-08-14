@@ -3,7 +3,6 @@ import os
 import matplotlib as mpl
 import numpy as np
 import torch
-import yaml
 from tqdm import tqdm
 
 from monoforce.cloudproc import hm_to_cloud
@@ -20,7 +19,6 @@ __all__ = [
     'get_robingas_data',
     'get_kkt_data',
     'get_simple_data',
-    'load_calib',
     'explore_data'
 ]
 
@@ -99,32 +97,6 @@ def get_simple_data(cfg: DPhysConfig):
     stamps = np.arange(N)
     traj = {'poses': poses, 'stamps': stamps}
     return height, traj
-
-
-def load_calib(calib_path):
-    calib = {}
-    # read camera calibration
-    cams_path = os.path.join(calib_path, 'cameras')
-    if not os.path.exists(cams_path):
-        print('No cameras calibration found in path {}'.format(cams_path))
-        return None
-
-    for file in os.listdir(cams_path):
-        if file.endswith('.yaml'):
-            with open(os.path.join(cams_path, file), 'r') as f:
-                cam_info = yaml.load(f, Loader=yaml.FullLoader)
-                calib[file.replace('.yaml', '')] = cam_info
-            f.close()
-    # read cameras-lidar transformations
-    trans_path = os.path.join(calib_path, 'transformations.yaml')
-    with open(trans_path, 'r') as f:
-        transforms = yaml.load(f, Loader=yaml.FullLoader)
-    f.close()
-    calib['transformations'] = transforms
-    T = np.asarray(calib['transformations']['T_base_link__base_footprint']['data'], dtype=np.float32).reshape((4, 4))
-    calib['clearance'] = np.abs(T[2, 3])
-
-    return calib
 
 
 def explore_data(ds, modelf=None, sample_range='random', save=False):
@@ -226,3 +198,5 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
                 plt.close(fig)
             else:
                 plt.show()
+
+
