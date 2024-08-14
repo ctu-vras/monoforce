@@ -1,14 +1,14 @@
 #!/bin/bash
 
-ROBOT=husky_oru
+ROBOT=tradr
 DATASET=robingas
 INPUT_TYPE=rgb
-ONLY_FRONT_CAM=True
+ONLY_FRONT_CAM=False
 DEBUG=False
 VIS=False
 BSZ=64
 
-WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
+WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
 
 source /home/$USER/workspaces/traversability_ws/devel/setup.bash
 
@@ -22,4 +22,3 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
         --lss_cfg_path ../config/lss_cfg_$ROBOT.yaml \
         --only_front_cam ${ONLY_FRONT_CAM} \
         --pretrained_model_path ${WEIGHTS}
-
