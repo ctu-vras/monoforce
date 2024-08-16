@@ -520,7 +520,7 @@ def evaluate(dataset, robot='tradr',
     if dataset == 'robingas':
         model_path = f'../config/weights/lss/lss_robingas_{robot}.pt'
     elif dataset == 'rellis3d':
-        model_path = '../config/tb_runs/lss_rellis3d.pt'
+        model_path = '../config/weights/lss/lss_rellis3d.pt'
     else:
         raise ValueError('Invalid dataset %s. Supported: rellis3d and robingas' % dataset)
 

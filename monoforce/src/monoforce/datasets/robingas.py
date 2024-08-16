@@ -52,8 +52,9 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky/husky_2022-06-30-15-58-37'),
     ],
     'marv': [
-        os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-16-37-03'),
-        os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-15-18-34'),
+        # os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-16-37-03'),
+        # os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-15-18-34'),
+        os.path.join(data_dir, 'RobinGas/marv/24-08-14-monoforce-long_drive'),
     ],
     'tradr': [
         os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-30-57'),

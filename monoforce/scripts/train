@@ -89,7 +89,7 @@ class Trainer:
         self.dataset = dataset
         assert dataset in ['rellis3d', 'robingas'], 'Unknown dataset: %s' % dataset
         self.robot = robot
-        assert robot in ['husky', 'tradr', 'husky_oru'], 'Unknown robot: %s' % robot
+        assert robot in ['husky', 'tradr', 'husky_oru', 'marv'], 'Unknown robot: %s' % robot
         self.dphys_cfg = dphys_cfg
         self.lss_cfg = lss_cfg
 
