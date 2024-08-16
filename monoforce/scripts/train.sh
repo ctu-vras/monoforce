@@ -8,7 +8,7 @@ DEBUG=False
 VIS=False
 BSZ=32
 
-WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
+#WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
 
 source /home/$USER/workspaces/traversability_ws/devel/setup.bash
 
@@ -20,5 +20,6 @@ source /home/$USER/workspaces/traversability_ws/devel/setup.bash
         --dphys_cfg_path ../config/dphys_cfg.yaml \
         --lss_cfg_path ../config/lss_cfg_$ROBOT.yaml \
         --only_front_cam ${ONLY_FRONT_CAM} \
-        --use_rigid_semantics ${USE_SAM_RIGID_SEMANTICS} \
-        --pretrained_model_path ${WEIGHTS}
+        --use_rigid_semantics ${USE_SAM_RIGID_SEMANTICS}
+#        --pretrained_model_path ${WEIGHTS}
+
