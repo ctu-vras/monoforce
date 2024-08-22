@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     python3-vcstool \
     python3-rosdep \
     python3-catkin-tools \
+    ros-noetic-husky* \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -46,6 +47,7 @@ WORKDIR /root/traversability_ws/
 RUN catkin init
 RUN catkin config --extend /opt/ros/$ROS_DISTRO/
 RUN catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
+RUN pip install rospkg==1.5.1
 RUN apt update && rosdep install --from-paths src --ignore-src -r -y
 
 # Build the workspace

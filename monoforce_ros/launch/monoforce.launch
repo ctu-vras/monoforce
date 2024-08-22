@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="rviz" default="false"/>
     <arg name="robot" default="husky" doc="Robot type: husky, tradr or marv"/>
     <arg name="dphys_config_path" default="$(dirname)/../../monoforce/config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg_$(arg robot).yaml"/>
