@@ -17,3 +17,9 @@ clean:
 
 pull:
 	@docker pull agishrus/monoforce
+
+shell:
+	@docker run -it --rm --net=host --runtime=nvidia --gpus all \
+            -v ${HOME}/.Xauthority:/root/.Xauthority:rw -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=${DISPLAY} \
+            -v ${HOME}/workspaces/traversability_ws/src:/root/catkin_ws/src \
+            agishrus/monoforce /bin/bash

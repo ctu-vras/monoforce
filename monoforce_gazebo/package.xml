@@ -18,6 +18,7 @@
   <depend>robot_state_publisher</depend>
   <depend>joint_state_publisher</depend>
   <depend>husky_description</depend>
+  <depend>husky_control</depend>
   <depend>realsense2_description</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
