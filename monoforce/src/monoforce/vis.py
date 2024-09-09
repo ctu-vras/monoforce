@@ -48,80 +48,69 @@ def draw_points_on_image(points, color, image):
     return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
 
 
-def setup_visualization(system, states=None, states_true=None,
-                        cfg=DPhysConfig(), z_margin=0.1, show=False):
-    """ Set-up visualization """
-    contact_points = system.robot_points.detach().cpu().numpy()
-    height = system.height.detach().cpu().numpy()
+def setup_visualization(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
+    # unpack the states and forces
+    xs, R, xds, omegas, x_points = states
 
-    h, w = height.shape
-    x_grid, y_grid = np.mgrid[-h // 2:h // 2, -w // 2:w // 2] * cfg.grid_res
-
-    mlab.figure(size=(1280, 720))  # bgcolor=(1, 1, 1), fgcolor=(0.2, 0.2, 0.2))
+    # set up the visualization
+    mlab.figure(size=(1280, 720))
     mlab.clf()
-    visu_traj = mlab.plot3d
-    visu_forces = mlab.quiver3d
-    if states is not None:
-        pos_x, pos_R, vel_x, vel_omega, forces = [s.detach().cpu().numpy() for s in states]
-        visu_traj = mlab.plot3d(pos_x[:, 0], pos_x[:, 1], pos_x[:, 2], color=(0, 1, 0), line_width=2.0)
-        visu_forces = mlab.quiver3d(contact_points[0, :], contact_points[1, :], contact_points[2, :],
-                                    forces[0, 0, :], forces[0, 1, :], forces[0, 2, :],
-                                    line_width=4.0, scale_factor=0.005)  # , color=(0.8, 0.8, 0.8))
-
-    if states_true is not None:
-        # visualize ground truth trajectory
-        pos_x_true, pos_R_true, vel_x_true, vel_omega_true, forces_true = [s.detach().cpu().numpy() for s in states_true]
-        mlab.plot3d(pos_x_true[:, 0], pos_x_true[:, 1], pos_x_true[:, 2], color=(0, 0, 1), line_width=2.0)
-
-    visu_friction = mlab.mesh(x_grid, y_grid, height,
-                              scalars=system.friction.detach().cpu().numpy(), opacity=0.3, vmax=1.0, vmin=0.5,
-                              colormap='jet',
-                              representation='surface')  # color=(0.15, 0.07, 0.0)
-    visu_terrain = mlab.surf(x_grid, y_grid, height, colormap='terrain', opacity=0.5)
-    visu_robot = mlab.points3d(contact_points[0, :], contact_points[1, :], z_margin + contact_points[2, :], scale_factor=0.2, color=(0, 0, 0))
-
-    # mlab.colorbar(object=visu_friction, title="Terrain friction coefficient")
-    mlab.view(azimuth=150, elevation=80, distance=16.0)
-
-    if show:
-        mlab.show()
-    return visu_robot, visu_forces, visu_traj, visu_friction, visu_terrain
+    visu_traj = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=2.0)
+    if forces is not None:
+        F_spring, F_friction, F_thrust_left, F_thrust_right = forces
+        visu_Ns = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
+                                F_spring[0, :, 0].mean(), F_spring[0, :, 1].mean(), F_spring[0, :, 2].mean(),
+                                line_width=4.0, scale_factor=0.005, color=(0, 0, 1))
+        visu_Frs = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
+                                 F_friction[0, :, 0].mean(), F_friction[0, :, 1].mean(), F_friction[0, :, 2].mean(),
+                                 line_width=4.0, scale_factor=0.005, color=(0, 1, 0))
+        visu_F_th_l = mlab.quiver3d(x_points[0, mask_left].mean(axis=0)[0], x_points[0, mask_left].mean(axis=0)[1],
+                                    x_points[0, mask_left].mean(axis=0)[2],
+                                    F_thrust_left[0, 0], F_thrust_left[0, 1], F_thrust_left[0, 2],
+                                    line_width=4.0, scale_factor=0.005, color=(1, 0, 0))
+        visu_F_th_r = mlab.quiver3d(x_points[0, mask_right].mean(axis=0)[0], x_points[0, mask_right].mean(axis=0)[1],
+                                    x_points[0, mask_right].mean(axis=0)[2],
+                                    F_thrust_right[0, 0], F_thrust_right[0, 1], F_thrust_right[0, 2],
+                                    line_width=4.0, scale_factor=0.005, color=(1, 0, 0))
+    else:
+        visu_Ns = visu_Frs = visu_F_th_l = visu_F_th_r = None
+    visu_terrain = mlab.surf(x_grid, y_grid, z_grid.T, colormap='terrain', opacity=0.6)
+    visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+                               scale_factor=0.1, color=(0, 0, 0))
+    # mlab.view(azimuth=150, elevation=80, distance=16.0)
+    return visu_traj, visu_Ns, visu_Frs, visu_F_th_l, visu_F_th_r, visu_terrain, visu_robot
 
 
-def animate_trajectory(system, vis_cfg, z_margin=0.1, frame_n=0, log_path='./gen', save_figs_step=5):
-    visu_robot, visu_forces, visu_traj, visu_friction, visu_terrain = vis_cfg
+def animate_trajectory(states, forces, z_grid, mask_left, mask_right, vis_cfg, step=1):
+    # unpack the states and forces
+    xs, R, xds, omegas, x_points = states
 
-    points = system.robot_points.detach().cpu().numpy()
-    h_terrain = system.height.detach().cpu().numpy()
-    visu_terrain.mlab_source.scalars = np.asarray(h_terrain, 'd')
-    visu_friction.mlab_source.z = np.asarray(h_terrain, 'd')
-    visu_friction.mlab_source.scalars = np.asarray(system.friction.detach().cpu().numpy(), 'd')
+    # unpack the visualization configuration
+    visu_traj, visu_Ns, visu_Frs, visu_F_th_l, visu_F_th_r, visu_terrain, visu_robot = vis_cfg
 
-    visu_terrain.mlab_source.set(scalars=np.asarray(system.height.detach().cpu().numpy(), 'd'),
-                                 z=np.asarray(system.friction.detach().cpu().numpy(), 'd'))
-    for t in range(system.pos_x.shape[0]):
-        system.cog = system.pos_x[t]
-        system.rot_p = system.pos_R[t] @ points
-        system.forces_p = system.forces[t]
-        visu_robot.mlab_source.set(x=system.cog[0] + system.rot_p[0, :],
-                                   y=system.cog[1] + system.rot_p[1, :],
-                                   z=z_margin + system.cog[2] + system.rot_p[2, :])
-        visu_forces.mlab_source.set(x=system.cog[0] + system.rot_p[0, :],
-                                    y=system.cog[1] + system.rot_p[1, :],
-                                    z=z_margin + system.cog[2] + system.rot_p[2, :],
-                                    u=system.forces_p[0, :],
-                                    v=system.forces_p[1, :], w=system.forces_p[2, :])
-        visu_traj.mlab_source.set(x=system.pos_x[:, 0].squeeze(),
-                                  y=system.pos_x[:, 1].squeeze(),
-                                  z=system.pos_x[:, 2].squeeze())
-        # mlab.view(azimuth=150 - frame_n, elevation=60, distance=16.0)
+    visu_terrain.mlab_source.scalars = z_grid.T
+    for t in range(len(xs)):
+        visu_robot.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2])
+        if forces is not None:
+            F_spring, F_friction, F_thrust_left, F_thrust_right = forces
+            visu_Ns.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
+                                    u=F_spring[t, :, 0].mean(), v=F_spring[t, :, 1].mean(), w=F_spring[t, :, 2].mean())
+            visu_Frs.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
+                                     u=F_friction[t, :, 0].mean(), v=F_friction[t, :, 1].mean(),
+                                     w=F_friction[t, :, 2].mean())
+            visu_F_th_l.mlab_source.set(x=x_points[t, mask_left].mean(axis=0)[0], y=x_points[t, mask_left].mean(axis=0)[1],
+                                        z=x_points[t, mask_left].mean(axis=0)[2],
+                                        u=F_thrust_left[t, 0], v=F_thrust_left[t, 1], w=F_thrust_left[t, 2])
+            visu_F_th_r.mlab_source.set(x=x_points[t, mask_right].mean(axis=0)[0],
+                                        y=x_points[t, mask_right].mean(axis=0)[1],
+                                        z=x_points[t, mask_right].mean(axis=0)[2],
+                                        u=F_thrust_right[t, 0], v=F_thrust_right[t, 1], w=F_thrust_right[t, 2])
+        visu_traj.mlab_source.set(x=xs[:, 0], y=xs[:, 1], z=xs[:, 2])
+        if t % step == 0:
+            os.makedirs('../gen/robot_control', exist_ok=True)
+            mlab.savefig(f'../gen/robot_control/frame_{t}.png')
+    mlab.show()
 
-        if t % save_figs_step == 0:
-            os.makedirs(log_path, exist_ok=True)
-            mlab.savefig(filename=os.path.join(log_path, '{:04d}_frame.png'.format(frame_n)), magnification=1.0)
-            frame_n += 1
-
-    return frame_n
 
 def map_colors(values, colormap=cm.gist_rainbow, min_value=None, max_value=None):
     if not isinstance(values, torch.Tensor):

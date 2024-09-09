@@ -19,15 +19,16 @@ def rot2rpy(R):
     yaw = torch.atan2(R[1, 0], R[0, 0])
     return roll, pitch, yaw
 
-def pose_control(state, goal_pose, Kp_rho=1., Kp_theta=1., Kp_yaw=1.,
+def pose_control(pose, goal_pose, Kp_rho=1., Kp_theta=1., Kp_yaw=1.,
                  return_dist=False, allow_backwards=True, dist_reached=0.01):
-    # assert isinstance(state, State)
+    assert isinstance(pose, torch.Tensor)
+    assert pose.shape == (4, 4)
     assert isinstance(goal_pose, torch.Tensor)
     assert goal_pose.shape == (4, 4)
 
     goal_xyz = goal_pose[:3, 3]
     # distances to goal in robot frame
-    d_xyz = goal_xyz.squeeze() - state[0].squeeze()
+    d_xyz = goal_xyz.squeeze() - pose[:3, 3]
     dist_xy = torch.linalg.norm(d_xyz[:2])
 
     if dist_xy < dist_reached:
@@ -37,7 +38,7 @@ def pose_control(state, goal_pose, Kp_rho=1., Kp_theta=1., Kp_yaw=1.,
         return 0., 0.
 
     # robot heading to goal error
-    yaw = rot2rpy(state[1])[2].item()
+    yaw = rot2rpy(pose[:3, :3])[2].item()
     d_theta = torch.atan2(d_xyz[1], d_xyz[0]) - yaw
     # d_theta = (d_theta + np.pi) % (2 * np.pi) - np.pi
     d_theta = torch.as_tensor(d_theta)

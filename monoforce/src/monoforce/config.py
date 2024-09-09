@@ -17,15 +17,15 @@ class DPhysConfig:
 
         # robot parameters
         self.track_vels = [0., 0.]
-        self.robot_mass = 10.
-        self.robot_inertia = (5. * np.eye(3)).tolist()
+        self.robot_mass = 40.
         self.robot_init_xyz = [0., 0., 1.]
         self.robot_init_q = [0., 0., 0., 1.]
         self.robot_size = (1.0, 0.6)
 
         # training parameters
-        self.traj_sim_time = 10.0
-        self.n_samples = 100 * int(self.traj_sim_time)
+        self.traj_sim_time = 5.0
+        self.dt = 0.01
+        self.n_samples = int(self.traj_sim_time / self.dt)
         self.sample_len = 10
 
         # control parameters

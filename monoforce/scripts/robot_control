@@ -1,19 +1,15 @@
 #!/usr/bin/env python
 
+import os
 import torch
 import numpy as np
 from monoforce.config import DPhysConfig
-from monoforce.models import RigidBodySoftTerrain, State
+from monoforce.models.dphysics import dphysics, rigid_body_params
 from monoforce.datasets import RobinGasBase, robingas_seq_paths
-from monoforce.vis import draw_coord_frames, setup_visualization, animate_trajectory
-from monoforce.control import pose_controller, pose_control, cmd_vel_from_goal
-from monoforce.transformations import rot2rpy
+from monoforce.control import pose_control
+from monoforce.vis import setup_visualization, animate_trajectory
 from mayavi import mlab
-import threading
-from scipy.spatial.transform import Rotation
 
-
-torch.set_default_dtype(torch.float64)
 
 cfg = DPhysConfig()
 cfg.grid_res = 0.1
@@ -22,61 +18,9 @@ cfg.d_max = 6.4
 cfg.d_min = 1.
 cfg.max_vel = np.inf
 cfg.max_omega = np.inf
+cfg.traj_sim_time = 5.0
+cfg.dt = 0.01
 device = torch.device(cfg.device)
-
-
-def random_pose(cfg, h=None):
-    pose = np.eye(4)
-    pos_x = torch.rand(3) * (cfg.d_max - cfg.d_min) - cfg.d_max
-    # pos_R = Rotation.random().as_matrix()
-    pos_R = Rotation.from_euler('z', 2 * (np.random.random() - 0.5) * np.pi).as_matrix()
-    pose[:3, :3] = pos_R
-    pose[:3, 3] = pos_x
-    if h is not None:
-        pose[2, 3] = h
-    return pose
-
-
-def get_test_data():
-    """
-    Generate simple ground truth data.
-    returns: states_true, tt_true, height
-    """
-    xyz_true = torch.tensor([
-        [0., 0., 0.2],
-        [2., 0., 0.4],
-        [4., 1., 0.3],
-        [2., 2., 0.1],
-        [0., 0., 0.2]
-    ])
-    angles_true = torch.as_tensor([
-        [0., 0., 0.],
-        [0., 0., np.pi / 4.],
-        [0., 0., 0.],
-        [0., 0., np.pi / 2.],
-        [0., 0., -np.pi / 6.]
-    ])
-    rot_true = torch.tensor(np.asarray([Rotation.from_euler('xyz', a).as_matrix() for a in angles_true]))
-    height = np.zeros((40, 40))
-
-    n_true_states = len(xyz_true)
-    tt_true = torch.linspace(0., cfg.traj_sim_time, n_true_states)[None].T
-
-    dps = torch.diff(xyz_true, dim=0)
-    dt = torch.diff(tt_true, dim=0)
-    theta_true = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
-    theta_true = torch.cat([theta_true[:1], theta_true], dim=0)
-
-    vel_true = torch.zeros_like(xyz_true)
-    vel_true[:-1] = dps / dt
-    omega_true = torch.zeros_like(xyz_true)
-    omega_true[:-1, 2:3] = torch.diff(theta_true, dim=0) / dt  # + torch.diff(angles_true, dim=0)[:, 2:3] / dt
-
-    forces_true = torch.zeros((n_true_states, 3, 10))  # TODO: 10 is a hack, 10 is the number of contact points
-    states_true = (xyz_true, rot_true, vel_true, omega_true, forces_true)
-    states_true = tuple([s.to(device) for s in states_true])
-
-    return states_true, tt_true, height
 
 
 def get_data(i: int = None, path=robingas_seq_paths['husky'][0]):
@@ -84,7 +28,7 @@ def get_data(i: int = None, path=robingas_seq_paths['husky'][0]):
     Get ground truth data smple from the RobinGas dataset
     :param i: index of the sample
     :param path: path to the dataset
-    :return: states_true, tt_true, height
+    :return: states_gt, tt_gt, z_grid
     """
     ds = RobinGasBase(path=path, dphys_cfg=cfg)
     if i is None:
@@ -95,484 +39,240 @@ def get_data(i: int = None, path=robingas_seq_paths['husky'][0]):
     poses = traj['poses']
     tstamps = traj['stamps']
     tstamps = tstamps - tstamps[0]
-    height = heightmap['z']
+    z_grid = torch.tensor(heightmap['z'])
 
-    xyz_true = torch.as_tensor(poses[:, :3, 3])
-    rot_true = torch.as_tensor(poses[:, :3, :3])
+    Xs_gt = torch.as_tensor(poses[:, :3, 3])
+    Rs_gt = torch.as_tensor(poses[:, :3, :3])
 
-    n_true_states = len(xyz_true)
-    tt_true = torch.tensor(tstamps)[None].T
+    tt_gt = torch.tensor(tstamps)[None].T
 
-    dps = torch.diff(xyz_true, dim=0)
-    dt = torch.diff(tt_true, dim=0)
-    theta_true = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
-    theta_true = torch.cat([theta_true[:1], theta_true], dim=0)
+    dps = torch.diff(Xs_gt, dim=0)
+    dt = torch.diff(tt_gt, dim=0)
+    theta_gt = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
+    theta_gt = torch.cat([theta_gt[:1], theta_gt], dim=0)
 
-    vel_true = torch.zeros_like(xyz_true)
-    vel_true[:-1] = dps / dt
-    omega_true = torch.zeros_like(xyz_true)
-    omega_true[:-1, 2:3] = torch.diff(theta_true, dim=0) / dt  # + torch.diff(angles_true, dim=0)[:, 2:3] / dt
+    Xds_gt = torch.zeros_like(Xs_gt)
+    Xds_gt[:-1] = dps / dt
+    Omegas_gt = torch.zeros_like(Xs_gt)
+    Omegas_gt[:-1, 2:3] = torch.diff(theta_gt, dim=0) / dt  # + torch.diff(angles_gt, dim=0)[:, 2:3] / dt
 
-    forces_true = torch.zeros((n_true_states, 3, 10))  # TODO: 10 is a hack, 10 is the number of contact points
-    states_true = (xyz_true, rot_true, vel_true, omega_true, forces_true)
-    states_true = tuple([s.to(device) for s in states_true])
+    print('Ground truth state shapes:')
+    for s in [Xs_gt, Xds_gt, Rs_gt, Omegas_gt]:
+        print(s.shape)
 
-    return states_true, tt_true, height
+    return Xs_gt, Xds_gt, Rs_gt, Omegas_gt, tt_gt, z_grid
 
+def heightmap(d_max, grid_res, mode='zeros'):
+    x_grid = torch.arange(-d_max, d_max, grid_res)
+    y_grid = torch.arange(-d_max, d_max, grid_res)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+    if mode == 'zeros':
+        z_grid = torch.zeros(x_grid.shape)
+    elif mode == 'sin':
+        z_grid = torch.sin(x_grid) * torch.cos(y_grid)
+    elif mode == 'exp':
+        z_grid = torch.exp(-(x_grid) ** 2 / 4) * torch.exp(-(y_grid-2) ** 2 / 2)
+    else:
+        raise ValueError(f'Invalid mode: {mode}')
 
-def no_feedback_control():
-    """
-    Simulate the system with no feedback control (forward pass from initial state).
-    """
-    states_true, tt_true, height = get_data()
-    xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
+    return x_grid, y_grid, z_grid
 
-    system = RigidBodySoftTerrain(height=height,
-                                  grid_res=cfg.grid_res,
-                                  friction=cfg.friction, mass=cfg.robot_mass,
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]),
-                                              rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0]),
-                                  device=cfg.device, use_ode=False,
-                                  motion_model='diffdrive')
+def motion():
+    # simulation parameters
+    dt = cfg.dt
+    T = cfg.traj_sim_time
 
-    t0, s0 = 0., system.state
-    tt = torch.linspace(float(t0), cfg.traj_sim_time, cfg.n_samples)
-    states = system.sim(s0, tt)
+    # control inputs in Newtons
+    controls = torch.stack([torch.tensor([[110.0, 110.0]] * int(T / dt))])
 
-    vis_cfg = setup_visualization(system, states, cfg=cfg)
+    # rigid body parameters
+    x_points, m, I, mask_left, mask_right = rigid_body_params(from_mesh=False)
 
-    system.update_trajectory(tt)
-    animate_trajectory(system, vis_cfg=vis_cfg)
-    mlab.show()
+    # initial state
+    x = torch.tensor([[-2.0, 0.0, 0.5]])
+    xd = torch.tensor([[0.0, 0.0, 0.0]])
+    R = torch.eye(3).repeat(x.shape[0], 1, 1)
+    # R = torch.tensor(Rotation.from_euler('z', [0.0, np.pi/4]).as_matrix(), dtype=torch.float32)
+    omega = torch.tensor([[0.0, 0.0, 0.0]])
+    x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
+    xd_points = torch.zeros_like(x_points)
+    mask_left = mask_left.repeat(x.shape[0], 1)
+    mask_right = mask_right.repeat(x.shape[0], 1)
 
+    # heightmap defining the terrain
+    # x_grid, y_grid, z_grid = heightmap(cfg.d_max, cfg.grid_res, mode='exp')
+    x_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+    y_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+    z_grid = get_data(i=327)[-1]
+    # repeat the heightmap for each rigid body
+    x_grid = x_grid.repeat(x.shape[0], 1, 1)
+    y_grid = y_grid.repeat(x.shape[0], 1, 1)
+    z_grid = z_grid.repeat(x.shape[0], 1, 1)
 
-def p_control_omni():
-    """
-    Simulate the system with P control.
-    Robot visits a set of waypoints.
-    Omni-directional robot motion model is used.
-    """
-    states_true, tt_true, height = get_test_data()
-    xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
-    n_true_states = len(xyz_true)
+    # initial state
+    state0 = (x, xd, R, omega, x_points)
 
-    """ Create robot-terrain interaction models """
-    system = RigidBodySoftTerrain(height=height,
-                                  grid_res=cfg.grid_res,
-                                  friction=cfg.friction, mass=cfg.robot_mass,
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 0.2]).view(xyz_true[0].shape),
-                                              rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],),
-                                  device=cfg.device, use_ode=False,
-                                  motion_model='omni')
+    # simulate the rigid body dynamics
+    states, forces = dphysics(state0, xd_points,
+                              z_grid, cfg.d_max, cfg.grid_res,
+                              m, I, mask_left, mask_right,
+                              controls,
+                              k_stiffness=5_000,
+                              T=T, dt=dt)
+    # visualize using mayavi
+    for b in range(len(states[0])):
+        # get the states and forces for the b-th rigid body and move them to the cpu
+        xs, R, xds, omegas, x_points = [s[b].detach().cpu().numpy() for s in states]
+        F_spring, F_friction, F_thrust_left, F_thrust_right = [f[b].detach().cpu().numpy() for f in forces]
+        x_grid, y_grid, z_grid = [g[b].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
+        mask_left, mask_right = mask_left[b].detach().cpu().numpy(), mask_right[b].detach().cpu().numpy()
 
-    # put models with their params to cfg.device
-    system = system.to(device)
-    s0 = system.state
-    tt = torch.linspace(0, cfg.traj_sim_time, cfg.n_samples).to(device)
-    states = system.sim(s0, tt)
+        # set up the visualization
+        vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
+                                      forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                                      x_grid=x_grid, y_grid=y_grid, z_grid=z_grid,
+                                      mask_left=mask_left, mask_right=mask_right)
 
-    """ Set-up visualization """
-    vis_cfg = setup_visualization(system=system,
-                                  states=states,
-                                  states_true=states_true,
-                                  cfg=cfg)
+        # visualize animated trajectory
+        animate_trajectory(states=(xs, R, xds, omegas, x_points),
+                           forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                           z_grid=z_grid, mask_left=mask_left, mask_right=mask_right,
+                           vis_cfg=vis_cfg, step=10)
 
-    """ Navigation loop """
-    state = system.state.as_tuple()
+def p_control():
+    from monoforce.models.dphysics import forward_kinematics, update_states, vw_to_track_vel
+    from monoforce.control import pose_control
 
-    states = []
-    for i in range(n_true_states-1):
-        # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
-        time_interval = tt[i * cfg.n_samples // (n_true_states - 1):(i+1) * cfg.n_samples // (n_true_states - 1)]
-        states_interval = system.sim(state, time_interval)
-
-        pos_x, pos_R, vel_x, vel_omega, forces = states_interval
-        # update state
-        state = (pos_x[-1].view(3, 1),
-                 pos_R[-1].view(3, 3),
-                 vel_true[i + 1].view(3, 1),
-                 omega_true[i + 1].view(3, 1),
-                 forces[-1])
-
-        states.append(states_interval)
-
-    # visualize
-    pos_x = torch.cat([x[0] for x in states], dim=0)
-    pos_R = torch.cat([x[1] for x in states], dim=0)
-    vel_x = torch.cat([x[2] for x in states], dim=0)
-    vel_omega = torch.cat([x[3] for x in states], dim=0)
-    forces = torch.cat([x[4] for x in states], dim=0)
-
-    system.update_trajectory(states=(pos_x, pos_R, vel_x, vel_omega, forces))
-    animate_trajectory(system, vis_cfg)
-
-    mlab.show()
-
-
-def p_control_diffdrive():
     """
     Simulate the system with P control.
     Robot visits a set of waypoints.
     Diff-drive (controlled with X-linear and Z-angular velocities) robot motion model is used.
     """
+    # rigid body parameters
+    x_points, m, I, mask_left, mask_right = rigid_body_params(from_mesh=False)
+    I_inv = torch.inverse(I)
 
-    # states_true, tt_true, height = get_test_data()
-    states_true, tt_true, height = get_data()
-    height = np.asarray(height, dtype=np.float64)
-    xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
-    n_true_states = len(xyz_true)
-    # height = np.zeros_like(height) + xyz_true[:, 2].numpy().min()
+    # get ground truth data
+    Xs_gt, Xds_gt, Rs_gt, Omegas_gt, ts_gt, z_grid = get_data()
+    d_max = cfg.d_max
+    grid_res = cfg.grid_res
+    dt = cfg.dt
+    k_stiffness = 100.0
+    k_damping = torch.sqrt(4 * m * k_stiffness)  # critical damping
+    k_friction = 0.5
+    x_grid = torch.arange(-d_max, d_max, grid_res)
+    y_grid = torch.arange(-d_max, d_max, grid_res)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
 
-    """ Create robot-terrain interaction models """
-    system = RigidBodySoftTerrain(height=height,
-                                  grid_res=cfg.grid_res,
-                                  friction=cfg.friction, mass=cfg.robot_mass,
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
-                                              rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],),
-                                  device=cfg.device, use_ode=False,
-                                  motion_model='diffdrive')
+    # initial state
+    x = torch.tensor([[0.0, 0.0, 0.2]])
+    xd = torch.tensor([[0.0, 0.0, 0.0]])
+    R = torch.eye(3).repeat(x.shape[0], 1, 1)
+    # R = torch.tensor(Rotation.from_euler('z', [0.0, np.pi/4]).as_matrix(), dtype=torch.float32)
+    omega = torch.tensor([[0.0, 0.0, 0.0]])
+    x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
+    xd_points = torch.zeros_like(x_points)
+    mask_left = mask_left.repeat(x.shape[0], 1)
+    mask_right = mask_right.repeat(x.shape[0], 1)
 
-    # put models with their params to cfg.device
-    system = system.to(device)
-    s0 = system.state
-    tt = torch.linspace(0, cfg.traj_sim_time, cfg.n_samples).to(device)
-    states = system.sim(s0, tt)
-
-    """ Set-up visualization """
-    vis_cfg = setup_visualization(system=system,
-                                  states=states,
-                                  states_true=states_true,
-                                  cfg=cfg)
-    # mlab.show()
-
-    """ Navigation loop """
-    state = system.state
-
-    states = []
-    dt = (tt[1:] - tt[:-1]).mean()
-    for i in range(n_true_states-1):
-        # print('Going from pose %s -> to waypoint %s' % (state[0].squeeze(), xyz_true[i + 1].squeeze()))
-        time_interval = tt[i * cfg.n_samples // (n_true_states - 1):(i+1) * cfg.n_samples // (n_true_states - 1)]
-
-        pos_x, pos_R, vel_x, vel_omega, forces = state
-        pos_x, pos_R, vel_x, vel_omega, forces = [pos_x], [pos_R], [vel_x], [vel_omega], [forces]
-
-        goal_pose = torch.eye(4)
-        goal_pose[:3, 3] = xyz_true[i + 1]
-        goal_pose[:3, :3] = rot_true[i + 1]
-
-        for t in time_interval[1:]:
-            v, w, dist = pose_control(state, goal_pose,
-                                      return_dist=True, allow_backwards=False,
-                                      Kp_rho=0.5, Kp_theta=4., Kp_yaw=1.)
-            state[2][0] = v
-            state[3][2] = w
-
-            dstate = system.forward(t, state)
-            state = state.update(dstate, dt)
-
-            pos_x.append(state[0])
-            pos_R.append(state[1])
-            vel_x.append(state[2])
-            vel_omega.append(state[3])
-            forces.append(state[4])
-        # print('Reached waypoint with accuracy: %.2f [m]' % dist.item())
-
-        states_interval = [torch.stack(pos_x), torch.stack(pos_R), torch.stack(vel_x), torch.stack(vel_omega), torch.stack(forces)]
-        states.append(states_interval)
-
-    # visualize
-    pos_x = torch.cat([x[0] for x in states], dim=0)
-    pos_R = torch.cat([x[1] for x in states], dim=0)
-    vel_x = torch.cat([x[2] for x in states], dim=0)
-    vel_omega = torch.cat([x[3] for x in states], dim=0)
-    forces = torch.cat([x[4] for x in states], dim=0)
-
-    system.update_trajectory(states=(pos_x, pos_R, vel_x, vel_omega, forces))
-    animate_trajectory(system, vis_cfg)
-
-    mlab.show()
-
-
-def p_control_track_vels(control_method='pose'):
-    # 'keyboard' or 'velocity' or 'pose'
-    assert control_method in ['keyboard', 'velocity', 'pose']
-
-    """
-    Simulate the system with P control.
-    Robot visits a set of waypoints.
-    Robot-terrain interaction model is used, respecting height map properties like:
-        - friction,
-        - elasticity,
-        - damping.
-    """
-
-    """ Create ground truth height map and initial one """
-    states_true, tt_true, height = get_data()
-    xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
-    n_true_states = len(xyz_true)
-    poses = torch.tensor([np.eye(4) for _ in range(n_true_states)], device=device)
-    poses[:, :3, 3] = xyz_true
-    poses[:, :3, :3] = rot_true
-    # height = np.zeros_like(height) + xyz_true[:, 2].numpy().min()
-
-    """ Create robot-terrain interaction models """
-    system = RigidBodySoftTerrain(height=height,
-                                  grid_res=cfg.grid_res,
-                                  damping=cfg.damping, elasticity=cfg.elasticity, friction=cfg.friction,
-                                  mass=cfg.robot_mass,
-                                  vel_tracks=np.array([0., 0.]),
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 0.5]).view(xyz_true[0].shape),
-                                              rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0]),
-                                  motion_model='rigid_layer',
-                                  device=device, use_ode=False)
-
-    """ pose control """
-    controller = lambda: pose_controller(system, poses, stationary_time=1, stationary_std=0.1,
-                                         Kp_rho=0.5, Kp_theta=10., Kp_yaw=1.)
-    # run controller in a separate thread
-    with torch.no_grad():
-        thread = threading.Thread(target=controller)
-        thread.start()
-
-    """ Setup mayavi visualization """
-    fig = mlab.figure(bgcolor=(1, 1, 1), size=(1200, 800))
-    h, w = height.shape
-    x_grid, y_grid = np.mgrid[-h // 2:h // 2, -w // 2:w // 2] * cfg.grid_res
-    mlab.surf(x_grid, y_grid, height, colormap='jet', opacity=0.5, representation='wireframe', line_width=1)
-    mlab.mesh(x_grid, y_grid, height, color=(0.2, 0.8, 0.2), opacity=0.5, representation='surface')
-    robot_points = system.robot_points.detach().cpu().numpy()
-    visu_robot = mlab.points3d(robot_points[0, :], robot_points[1, :], 0.1 + robot_points[2, :], scale_factor=0.25)
-    # plot trajectory
-    mlab.plot3d(xyz_true[:, 0], xyz_true[:, 1], xyz_true[:, 2], color=(0.2, 0.2, 0.8), tube_radius=0.02)
-    # plot coordinate frames at way points locations
-    draw_coord_frames(poses.numpy(), scale=0.1)
-    # draw waypoint number as text
-    for i in range(len(poses)):
-        mlab.text3d(poses[i, 0, 3], poses[i, 1, 3], poses[i, 2, 3], str(i), scale=0.2)
-    # set up view point
-    mlab.view(azimuth=0, elevation=60, distance=15)
-    # mlab.show()
-
-    """ Run simulation """
-    i = 0
-    dt = 0.001
-    z_margin = 0.
-    state = system.state
-    while True:
-        dstate = system.forward(0, state)
-        system.state.update(dstate, dt, inplace=True)
-
-        i += 1
-        if i % 200 == 0:
-            # draw robot points (body)
-            robot_points = state.rot.detach().cpu().numpy() @ system.robot_points.detach().cpu().numpy() + \
-                           state.xyz.detach().cpu().numpy().reshape(-1, 1)
-            visu_robot.mlab_source.trait_set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :] + z_margin)
-
-            # draw robot poses (position)
-            robot_pose = np.eye(4)
-            robot_pose[:3, :3] = state.rot.detach().cpu().numpy()
-            robot_pose[:3, 3:4] = state.xyz.detach().cpu().numpy()
-            mlab.points3d(robot_pose[0, 3], robot_pose[1, 3], robot_pose[2, 3], scale_factor=0.1, color=(0.2, 0.2, 0.8))
-            # draw_coord_frame(robot_pose, scale=0.5)
-
-            fig.scene._lift()
-
-
-def vel_control():
-    from torchdiffeq import odeint
-    from matplotlib import pyplot as plt
-
-    def motion(t, state, vel, omega):
-        x, y, yaw = state
-        dx = vel * torch.cos(yaw)
-        dy = vel * torch.sin(yaw)
-        dtheta = omega
-        dstate = torch.tensor([dx, dy, dtheta])
-        return dstate
-
-    def sim(tt, state, vels, omegas):
-        states = []
-        for i in range(len(tt) - 1):
-            t = tt[i]
-            dstate = motion(t, state, vels[i], omegas[i])
-            state = state + dstate * (tt[i + 1] - tt[i])
-            states.append(state)
-        return torch.stack(states)
-
-    forward = lambda t, state: motion(t, state, vel=vel, omega=omega)
-
-    dt = 0.01
-    # poses_gt = torch.tensor([
-    #                          [0.1, -0.1, np.pi / 4],
-    #                          [1., 0.1, 0.],
-    #                          [1., 1., np.pi / 2],
-    #                          [0.1, 1., np.pi],
-    #                         ])
-    # poses_gt = torch.as_tensor(np.random.uniform(-1, 1, (10, 3)))
-    states_true = get_data(i=0)[0]
-    xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
-    poses_gt = torch.zeros((len(xyz_true), 3))
-    poses_gt[:, :2] = xyz_true[:, :2]
-    poses_gt[:, 2] = torch.as_tensor(np.asarray([rot2rpy(rot_true[i])[2] for i in range(len(rot_true))]))
-
-    n_goals = len(poses_gt) - 1
-    total_time = 1. * n_goals
-    tt = torch.arange(0, total_time, dt)
-    print(poses_gt)
-
-    s0 = poses_gt[0]
-    T = (tt[-1] - tt[0]) / n_goals
-
-    plt.figure()
-    state = s0.clone()
-    plt.plot(s0[0], s0[1], 'o', label='state init')
-    plt.plot(poses_gt[:, 0], poses_gt[:, 1], '*', label='gt poses')
-    # plot arrow denoting yaw at poses
-    for i in range(len(poses_gt)):
-        plt.arrow(poses_gt[i][0], poses_gt[i][1], 0.1 * np.cos(poses_gt[i][2]), 0.1 * np.sin(poses_gt[i][2]), width=0.01)
-    plt.axis('equal')
-    for i in range(n_goals):
-        x, y, yaw = state
-        x_g, y_g, yaw_g = poses_gt[i+1]
-        vel, omega = cmd_vel_from_goal(x, y, yaw, x_g, y_g, T)
-        # heading = torch.atan2(y_g - y, x_g - x)
-        # omega = (yaw_g - yaw) / T + heading / T
-        # vel_x = ((x_g - x) * omega) / (torch.sin(yaw + omega*T) - torch.sin(yaw) + 1e-6)
-        # vel_y = ((y_g - y) * omega) / (torch.cos(yaw) - torch.cos(yaw + omega*T) + 1e-6)
-        # # vel = torch.sqrt(vel_x**2 + vel_y**2)
-        # if omega == 0:
-        #     vel = (x_g - x) / (torch.cos(yaw) * T)
-        # else:
-        #     vel = omega * (x_g - x) / (2 * torch.cos(yaw + omega * T / 2) * torch.sin(omega * T / 2))
-
-        print('Est vel', vel)
-        print('Est omega', omega)
-
-        t_interval = torch.arange(i*T, (i+1) * T, dt)
-        vels = vel * torch.ones_like(t_interval)
-        omegas = omega * torch.ones_like(t_interval)
-
-        states_ode = odeint(forward, state, t_interval)
-        states = sim(t_interval, state, vels, omegas)
-        state = states[-1]
-        # print('Final error:', torch.linalg.norm(states[-1, :2] - poses_gt[i+1, :2]))
-        print('Final error ode:', torch.linalg.norm(states_ode[-1, :2] - poses_gt[i+1, :2]))
-
-        plt.plot(states[:, 0], states[:, 1], color='b')
-        plt.plot(states_ode[:, 0], states_ode[:, 1], color='g')
-
-        # visualizations
-        for s in states:
-            # plt.cla()
-            plt.plot(s[0], s[1], 'b.')
-            # plot arrow denoting current heading
-            plt.arrow(s[0], s[1], 0.01 * torch.cos(s[2]), 0.01 * torch.sin(s[2]), width=0.01, color='b')
-            plt.pause(dt)
-    plt.show()
-
-
-def cmd_vel_diffdrive():
-    """
-    """
-    # states_true, tt_true, height = get_test_data()
-    states_true, tt_true, height = get_data(i=None)
-    sample_step = len(tt_true) // 4
-    states_true = [s[::sample_step] for s in states_true]
-    tt_true = tt_true[::sample_step]
-    xyz_true, rot_true, vel_true, omega_true, forces_true = states_true
-    n_true_states = len(xyz_true)
-    height = np.zeros_like(height) + xyz_true[:, 2].numpy().min()
-
-    """ Create robot-terrain interaction models """
-    system = RigidBodySoftTerrain(height=height,
-                                  grid_res=cfg.grid_res,
-                                  friction=cfg.friction, mass=cfg.robot_mass,
-                                  state=State(xyz=xyz_true[0] + torch.tensor([0., 0., 1.]).view(xyz_true[0].shape),
-                                              rot=rot_true[0],
-                                              vel=vel_true[0],
-                                              omega=omega_true[0],),
-                                  device=cfg.device, use_ode=False,
-                                  motion_model='diffdrive')
+    # repeat the heightmap for each rigid body
+    x_grid = x_grid.repeat(x.shape[0], 1, 1)
+    y_grid = y_grid.repeat(x.shape[0], 1, 1)
+    z_grid = z_grid.repeat(x.shape[0], 1, 1)
 
     # put models with their params to cfg.device
-    system = system.to(device)
-    s0 = system.state
-    tt = torch.linspace(0, cfg.traj_sim_time, cfg.n_samples).to(device)
-    states = system.sim(s0, tt)
+    xd_points = xd_points.to(device)
+    z_grid = z_grid.to(device)
+    I_inv = I_inv.to(device)
+    mask_left = mask_left.to(device)
+    mask_right = mask_right.to(device)
 
-    """ Set-up visualization """
-    vis_cfg = setup_visualization(system=system,
-                                  states=states,
-                                  states_true=states_true,
-                                  cfg=cfg)
-    # mlab.show()
+    # dynamics of the rigid body
+    Xs, Xds, Rs, Omegas, Omega_ds, X_points = [], [], [], [], [], []
+    F_springs, F_frictions, F_thrusts_left, F_thrusts_right = [], [], [], []
+    B, N_ts, N_pts = x.shape[0], len(ts_gt), x_points.shape[1]
+    for t in range(len(ts_gt)):
+        # control inputs
+        pose = torch.eye(4)
+        pose[:3, 3] = x.squeeze()
+        pose[:3, :3] = R.squeeze()
+        pose_gt = torch.eye(4)
+        pose_gt[3, :3] = Xs_gt[t]
+        pose_gt[:3, :3] = Rs_gt[t]
+        v, w, dist = pose_control(pose, pose_gt, return_dist=True)
+        u_left, u_right = vw_to_track_vel(v, w)  # convert linear and angular velocities to track velocities
 
-    """ Navigation loop """
-    state = system.state
+        # forward kinematics
+        (xd, xdd, dR, omega_d, xd_points,
+         F_spring, F_friction, F_thrust_left, F_thrust_right) = forward_kinematics(x, xd, R, omega, x_points, xd_points,
+                                                                                   z_grid, d_max, grid_res,
+                                                                                   m, I_inv, mask_left, mask_right,
+                                                                                   k_stiffness, k_damping, k_friction,
+                                                                                   u_left, u_right)
+        # update states: integration steps
+        x, xd, R, omega, x_points = update_states(x, xd, xdd, R, dR, omega, omega_d, x_points, xd_points, dt)
 
-    states = []
-    dt = (tt[1:] - tt[:-1]).mean()
-    for i in range(n_true_states - 1):
-        n_interval_samples = cfg.n_samples // (n_true_states - 1)
-        time_interval = tt[i * n_interval_samples:(i+1) * n_interval_samples]
+        # save states
+        Xs.append(x)
+        Xds.append(xd)
+        Rs.append(R)
+        Omegas.append(omega)
+        X_points.append(x_points)
 
-        goal_state = State(xyz=xyz_true[i + 1],
-                           rot=rot_true[i + 1],
-                           vel=vel_true[i + 1],
-                           omega=omega_true[i + 1])
+        # save forces
+        F_springs.append(F_spring)
+        F_frictions.append(F_friction)
+        F_thrusts_left.append(F_thrust_left)
+        F_thrusts_right.append(F_thrust_right)
 
-        x, y, yaw = state[0][0], state[0][1], rot2rpy(state[1])[2]
-        x_g, y_g = goal_state[0][:2]
-        v, w = cmd_vel_from_goal(x, y, yaw, x_g, y_g, T=dt * n_interval_samples)
-        v = torch.clamp(v, -cfg.max_vel, cfg.max_vel)
-        w = torch.clamp(w, -cfg.max_omega, cfg.max_omega)
+    # to tensors
+    Xs = torch.stack(Xs).transpose(1, 0)
+    assert Xs.shape == (B, N_ts, 3)
+    Xds = torch.stack(Xds).transpose(1, 0)
+    assert Xds.shape == (B, N_ts, 3)
+    Rs = torch.stack(Rs).transpose(1, 0)
+    assert Rs.shape == (B, N_ts, 3, 3)
+    Omegas = torch.stack(Omegas).transpose(1, 0)
+    assert Omegas.shape == (B, N_ts, 3)
+    X_points = torch.stack(X_points).transpose(1, 0)
+    assert X_points.shape == (B, N_ts, N_pts, 3)
+    F_springs = torch.stack(F_springs).transpose(1, 0)
+    assert F_springs.shape == (B, N_ts, N_pts, 3)
+    F_frictions = torch.stack(F_frictions).transpose(1, 0)
+    assert F_frictions.shape == (B, N_ts, N_pts, 3)
+    F_thrusts_left = torch.stack(F_thrusts_left).transpose(1, 0)
+    assert F_thrusts_left.shape == (B, N_ts, 3)
+    F_thrusts_right = torch.stack(F_thrusts_right).transpose(1, 0)
+    assert F_thrusts_right.shape == (B, N_ts, 3)
 
-        state[2][0] = v
-        state[3][2] = w
+    states = Xs, Xds, Rs, Omegas, X_points
+    forces = F_springs, F_frictions, F_thrusts_left, F_thrusts_right
 
-        states_interval = system.sim(state, time_interval)
-        state = State(xyz=states_interval[0][-1],
-                      rot=states_interval[1][-1],
-                      vel=states_interval[2][-1],
-                      omega=states_interval[3][-1],
-                      forces=states_interval[4][-1])
-        # state[0][:2] = goal_state[0][:2]
-        # state[1][:] = goal_state[1][:]
-        # print('Reached waypoint with accuracy: %.2f [m]' % dist.item())
+    # visualize using mayavi
+    for b in range(len(states[0])):
+        # get the states and forces for the b-th rigid body and move them to the cpu
+        xs, R, xds, omegas, x_points = [s[b].detach().cpu().numpy() for s in states]
+        F_spring, F_friction, F_thrust_left, F_thrust_right = [f[b].detach().cpu().numpy() for f in forces]
+        x_grid, y_grid, z_grid = [g[b].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
+        mask_left, mask_right = mask_left[b].detach().cpu().numpy(), mask_right[b].detach().cpu().numpy()
 
-        states.append(states_interval)
+        # set up the visualization
+        vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
+                                      forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                                      x_grid=x_grid, y_grid=y_grid, z_grid=z_grid,
+                                      mask_left=mask_left, mask_right=mask_right)
 
-    # visualize
-    pos_x = torch.cat([x[0] for x in states], dim=0)
-    pos_R = torch.cat([x[1] for x in states], dim=0)
-    vel_x = torch.cat([x[2] for x in states], dim=0)
-    vel_omega = torch.cat([x[3] for x in states], dim=0)
-    forces = torch.cat([x[4] for x in states], dim=0)
-
-    system.update_trajectory(states=(pos_x, pos_R, vel_x, vel_omega, forces))
-    animate_trajectory(system, vis_cfg)
-
-    mlab.show()
-
+        # visualize animated trajectory
+        animate_trajectory(states=(xs, R, xds, omegas, x_points),
+                           forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                           z_grid=z_grid, mask_left=mask_left, mask_right=mask_right,
+                           vis_cfg=vis_cfg)
 
 
 def main():
-    # no_feedback_control()
-    # p_control_omni()
-    p_control_diffdrive()
-    # p_control_track_vels()
-    # vel_control()
-    # cmd_vel_diffdrive()
+    motion()
+    # p_control()
 
 
 if __name__ == '__main__':
