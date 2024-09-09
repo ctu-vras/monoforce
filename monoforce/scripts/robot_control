@@ -142,7 +142,6 @@ def motion():
 
 def p_control():
     from monoforce.models.dphysics import forward_kinematics, update_states, vw_to_track_vel
-    from monoforce.control import pose_control
 
     """
     Simulate the system with P control.
