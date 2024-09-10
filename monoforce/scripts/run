@@ -7,7 +7,7 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.config import DPhysConfig
-from monoforce.models import dphysics
+from monoforce.models.dphysics import dphysics, vw_to_track_vel
 from monoforce.models.lss.model import compile_model
 from monoforce.models.lss.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
@@ -78,35 +78,27 @@ class MonoForce:
     def load_model(self):
         model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
         print('Loading model from: %s' % self.model_path)
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model.load_state_dict(torch.load(self.model_path, map_location=device))
+        model.load_state_dict(torch.load(self.model_path, map_location=self.device))
         model.eval()
+        model.to(self.device)
         return model
 
     def poses_from_states(self, states):
-        xyz = states[0].cpu().numpy()
-        Rs = states[1].cpu().numpy()
+        xyz = states[0].squeeze().cpu().numpy()
+        Rs = states[2].squeeze().cpu().numpy()
         poses = np.stack([np.eye(4) for _ in range(len(xyz))])
         poses[:, :3, :3] = Rs
-        poses[:, :3, 3:4] = xyz
-        poses[:, 2, 3] += 0.1
-        # poses inside the heightmap
-        mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
-               (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
-        mask = np.asarray(mask, dtype=bool).flatten()
-        poses = poses[mask]
+        poses[:, :3, 3] = xyz
         return poses
 
-    def predict_states(self, height, v, w):
-        if isinstance(height, torch.Tensor):
-            height = height.squeeze().cpu().numpy()
+    def predict_states(self, z_grid, v, w):
         # constant linear and angular velocities as control inputs
-        tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples)
-        vs = v * torch.ones(self.dphys_cfg.n_samples)
-        ws = w * torch.ones(self.dphys_cfg.n_samples)
-        controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
-        states, system = dphysics(height, controls, dphys_cfg=self.dphys_cfg, device=self.device)
-        return states, system.robot_points
+        T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
+        v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
+        thrusts = self.dphys_cfg.k_thrust * torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
+        thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
+        states, forces = dphysics(z_grid, controls=thrusts, dphys_cfg=self.dphys_cfg)
+        return states, forces
 
     def get_cameras(self):
         cams_yaml = os.listdir(os.path.join(self.calib_path, 'cameras'))
@@ -157,7 +149,7 @@ class MonoForce:
             post_trans.append(post_tran)
         inputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
                   torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
-        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+        inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.device) for i in inputs]
 
         return inputs
 
@@ -173,37 +165,37 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            height_terrain_pred = self.model(*inputs)
-            height = height_terrain_pred.squeeze().cpu().numpy()
+            z_grid = self.model(*inputs).squeeze(0)
 
             # predict trajectory and interaction forces
             v, w = self.linear_vel, self.angular_vel
             print('Predicting path with v=%.3f, w=%.3f' % (v, w))
-            states, robot_points0 = self.predict_states(height, v=v, w=w)
+            states, forces = self.predict_states(z_grid, v=v, w=w)
             poses = self.poses_from_states(states)
             print('Predicted poses shape: %s' % str(poses.shape))
-            forces = states[4].cpu().numpy()
-            print('Predicted forces shape: %s' % str(forces.shape))
-            robot_points0 = robot_points0.cpu().numpy()
+            F_springs = forces[0].squeeze().cpu().numpy()
+            print('Predicted forces shape: %s' % str(F_springs.shape))
+            robot_points0 = np.asarray(self.dphys_cfg.robot_points)
             print('Robot contact points shape: %s' % str(robot_points0.shape))
 
         # visualize: - heightmap, - robot poses, - robot contact points, - interaction forces
         mlab.figure(bgcolor=(1, 1, 1), size=(800, 800))
-        h, w = height.shape
+        z_grid = z_grid.squeeze().cpu().numpy()
+        h, w = z_grid.shape
         x_grid, y_grid = np.mgrid[-h//2:h//2, -w//2:w//2] * self.dphys_cfg.grid_res
-        mlab.surf(x_grid, y_grid, height, colormap='terrain')
+        mlab.surf(x_grid, y_grid, z_grid, colormap='terrain')
         mlab.plot3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(0, 0, 0), line_width=2.0)
-        visu_robot = mlab.points3d(robot_points0[0, :], robot_points0[1, :], robot_points0[2, :],
+        visu_robot = mlab.points3d(robot_points0[:, 0], robot_points0[:, 1], robot_points0[:, 2],
                                    color=(0, 0, 1), scale_factor=0.2)
-        visu_forces = mlab.quiver3d(robot_points0[0, :], robot_points0[1, :], robot_points0[2, :],
-                                    forces[0, 0, :], forces[0, 1, :], forces[0, 2, :],
+        visu_forces = mlab.quiver3d(robot_points0[:, 0], robot_points0[:, 1], robot_points0[:, 2],
+                                    F_springs[0, :, 0], F_springs[0, :, 1], F_springs[0, :, 2],
                                     line_width=4.0, scale_factor=0.005)
         for i in range(len(poses)):
             # robot-terrain contact points
-            robot_points = poses[i, :3, :3] @ robot_points0 + poses[i, :3, 3:4]
-            visu_robot.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :])
-            visu_forces.mlab_source.set(x=robot_points[0, :], y=robot_points[1, :], z=robot_points[2, :],
-                                        u=forces[i, 0, :], v=forces[i, 1, :], w=forces[i, 2, :])
+            robot_points = robot_points0 @ poses[i, :3, :3].T + poses[i, :3, 3:4].T
+            visu_robot.mlab_source.set(x=robot_points[:, 0], y=robot_points[:, 1], z=robot_points[:, 2])
+            visu_forces.mlab_source.set(x=robot_points[:, 0], y=robot_points[:, 1], z=robot_points[:, 2],
+                                        u=F_springs[i, :, 0], v=F_springs[i, :, 1], w=F_springs[i, :, 2])
             mlab.view(azimuth=i/5, elevation=60, distance=20)
             # mlab pause
             if i % 5 == 0:

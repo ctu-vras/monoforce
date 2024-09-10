@@ -3,8 +3,8 @@
     <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
     <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
     <arg name="robot" default="husky" doc="Robot name"/>
-    <arg name="engine" default="warp" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
-    <arg name="traj_sim_time" default="12.0" doc="Simulation time horizon of the trajectories"/>
+    <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
+    <arg name="traj_sim_time" default="5.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
     <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
 

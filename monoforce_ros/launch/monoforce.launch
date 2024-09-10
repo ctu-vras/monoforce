@@ -14,9 +14,9 @@
                                              '/camera_right/camera_info']"/>
     <arg name="imgs_max_age" default="0.5"/>
     <!-- dphysics arguments -->
-    <arg name="engine" default="warp" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
+    <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
     <arg name="traj_sim_time" default="10.0" doc="Simulation time horizon of the trajectories"/>
-    <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
+    <arg name="device" default="cpu" doc="Device to run the differentiable physics on"/>
     <arg name="hm_max_age" default="1.0"/>
 
     <!-- RGB Terrain Encoder -->

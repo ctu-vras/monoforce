@@ -12,7 +12,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.config import DPhysConfig
-from monoforce.models import dphysics, State
+from monoforce.models.dphysics import dphysics
 from monoforce.models.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
@@ -101,8 +101,8 @@ class DiffPhysBase:
         """
         Initialize control commands through input linear and angular velocities.
         The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
-        v_r(t) = v(t) + d * w(t)
-        v_l(t) = v(t) - d * w(t),
+        v_l(t) = v(t) + d * w(t)
+        v_r(t) = v(t) - d * w(t),
         d is the distance between the robot's wheels.
 
         where v(t) = V = const for t in [0 .. T], linear velocity,
@@ -125,9 +125,9 @@ class DiffPhysBase:
         track_vels = np.zeros((self.n_sim_trajs, T, 2))
         for i in range(self.n_sim_trajs):
             d = wheels_dist
-            v_r = vels[i] + d * omegas[i]
-            v_l = vels[i] - d * omegas[i]
-            track_vels[i, :, 0], track_vels[i, :, 1] = v_r, v_l
+            v_l = vels[i] + d * omegas[i]
+            v_r = vels[i] - d * omegas[i]
+            track_vels[i, :, 0], track_vels[i, :, 1] = v_l, v_r
 
         return track_vels, vels, omegas
 
@@ -143,12 +143,12 @@ class DiffPhysBase:
         pose = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
         return pose
 
-    def publish_paths_and_costs(self, xyz_q_np, path_costs, frame, stamp=None, pose_step=1):
-        assert len(xyz_q_np) == len(path_costs), 'xyz_q_np: %s, path_costs: %s' % (str(xyz_q_np.shape), str(path_costs.shape))
+    def publish_paths_and_costs(self, poses, path_costs, frame, stamp=None, pose_step=1):
+        assert len(poses) == len(path_costs), 'xyz_q_np: %s, path_costs: %s' % (str(poses.shape), str(path_costs.shape))
         if stamp is None:
             stamp = rospy.Time.now()
 
-        num_trajs = len(xyz_q_np)
+        num_trajs = len(poses)
 
         # paths marker array
         marker_array = MarkerArray()
@@ -158,7 +158,7 @@ class DiffPhysBase:
         for i in range(num_trajs):
             # map path cost to color (lower cost -> greener, higher cost -> redder)
             color = green + (red - green) * path_costs_norm[i]
-            marker_msg = poses_to_marker(xyz_q_np[i][::pose_step], color=color)
+            marker_msg = poses_to_marker(poses[i][::pose_step], color=color)
             marker_msg.header.frame_id = frame
             marker_msg.header.stamp = stamp
             marker_msg.ns = 'paths'
@@ -170,7 +170,7 @@ class DiffPhysBase:
 
         # publish lower cost path
         lower_cost_traj_i = np.argmin(path_costs)
-        lower_cost_xyz_q = xyz_q_np[lower_cost_traj_i]
+        lower_cost_xyz_q = poses[lower_cost_traj_i]
         rospy.logdebug('Min path cost: %.3f' % path_costs[lower_cost_traj_i])
         rospy.logdebug('Max path cost: %.3f' % np.max(path_costs))
         rospy.loginfo('Publishing lower cost path of length: %d' % len(lower_cost_xyz_q[::pose_step]))
@@ -361,49 +361,56 @@ class DiffPhysicsTorch(DiffPhysBase):
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
                          max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
-        _, self.linear_vels, self.angular_vels = self.init_controls(linear_vel, angular_vel_max,
-                                                                    wheels_dist=self.robot_size[1], allow_backward=allow_backward)
+        self.track_vels, _, _ = self.init_controls(linear_vel, 2*np.pi,
+                                                   wheels_dist=self.robot_size[1], allow_backward=allow_backward)
         # grid map subscriber
         self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
 
     def predict_paths(self, grid_maps, xyz_qs_init):
-        assert len(grid_maps) == self.n_sim_trajs == len(xyz_qs_init)
-        for grid_map in grid_maps:
-            assert isinstance(grid_map, np.ndarray)
-            assert grid_map.shape[0] == grid_map.shape[1]
+        assert len(grid_maps) == len(xyz_qs_init) == self.n_sim_trajs
+        # for grid_map in grid_maps:
+        #     assert isinstance(grid_map, np.ndarray)
+        #     assert grid_map.shape[0] == grid_map.shape[1]
+        grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
+        assert grid_maps.shape[0] == self.n_sim_trajs
+        thrusts = self.dphys_cfg.k_thrust * torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
+        assert thrusts.shape == (self.n_sim_trajs, self.n_sim_steps, 2)
 
-        tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.n_sim_steps)
-        path_costs = []
-        xyz_qs = []
-        for xyz_q_init, grid_map, vs, W in zip(xyz_qs_init, grid_maps, self.linear_vels, self.angular_vels):
-            # controls: time stamps, linear and angular velocities
-            ws = W * np.ones_like(vs)
-            controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
-            assert tt.shape == vs.shape == ws.shape, 'Shapes: %s, %s, %s' % (str(tt.shape), str(vs.shape), str(ws.shape))
+        # initial state
+        x = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)
+        xd = torch.zeros_like(x)
+        R = torch.as_tensor(Rotation.from_quat(xyz_qs_init[:, 3:]).as_matrix(), dtype=torch.float32, device=self.device)
+        R.repeat(x.shape[0], 1, 1)
+        omega = torch.zeros_like(x)
+        x_points = torch.as_tensor(self.dphys_cfg.robot_points, dtype=torch.float32, device=self.device).repeat(x.shape[0], 1, 1)
+        x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
+        state0 = (x, xd, R, omega, x_points)
 
-            # initial robot state
-            xyz0 = torch.as_tensor(xyz_q_init[:3], dtype=torch.float32, device=self.device).view(3, 1)
-            R0 = torch.as_tensor(Rotation.from_quat(xyz_q_init[3:]).as_matrix(), dtype=torch.float32, device=self.device).view(3, 3)
-            state0 = State(xyz=xyz0, rot=R0, device=self.device)
+        # simulate trajectories
+        states, forces = dphysics(grid_maps, controls=thrusts, state=state0, dphys_cfg=self.dphys_cfg)
+        Xs, Xds, Rs, Omegas, X_points = states
+        assert Xs.shape == (self.n_sim_trajs, self.n_sim_steps, 3)
+        assert Rs.shape == (self.n_sim_trajs, self.n_sim_steps, 3, 3)
 
-            # predict states
-            states, _ = dphysics(grid_map, controls, robot_model=self.robot, state=state0, dphys_cfg=self.dphys_cfg, device=self.device)
+        # convert rotation matrices to quaternions
+        poses = np.zeros((self.n_sim_trajs, self.n_sim_steps, 4, 4))
+        poses[:, :, :3, 3] = Xs
+        poses[:, :, :3, :3] = Rs
+        poses[:, :, 3, 3] = 1.0
+        assert not np.any(np.isnan(poses))
 
-            # create xyz_q trajectory
-            xyz = states[0].cpu().numpy().squeeze()
-            xyz[:, 2] += 0.1  # robot's z coordinate offset, TODO: not sure why this is needed
-            Rs = states[1].cpu().numpy().squeeze()
-            qs = Rotation.from_matrix(Rs).as_quat()
-            xyz_q = np.concatenate([xyz, qs], axis=1)
-            xyz_qs.append(xyz_q)
+        # compute path costs
+        F_springs, F_frictions, _, _ = forces
+        assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
+        assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
+        path_costs = torch.norm(F_springs, dim=-1).nanmean(dim=-1).nanmean(dim=-1)
+        path_costs = path_costs.cpu().numpy()
+        assert not np.any(np.isnan(path_costs))
+        rospy.logdebug(f'Path costs: {path_costs}')
+        assert poses.shape == (self.n_sim_trajs, self.n_sim_steps, 4, 4)
+        assert path_costs.shape == (self.n_sim_trajs,)
 
-            # calculate path cost for each trajectory
-            forces = states[4].cpu()
-            # reduce forces acting on all robot points, cost = sum of force magnitudes
-            path_cost = forces.sum(dim=2).norm(dim=1).mean()
-            path_costs.append(path_cost)
-
-        return xyz_qs, path_costs
+        return poses, path_costs
 
 
 def main():

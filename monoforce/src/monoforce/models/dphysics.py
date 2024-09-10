@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from ..config import DPhysConfig
 
 
 # constants
@@ -147,83 +148,6 @@ def surface_normals(z_grid, x_query, y_query, d_max, grid_res):
 
     return n
 
-def inertia_tensor(mass, points):
-    """
-    Compute the inertia tensor for a rigid body represented by point masses.
-
-    Parameters:
-    mass (float): The total mass of the body.
-    points (array-like): A list or array of points (x, y, z) representing the mass distribution.
-                         Each point contributes equally to the total mass.
-
-    Returns:
-    torch.Tensor: A 3x3 inertia tensor matrix.
-    """
-
-    # Convert points to a tensor
-    points = torch.as_tensor(points)
-
-    # Number of points
-    n_points = points.shape[0]
-
-    # Mass per point: assume uniform mass distribution
-    mass_per_point = mass / n_points
-
-    # Initialize the inertia tensor components
-    Ixx = Iyy = Izz = Ixy = Ixz = Iyz = 0.0
-
-    # Loop over each point and accumulate the inertia tensor components
-    for x, y, z in points:
-        Ixx += mass_per_point * (y ** 2 + z ** 2)
-        Iyy += mass_per_point * (x ** 2 + z ** 2)
-        Izz += mass_per_point * (x ** 2 + y ** 2)
-        Ixy -= mass_per_point * x * y
-        Ixz -= mass_per_point * x * z
-        Iyz -= mass_per_point * y * z
-
-    # Construct the inertia tensor matrix
-    I = torch.tensor([
-        [Ixx, Ixy, Ixz],
-        [Ixy, Iyy, Iyz],
-        [Ixz, Iyz, Izz]
-    ])
-
-    return I
-
-
-def rigid_body_params(from_mesh=False):
-    """
-    Returns the parameters of the rigid body.
-    """
-    if from_mesh:
-        import open3d as o3d
-        robot = 'tradr'
-        mesh_file = f'../data/meshes/{robot}.obj'
-        mesh = o3d.io.read_triangle_mesh(mesh_file)
-        n_points = 128
-        x_points = np.asarray(mesh.sample_points_uniformly(n_points).points)
-        x_points = torch.tensor(x_points)
-    else:
-        size = (1.0, 0.5)
-        s_x, s_y = size
-        x_points = torch.stack([
-            torch.hstack([torch.linspace(-s_x / 2., s_x / 2., 16 // 2), torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
-            torch.hstack([s_y / 2. * torch.ones(16 // 2), -s_y / 2. * torch.ones(16 // 2)]),
-            torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2]),
-                          torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2])])
-        ]).T
-
-    # divide the point cloud into left and right parts
-    cog = x_points.mean(dim=0)
-    mask_left = x_points[..., 1] > cog[1]
-    mask_right = x_points[..., 1] < cog[1]
-
-    m = torch.tensor(40.0)  # mass, kg
-    I = inertia_tensor(m, x_points)
-    I *= 100.0  # scale the inertia tensor as the point cloud is sparse
-
-    return x_points, m, I, mask_left, mask_right
-
 
 def skew_symmetric(v):
     """
@@ -247,12 +171,11 @@ def skew_symmetric(v):
 
 def vw_to_track_vel(v, w, r=1.0):
     # v: linear velocity, w: angular velocity, r: robot radius
-    # v = (v_r + v_l) / 2
-    # w = (v_r - v_l) / (2 * r)
-    v_r = v + r * w
-    v_l = v - r * w
-    return v_r, v_l
-
+    # v = (v_l + v_r) / 2
+    # w = (v_l - v_r) / (2 * r)
+    v_l = v + r * w
+    v_r = v - r * w
+    return v_l, v_r
 
 def forward_kinematics(x, xd, R, omega, x_points, xd_points,
                        z_grid, d_max, grid_res,
@@ -317,8 +240,8 @@ def forward_kinematics(x, xd, R, omega, x_points, xd_points,
     torque_thrust = torque_left + torque_right  # M_thrust = M_l + M_r
     assert torque_thrust.shape == (B, 3)
 
-    # rigid body rotation
-    torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1) + torque_thrust  # M = sum(r_i x F_i)
+    # rigid body rotation: M = sum(r_i x F_i)
+    torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1) + torque_thrust
     omega_d = torque @ I_inv.transpose(0, 1)  # omega_d = I^(-1) M
     omega_skew = skew_symmetric(omega)  # omega_skew = [omega]_x
     dR = omega_skew @ R  # dR = [omega]_x R
@@ -329,8 +252,8 @@ def forward_kinematics(x, xd, R, omega, x_points, xd_points,
     xdd = F_cog / m  # a = F / m
     assert xdd.shape == (B, 3)
 
-    # motion of point composed of cog motion and rotation of the rigid body
-    xd_points = xd.unsqueeze(1) + torch.cross(omega.view(B, 1, 3), x_points - x.unsqueeze(1))  # Koenig's theorem in mechanics
+    # motion of point composed of cog motion and rotation of the rigid body (Koenig's theorem in mechanics)
+    xd_points = xd.unsqueeze(1) + torch.cross(omega.view(B, 1, 3), x_points - x.unsqueeze(1))
     assert xd_points.shape == (B, n_pts, 3)
 
     return xd, xdd, dR, omega_d, xd_points, F_spring, F_friction, F_thrust_left, F_thrust_right
@@ -346,13 +269,44 @@ def update_states(x, xd, xdd, R, dR, omega, omega_d, x_points, xd_points, dt):
     return x, xd, R, omega, x_points
 
 
-def dphysics(state, xd_points,
-             z_grid, d_max, grid_res,
-             m, I, mask_left, mask_right, controls,
-             k_stiffness=1000., k_damping=None, k_friction=0.5,
-             T=10.0, dt=0.01):
+def dphysics(z_grid, controls, state=None, robot_geometry=None, dphys_cfg=DPhysConfig()):
+    # unpack config
+    d_max = dphys_cfg.d_max
+    grid_res = dphys_cfg.grid_res
+    m = dphys_cfg.robot_mass
+    device = z_grid.device
+    I = torch.as_tensor(dphys_cfg.robot_I, device=device)
+    k_stiffness = dphys_cfg.k_stiffness
+    k_damping = dphys_cfg.k_damping
+    k_friction = dphys_cfg.k_friction
+    dt = dphys_cfg.dt
+    T = dphys_cfg.traj_sim_time
+    batch_size = z_grid.shape[0]
+    if robot_geometry is None:
+        mask_left = torch.as_tensor(dphys_cfg.robot_mask_left, device=device)
+        mask_right = torch.as_tensor(dphys_cfg.robot_mask_right, device=device)
+        mask_left = mask_left.repeat(batch_size, 1)
+        mask_right = mask_right.repeat(batch_size, 1)
+    else:
+        mask_left, mask_right = robot_geometry
+
+    if state is None:
+        x = torch.tensor([[0.0, 0.0, 0.2]]).to(device).repeat(batch_size, 1)
+        xd = torch.tensor([[0.0, 0.0, 0.0]]).to(device).repeat(batch_size, 1)
+        R = torch.eye(3).to(device).repeat(batch_size, 1, 1)
+        omega = torch.tensor([[0.0, 0.0, 0.0]]).to(device).repeat(batch_size, 1)
+        x_points = torch.as_tensor(dphys_cfg.robot_points, device=device)
+        x_points = x_points.repeat(batch_size, 1, 1)
+        x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
+        state = (x, xd, R, omega, x_points)
+
+    N_ts = int(T / dt)
+    B = state[0].shape[0]
+    assert controls.shape == (B, N_ts, 2)  # for each time step, left and right thrust forces
+
     # state: x, xd, R, omega, x_points
     x, xd, R, omega, x_points = state
+    xd_points = torch.zeros_like(x_points)
 
     I_inv = torch.inverse(I)
     if k_damping is None:
