@@ -65,13 +65,13 @@ class DPhysConfig:
         self.k_stiffness = 5_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
         self.k_friction = 0.5
-        self.k_thrust = 120.
+        self.k_thrust = 150.
         self.hm_interp_method = None
 
         # training parameters
         self.traj_sim_time = 5.0
         self.dt = 0.01
-        self.n_samples = int(self.traj_sim_time / self.dt)
+        self.n_sim_trajs = 32
 
         # control parameters
         self.max_vel = 2.  # m/s

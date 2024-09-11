@@ -218,8 +218,6 @@ def forward_kinematics(x, xd, R, omega, x_points, xd_points,
     F_spring = -torch.mul((k_stiffness * dh_points + k_damping * xd_points_n), n)  # F_s = -k * dh - b * v_n
     F_spring = torch.mul(F_spring, in_contact)
     assert F_spring.shape == (B, n_pts, 3)
-    # limit the spring forces
-    F_spring = torch.clamp(F_spring, min=0.0, max=2 * m * g)
 
     # friction forces: https://en.wikipedia.org/wiki/Friction
     N = torch.norm(F_spring, dim=-1, keepdim=True)
@@ -303,6 +301,9 @@ def dphysics(z_grid, controls, state=None, robot_geometry=None, dphys_cfg=DPhysC
     N_ts = int(T / dt)
     B = state[0].shape[0]
     assert controls.shape == (B, N_ts, 2)  # for each time step, left and right thrust forces
+
+    # TODO: there is some bug, had to transpose grid map
+    z_grid = z_grid.transpose(1, 2)  # (B, H, W) -> (B, W, H)
 
     # state: x, xd, R, omega, x_points
     x, xd, R, omega, x_points = state

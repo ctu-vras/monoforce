@@ -61,7 +61,7 @@ python scripts/run --img-paths config/data_sample/tradr/images/1666267171_394104
                    --cameras camera_front camera_left camera_right camera_rear_left camera_rear_right \
                    --calibration-path config/data_sample/tradr/calibration/ \
                    --lss_cfg_path config/lss_cfg_tradr.yaml --model_path config/weights/lss/lss_robingas_tradr.pt --dphys_cfg_path config/dphys_cfg.yaml \
-                   --linear-vel 0.5 --angular-vel -0.1
+                   --linear-vel 1.0 --angular-vel -0.1
 ```
 Please, refer to the [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
 

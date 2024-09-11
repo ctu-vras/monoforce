@@ -16,8 +16,6 @@
             gridmap_topic: $(arg gridmap_topic)
             gridmap_layer: $(arg gridmap_layer)
             max_age: $(arg max_age)
-            traj_sim_time: $(arg traj_sim_time)
-            n_sim_trajs: 32
             allow_backward: true
             linear_vel: 1.0
             angular_vel_max: 0.2

@@ -7,7 +7,7 @@ import torchvision
 from skimage.draw import polygon
 from torch.utils.data import Dataset
 from matplotlib import pyplot as plt
-from ..models.lss.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask, sample_augmentation
+from ..models.terrain_encoder.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range

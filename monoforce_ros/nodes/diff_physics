@@ -33,9 +33,7 @@ class DiffPhysBase:
                  dphys_cfg: DPhysConfig = None,
                  max_age=0.5,
                  device='cpu',
-                 n_sim_trajs=1,
-                 dt=0.001,
-                 pose_step=1):
+                 dt=0.001):
         self.robot = robot
         self.robot_size = self.get_robot_size()
         self.robot_frame = robot_frame
@@ -47,7 +45,7 @@ class DiffPhysBase:
         self.n_sim_steps = int(dphys_cfg.traj_sim_time / self.dt)
         self.max_age = max_age
         self.device = device
-        self.n_sim_trajs = n_sim_trajs
+        self.n_sim_trajs = dphys_cfg.n_sim_trajs
 
         self.path_lock = RLock()
         self.tf_buffer = tf2_ros.Buffer()
@@ -55,7 +53,7 @@ class DiffPhysBase:
 
         self.path_cost_min = np.inf
         self.path_cost_max = -np.inf
-        self.pose_step = pose_step
+        self.pose_step = int(0.1 / self.dt)  # publish poses with 10 Hz
 
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
@@ -250,19 +248,17 @@ class DiffPhysicsWarp(DiffPhysBase):
                  robot='tradr',
                  robot_frame='base_link',
                  max_age=0.5,
-                 n_sim_trajs=40,
                  linear_vel=0.5,
                  angular_vel_max=0.5,
                  allow_backward=True,
                  dt=0.001,
-                 pose_step=500,
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
-                         max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
+                         max_age=max_age, device=device, dt=dt)
         # initialize warp
         wp.init()
 
-        self.n_sim_trajs = n_sim_trajs if n_sim_trajs % 2 == 0 else n_sim_trajs + 1
+        self.n_sim_trajs = dphys_cfg.n_sim_trajs if dphys_cfg.n_sim_trajs % 2 == 0 else dphys_cfg.n_sim_trajs + 1
 
         self.xyz_q0 = self.init_poses()
         self.track_vels, _, _ = self.init_controls(linear_vel, angular_vel_max, wheels_dist=self.robot_size[1], allow_backward=allow_backward)
@@ -352,15 +348,13 @@ class DiffPhysicsTorch(DiffPhysBase):
                  robot='tradr',
                  robot_frame='base_link',
                  max_age=0.5,
-                 n_sim_trajs=1,
                  allow_backward=False,
                  linear_vel=None,
                  angular_vel_max=None,
                  dt=0.01,
-                 pose_step=50,
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
-                         max_age=max_age, device=device, n_sim_trajs=n_sim_trajs, dt=dt, pose_step=pose_step)
+                         max_age=max_age, device=device, dt=dt)
         self.track_vels, _, _ = self.init_controls(linear_vel, 2*np.pi,
                                                    wheels_dist=self.robot_size[1], allow_backward=allow_backward)
         # grid map subscriber
@@ -421,14 +415,12 @@ def main():
     config_path = rospy.get_param('~config_path', os.path.join(lib_path, 'config/dphys_cfg.yaml'))
     assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
     dphys_cfg.from_yaml(config_path)
-    dphys_cfg.traj_sim_time = rospy.get_param('~traj_sim_time', 5.)
 
     robot = rospy.get_param('~robot', 'tradr')
     robot_frame = rospy.get_param('~robot_frame', 'base_link')
     gridmap_topic = rospy.get_param('~gridmap_topic')
     gridmap_layer = rospy.get_param('~gridmap_layer', 'elevation')
     max_age = rospy.get_param('~max_age', 0.5)
-    n_sim_trajs = rospy.get_param('~n_sim_trajs', 40)
     allow_backward = rospy.get_param('~allow_backward', True)
     linear_vel = rospy.get_param('~linear_vel', 0.5)
     angular_vel_max = rospy.get_param('~angular_vel_max', 0.5)
@@ -444,7 +436,6 @@ def main():
                        gridmap_topic=gridmap_topic,
                        gridmap_layer=gridmap_layer,
                        max_age=max_age,
-                       n_sim_trajs=n_sim_trajs,
                        allow_backward=allow_backward,
                        linear_vel=linear_vel,
                        angular_vel_max=angular_vel_max,

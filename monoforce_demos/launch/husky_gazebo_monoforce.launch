@@ -4,7 +4,6 @@
     <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
     <arg name="robot" default="husky" doc="Robot name"/>
     <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
-    <arg name="traj_sim_time" default="5.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
     <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
 
@@ -28,7 +27,6 @@
 <!--         <arg name="img_topics" value="['/ids_camera_front/image_raw/compressed']"/> -->
 <!--         <arg name="camera_info_topics" value="['/ids_camera_front/camera_info']"/> -->
         <arg name="engine" value="$(arg engine)"/>
-        <arg name="traj_sim_time" value="$(arg traj_sim_time)"/>
         <arg name="device" value="$(arg device)"/>
     </include>
 

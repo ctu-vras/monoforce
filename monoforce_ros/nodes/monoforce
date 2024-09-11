@@ -7,9 +7,9 @@ import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasPoints, robingas_seq_paths
 from monoforce.config import DPhysConfig
-from monoforce.models import dphysics
+from monoforce.models.dphysics import dphysics, vw_to_track_vel
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
-from monoforce.models.lss.model import compile_model
+from monoforce.models.terrain_encoder.model import compile_model
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
 from grid_map_msgs.msg import GridMap
@@ -52,10 +52,7 @@ class MonoForce:
         self.lss_config = read_yaml(self.lss_config_path)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if self.dphys_cfg.n_samples / self.dphys_cfg.traj_sim_time != 100:
-            rospy.logwarn('Simulated time and number of predicted trajectory samples'
-                          'do not match the default rate of 100 Hz.')
-        self.rate = self.dphys_cfg.n_samples / self.dphys_cfg.traj_sim_time
+        self.rate = 1 / self.dphys_cfg.dt
         self.map_frame = map_frame
         self.robot_initial_frame = robot_initial_frame
         self.robot_frame = robot_frame
@@ -74,9 +71,9 @@ class MonoForce:
     def load_model(self, lss_weights_path):
         model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
         rospy.loginfo('Loading model from: %s' % lss_weights_path)
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model.load_state_dict(torch.load(lss_weights_path, map_location=device))
+        model.load_state_dict(torch.load(lss_weights_path, map_location=self.device))
         model.eval()
+        model.to(self.device)
         return model
 
     def publish_cloud(self, points, stamp):
@@ -129,12 +126,12 @@ class MonoForce:
 
     def publish_forces(self, robot_forces, robot_points, stamp):
         assert robot_forces.shape == robot_points.shape
-        assert robot_forces.shape[0] == 3
+        assert robot_forces.shape[1] == 3
         # publish forces as arrows with MarkerArray
         markers = MarkerArray()
-        for i in range(robot_forces.shape[1]):
-            force = robot_forces[:, i]
-            xyz = robot_points[:, i]
+        for i in range(len(robot_forces)):
+            force = robot_forces[i, :]
+            xyz = robot_points[i, :]
             marker = Marker()
             marker.header.frame_id = self.robot_frame
             marker.header.stamp = stamp
@@ -157,30 +154,22 @@ class MonoForce:
         self.forces_pub.publish(markers)
 
     def poses_from_states(self, states):
-        xyz = states[0].cpu().numpy()
-        Rs = states[1].cpu().numpy()
+        xyz = states[0].squeeze().cpu().numpy()
+        Rs = states[2].squeeze().cpu().numpy()
         poses = np.stack([np.eye(4) for _ in range(len(xyz))])
         poses[:, :3, :3] = Rs
-        poses[:, :3, 3:4] = xyz
-        poses[:, 2, 3] += 0.1
-        # poses inside the heightmap
-        mask = (xyz[:, 0] > -self.dphys_cfg.d_max) & (xyz[:, 0] < self.dphys_cfg.d_max) & \
-               (xyz[:, 1] > -self.dphys_cfg.d_max) & (xyz[:, 1] < self.dphys_cfg.d_max)
-        mask = np.asarray(mask, dtype=bool).flatten()
-        poses = poses[mask]
+        poses[:, :3, 3] = xyz
         return poses
 
-    def predict_states(self, height, v, w):
-        if isinstance(height, torch.Tensor):
-            height = height.squeeze().cpu().numpy()
+    def predict_states(self, z_grid, v, w):
         with torch.no_grad():
             # constant linear and angular velocities as control inputs
-            tt = torch.linspace(0., self.dphys_cfg.traj_sim_time, self.dphys_cfg.n_samples)
-            vs = v * torch.ones(self.dphys_cfg.n_samples)
-            ws = w * torch.ones(self.dphys_cfg.n_samples)
-            controls = {'stamps': tt, 'linear_v': vs, 'angular_w': ws}
-            states, system = dphysics(height, controls, dphys_cfg=self.dphys_cfg, device=self.device)
-        return states, system.robot_points.detach()
+            T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
+            v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
+            thrusts = self.dphys_cfg.k_thrust * torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
+            thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
+            states, forces = dphysics(z_grid, controls=thrusts, dphys_cfg=self.dphys_cfg)
+        return states, forces
 
     def run(self):
         ds = RobinGasPoints(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
@@ -210,7 +199,7 @@ class MonoForce:
         # get heightmap prediction
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i[None]) for i in inputs]
+            inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
             voxel_feats = self.model.get_voxels(*inputs)
             height_geom_pred, height_diff_pred = self.model.bevencode(voxel_feats)
             height_terrain_pred = height_geom_pred - height_diff_pred
@@ -219,8 +208,8 @@ class MonoForce:
         rate = rospy.Rate(self.rate)
         pose_i = 0
         poses = None
-        forces = None
         robot_points = None
+        F_springs = None
         while not rospy.is_shutdown():
             stamp = rospy.Time.now()
 
@@ -228,8 +217,6 @@ class MonoForce:
                 # point cloud
                 self.publish_cloud(points, stamp)
                 # grid map
-                # self.publish_gridmap(hm_geom[0], stamp, topic='grid_map_geom_pred', mask=hm_geom[1])
-                # self.publish_gridmap(hm_terrain[0], stamp, topic='grid_map_terrain_pred', mask=hm_terrain[1])
                 self.publish_gridmap(height_geom_pred, stamp, topic='grid_map_geom_pred')
                 self.publish_gridmap(height_diff_pred, stamp, topic='grid_map_diff_pred')
                 self.publish_gridmap(height_terrain_pred, stamp, topic='grid_map_terrain_pred')
@@ -237,22 +224,21 @@ class MonoForce:
                 self.publish_images(imgs_raw, Ks, stamp)
 
                 # predict path poses
-                v = np.random.uniform(0.6, 0.9)
+                v = np.random.uniform(0.9, 1.2)
                 # if robot has more than one (front-facing) camera, randomly change commanded linear velocity direction
                 if len(self.camera_frames) > 1 and np.random.random() > 0.5:
                     v = -v
-                w = np.random.uniform(-0.4, 0.4)
+                w = np.random.uniform(-3.14, 3.14)
 
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
-                states, robot_points = self.predict_states(height_terrain_pred, v=v, w=w)
-                # states, robot_points = self.predict_states(hm_terrain[0], v=v, w=w)
+                states, forces = self.predict_states(height_terrain_pred.squeeze(1), v=v, w=w)
                 poses = self.poses_from_states(states)
                 poses[:, 2, 3] += 0.132  # add robot clearance
-                rospy.loginfo('Predicted poses shape: %s' % str(poses.shape))
-                forces = states[4].cpu().numpy()
-                rospy.loginfo('Predicted forces shape: %s' % str(forces.shape))
-                robot_points = robot_points.cpu().numpy()
-                rospy.loginfo('Robot contact points shape: %s' % str(robot_points.shape))
+                print('Predicted poses shape: %s' % str(poses.shape))
+                F_springs = forces[0].squeeze().cpu().numpy()
+                print('Predicted forces shape: %s' % str(F_springs.shape))
+                robot_points = np.asarray(self.dphys_cfg.robot_points)
+                print('Robot contact points shape: %s' % str(robot_points.shape))
                 # publish paths
                 path_msg = poses_to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
                 path_gt_msg = poses_to_path(poses_gt, frame_id=self.robot_initial_frame, stamp=stamp)
@@ -277,7 +263,7 @@ class MonoForce:
             self.tf_broadcast.sendTransform(tf)
 
             # publish forces
-            self.publish_forces(forces[pose_i], robot_points, stamp)
+            self.publish_forces(F_springs[pose_i], robot_points, stamp)
 
             pose_i = (pose_i + 1) % len(poses)
             rate.sleep()

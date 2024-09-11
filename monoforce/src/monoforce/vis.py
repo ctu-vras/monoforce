@@ -74,7 +74,7 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid, mask_left, mask_
                                     line_width=4.0, scale_factor=0.005, color=(1, 0, 0))
     else:
         visu_Ns = visu_Frs = visu_F_th_l = visu_F_th_r = None
-    visu_terrain = mlab.surf(x_grid, y_grid, z_grid.T, colormap='terrain', opacity=0.6)
+    visu_terrain = mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
     visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
                                scale_factor=0.1, color=(0, 0, 0))
     # mlab.view(azimuth=150, elevation=80, distance=16.0)
@@ -88,7 +88,7 @@ def animate_trajectory(states, forces, z_grid, mask_left, mask_right, vis_cfg, s
     # unpack the visualization configuration
     visu_traj, visu_Ns, visu_Frs, visu_F_th_l, visu_F_th_r, visu_terrain, visu_robot = vis_cfg
 
-    visu_terrain.mlab_source.scalars = z_grid.T
+    visu_terrain.mlab_source.scalars = z_grid
     for t in range(len(xs)):
         visu_robot.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2])
         if forces is not None:

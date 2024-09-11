@@ -67,7 +67,7 @@ def heightmap(d_max, grid_res, mode='zeros'):
     elif mode == 'sin':
         z_grid = torch.sin(x_grid) * torch.cos(y_grid)
     elif mode == 'exp':
-        z_grid = torch.exp(-(x_grid) ** 2 / 4) * torch.exp(-(y_grid-2) ** 2 / 2)
+        z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-y_grid ** 2 / 2)
     else:
         raise ValueError(f'Invalid mode: {mode}')
 
@@ -147,7 +147,7 @@ def shoot_multiple():
     # simulation parameters
     dt = dphys_cfg.dt
     T = dphys_cfg.traj_sim_time
-    num_trajs = 128
+    num_trajs = 32
     device = 'cpu'
 
     # rigid body parameters
@@ -159,7 +159,7 @@ def shoot_multiple():
     x = torch.tensor([[-1.0, 0.0, 0.2]]).repeat(num_trajs, 1)
     xd = torch.zeros_like(x)
     # R = torch.eye(3).repeat(x.shape[0], 1, 1)
-    R = torch.tensor(Rotation.from_euler('z', -np.pi/6).as_matrix(), dtype=torch.float32).repeat(num_trajs, 1, 1)
+    R = torch.tensor(Rotation.from_euler('z', np.pi/6).as_matrix(), dtype=torch.float32).repeat(num_trajs, 1, 1)
     omega = torch.zeros_like(x)
     x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
     mask_left = mask_left.repeat(x.shape[0], 1)
@@ -169,7 +169,7 @@ def shoot_multiple():
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-    z_grid = torch.exp(-(x_grid) ** 2 / 4) * torch.exp(-(y_grid - 2) ** 2 / 2)
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
@@ -221,7 +221,7 @@ def shoot_multiple():
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(111, projection='3d')
         # plot heightmap
-        ax.plot_surface(x_grid[0].cpu(), y_grid[0].cpu(), z_grid[0].cpu().T, cmap='terrain', alpha=0.6)
+        ax.plot_surface(x_grid[0].cpu(), y_grid[0].cpu(), z_grid[0].cpu(), cmap='terrain', alpha=0.6)
         set_axes_equal(ax)
         for i in range(num_trajs):
             ax.plot(Xs[i, :, 0].cpu(), Xs[i, :, 1].cpu(), Xs[i, :, 2].cpu(), c='b')

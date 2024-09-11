@@ -4,8 +4,8 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-from monoforce.models.lss.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
-from monoforce.models.lss.model import compile_model
+from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
+from monoforce.models.terrain_encoder.model import compile_model
 from monoforce.config import DPhysConfig
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm

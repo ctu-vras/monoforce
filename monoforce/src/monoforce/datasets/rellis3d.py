@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import os
 import numpy as np
 from matplotlib import pyplot as plt
-from ..models.lss.utils import img_transform, normalize_img, sample_augmentation
+from ..models.terrain_encoder.utils import img_transform, normalize_img, sample_augmentation
 from ..utils import position, read_yaml, timing
 from ..transformations import transform_cloud
 from ..cloudproc import filter_grid, estimate_heightmap
