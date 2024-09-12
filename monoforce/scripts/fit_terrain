@@ -1,9 +1,9 @@
-import torch
 import numpy as np
-from monoforce.models.dphysics import dphysics
+import torch
+from monoforce.models.dphysics import DPhysics
 from monoforce.config import DPhysConfig
-from monoforce.monoforce.scripts.robot_control import shoot_multiple
 from monoforce.vis import setup_visualization, animate_trajectory
+from monoforce.losses import total_variation
 
 
 def visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
@@ -34,10 +34,13 @@ def optimization():
     dphys_cfg = DPhysConfig()
 
     # simulation parameters
-    dt = 0.01
-    T = 5.0
+    T, dt = 3.0, 0.01
+    dT = 0.2  # time period to cut the trajectory into samples
+    dphys_cfg.dt = dt
+    dphys_cfg.traj_sim_time = T
     n_iters = 100
-    lr = 0.002
+    lr = 0.01
+    vis = True
 
     # rigid body parameters
     x_points = torch.as_tensor(dphys_cfg.robot_points)
@@ -45,16 +48,10 @@ def optimization():
     mask_right = torch.as_tensor(dphys_cfg.robot_mask_right)
 
     # initial state
-    x = torch.tensor([
-        [-2.0, 0.0, 1.0]
-    ])
-    xd = torch.tensor([
-        [0.0, 0.0, 0.0]
-    ])
+    x = torch.tensor([[-1.0, 0.0, 0.1]])
+    xd = torch.tensor([[0.0, 0.0, 0.0]])
     R = torch.eye(3).repeat(x.shape[0], 1, 1)
-    omega = torch.tensor([
-        [0.0, 0.0, 0.0]
-    ])
+    omega = torch.tensor([[0.0, 0.0, 0.0]])
     x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
     mask_left = mask_left.repeat(x.shape[0], 1)
     mask_right = mask_right.repeat(x.shape[0], 1)
@@ -63,66 +60,80 @@ def optimization():
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-    z_grid_gt = torch.exp(-(x_grid) ** 2 / 4) * torch.exp(-(y_grid - 2) ** 2 / 2)
+    z_grid_gt = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
     z_grid_gt = z_grid_gt.repeat(x.shape[0], 1, 1)
 
     # control inputs in Newtons
-    controls = torch.tensor([
-        [[110.0, 110.0]] * int(T / dt)
-    ])
+    controls = dphys_cfg.k_thrust * torch.tensor([[[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)])
 
     # initial state
     state0 = (x, xd, R, omega, x_points)
 
     # simulate the rigid body dynamics
-    states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0, dphys_cfg=dphys_cfg)
-    visualize(states_gt, forces_gt, x_grid, y_grid, z_grid_gt, mask_left, mask_right)
+    # states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0, dphys_cfg=dphys_cfg)
+    dphysics = DPhysics(dphys_cfg)
+    states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0)
+    if vis:
+        visualize(states_gt, forces_gt, x_grid, y_grid, z_grid_gt, mask_left, mask_right)
 
     # initial guess for the heightmap
     z_grid = torch.zeros_like(z_grid_gt, requires_grad=True)
 
     # optimization
     optimizer = torch.optim.Adam([z_grid], lr=lr)
+    Xs_gt, Xds_gt, Rs_gt, Omegas_gt, X_points_gt = states_gt
+    loss_min = np.Inf
     z_grid_best = z_grid.clone()
-    loss_best = np.inf
+    state_dT = None
     for i in range(n_iters):
         optimizer.zero_grad()
-        # simulate the rigid body dynamics
-        states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0, dphys_cfg=dphys_cfg)
+        loss = torch.tensor(0.0)
+        for t in range(0, int(T / dt), int(dT / dt)):
+            # simulate the rigid body dynamics for dT time period
+            dphys_cfg.traj_sim_time = dT
+            # state_gt = (Xs_gt[:, t], Xds_gt[:, t], Rs_gt[:, t], Omegas_gt[:, t], X_points_gt[:, t])
+            state_dT = state0 if state_dT is None else [s[:, -1] for s in states_dT]
+            controls_dT = controls[:, t: t + int(dT / dt)]
+            states_dT, forces_dT = dphysics(z_grid=z_grid, controls=controls_dT,
+                                            # state=state0 if t == 0 else state_gt,
+                                            state=state0 if t == 0 else state_dT)
+            # unpack the states
+            Xs, Xds, Rs, Omegas, X_points = states_dT
 
-        # unpack the states
-        Xs, Xds, Rs, Omegas, X_points = states
-        Xs_gt, Xds_gt, Rs_gt, Omegas_gt, X_points_gt = states_gt
+            # compute the loss
+            loss_dT = torch.nn.functional.mse_loss(Xs, Xs_gt[:, t:t + int(dT / dt)])
+            loss += loss_dT
 
-        # compute the loss
-        loss_x = torch.nn.functional.mse_loss(Xs, Xs_gt)
-        loss_xd = torch.nn.functional.mse_loss(Xds, Xds_gt)
-        loss = loss_x + loss_xd
         loss.backward()
         optimizer.step()
-        print(f'Iteration {i}, Loss x: {loss_x.item():.3f}, Loss xd: {loss_xd.item():.3f}')
+        print(f'Iteration {i}, Loss_x: {loss.item()}')
 
-        if loss.item() < loss_best:
-            loss_best = loss.item()
+        if loss.item() < loss_min:
+            loss_min = loss.item()
             z_grid_best = z_grid.clone()
 
-        # heightmap difference
-        with torch.no_grad():
-            z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
-            print(f'Heightmap difference: {z_diff.item()}')
+        # # heightmap difference
+        # with torch.no_grad():
+        #     z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
+        #     print(f'Heightmap difference: {z_diff.item()}')
 
         # visualize the optimized heightmap
-        visualize(states, forces, x_grid, y_grid, z_grid_best, mask_left, mask_right)
+        if vis and i % 20 == 0:
+            dphys_cfg.traj_sim_time = T
+            states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
+            visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right)
+
+    # visualize the best heightmap
+    dphys_cfg.traj_sim_time = T
+    states, forces = dphysics(z_grid=z_grid_best, controls=controls, state=state0)
+    visualize(states, forces, x_grid, y_grid, z_grid_best, mask_left, mask_right)
 
 
 def terrain_properties():
-    from monoforce.models.dphysics import interpolate_height
-
     dphys_cfg = DPhysConfig()
-    dphys_cfg.k_stiffness = 10_000.
     dphys_cfg.traj_sim_time = 5.0
 
     # simulation parameters
@@ -147,7 +158,7 @@ def terrain_properties():
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-    z_grid = torch.exp(-(x_grid) ** 2 / 4) * torch.exp(-(y_grid - 2) ** 2 / 2)
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
@@ -158,15 +169,15 @@ def terrain_properties():
     mask_right = mask_right.repeat(x.shape[0], 1)
 
     # control inputs in Newtons
-    controls = 170. * torch.tensor([[[1.0, 1.0]] * int(T / dt)])
+    controls = dphys_cfg.k_thrust * torch.tensor([[[1.0, 1.0]] * int(T / dt)])
 
     # initial state
     state0 = (x, xd, R, omega, x_points)
 
     # simulate the rigid body dynamics
-    states_gt, forces_gt = dphysics(z_grid=z_grid, controls=controls, state=state0, dphys_cfg=dphys_cfg)
-    z_gt = interpolate_height(z_grid, states_gt[0][..., 0], states_gt[0][..., 1],
-                              d_max=dphys_cfg.d_max, grid_res=dphys_cfg.grid_res)
+    dphysics = DPhysics(dphys_cfg)
+    states_gt, forces_gt = dphysics(z_grid=z_grid, controls=controls, state=state0)
+    z_gt = dphysics.interpolate_grid(z_grid, states_gt[0][..., 0], states_gt[0][..., 1])
     states_gt[0][..., 2] = z_gt
     # visualize(states_gt, forces_gt, x_grid, y_grid, z_grid, mask_left, mask_right)
 
@@ -176,7 +187,7 @@ def terrain_properties():
     for i in range(n_iters):
         optimizer.zero_grad()
         # simulate the rigid body dynamics
-        states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0, dphys_cfg=dphys_cfg)
+        states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
         # compute the loss
         Xs, Xs_gt = states[0], states_gt[0]
         loss = torch.nn.functional.mse_loss(Xs, Xs_gt)

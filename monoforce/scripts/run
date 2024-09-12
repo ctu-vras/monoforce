@@ -7,7 +7,7 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.config import DPhysConfig
-from monoforce.models.dphysics import dphysics, vw_to_track_vel
+from monoforce.models.dphysics import DPhysics, vw_to_track_vel
 from monoforce.models.terrain_encoder.model import compile_model
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
@@ -40,6 +40,7 @@ class MonoForce:
                  dphys_cfg_path=os.path.join('..', 'config/dphys_cfg.yaml'),
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg_tradr.yaml'),
                  model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.imgs_path = imgs_path
         self.calib_path = calib_path
         self.linear_vel = linear_vel
@@ -63,19 +64,17 @@ class MonoForce:
         self.lss_config_path = lss_cfg_path
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
+        self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if self.dphys_cfg.n_samples / self.dphys_cfg.traj_sim_time != 100:
-            raise 'Simulated time and number of predicted trajectory samples do not match the default rate of 100 Hz.'
         self.model_path = model_path
-        self.model = self.load_model()
+        self.terrain_encoder = self.load_terrain_encoder()
 
         # load calibration
         self.calib = load_calib(calib_path=self.calib_path)
         self.cameras = self.get_cameras() if cameras is None else cameras
         assert len(self.cameras) > 0, 'No camera calibration found in path %s' % self.calib_path
 
-    def load_model(self):
+    def load_terrain_encoder(self):
         model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
         print('Loading model from: %s' % self.model_path)
         model.load_state_dict(torch.load(self.model_path, map_location=self.device))
@@ -97,7 +96,7 @@ class MonoForce:
         v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
         thrusts = self.dphys_cfg.k_thrust * torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
         thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
-        states, forces = dphysics(z_grid, controls=thrusts, dphys_cfg=self.dphys_cfg)
+        states, forces = self.dphysics(z_grid, controls=thrusts)
         return states, forces
 
     def get_cameras(self):
@@ -165,7 +164,7 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            z_grid = self.model(*inputs).squeeze(1)
+            z_grid = self.terrain_encoder(*inputs).squeeze(1)
 
             # predict trajectory and interaction forces
             v, w = self.linear_vel, self.angular_vel

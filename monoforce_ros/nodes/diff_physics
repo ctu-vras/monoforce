@@ -12,7 +12,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.config import DPhysConfig
-from monoforce.models.dphysics import dphysics
+from monoforce.models.dphysics import DPhysics
 from monoforce.models.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
@@ -355,6 +355,7 @@ class DiffPhysicsTorch(DiffPhysBase):
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
                          max_age=max_age, device=device, dt=dt)
+        self.dphysics = DPhysics(dphys_cfg, device=device)
         self.track_vels, _, _ = self.init_controls(linear_vel, 2*np.pi,
                                                    wheels_dist=self.robot_size[1], allow_backward=allow_backward)
         # grid map subscriber
@@ -381,7 +382,7 @@ class DiffPhysicsTorch(DiffPhysBase):
         state0 = (x, xd, R, omega, x_points)
 
         # simulate trajectories
-        states, forces = dphysics(grid_maps, controls=thrusts, state=state0, dphys_cfg=self.dphys_cfg)
+        states, forces = self.dphysics(grid_maps, controls=thrusts, state=state0)
         Xs, Xds, Rs, Omegas, X_points = states
         assert Xs.shape == (self.n_sim_trajs, self.n_sim_steps, 3)
         assert Rs.shape == (self.n_sim_trajs, self.n_sim_steps, 3, 3)
@@ -394,10 +395,13 @@ class DiffPhysicsTorch(DiffPhysBase):
         assert not np.any(np.isnan(poses))
 
         # compute path costs
+        # TODO: think about a better way to compute path costs
+        #  (maybe normal forces should be aligned with Z axis or be consistent)
         F_springs, F_frictions, _, _ = forces
         assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
         assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
         path_costs = torch.norm(F_springs, dim=-1).nanmean(dim=-1).nanmean(dim=-1)
+        # path_costs = 1 / (torch.norm(F_frictions, dim=-1).nanmean(dim=-1).nanmean(dim=-1) + 1e-6)
         path_costs = path_costs.cpu().numpy()
         assert not np.any(np.isnan(path_costs))
         rospy.logdebug(f'Path costs: {path_costs}')

@@ -7,7 +7,7 @@ import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasPoints, robingas_seq_paths
 from monoforce.config import DPhysConfig
-from monoforce.models.dphysics import dphysics, vw_to_track_vel
+from monoforce.models.dphysics import DPhysics, vw_to_track_vel
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
 from monoforce.models.terrain_encoder.model import compile_model
 from nav_msgs.msg import Path
@@ -30,11 +30,11 @@ class MonoForce:
                  map_frame='map',
                  robot_initial_frame='base_link0',
                  robot_frame='base_link'):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.robot = robot
 
         self.dphys_cfg = DPhysConfig()
         self.lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
-
         path = np.random.choice(robingas_seq_paths[self.robot])
         if os.path.exists(path):
             self.data_seq = path
@@ -45,19 +45,21 @@ class MonoForce:
         assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
         self.dphys_cfg.from_yaml(self.dphys_config_path)
         self.dphys_cfg.from_rosparams(node_name=name)
+        # load dphysics model
+        self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
 
         # load LSS config
         self.lss_config_path = lss_config_path
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.rate = 1 / self.dphys_cfg.dt
         self.map_frame = map_frame
         self.robot_initial_frame = robot_initial_frame
         self.robot_frame = robot_frame
         self.camera_frames = None  # will be set from the data sequence
-        self.model = self.load_model(lss_weights_path)
+        # load terrain encoder
+        self.terrain_encoder = self.load_terrain_encoder(lss_weights_path)
 
         # publishers
         self.cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
@@ -68,7 +70,7 @@ class MonoForce:
         self.tf_broadcast = tf2_ros.TransformBroadcaster()
         self.forces_pub = rospy.Publisher('forces', MarkerArray, queue_size=1)
 
-    def load_model(self, lss_weights_path):
+    def load_terrain_encoder(self, lss_weights_path):
         model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
         rospy.loginfo('Loading model from: %s' % lss_weights_path)
         model.load_state_dict(torch.load(lss_weights_path, map_location=self.device))
@@ -168,7 +170,7 @@ class MonoForce:
             v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
             thrusts = self.dphys_cfg.k_thrust * torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
             thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
-            states, forces = dphysics(z_grid, controls=thrusts, dphys_cfg=self.dphys_cfg)
+            states, forces = self.dphysics(z_grid, controls=thrusts)
         return states, forces
 
     def run(self):
@@ -200,8 +202,8 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
-            voxel_feats = self.model.get_voxels(*inputs)
-            height_geom_pred, height_diff_pred = self.model.bevencode(voxel_feats)
+            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
+            height_geom_pred, height_diff_pred = self.terrain_encoder.bevencode(voxel_feats)
             height_terrain_pred = height_geom_pred - height_diff_pred
             # height_terrain_pred = self.model(*inputs)
 
