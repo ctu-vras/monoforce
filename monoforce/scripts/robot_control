@@ -94,19 +94,20 @@ def motion():
 
     # heightmap defining the terrain
     x_grid, y_grid, z_grid = heightmap(dphys_cfg.d_max, dphys_cfg.grid_res, mode='exp')
-    # x_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-    # y_grid = torch.arange(-cfg.d_max, cfg.d_max, cfg.grid_res)
-    # x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-    # z_grid = get_data(i=327)[-1]
+    stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
+    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
     z_grid = z_grid.repeat(x.shape[0], 1, 1)
+    stiffness = stiffness.repeat(x.shape[0], 1, 1)
+    friction = friction.repeat(x.shape[0], 1, 1)
 
     # simulate the rigid body dynamics
     dphysics = DPhysics(dphys_cfg, device=device)
-    states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
+    states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0,
+                              stiffness=stiffness, friction=friction)
 
     # visualize using mayavi
     for b in range(len(states[0])):
@@ -154,15 +155,19 @@ def shoot_multiple():
     omega = torch.zeros_like(x)
     x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
 
-    # heightmap defining the terrain
+    # terrain properties
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
     z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2).to(device)
+    stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
+    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
     z_grid = z_grid.repeat(x.shape[0], 1, 1)
+    stiffness = stiffness.repeat(x.shape[0], 1, 1)
+    friction = friction.repeat(x.shape[0], 1, 1)
 
     # control inputs in Newtons
     assert num_trajs % 2 == 0, 'num_trajs must be even'

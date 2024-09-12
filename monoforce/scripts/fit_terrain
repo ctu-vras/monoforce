@@ -40,7 +40,7 @@ def optimization():
     dphys_cfg.traj_sim_time = T
     n_iters = 100
     lr = 0.01
-    vis = True
+    vis = False
 
     # rigid body parameters
     x_points = torch.as_tensor(dphys_cfg.robot_points)
@@ -73,7 +73,6 @@ def optimization():
     state0 = (x, xd, R, omega, x_points)
 
     # simulate the rigid body dynamics
-    # states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0, dphys_cfg=dphys_cfg)
     dphysics = DPhysics(dphys_cfg)
     states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0)
     if vis:
@@ -81,9 +80,10 @@ def optimization():
 
     # initial guess for the heightmap
     z_grid = torch.zeros_like(z_grid_gt, requires_grad=True)
+    friction = torch.ones_like(z_grid_gt, requires_grad=True)
 
-    # optimization
-    optimizer = torch.optim.Adam([z_grid], lr=lr)
+    # optimization: height and friction with different learning rates
+    optimizer = torch.optim.Adam([{ 'params': z_grid, 'lr': lr}, { 'params': friction, 'lr': 10.*lr}])
     Xs_gt, Xds_gt, Rs_gt, Omegas_gt, X_points_gt = states_gt
     loss_min = np.Inf
     z_grid_best = z_grid.clone()
@@ -99,7 +99,8 @@ def optimization():
             controls_dT = controls[:, t: t + int(dT / dt)]
             states_dT, forces_dT = dphysics(z_grid=z_grid, controls=controls_dT,
                                             # state=state0 if t == 0 else state_gt,
-                                            state=state0 if t == 0 else state_dT)
+                                            state=state0 if t == 0 else state_dT,
+                                            friction=friction)
             # unpack the states
             Xs, Xds, Rs, Omegas, X_points = states_dT
 
@@ -115,10 +116,11 @@ def optimization():
             loss_min = loss.item()
             z_grid_best = z_grid.clone()
 
-        # # heightmap difference
-        # with torch.no_grad():
-        #     z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
-        #     print(f'Heightmap difference: {z_diff.item()}')
+        # heightmap difference
+        with torch.no_grad():
+            z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
+            print(f'Heightmap difference: {z_diff.item()}')
+            print(f'Friction mean value: {friction.mean().item()}')
 
         # visualize the optimized heightmap
         if vis and i % 20 == 0:

@@ -57,11 +57,12 @@ class DPhysics(torch.nn.Module):
         self.robot_mask_right = torch.as_tensor(dphys_cfg.robot_mask_right, device=device)
         self.integraion_mode = 'rk4'
 
-    def forward_kinematics(self, x, xd, R, omega, x_points, xd_points,
-                           z_grid, d_max, grid_res,
+    def forward_kinematics(self, state, xd_points,
+                           z_grid, stiffness, damping, friction,
                            m, mask_left, mask_right,
-                           k_stiffness, k_damping, k_friction,
                            u_left, u_right):
+        # unpack state
+        x, xd, R, omega, x_points = state
         assert x.dim() == 2 and x.shape[1] == 3  # (B, 3)
         assert xd.dim() == 2 and xd.shape[1] == 3  # (B, 3)
         assert R.dim() == 3 and R.shape[-2:] == (3, 3)  # (B, 3, 3)
@@ -71,18 +72,35 @@ class DPhysics(torch.nn.Module):
         assert mask_right.dim() == 2 and mask_right.shape[1] == x_points.shape[1]  # (B, N)
         # if scalar, convert to tensor
         if isinstance(u_left, (int, float)):
-            u_left = torch.tensor([u_left], device=x.device)
+            u_left = torch.tensor([u_left], device=self.device)
         if isinstance(u_right, (int, float)):
-            u_right = torch.tensor([u_right], device=x.device)
+            u_right = torch.tensor([u_right], device=self.device)
         assert u_left.dim() == 1  # scalar
         assert u_right.dim() == 1  # scalar
         assert z_grid.dim() == 3  # (B, H, W)
         B, n_pts, D = x_points.shape
 
+        # compute the terrain properties at the robot points
+        z_points = self.interpolate_grid(z_grid, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert z_points.shape == (B, n_pts, 1)
+        if not isinstance(stiffness, (int, float)):
+            stiffness_points = self.interpolate_grid(stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+            assert stiffness_points.shape == (B, n_pts, 1)
+        else:
+            stiffness_points = stiffness
+        if not isinstance(damping, (int, float)):
+            damping_points = self.interpolate_grid(damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+            assert damping_points.shape == (B, n_pts, 1)
+        else:
+            damping_points = damping
+        if not isinstance(friction, (int, float)):
+            friction_points = self.interpolate_grid(friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+            assert friction_points.shape == (B, n_pts, 1)
+        else:
+            friction_points = friction
+
         # check if the rigid body is in contact with the terrain
-        z_points = self.interpolate_grid(z_grid, x_points[..., 0], x_points[..., 1])
-        assert z_points.shape == (B, n_pts)
-        dh_points = x_points[..., 2:3] - z_points.unsqueeze(-1)
+        dh_points = x_points[..., 2:3] - z_points
         # in_contact = torch.sigmoid(-dh_points)
         in_contact = (dh_points <= 0.0).float()
         assert in_contact.shape == (B, n_pts, 1)
@@ -94,7 +112,7 @@ class DPhysics(torch.nn.Module):
         # reaction at the contact points as spring-damper forces
         xd_points_n = (xd_points * n).sum(dim=-1, keepdims=True)  # normal velocity
         assert xd_points_n.shape == (B, n_pts, 1)
-        F_spring = -torch.mul((k_stiffness * dh_points + k_damping * xd_points_n), n)  # F_s = -k * dh - b * v_n
+        F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
         F_spring = torch.mul(F_spring, in_contact)
         assert F_spring.shape == (B, n_pts, 3)
 
@@ -102,11 +120,11 @@ class DPhysics(torch.nn.Module):
         N = torch.norm(F_spring, dim=-1, keepdim=True)
         xd_points_tau = xd_points - xd_points_n * n  # tangential velocities at the contact points
         tau = normailized(xd_points_tau)  # tangential directions of the velocities
-        F_friction = -k_friction * N * tau  # F_fr = -k_fr * N * tau
+        F_friction = -friction_points * N * tau  # F_fr = -k_fr * N * tau
         assert F_friction.shape == (B, n_pts, 3)
 
         # thrust forces: left and right
-        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=R.device))
+        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
         x_left = x_points[mask_left].mean(dim=0, keepdims=True)  # left thrust is applied at the mean of the left points
         x_right = x_points[mask_right].mean(dim=0,
                                             keepdims=True)  # right thrust is applied at the mean of the right points
@@ -125,7 +143,7 @@ class DPhysics(torch.nn.Module):
         dR = omega_skew @ R  # dR = [omega]_x R
 
         # motion of the cog
-        F_grav = torch.tensor([[0.0, 0.0, -m * self.g]], device=x.device)  # F_grav = [0, 0, -m * g]
+        F_grav = torch.tensor([[0.0, 0.0, -m * self.g]], device=self.device)  # F_grav = [0, 0, -m * g]
         F_cog = F_grav + F_spring.mean(dim=1) + F_friction.mean(dim=1) + F_thrust_left + F_thrust_right  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
@@ -134,19 +152,27 @@ class DPhysics(torch.nn.Module):
         xd_points = xd.unsqueeze(1) + torch.cross(omega.view(B, 1, 3), x_points - x.unsqueeze(1))
         assert xd_points.shape == (B, n_pts, 3)
 
-        return xd, xdd, dR, omega_d, xd_points, F_spring, F_friction, F_thrust_left, F_thrust_right
+        dstate = (xd, xdd, dR, omega_d, xd_points)
+        forces = (F_spring, F_friction, F_thrust_left, F_thrust_right)
 
-    def update_states(self, x, xd, xdd, R, dR, omega, omega_d, x_points, xd_points, dt):
+        return dstate, forces
+
+    def update_state(self, state, dstate, dt):
         """
         Integrates the states of the rigid body for the next time step.
         """
+        x, xd, R, omega, x_points = state
+        _, xdd, dR, omega_d, xd_points = dstate
+
         xd = self.integration_step(xd, xdd, dt, mode=self.integraion_mode)
         x = self.integration_step(x, xd, dt, mode=self.integraion_mode)
         x_points = self.integration_step(x_points, xd_points, dt, mode=self.integraion_mode)
         omega = self.integration_step(omega, omega_d, dt, mode=self.integraion_mode)
         R = self.integration_step(R, dR, dt, mode=self.integraion_mode)
 
-        return x, xd, R, omega, x_points
+        state = (x, xd, R, omega, x_points)
+
+        return state
 
     @staticmethod
     def integration_step(x, xd, dt, mode='rk4'):
@@ -278,17 +304,25 @@ class DPhysics(torch.nn.Module):
 
         return z_query
 
-    def dphysics(self, z_grid, controls, state=None):
+    def dphysics(self, z_grid, controls, state=None, stiffness=None, damping=None, friction=None):
+        """
+        Simulates the dynamics of the robot moving on the terrain.
+
+        Parameters:
+        - z_grid: Tensor of the height map (B, H, W).
+        - controls: Tensor of control inputs (B, N, 2).
+        - state: Tuple of the robot state (x, xd, R, omega, x_points).
+        - stiffness: scalar or Tensor of the stiffness values at the robot points (B, H, W).
+        - damping: scalar or Tensor of the damping values at the robot points (B, H, W).
+        - friction: scalar or Tensor of the friction values at the robot points (B, H, W).
+
+        Returns:
+        - Tuple of the robot states and forces:
+            - states: Tuple of the robot states (x, xd, R, omega, x_points).
+            - forces: Tuple of the forces (F_springs, F_frictions, F_thrusts_left, F_thrusts_right).
+        """
         # unpack config
-        d_max = self.dphys_cfg.d_max
-        grid_res = self.dphys_cfg.grid_res
-        m = self.dphys_cfg.robot_mass
         device = self.device
-        k_stiffness = self.dphys_cfg.k_stiffness
-        k_damping = self.dphys_cfg.k_damping
-        if k_damping is None:
-            k_damping = np.sqrt(4 * m * k_stiffness)  # critically dampened
-        k_friction = self.dphys_cfg.k_friction
         dt = self.dphys_cfg.dt
         T = self.dphys_cfg.traj_sim_time
         batch_size = z_grid.shape[0]
@@ -297,6 +331,7 @@ class DPhysics(torch.nn.Module):
         mask_left = self.robot_mask_left.repeat(batch_size, 1)
         mask_right = self.robot_mask_right.repeat(batch_size, 1)
 
+        # initial state
         if state is None:
             x = torch.tensor([[0.0, 0.0, 0.2]]).to(device).repeat(batch_size, 1)
             xd = torch.tensor([[0.0, 0.0, 0.0]]).to(device).repeat(batch_size, 1)
@@ -307,12 +342,20 @@ class DPhysics(torch.nn.Module):
             x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
             state = (x, xd, R, omega, x_points)
 
+        # terrain properties
+        stiffness = self.dphys_cfg.k_stiffness if stiffness is None else stiffness
+        damping = self.dphys_cfg.k_damping if damping is None else damping
+        friction = self.dphys_cfg.k_friction if friction is None else friction
+
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
         assert controls.shape == (B, N_ts, 2)  # for each time step, left and right thrust forces
 
         # TODO: there is some bug, had to transpose grid map
         z_grid = z_grid.transpose(1, 2)  # (B, H, W) -> (B, W, H)
+        stiffness = stiffness.transpose(1, 2) if not isinstance(stiffness, (int, float)) else stiffness
+        damping = damping.transpose(1, 2) if not isinstance(damping, (int, float)) else damping
+        friction = friction.transpose(1, 2) if not isinstance(friction, (int, float)) else friction
 
         # state: x, xd, R, omega, x_points
         x, xd, R, omega, x_points = state
@@ -327,16 +370,19 @@ class DPhysics(torch.nn.Module):
             # control inputs
             u_left, u_right = controls[:, t, 0], controls[:, t, 1]  # thrust forces, Newtons or kg*m/s^2
             # forward kinematics
-            (xd, xdd, dR, omega_d, xd_points,
-             F_spring, F_friction, F_thrust_left, F_thrust_right) = self.forward_kinematics(x, xd, R, omega, x_points,
-                                                                                            xd_points,
-                                                                                            z_grid, d_max, grid_res,
-                                                                                            m, mask_left, mask_right,
-                                                                                            k_stiffness, k_damping,
-                                                                                            k_friction,
-                                                                                            u_left, u_right)
-            # update states: integration steps
-            x, xd, R, omega, x_points = self.update_states(x, xd, xdd, R, dR, omega, omega_d, x_points, xd_points, dt)
+            dstate, forces = self.forward_kinematics(state=state, xd_points=xd_points,
+                                                     z_grid=z_grid,
+                                                     stiffness=stiffness, damping=damping, friction=friction,
+                                                     m=self.dphys_cfg.robot_mass,
+                                                     mask_left=mask_left, mask_right=mask_right,
+                                                     u_left=u_left, u_right=u_right,)
+            # update state: integration steps
+            state = self.update_state(state, dstate, dt)
+
+            # unpack state, its differential, and forces
+            x, xd, R, omega, x_points = state
+            _, xdd, dR, omega_d, xd_points = dstate
+            F_spring, F_friction, F_thrust_left, F_thrust_right = forces
 
             # save states
             Xs.append(x)
@@ -371,10 +417,10 @@ class DPhysics(torch.nn.Module):
         F_thrusts_right = torch.stack(F_thrusts_right).transpose(1, 0)
         assert F_thrusts_right.shape == (B, N_ts, 3)
 
-        states = Xs, Xds, Rs, Omegas, X_points
-        forces = F_springs, F_frictions, F_thrusts_left, F_thrusts_right
+        States = Xs, Xds, Rs, Omegas, X_points
+        Forces = F_springs, F_frictions, F_thrusts_left, F_thrusts_right
 
-        return states, forces
+        return States, Forces
 
-    def forward(self, z_grid, controls, state=None):
-        return self.dphysics(z_grid, controls, state)
+    def forward(self, z_grid, controls, state=None, **kwargs):
+        return self.dphysics(z_grid, controls, state, **kwargs)
