@@ -55,7 +55,6 @@ class DPhysics(torch.nn.Module):
         self.g = 9.81  # gravity, m/s^2
         self.robot_mask_left = torch.as_tensor(dphys_cfg.robot_mask_left, device=device)
         self.robot_mask_right = torch.as_tensor(dphys_cfg.robot_mask_right, device=device)
-        self.integraion_mode = 'rk4'
 
     def forward_kinematics(self, state, xd_points,
                            z_grid, stiffness, damping, friction,
@@ -171,11 +170,11 @@ class DPhysics(torch.nn.Module):
         x, xd, R, omega, x_points = state
         _, xdd, dR, omega_d, xd_points = dstate
 
-        xd = self.integration_step(xd, xdd, dt, mode=self.integraion_mode)
-        x = self.integration_step(x, xd, dt, mode=self.integraion_mode)
-        x_points = self.integration_step(x_points, xd_points, dt, mode=self.integraion_mode)
-        omega = self.integration_step(omega, omega_d, dt, mode=self.integraion_mode)
-        R = self.integration_step(R, dR, dt, mode=self.integraion_mode)
+        xd = self.integration_step(xd, xdd, dt, mode=self.dphys_cfg.integration_mode)
+        x = self.integration_step(x, xd, dt, mode=self.dphys_cfg.integration_mode)
+        x_points = self.integration_step(x_points, xd_points, dt, mode=self.dphys_cfg.integration_mode)
+        omega = self.integration_step(omega, omega_d, dt, mode=self.dphys_cfg.integration_mode)
+        R = self.integration_step(R, dR, dt, mode=self.dphys_cfg.integration_mode)
         # R = self.integrate_rotation(R, omega, dt)
 
         state = (x, xd, R, omega, x_points)
@@ -231,15 +230,20 @@ class DPhysics(torch.nn.Module):
         Returns:
         - Updated positions and velocities.
         """
-        assert mode in ['euler', 'rk4']
         if mode == 'euler':
             x = x + xd * dt
+        elif mode == 'rk2':
+            k1 = dt * xd
+            k2 = dt * (xd + k1)
+            x = x + k2 / 2
         elif mode == 'rk4':
             k1 = dt * xd
             k2 = dt * (xd + k1 / 2)
             k3 = dt * (xd + k2 / 2)
             k4 = dt * (xd + k3)
             x = x + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+        else:
+            raise ValueError(f'Unknown integration mode: {mode}')
         return x
 
     def surface_normals(self, z_grid, x_query, y_query):

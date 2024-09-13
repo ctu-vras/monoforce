@@ -7,8 +7,8 @@ pip install -r ../singularity/requirements.txt
 
 Please clone the ROS package, install its dependencies, and build the workspace:
 ```commandline
-mkdir -p ~/catkin_ws/src/
-cd ~/catkin_ws/src/
+mkdir -p ~/traversability_ws/src/
+cd ~/traversability_ws/src/
 git clone https://github.com/ctu-vras/monoforce.git
 
 wstool init
@@ -16,7 +16,7 @@ wstool merge monoforce/monoforce_gazebo/dependencies.rosinstall
 wstool merge monoforce/monoforce_navigation/dependencies.rosinstall
 wstool up -j 4
 
-cd ~/catkin_ws/
+cd ~/traversability_ws/
 catkin init
 catkin config --extend /opt/ros/$ROS_DISTRO/
 catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release

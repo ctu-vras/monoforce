@@ -3,14 +3,14 @@
 ROBOT=marv
 DATASET=robingas
 ONLY_FRONT_CAM=False
-USE_SAM_RIGID_SEMANTICS=True
-DEBUG=False
-VIS=False
-BSZ=32
+USE_SAM_RIGID_SEMANTICS=False
+DEBUG=True
+VIS=True
+BSZ=2
 
-WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
+WEIGHTS=$HOME/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
 
-source /home/$USER/workspaces/traversability_ws/devel/setup.bash
+source ${HOME}/traversability_ws/devel/setup.bash
 
 ./train --bsz $BSZ --nworkers 2 --nepochs 200 --lr 0.001 --weight_decay 1e-7 \
         --debug $DEBUG --vis $VIS \

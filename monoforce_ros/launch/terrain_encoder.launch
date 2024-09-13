@@ -13,7 +13,7 @@
     <arg name="n_cams" default="''"/>
 
     <!-- Terrain encoder node (LSS) -->
-    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder">
+    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder" output="screen">
         <rosparam subst_value="true">
             dphys_config_path: $(arg dphys_config_path)
             lss_config_path: $(arg lss_config_path)
