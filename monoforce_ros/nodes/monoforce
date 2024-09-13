@@ -168,7 +168,7 @@ class MonoForce:
             # constant linear and angular velocities as control inputs
             T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
             v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
-            thrusts = self.dphys_cfg.k_thrust * torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
+            thrusts = torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
             thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
             states, forces = self.dphysics(z_grid, controls=thrusts)
         return states, forces
@@ -226,11 +226,11 @@ class MonoForce:
                 self.publish_images(imgs_raw, Ks, stamp)
 
                 # predict path poses
-                v = np.random.uniform(0.9, 1.2)
+                v = np.random.uniform(0.9, 1.5)
                 # if robot has more than one (front-facing) camera, randomly change commanded linear velocity direction
                 if len(self.camera_frames) > 1 and np.random.random() > 0.5:
                     v = -v
-                w = np.random.uniform(-3.14, 3.14)
+                w = np.random.uniform(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max)
 
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
                 states, forces = self.predict_states(height_terrain_pred.squeeze(1), v=v, w=w)

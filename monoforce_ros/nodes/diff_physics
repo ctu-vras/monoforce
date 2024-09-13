@@ -248,8 +248,6 @@ class DiffPhysicsWarp(DiffPhysBase):
                  robot='tradr',
                  robot_frame='base_link',
                  max_age=0.5,
-                 linear_vel=0.5,
-                 angular_vel_max=0.5,
                  allow_backward=True,
                  dt=0.001,
                  device='cpu'):
@@ -261,7 +259,8 @@ class DiffPhysicsWarp(DiffPhysBase):
         self.n_sim_trajs = dphys_cfg.n_sim_trajs if dphys_cfg.n_sim_trajs % 2 == 0 else dphys_cfg.n_sim_trajs + 1
 
         self.xyz_q0 = self.init_poses()
-        self.track_vels, _, _ = self.init_controls(linear_vel, angular_vel_max, wheels_dist=self.robot_size[1], allow_backward=allow_backward)
+        self.track_vels, _, _ = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
+                                                   wheels_dist=self.robot_size[1], allow_backward=allow_backward)
         self.flipper_angles = self.init_flippers()
         height0 = np.zeros((int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res),
                             int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res)))
@@ -349,14 +348,12 @@ class DiffPhysicsTorch(DiffPhysBase):
                  robot_frame='base_link',
                  max_age=0.5,
                  allow_backward=False,
-                 linear_vel=None,
-                 angular_vel_max=None,
                  dt=0.01,
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
                          max_age=max_age, device=device, dt=dt)
         self.dphysics = DPhysics(dphys_cfg, device=device)
-        self.track_vels, _, _ = self.init_controls(linear_vel, 2*np.pi,
+        self.track_vels, _, _ = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
                                                    wheels_dist=self.robot_size[1], allow_backward=allow_backward)
         # grid map subscriber
         self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
@@ -368,7 +365,7 @@ class DiffPhysicsTorch(DiffPhysBase):
         #     assert grid_map.shape[0] == grid_map.shape[1]
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
         assert grid_maps.shape[0] == self.n_sim_trajs
-        thrusts = self.dphys_cfg.k_thrust * torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
+        thrusts = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
         assert thrusts.shape == (self.n_sim_trajs, self.n_sim_steps, 2)
 
         # initial state
@@ -426,8 +423,6 @@ def main():
     gridmap_layer = rospy.get_param('~gridmap_layer', 'elevation')
     max_age = rospy.get_param('~max_age', 0.5)
     allow_backward = rospy.get_param('~allow_backward', True)
-    linear_vel = rospy.get_param('~linear_vel', 0.5)
-    angular_vel_max = rospy.get_param('~angular_vel_max', 0.5)
     device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
     engine = rospy.get_param('~engine', 'torch')
     assert engine in ['torch', 'warp'], 'Unknown engine: %s' % engine
@@ -441,8 +436,6 @@ def main():
                        gridmap_layer=gridmap_layer,
                        max_age=max_age,
                        allow_backward=allow_backward,
-                       linear_vel=linear_vel,
-                       angular_vel_max=angular_vel_max,
                        device=device)
     node.spin()
 

@@ -98,7 +98,8 @@ def animate_trajectory(states, forces, z_grid, mask_left, mask_right, vis_cfg, s
             visu_Frs.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
                                      u=F_friction[t, :, 0].mean(), v=F_friction[t, :, 1].mean(),
                                      w=F_friction[t, :, 2].mean())
-            visu_F_th_l.mlab_source.set(x=x_points[t, mask_left].mean(axis=0)[0], y=x_points[t, mask_left].mean(axis=0)[1],
+            visu_F_th_l.mlab_source.set(x=x_points[t, mask_left].mean(axis=0)[0],
+                                        y=x_points[t, mask_left].mean(axis=0)[1],
                                         z=x_points[t, mask_left].mean(axis=0)[2],
                                         u=F_thrust_left[t, 0], v=F_thrust_left[t, 1], w=F_thrust_left[t, 2])
             visu_F_th_r.mlab_source.set(x=x_points[t, mask_right].mean(axis=0)[0],

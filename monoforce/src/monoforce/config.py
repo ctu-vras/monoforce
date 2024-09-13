@@ -50,12 +50,13 @@ def inertia_tensor(mass, points):
 class DPhysConfig:
     def __init__(self):
         # robot parameters
-        self.track_vels = [0., 0.]  # left, right
         self.robot_mass = 40.  # kg
         self.robot_size = (1.0, 0.5)  # length, width in meters
         self.robot_points, self.robot_mask_left, self.robot_mask_right = self.rigid_body_geometry(from_mesh=False)
         self.robot_I = inertia_tensor(self.robot_mass, self.robot_points)  # 3x3 inertia tensor, kg*m^2
         self.robot_I *= 10.  # increase inertia for stability, as the point cloud is very sparse
+        self.vel_max = 0.37  # m/s
+        self.omega_max = 1.57  # rad/s
 
         # height map parameters
         self.grid_res = 0.1
@@ -65,17 +66,12 @@ class DPhysConfig:
         self.k_stiffness = 5_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
         self.k_friction = 0.5
-        self.k_thrust = 150.
         self.hm_interp_method = None
 
-        # training parameters
+        # trajectory shooting parameters
         self.traj_sim_time = 5.0
         self.dt = 0.01
         self.n_sim_trajs = 32
-
-        # control parameters
-        self.max_vel = 2.  # m/s
-        self.max_omega = 2.  # rad/s
 
     def rigid_body_geometry(self, from_mesh=False):
         """
@@ -93,9 +89,10 @@ class DPhysConfig:
             size = self.robot_size
             s_x, s_y = size
             x_points = torch.stack([
-                torch.hstack(
-                    [torch.linspace(-s_x / 2., s_x / 2., 16 // 2), torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
-                torch.hstack([s_y / 2. * torch.ones(16 // 2), -s_y / 2. * torch.ones(16 // 2)]),
+                torch.hstack([torch.linspace(-s_x / 2., s_x / 2., 16 // 2),
+                              torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
+                torch.hstack([s_y / 2. * torch.ones(16 // 2),
+                              -s_y / 2. * torch.ones(16 // 2)]),
                 torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2]),
                               torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2])])
             ]).T

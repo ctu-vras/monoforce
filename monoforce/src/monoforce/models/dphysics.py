@@ -101,8 +101,9 @@ class DPhysics(torch.nn.Module):
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
-        # in_contact = torch.sigmoid(-dh_points)
-        in_contact = (dh_points <= 0.0).float()
+        on_grid = (x_points[..., 0:1] >= -self.dphys_cfg.d_max) & (x_points[..., 0:1] <= self.dphys_cfg.d_max) & \
+                    (x_points[..., 1:2] >= -self.dphys_cfg.d_max) & (x_points[..., 1:2] <= self.dphys_cfg.d_max)
+        in_contact = ((dh_points <= 0.0) & on_grid).float()
         assert in_contact.shape == (B, n_pts, 1)
 
         # compute surface normals at the contact points
@@ -126,10 +127,16 @@ class DPhysics(torch.nn.Module):
         # thrust forces: left and right
         thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
         x_left = x_points[mask_left].mean(dim=0, keepdims=True)  # left thrust is applied at the mean of the left points
-        x_right = x_points[mask_right].mean(dim=0,
-                                            keepdims=True)  # right thrust is applied at the mean of the right points
-        F_thrust_left = u_left.unsqueeze(1) * thrust_dir * in_contact[mask_left].mean()  # F_l = u_l * thrust_dir
-        F_thrust_right = u_right.unsqueeze(1) * thrust_dir * in_contact[mask_right].mean()  # F_r = u_r * thrust_dir
+        x_right = x_points[mask_right].mean(dim=0, keepdims=True)  # right thrust is applied at the mean of the right points
+        xd_left = xd_points[mask_left].mean(dim=0, keepdims=True)  # mean velocity of the left points
+        xd_right = xd_points[mask_right].mean(dim=0, keepdims=True)  # mean velocity of the right points
+
+        # compute thrust forces in a way that left part of the robot moves with the desired velocity u_left and right part with u_right
+        v_l = thrust_dir @ xd_left.T
+        v_r = thrust_dir @ xd_right.T
+        F_thrust_left = N.mean() * (u_left.unsqueeze(-1) - v_l) * thrust_dir * in_contact[mask_left].mean()  # F_l = N * (u_l - v_l) * thrust_dir
+        F_thrust_right = N.mean() * (u_right.unsqueeze(-1) - v_r) * thrust_dir * in_contact[mask_right].mean()  # F_r = N * (u_r - v_r) * thrust_dir
+
         assert F_thrust_left.shape == (B, 3) == F_thrust_right.shape
         torque_left = torch.cross(x_left - x, F_thrust_left)  # M_l = (x_l - x) x F_l
         torque_right = torch.cross(x_right - x, F_thrust_right)  # M_r = (x_r - x) x F_r
@@ -169,10 +176,47 @@ class DPhysics(torch.nn.Module):
         x_points = self.integration_step(x_points, xd_points, dt, mode=self.integraion_mode)
         omega = self.integration_step(omega, omega_d, dt, mode=self.integraion_mode)
         R = self.integration_step(R, dR, dt, mode=self.integraion_mode)
+        # R = self.integrate_rotation(R, omega, dt)
 
         state = (x, xd, R, omega, x_points)
 
         return state
+
+    @staticmethod
+    def integrate_rotation(R, omega, dt, eps=1e-6):
+        """
+        Integrates the rotation matrix for the next time step using Rodrigues' formula.
+
+        Parameters:
+        - R: Tensor of rotation matrices.
+        - omega: Tensor of angular velocities.
+        - dt: Time step.
+        - eps: Small value to avoid division by zero.
+
+        Returns:
+        - Updated rotation matrices.
+
+        Reference:
+            https://math.stackexchange.com/questions/167880/calculating-new-rotation-matrix-with-its-derivative-given
+        """
+        assert R.dim() == 3 and R.shape[-2:] == (3, 3)
+        assert omega.dim() == 2 and omega.shape[1] == 3
+        assert dt > 0
+
+        # Compute the skew-symmetric matrix of the angular velocities
+        Omega_x = skew_symmetric(omega)
+
+        # Compute exponential map of the skew-symmetric matrix
+        theta = torch.norm(omega.unsqueeze(-1), dim=-1, keepdim=True) * dt
+
+        # Normalize the angular velocities
+        Omega_x_norm = Omega_x / (torch.norm(Omega_x, dim=-1, keepdim=True) + eps)
+
+        # Rodrigues' formula: R_new = R * (I + Omega_x * sin(theta) + Omega_x^2 * (1 - cos(theta)))
+        I = torch.eye(3).to(R.device)
+        R_new = R @ (I + Omega_x_norm * torch.sin(theta) + Omega_x_norm @ Omega_x_norm * (1 - torch.cos(theta)))
+
+        return R_new
 
     @staticmethod
     def integration_step(x, xd, dt, mode='rk4'):

@@ -5,7 +5,6 @@
     <arg name="gridmap_topic" default="height_map" doc="Input height map topic"/>
     <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>
     <arg name="gridmap_layer" default="elevation" doc="Height map layer name"/>
-    <arg name="traj_sim_time" default="10.0" doc="Simulation time horizon of the trajectories"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
     <arg name="max_age" default="1.0"/>
 
@@ -17,8 +16,6 @@
             gridmap_layer: $(arg gridmap_layer)
             max_age: $(arg max_age)
             allow_backward: true
-            linear_vel: 1.0
-            angular_vel_max: 0.2
             device: $(arg device)
             engine: $(arg engine)
         </rosparam>

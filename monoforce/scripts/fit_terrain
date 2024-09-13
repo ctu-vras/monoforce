@@ -67,7 +67,7 @@ def optimization():
     z_grid_gt = z_grid_gt.repeat(x.shape[0], 1, 1)
 
     # control inputs in Newtons
-    controls = dphys_cfg.k_thrust * torch.tensor([[[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)])
+    controls = torch.tensor([[[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)])
 
     # initial state
     state0 = (x, xd, R, omega, x_points)
@@ -171,7 +171,7 @@ def terrain_properties():
     mask_right = mask_right.repeat(x.shape[0], 1)
 
     # control inputs in Newtons
-    controls = dphys_cfg.k_thrust * torch.tensor([[[1.0, 1.0]] * int(T / dt)])
+    controls = torch.tensor([[[1.0, 1.0]] * int(T / dt)])
 
     # initial state
     state0 = (x, xd, R, omega, x_points)

@@ -94,7 +94,7 @@ class MonoForce:
         # constant linear and angular velocities as control inputs
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
-        thrusts = self.dphys_cfg.k_thrust * torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
+        thrusts = torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
         thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
         states, forces = self.dphysics(z_grid, controls=thrusts)
         return states, forces

@@ -392,7 +392,7 @@ Visualization Manager:
           Color: 200; 200; 200
           Color Layer: elevation
           Color Transformer: GridMapLayer
-          Enabled: false
+          Enabled: true
           Height Layer: elevation
           Height Transformer: GridMapLayer
           History Length: 1
@@ -406,14 +406,14 @@ Visualization Manager:
           Topic: /grid_map/terrain
           Unreliable: false
           Use Rainbow: true
-          Value: false
+          Value: true
         - Alpha: 0.4000000059604645
           Autocompute Intensity Bounds: false
           Class: grid_map_rviz_plugin/GridMap
           Color: 200; 200; 200
           Color Layer: elevation
           Color Transformer: GridMapLayer
-          Enabled: true
+          Enabled: false
           Height Layer: elevation_inpainted
           Height Transformer: GridMapLayer
           History Length: 1
@@ -427,7 +427,7 @@ Visualization Manager:
           Topic: /grid_map/terrain
           Unreliable: false
           Use Rainbow: true
-          Value: true
+          Value: false
         - Alpha: 0.4000000059604645
           Autocompute Intensity Bounds: false
           Class: grid_map_rviz_plugin/GridMap
@@ -467,7 +467,7 @@ Visualization Manager:
           Marker Topic: /sampled_paths
           Name: Sampled Paths
           Namespaces:
-            paths: true
+            {}
           Queue Size: 1
           Value: true
         - Alpha: 1
