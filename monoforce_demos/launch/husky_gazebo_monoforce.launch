@@ -40,6 +40,7 @@
         <arg name="input_paths" value="sampled_paths"/>
         <arg name="input_path_costs" value="path_costs"/>
         <arg name="output_path" value="selected_path"/>
+        <!-- x, y, z, qx, qy, qz, qw -->
         <arg name="waypoints_list" value="[
                                            [10, -5, 0, 0, 0, 0, 1],
                                            [10, 5, 0, 0, 0, 0, 1],

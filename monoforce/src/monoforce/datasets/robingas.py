@@ -37,7 +37,6 @@ __all__ = [
     'RobinGasBase',
     'RobinGas',
     'RobinGasPoints',
-    'RobinGasRGBD',
     'robingas_seq_paths',
 ]
 
@@ -116,21 +115,16 @@ class RobinGasBase(Dataset):
         self.path = path
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
-        # assert os.path.exists(self.cloud_path)
         self.radar_cloud_path = os.path.join(path, 'radar_clouds')
-        # assert os.path.exists(self.radar_cloud_path)
         self.traj_path = os.path.join(path, 'trajectories')
-        # global pose of the robot (initial trajectory pose on a map) path (from SLAM)
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
-        # assert os.path.exists(self.traj_path)
         self.calib_path = os.path.join(path, 'calibration')
-        # assert os.path.exists(self.calib_path)
+        self.controls_path = os.path.join(path, 'controls', 'tracks_vel.csv')
         self.dphys_cfg = dphys_cfg
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.ts, self.poses = self.get_poses(return_stamps=True)
-        # get camera names
-        self.cameras = self.get_camera_names()
+        self.camera_names = self.get_camera_names()
 
     def get_ids(self):
         ids = [f[:-4] for f in os.listdir(self.cloud_path)]
@@ -162,6 +156,35 @@ class RobinGasBase(Dataset):
     def get_pose(self, i):
         return self.poses[i]
 
+    def get_track_vels(self, i, T_horizon, dt=None):
+        if not os.path.exists(self.controls_path):
+            print(f'Controls file {self.controls_path} does not exist')
+            return None
+        data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
+        all_stamps, all_vels = data[:, 0], data[:, 1:]
+        time_left = copy.copy(self.ts[i])
+        time_right = time_left + T_horizon
+        # find the closest index to the left and right in all times
+        il = np.argmin(np.abs(np.asarray(all_stamps) - time_left))
+        ir = np.argmin(np.abs(np.asarray(all_stamps) - time_right))
+        ir = max(il + 1, ir)
+        ir = np.clip(ir, 0, len(all_vels) - 1)
+        timestamps = np.asarray(all_stamps[il:ir])
+        timestamps = timestamps - timestamps[0]
+        vels = all_vels[il:ir]
+
+        if dt is not None:
+            # velocities interpolation
+            interp_times = np.arange(timestamps[0], timestamps[-1], dt)
+            interp_vels = np.zeros((len(interp_times), 2))
+            for i in range(vels.shape[1]):
+                interp_vels[:, i] = np.interp(interp_times, timestamps, vels[:, i])
+
+            timestamps = interp_times
+            vels = interp_vels
+
+        return timestamps, vels
+
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
         cams = [cam.replace('.yaml', '') for cam in cams_yaml]
@@ -169,13 +192,13 @@ class RobinGasBase(Dataset):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_traj(self, i, n_frames=100):
+    def get_traj(self, i):
         # n_frames equals to the number of future poses (trajectory length)
-        ind = self.ids[i]
         Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=np.float32).reshape((4, 4))
+        T = self.dphys_cfg.traj_sim_time
         # load data from csv file
-        csv_path = os.path.join(self.traj_path, '%s.csv' % ind)
+        csv_path = os.path.join(self.traj_path, '%s.csv' % self.ids[i])
         if os.path.exists(csv_path):
             data = np.loadtxt(csv_path, delimiter=',', skiprows=1)
             stamps, poses = data[:, 0], data[:, 1:13]
@@ -185,16 +208,13 @@ class RobinGasBase(Dataset):
         else:
             # get trajectory as sequence of `n_frames` future poses
             all_poses = self.get_poses(return_stamps=False)
-            all_ids = list(self.get_ids())
-            il = all_ids.index(ind)
-            if n_frames is None:
-                poses = copy.copy(all_poses)
-                stamps = np.asarray(copy.copy(self.ts), dtype=np.float32)
-            else:
-                ir = np.clip(il + n_frames, 0, len(all_ids))
-                poses = all_poses[il:ir]
-                stamps = np.asarray(copy.copy(self.ts[il:ir]))
-            assert len(poses) > 0, f'No poses found for trajectory {ind}'
+            all_ts = copy.copy(self.ts)
+            il = i
+            ir = np.argmin(np.abs(all_ts - (self.ts[i] + T)))
+            ir = np.clip(ir, 0, len(all_ts))
+            poses = all_poses[il:ir]
+            stamps = np.asarray(copy.copy(self.ts[il:ir]))
+            assert len(poses) > 0, f'No poses found for trajectory {self.ids[i]}'
             poses = np.linalg.inv(poses[0]) @ poses
 
         traj = {
@@ -203,45 +223,38 @@ class RobinGasBase(Dataset):
 
         return traj
 
-    def get_states_traj(self, i, start_from_zero=False):
+    def get_states_traj(self, i):
         traj = self.get_traj(i)
         poses = traj['poses']
+        tstamps = traj['stamps']
 
-        if start_from_zero:
-            # transform poses to the same coordinate frame as the height map
-            Tr = np.linalg.inv(poses[0])
-            poses = np.asarray([np.matmul(Tr, p) for p in poses])
-            poses[:, 2, 3] -= self.calib['clearance']
-            # count time from 0
-            tstamps = traj['stamps']
-            tstamps = tstamps - tstamps[0]
+        # transform poses to the same coordinate frame as the height map
+        Tr = np.linalg.inv(poses[0])
+        poses = np.asarray([np.matmul(Tr, p) for p in poses])
+        # count time from 0
+        tstamps = tstamps - tstamps[0]
 
-        poses = np.asarray(poses, dtype=np.float32)
-        tstamps = np.asarray(tstamps, dtype=np.float32)
+        xs = np.asarray(poses[:, :3, 3])
+        Rs = np.asarray(poses[:, :3, :3])
 
-        xyz = torch.as_tensor(poses[:, :3, 3])
-        rot = torch.as_tensor(poses[:, :3, :3])
+        n_states = len(xs)
+        ts = np.asarray(tstamps)
 
-        n_states = len(xyz)
-        tt = torch.tensor(tstamps)[None].T
+        dps = np.diff(xs, axis=0)
+        dt = np.asarray(np.diff(ts), dtype=np.float32).reshape([-1, 1])
+        theta = np.arctan2(dps[:, 1], dps[:, 0]).reshape([-1, 1])
+        theta = np.concatenate([theta[:1], theta], axis=0)
 
-        dps = torch.diff(xyz, dim=0)
-        dt = torch.diff(tt, dim=0)
-        theta = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
-        theta = torch.cat([theta[:1], theta], dim=0)
+        xds = np.zeros_like(xs)
+        xds[:-1] = dps / dt
+        omegas = np.zeros_like(xs)
+        omegas[:-1, 2:3] = np.diff(theta, axis=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
 
-        vel = torch.zeros_like(xyz)
-        vel[:-1] = dps / dt
-        omega = torch.zeros_like(xyz)
-        omega[:-1, 2:3] = torch.diff(theta, dim=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
-
-        forces = torch.zeros((n_states, 3, 10))
-        states = (xyz.view(n_states, 3, 1),
-                  rot.view(n_states, 3, 3),
-                  vel.view(n_states, 3, 1),
-                  omega.view(n_states, 3, 1),
-                  forces.view(n_states, 3, 10))
-        return states
+        states = (xs.reshape([n_states, 3]),
+                  xds.reshape([n_states, 3]),
+                  Rs.reshape([n_states, 3, 3]),
+                  omegas.reshape([n_states, 3]))
+        return ts, states
 
     def get_raw_cloud(self, i):
         ind = self.ids[i]
@@ -378,6 +391,11 @@ class RobinGasBase(Dataset):
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
+    def get_heightmap(self, i):
+        cloud = self.get_cloud(i)
+        height = self.estimate_heightmap(position(cloud), fill_value=0.)
+        return height
+
     def get_sample(self, i):
         cloud = self.get_cloud(i)
         traj = self.get_traj(i)
@@ -434,7 +452,7 @@ class RobinGas(RobinGasBase):
         self.is_train = is_train
         self.only_front_cam = only_front_cam
         self.use_rigid_semantics = use_rigid_semantics
-        self.cameras = self.cameras[:1] if only_front_cam else self.cameras
+        self.cameras = self.camera_names[:1] if only_front_cam else self.camera_names
 
         # initialize image augmentations
         self.lss_cfg = lss_cfg
@@ -788,113 +806,6 @@ class RobinGasPoints(RobinGas):
         return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, points
 
 
-class RobinGasRGBD(RobinGas):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True, only_front_cam=False):
-        super(RobinGasRGBD, self).__init__(path, lss_cfg,
-                                           dphys_cfg=dphys_cfg, is_train=is_train, only_front_cam=only_front_cam)
-
-    def get_depth_image(self, i, camera=None, points_source='lidar'):
-        if camera is None:
-            camera = self.cameras[0]
-        cloud = self.get_cloud(i, points_source=points_source)
-        points = position(cloud)
-
-        Tr_robot_cam = self.calib['transformations'][f'T_base_link__{camera}']['data']
-        Tr_robot_cam = np.asarray(Tr_robot_cam, dtype=np.float32).reshape((4, 4))
-        Tr_cam_robot = np.linalg.inv(Tr_robot_cam)
-        K = self.calib[camera]['camera_matrix']['data']
-        K = np.asarray(K, dtype=np.float32).reshape((3, 3))
-        H, W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
-
-        points_cam = transform_cloud(points, Tr_cam_robot)
-        points_uv = (K @ points_cam.T).T
-        points_uv[:, :2] /= points_uv[:, 2][:, None]
-        fov_mask = ((points_uv[:, 0] >= 0) & (points_uv[:, 0] < W) &
-                    (points_uv[:, 1] >= 0) & (points_uv[:, 1] < H) &
-                    (points_cam[:, 2] > 0))
-        points_uv = points_uv[fov_mask]
-        points_cam = points_cam[fov_mask]
-
-        depth_img = np.zeros((H, W))
-        depth_img[points_uv[:, 1].astype(int), points_uv[:, 0].astype(int)] = points_cam[:, 2]
-
-        return depth_img, points_uv
-
-    def get_images_data(self, i, points_source='lidar'):
-        rgbds = []
-        rots = []
-        trans = []
-        post_rots = []
-        post_trans = []
-        intrins = []
-
-        for cam in self.cameras:
-            rgb, K = self.get_image(i, cam, undistort=False)
-            depth, _ = self.get_depth_image(i, cam, points_source=points_source)
-            depth = Image.fromarray(depth)
-
-            post_rot = torch.eye(2)
-            post_tran = torch.zeros(2)
-
-            # augmentation (resize, crop, horizontal flip, rotate)
-            resize, resize_dims, crop, flip, rotate = sample_augmentation(self.lss_cfg, is_train=self.is_train)
-            rgb, post_rot2, post_tran2 = img_transform(rgb, post_rot, post_tran,
-                                                       resize=resize,
-                                                       resize_dims=resize_dims,
-                                                       crop=crop,
-                                                       flip=flip,
-                                                       rotate=rotate)
-            depth = img_transform(depth, post_rot, post_tran,
-                                  resize=resize,
-                                  resize_dims=resize_dims,
-                                  crop=crop,
-                                  flip=flip,
-                                  rotate=rotate)[0]
-
-            # for convenience, make augmentation matrices 3x3
-            post_tran = torch.zeros(3)
-            post_rot = torch.eye(3)
-            post_tran[:2] = post_tran2
-            post_rot[:2, :2] = post_rot2
-
-            # rgb and intrinsics
-            rgb = normalize_img(rgb)
-            K = torch.as_tensor(K)
-
-            # rgb and depth
-            rgb = torch.as_tensor(rgb)
-            depth = torch.as_tensor(np.asarray(depth).copy()[None])
-            rgbd = torch.cat((rgb, depth), dim=0)
-
-            # extrinsics
-            T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
-            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
-            rot = torch.as_tensor(T_robot_cam[:3, :3])
-            tran = torch.as_tensor(T_robot_cam[:3, 3])
-
-            rgbds.append(rgbd)
-            rots.append(rot)
-            trans.append(tran)
-            intrins.append(K)
-            post_rots.append(post_rot)
-            post_trans.append(post_tran)
-
-        inputs = [torch.stack(rgbds), torch.stack(rots), torch.stack(trans),
-                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
-        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-
-        return inputs
-
-    def get_sample(self, i):
-        rgbd, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i, points_source='radar')
-        hm_geom = self.get_geom_height_map(i, points_source='lidar')
-        hm_terrain = self.get_terrain_height_map(i, points_source='lidar')
-        if self.only_front_cam:
-            mask = self.front_height_map_mask()
-            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
-            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        return rgbd, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
-
 
 def heightmap_demo():
     from ..vis import show_cloud_plt
@@ -947,7 +858,7 @@ def extrinsics_demo():
         Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
 
         cam_poses = []
-        for frame in ds.cameras:
+        for frame in ds.camera_names:
             T_robot_cam = ds.calib['transformations'][f'T_{robot_frame}__{frame}']['data']
             T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
 

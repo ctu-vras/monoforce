@@ -18,45 +18,6 @@ dphys_cfg.dt = 0.01
 device = torch.device('cpu')
 
 
-def get_data(i: int = None, path=robingas_seq_paths['husky'][0]):
-    """
-    Get ground truth data smple from the RobinGas dataset
-    :param i: index of the sample
-    :param path: path to the dataset
-    :return: states_gt, tt_gt, z_grid
-    """
-    ds = RobinGasBase(path=path, dphys_cfg=dphys_cfg)
-    if i is None:
-        i = np.random.choice(range(len(ds)))
-        print('Sample index: %i' % i)
-
-    points, traj, heightmap = ds[i]
-    poses = traj['poses']
-    tstamps = traj['stamps']
-    tstamps = tstamps - tstamps[0]
-    z_grid = torch.tensor(heightmap['z'])
-
-    Xs_gt = torch.as_tensor(poses[:, :3, 3])
-    Rs_gt = torch.as_tensor(poses[:, :3, :3])
-
-    tt_gt = torch.tensor(tstamps)[None].T
-
-    dps = torch.diff(Xs_gt, dim=0)
-    dt = torch.diff(tt_gt, dim=0)
-    theta_gt = torch.atan2(dps[:, 1], dps[:, 0]).view(-1, 1)
-    theta_gt = torch.cat([theta_gt[:1], theta_gt], dim=0)
-
-    Xds_gt = torch.zeros_like(Xs_gt)
-    Xds_gt[:-1] = dps / dt
-    Omegas_gt = torch.zeros_like(Xs_gt)
-    Omegas_gt[:-1, 2:3] = torch.diff(theta_gt, dim=0) / dt  # + torch.diff(angles_gt, dim=0)[:, 2:3] / dt
-
-    print('Ground truth state shapes:')
-    for s in [Xs_gt, Xds_gt, Rs_gt, Omegas_gt]:
-        print(s.shape)
-
-    return Xs_gt, Xds_gt, Rs_gt, Omegas_gt, tt_gt, z_grid
-
 def motion():
     from scipy.spatial.transform import Rotation
     import matplotlib.pyplot as plt

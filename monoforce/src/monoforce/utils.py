@@ -207,7 +207,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         model.eval()
 
     H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
-    cams = ds.cameras
+    cams = ds.camera_names
 
     if sample_range == 'random':
         sample_range = [np.random.choice(range(len(ds)))]
