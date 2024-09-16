@@ -187,7 +187,7 @@ def shoot_multiple():
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(111, projection='3d')
         # plot heightmap
-        ax.plot_surface(x_grid[0].cpu(), y_grid[0].cpu(), z_grid[0].cpu(), cmap='terrain', alpha=0.6)
+        ax.plot_surface(x_grid[0].cpu().numpy(), y_grid[0].cpu().numpy(), z_grid[0].cpu().numpy(), alpha=0.5)
         set_axes_equal(ax)
         for i in range(num_trajs):
             ax.plot(Xs[i, :, 0].cpu(), Xs[i, :, 1].cpu(), Xs[i, :, 2].cpu(), c='b')

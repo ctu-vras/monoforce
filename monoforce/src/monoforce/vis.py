@@ -108,8 +108,9 @@ def animate_trajectory(states, forces, z_grid, mask_left, mask_right, vis_cfg, s
                                         u=F_thrust_right[t, 0], v=F_thrust_right[t, 1], w=F_thrust_right[t, 2])
         visu_traj.mlab_source.set(x=xs[:, 0], y=xs[:, 1], z=xs[:, 2])
         if t % step == 0:
-            os.makedirs('../gen/robot_control', exist_ok=True)
-            mlab.savefig(f'../gen/robot_control/frame_{t}.png')
+            path = os.path.join(os.path.dirname(__file__), '../gen/robot_control')
+            os.makedirs(path, exist_ok=True)
+            mlab.savefig(f'{path}/frame_{t}.png')
     mlab.show()
 
 

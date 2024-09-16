@@ -30,7 +30,6 @@
     <arg name="robot" value="husky"/>
     <arg name="gridmap_topic" value="grid_map/terrain"/>
     <arg name="gridmap_layer" value="elevation_inpainted"/>
-    <arg name="max_age" value="1.0"/>
     <arg name="device" value="$(arg device)"/>
   </include>
 

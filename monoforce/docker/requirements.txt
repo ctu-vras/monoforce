@@ -28,3 +28,4 @@ tensorboard==2.14.0
 mayavi==4.8.2
 configobj==5.0.8
 PySide2==5.15.2
+efficientnet_pytorch==0.7.1
