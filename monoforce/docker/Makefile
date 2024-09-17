@@ -7,6 +7,9 @@ help:
 	@echo "   1. make build              - build image"
 	@echo "   2. make clean              - remove image"
 	@echo "   3. make pull               - pull image"
+	@echo "   4. make push               - push image"
+	@echo "   5. make shell              - run container"
+	@echo "   6. make help               - show this menu"
 	@echo ""
 
 build:
@@ -27,4 +30,5 @@ shell:
             -v ${HOME}/workspaces/traversability_ws/src:/root/traversability_ws/src \
             -v /media/ruslan/SSD/data:/media/ruslan/SSD/data \
             -v ${HOME}/.cache:/root/.cache \
+            -v ${HOME}/.gazebo/models:/root/.gazebo/models \
             agishrus/monoforce /bin/bash

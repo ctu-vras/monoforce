@@ -26,6 +26,7 @@
   <depend>grid_map_msgs</depend>
   <depend>ros_numpy</depend>
   <depend>grid_map_rviz_plugin</depend>
+  <depend>grid_map_filters</depend>
   <depend>visualization_msgs</depend>
   <depend>jsk_rviz_plugin</depend>
   <depend>rviz_plugin_tutorials</depend>

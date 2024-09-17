@@ -37,14 +37,17 @@ Once downloaded put the weights to `monoforce/config/weights/lss` folder.
 ## Docker
 
 We have prepared a [Docker](https://docs.docker.com/engine/install/ubuntu/) image to run the monoforce package.
+Please, install
+[Docker](https://docs.docker.com/engine/install/ubuntu/)
+and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
-To pull the image:
+To pull the prebuilt image:
 ```commandline
 cd ../docker/
 make pull
 ```
 
-To build the image from scratch:
+Or if you would like to build the image from scratch:
 ```commandline
 cd ../docker/
 make build
