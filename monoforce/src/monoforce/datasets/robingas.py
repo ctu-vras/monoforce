@@ -156,13 +156,15 @@ class RobinGasBase(Dataset):
     def get_pose(self, i):
         return self.poses[i]
 
-    def get_track_vels(self, i, T_horizon, dt=None):
+    def get_track_vels(self, i):
         if not os.path.exists(self.controls_path):
             print(f'Controls file {self.controls_path} does not exist')
             return None
+
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
         all_stamps, all_vels = data[:, 0], data[:, 1:]
         time_left = copy.copy(self.ts[i])
+        T_horizon, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         time_right = time_left + T_horizon
         # find the closest index to the left and right in all times
         il = np.argmin(np.abs(np.asarray(all_stamps) - time_left))
@@ -173,17 +175,18 @@ class RobinGasBase(Dataset):
         timestamps = timestamps - timestamps[0]
         vels = all_vels[il:ir]
 
-        if dt is not None:
-            # velocities interpolation
-            interp_times = np.arange(timestamps[0], timestamps[-1], dt)
-            interp_vels = np.zeros((len(interp_times), 2))
-            for i in range(vels.shape[1]):
-                interp_vels[:, i] = np.interp(interp_times, timestamps, vels[:, i])
+        # velocities interpolation
+        interp_times = np.arange(0.0, time_right - time_left, dt)
+        interp_vels = np.zeros((len(interp_times), 2))
+        for i in range(vels.shape[1]):
+            interp_vels[:, i] = np.interp(interp_times, timestamps, vels[:, i])
 
-            timestamps = interp_times
-            vels = interp_vels
+        timestamps = interp_times
+        vels = interp_vels
+        assert len(timestamps) == len(vels), f'Velocity and time stamps have different lengths'
+        assert len(timestamps) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
 
-        return timestamps, vels
+        return timestamps, np.asarray(vels, dtype=np.float32)
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -192,30 +195,34 @@ class RobinGasBase(Dataset):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_traj(self, i):
+    def get_traj(self, i, n_frames=10):
         # n_frames equals to the number of future poses (trajectory length)
-        Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=np.float32).reshape((4, 4))
-        T = self.dphys_cfg.traj_sim_time
-        # load data from csv file
-        csv_path = os.path.join(self.traj_path, '%s.csv' % self.ids[i])
-        if os.path.exists(csv_path):
-            data = np.loadtxt(csv_path, delimiter=',', skiprows=1)
-            stamps, poses = data[:, 0], data[:, 1:13]
-            poses = np.asarray([self.pose2mat(pose) for pose in poses])
-            # transform to robot frame
-            poses = Tr_robot_lidar @ poses
-        else:
-            # get trajectory as sequence of `n_frames` future poses
-            all_poses = self.get_poses(return_stamps=False)
-            all_ts = copy.copy(self.ts)
-            il = i
-            ir = np.argmin(np.abs(all_ts - (self.ts[i] + T)))
-            ir = np.clip(ir, 0, len(all_ts))
-            poses = all_poses[il:ir]
-            stamps = np.asarray(copy.copy(self.ts[il:ir]))
-            assert len(poses) > 0, f'No poses found for trajectory {self.ids[i]}'
-            poses = np.linalg.inv(poses[0]) @ poses
+        T_horizon = self.dphys_cfg.traj_sim_time
+
+        # get trajectory as sequence of `n_frames` future poses
+        all_poses = self.get_poses(return_stamps=False)
+        all_ts = copy.copy(self.ts)
+        il = i
+        ir = np.argmin(np.abs(all_ts - (self.ts[i] + T_horizon)))
+        ir = min(ir, len(all_ts) - 1)
+        poses = all_poses[il:ir]
+        stamps = np.asarray(copy.copy(self.ts[il:ir]))
+
+        # make sure the trajectory has the fixed length
+        if len(poses) < n_frames:
+            # repeat the last pose to fill the trajectory
+            poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
+            dt = np.mean(np.diff(stamps))
+            stamps = np.concatenate([stamps, stamps[-1] + np.arange(1, n_frames - len(stamps) + 1) * dt], axis=0)
+        # truncate the trajectory
+        poses = poses[:n_frames]
+        stamps = stamps[:n_frames]
+        assert len(poses) == len(stamps), f'Poses and time stamps have different lengths'
+        assert len(poses) == n_frames
+
+        # transform poses to the same coordinate frame as the height map
+        poses = np.linalg.inv(poses[0]) @ poses
+        stamps = stamps - stamps[0]
 
         traj = {
             'stamps': stamps, 'poses': poses,
@@ -254,6 +261,7 @@ class RobinGasBase(Dataset):
                   xds.reshape([n_states, 3]),
                   Rs.reshape([n_states, 3, 3]),
                   omegas.reshape([n_states, 3]))
+
         return ts, states
 
     def get_raw_cloud(self, i):

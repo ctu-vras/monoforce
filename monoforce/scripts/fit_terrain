@@ -133,70 +133,93 @@ def optimize_terrain_properties():
 def learn_terrain_properties():
     import matplotlib.pyplot as plt
     from monoforce.datasets import RobinGasBase, robingas_seq_paths
+    from torch.utils.data import DataLoader
+    from time import time
 
     np.random.seed(42)
     torch.manual_seed(42)
 
+    vis = True
+    batch_size = 64
+    device = torch.device('cuda')
+
+    class Data(RobinGasBase):
+        def __init__(self, path, dphys_cfg=DPhysConfig()):
+            super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
+
+        def get_sample(self, i):
+            control_ts, controls = self.get_track_vels(i)
+            ts, states = self.get_states_traj(i)
+            Xs, Xds, Rs, Omegas = states
+            heightmap = self.get_heightmap(i)['z']
+            return control_ts, controls, ts, Xs, Xds, Rs, Omegas, heightmap
+
     dphys_cfg = DPhysConfig()
-    T = dphys_cfg.traj_sim_time
-    dt = dphys_cfg.dt
-
     path = robingas_seq_paths['tradr'][0]
-    ds = RobinGasBase(path, dphys_cfg=dphys_cfg)
-    i = np.random.choice(range(len(ds)))
-    print('Sample:', i)
-    ts, controls = ds.get_track_vels(i, T_horizon=T, dt=dt)
-    print('Controls:', controls.shape)
 
-    ts_gt, states_gt = ds.get_states_traj(i)
-    states_gt = [torch.as_tensor(s)[None] for s in states_gt]  # add batch dimension
-    print('GT States:')
-    for s in states_gt:
-        print(s.shape)
+    # load the dataset
+    ds = Data(path, dphys_cfg=dphys_cfg)
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
 
-    heightmap = ds.get_heightmap(i)['z']
-    print('Heightmap:', heightmap.shape)
+    # instantiate the simulator
+    dphysics = DPhysics(dphys_cfg, device=device)
+
+    # get a sample from the dataset
+    control_ts, controls, traj_ts, Xs, Xds, Rs, Omegas, z_grid = next(iter(loader))
+    states = [Xs, Xds, Rs, Omegas]
+    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
+
+    # put the data on the device
+    control_ts, controls, traj_ts = [t.to(device) for t in [control_ts, controls, traj_ts]]
+    states = [s.to(device) for s in states]
+    z_grid = z_grid.to(device)
+    friction = friction.to(device)
 
     # find the closest timesteps in the trajectory to the ground truth timesteps
-    ts_ids = np.zeros_like(ts_gt, dtype=int)
-    for i, t in enumerate(ts_gt):
-        ts_ids[i] = np.argmin(np.abs(ts - t))
+    t0 = time()
+    ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+    print(f'Finding closest timesteps took: {time() - t0} [sec]')
 
-    # add batch dimension
-    controls = torch.tensor(controls, dtype=torch.float32)[None]
-    z_grid = torch.tensor(heightmap, dtype=torch.float32)[None]
-
-    dphysics = DPhysics(dphys_cfg)
-    friction = torch.zeros_like(z_grid)
+    # optimize the heightmap and friction
+    z_grid.requires_grad = True
     friction.requires_grad = True
+    optimizer = torch.optim.Adam([{'params': z_grid, 'lr': 0.001},
+                                  {'params': friction, 'lr': 0.01}])
 
-    optimizer = torch.optim.Adam([friction], lr=0.01)
-
-    for i in range(100):
+    print('Optimizing terrain properties...')
+    n_iters, vis_step = 100, 20
+    for i in range(n_iters):
         optimizer.zero_grad()
-        states, _ = dphysics(z_grid=z_grid, controls=controls, friction=friction)
+        t0 = time()
+        states_pred, _ = dphysics(z_grid=z_grid, controls=controls, friction=friction)
+        print(f'Simulation time: {time() - t0}')
 
-        loss = torch.nn.functional.mse_loss(states[0][:, ts_ids], states_gt[0])
+        loss = torch.nn.functional.mse_loss(states_pred[0].reshape([-1, 3])[ts_ids.reshape(-1,)], states[0].reshape([-1, 3]))
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss: {loss.item()}')
 
-        if i % 10 == 0:
+        if vis and i % vis_step == 0:
             with torch.no_grad():
-                batch_i = 0
+                batch_i = np.random.choice(range(batch_size))
                 plt.figure(figsize=(20, 10))
                 plt.subplot(121)
+                xyz_pred = states_pred[0].cpu().numpy()[batch_i]
                 xyz = states[0].cpu().numpy()[batch_i]
-                xyz_gt = states_gt[0].cpu().numpy()[batch_i]
-                plt.plot(xyz_gt[:, 0], xyz_gt[:, 1], 'kx')
-                plt.plot(xyz[:, 0], xyz[:, 1], 'r.')
-                plt.plot(xyz[ts_ids, 0], xyz[ts_ids, 1], 'rx')
-                plt.axis('equal')
+                xyz_pred_grid = (xyz_pred + dphys_cfg.d_max) / dphys_cfg.grid_res
+                xyz_grid = (xyz + dphys_cfg.d_max) / dphys_cfg.grid_res
+                plt.plot(xyz_grid[:, 0], xyz_grid[:, 1], 'kx')
+                plt.plot(xyz_pred_grid[:, 0], xyz_pred_grid[:, 1], 'r.')
+                plt.plot(xyz_pred_grid[ts_ids.cpu().numpy(), 0], xyz_pred_grid[ts_ids.cpu().numpy(), 1], 'rx')
+                plt.imshow(z_grid[0].cpu().numpy().T, origin='lower')
+                plt.xlim([0, z_grid.shape[-1]])
+                plt.ylim([0, z_grid.shape[-2]])
                 plt.grid()
 
                 plt.subplot(122)
-                plt.imshow(friction[0].cpu().numpy())
+                plt.imshow(friction[0].cpu().numpy().T, origin='lower')
                 plt.colorbar()
+                plt.grid()
 
                 plt.show()
 
