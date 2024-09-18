@@ -53,7 +53,7 @@ class DiffPhysBase:
 
         self.path_cost_min = np.inf
         self.path_cost_max = -np.inf
-        self.pose_step = int(0.1 / self.dt)  # publish poses with 10 Hz
+        self.pose_step = int(0.2 / self.dt)  # publish poses with 0.2 [sec] step
 
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)

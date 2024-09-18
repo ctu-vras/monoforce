@@ -55,8 +55,8 @@ class DPhysConfig:
         self.robot_points, self.robot_mask_left, self.robot_mask_right = self.rigid_body_geometry(from_mesh=False)
         self.robot_I = inertia_tensor(self.robot_mass, self.robot_points)  # 3x3 inertia tensor, kg*m^2
         self.robot_I *= 10.  # increase inertia for stability, as the point cloud is very sparse
-        self.vel_max = 0.37  # m/s
-        self.omega_max = 1.57  # rad/s
+        self.vel_max = 1.5  # m/s
+        self.omega_max = 1.2  # rad/s
 
         # height map parameters
         self.grid_res = 0.1

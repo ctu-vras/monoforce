@@ -316,7 +316,32 @@ class RobinGasBase(Dataset):
             cloud = np.concatenate((lidar_points[['x', 'y', 'z']], radar_points[['x', 'y', 'z']]))
             return cloud
 
-    def get_traj_dphyics_terrain(self, i):
+    def get_geom_height_map(self, i, cached=True, dir_name=None, points_source='lidar', **kwargs):
+        """
+        Get height map from lidar point cloud.
+        :param i: index of the sample
+        :param cached: if True, load height map from file if it exists, otherwise estimate it
+        :param dir_name: directory to save/load height map
+        :param kwargs: additional arguments for height map estimation
+        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
+        """
+        if dir_name is None:
+            dir_name = os.path.join(self.path, 'terrain', 'lidar')
+        file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
+        if cached and os.path.exists(file_path):
+            lidar_hm = np.load(file_path, allow_pickle=True).item()
+        else:
+            cloud = self.get_cloud(i, points_source=points_source)
+            points = position(cloud)
+            lidar_hm = self.estimate_heightmap(points, **kwargs)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            np.save(file_path, lidar_hm)
+        height = lidar_hm['z']
+        mask = lidar_hm['mask']
+        heightmap = torch.from_numpy(np.stack([height, mask]))
+        return heightmap
+
+    def get_traj_dphysics_terrain(self, i):
         ind = self.ids[i]
         p = os.path.join(self.path, 'terrain', 'traj', 'dphysics', '%s.npy' % ind)
         terrain = np.load(p)['height']
@@ -397,11 +422,6 @@ class RobinGasBase(Dataset):
                                     h_max_above_ground=self.dphys_cfg.h_max_above_ground,
                                     robot_clearance=self.calib['clearance'],
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
-        return height
-
-    def get_heightmap(self, i):
-        cloud = self.get_cloud(i)
-        height = self.estimate_heightmap(position(cloud), fill_value=0.)
         return height
 
     def get_sample(self, i):
@@ -669,31 +689,6 @@ class RobinGas(RobinGasBase):
             o3d.visualization.draw_geometries([hm_pcd])
         return global_hm_cloud
 
-    def get_geom_height_map(self, i, cached=True, dir_name=None, points_source='lidar', **kwargs):
-        """
-        Get height map from lidar point cloud.
-        :param i: index of the sample
-        :param cached: if True, load height map from file if it exists, otherwise estimate it
-        :param dir_name: directory to save/load height map
-        :param kwargs: additional arguments for height map estimation
-        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
-        """
-        if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'lidar')
-        file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
-        if cached and os.path.exists(file_path):
-            lidar_hm = np.load(file_path, allow_pickle=True).item()
-        else:
-            cloud = self.get_cloud(i, points_source=points_source)
-            points = position(cloud)
-            lidar_hm = self.estimate_heightmap(points, **kwargs)
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, lidar_hm)
-        height = lidar_hm['z']
-        mask = lidar_hm['mask']
-        heightmap = torch.from_numpy(np.stack([height, mask]))
-        return heightmap
-
     def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None, points_source='lidar'):
         """
         Get height map from trajectory points.
@@ -708,7 +703,7 @@ class RobinGas(RobinGasBase):
         if dir_name is None:
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
         if method == 'dphysics':
-            height = self.get_traj_dphyics_terrain(i)
+            height = self.get_traj_dphysics_terrain(i)
             h, w = (int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res),
                     int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res))
             # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128

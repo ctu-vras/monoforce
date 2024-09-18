@@ -28,16 +28,30 @@ def motion():
     dphys_cfg.k_friction = 0.5
     T = dphys_cfg.traj_sim_time
 
-    # control inputs in Newtons
-    controls = torch.tensor([[[1.5, 0.5]] * int(T / dt)]).to(device)
+    # control inputs: [vel_left, vel_right] in m/s
+    controls = torch.stack([
+        torch.tensor([[2.0, 0.0]] * int(T / dt)),
+        torch.tensor([[1.5, 0.5]] * int(T / dt))
+    ]).to(device)
+    B, N_ts = controls.shape[:2]
+    assert controls.shape == (B, N_ts, 2)
 
     # initial state
-    x = torch.tensor([[-2.0, 0.0, 0.2]], dtype=torch.float32, device=device)
+    x = torch.stack([
+        torch.tensor([0.0, 0.0, 0.2]),
+        torch.tensor([-2.0, 0.0, 0.2])
+    ]).to(device)
+    assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
-    R = torch.tensor(Rotation.from_euler('z', [0.0]).as_matrix(), dtype=torch.float32, device=device)
+    assert xd.shape == (B, 3)
+    R = torch.tensor(Rotation.from_euler('z', [0.0, np.pi/4]).as_matrix(), dtype=torch.float32, device=device)
+    assert R.shape == (B, 3, 3)
     omega = torch.zeros_like(x)
+    assert omega.shape == (B, 3)
     x_points = torch.as_tensor(dphys_cfg.robot_points, device=device).repeat(x.shape[0], 1, 1)
+    assert x_points.shape == (B, len(dphys_cfg.robot_points), 3)
     x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
+    assert x_points.shape == (B, len(dphys_cfg.robot_points), 3)
     state0 = (x, xd, R, omega, x_points)
 
     # heightmap defining the terrain
@@ -55,6 +69,12 @@ def motion():
     z_grid = z_grid.repeat(x.shape[0], 1, 1)
     stiffness = stiffness.repeat(x.shape[0], 1, 1)
     friction = friction.repeat(x.shape[0], 1, 1)
+    H, W = int(2 * dphys_cfg.d_max / dphys_cfg.grid_res), int(2 * dphys_cfg.d_max / dphys_cfg.grid_res)
+    assert x_grid.shape == (B, H, W)
+    assert y_grid.shape == (B, H, W)
+    assert z_grid.shape == (B, H, W)
+    assert stiffness.shape == (B, H, W)
+    assert friction.shape == (B, H, W)
 
     # simulate the rigid body dynamics
     dphysics = DPhysics(dphys_cfg, device=device)
@@ -144,7 +164,7 @@ def shoot_multiple():
     stiffness = stiffness.repeat(x.shape[0], 1, 1)
     friction = friction.repeat(x.shape[0], 1, 1)
 
-    # control inputs in Newtons
+    # control inputs in m/s and rad/s
     assert num_trajs % 2 == 0, 'num_trajs must be even'
     vels_x = torch.cat([-vel_max * torch.ones((num_trajs // 2, int(T / dt))),
                         vel_max * torch.ones((num_trajs // 2, int(T / dt)))])
@@ -187,7 +207,7 @@ def shoot_multiple():
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(111, projection='3d')
         # plot heightmap
-        ax.plot_surface(x_grid[0].cpu().numpy(), y_grid[0].cpu().numpy(), z_grid[0].cpu().numpy(), alpha=0.5)
+        ax.plot_surface(x_grid[0].cpu().numpy(), y_grid[0].cpu().numpy(), z_grid[0].cpu().numpy(), alpha=0.6, cmap='terrain')
         set_axes_equal(ax)
         for i in range(num_trajs):
             ax.plot(Xs[i, :, 0].cpu(), Xs[i, :, 1].cpu(), Xs[i, :, 2].cpu(), c='b')
