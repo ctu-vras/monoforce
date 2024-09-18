@@ -49,7 +49,7 @@
                                            [0, 0, 0, 0, 0, 0, 1],
                                            ]"/>
         <arg name="waypoint_weight" default="1.0"/>
-        <arg name="path_force_weight" default="2.0"/>
+        <arg name="path_force_weight" default="1.0"/>
         <arg name="map_frame" value="map"/>
     </include>
 

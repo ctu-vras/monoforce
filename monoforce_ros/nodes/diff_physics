@@ -327,7 +327,8 @@ class DiffPhysicsWarp(DiffPhysBase):
         assert forces_np.shape == (self.n_sim_trajs, self.n_sim_steps, 6)
 
         # path cost as a sum of force magnitudes
-        path_costs = np.linalg.norm(forces_np, axis=2).sum(axis=1) / self.n_sim_steps
+        # path_costs = np.linalg.norm(forces_np, axis=-1).mean(axis=-1)
+        path_costs = np.linalg.norm(forces_np, axis=-1).std(axis=-1)
         assert path_costs.shape == (self.n_sim_trajs,)
 
         # remove unfeasible paths
@@ -397,8 +398,8 @@ class DiffPhysicsTorch(DiffPhysBase):
         F_springs, F_frictions, _, _ = forces
         assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
         assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
-        path_costs = torch.norm(F_springs, dim=-1).nanmean(dim=-1).nanmean(dim=-1)
-        # path_costs = 1 / (torch.norm(F_frictions, dim=-1).nanmean(dim=-1).nanmean(dim=-1) + 1e-6)
+        # path_costs = torch.norm(F_springs, dim=-1).nanmean(dim=-1).nanmean(dim=-1)
+        path_costs = torch.norm(F_springs, dim=-1).std(dim=-1).std(dim=-1)
         path_costs = path_costs.cpu().numpy()
         assert not np.any(np.isnan(path_costs))
         rospy.logdebug(f'Path costs: {path_costs}')
