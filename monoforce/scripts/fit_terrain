@@ -13,7 +13,7 @@ def visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
             xs, R, xds, omegas, x_points = [s[b].cpu().numpy() for s in states]
             F_spring, F_friction, F_thrust_left, F_thrust_right = [f[b].cpu().numpy() for f in forces]
             x_grid_np, y_grid_np, z_grid_np = [g[b].cpu().numpy() for g in [x_grid, y_grid, z_grid]]
-            mask_left_np, mask_right_np = mask_left[b].cpu().numpy(), mask_right[b].cpu().numpy()
+            mask_left_np, mask_right_np = mask_left.cpu().numpy(), mask_right.cpu().numpy()
 
             # set up the visualization
             vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
@@ -52,8 +52,6 @@ def optimize_heightmap():
     R = torch.eye(3).repeat(x.shape[0], 1, 1)
     omega = torch.tensor([[0.0, 0.0, 0.0]])
     x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
-    mask_left = mask_left.repeat(x.shape[0], 1)
-    mask_right = mask_right.repeat(x.shape[0], 1)
 
     # heightmap defining the terrain
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
@@ -65,7 +63,7 @@ def optimize_heightmap():
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
     z_grid_gt = z_grid_gt.repeat(x.shape[0], 1, 1)
 
-    # control inputs in Newtons
+    # control inputs in m/s
     controls = torch.tensor([[[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)])
 
     # initial state
@@ -136,10 +134,10 @@ def learn_terrain_properties():
     from torch.utils.data import DataLoader
     from time import time
 
-    np.random.seed(42)
-    torch.manual_seed(42)
+    np.random.seed(0)
+    torch.manual_seed(0)
     vis = True
-    batch_size = 64
+    batch_size = 32
     device = torch.device('cuda')
 
     class Data(RobinGasBase):
@@ -212,7 +210,7 @@ def learn_terrain_properties():
                     xyz_pred_grid = (xyz_pred + dphys_cfg.d_max) / dphys_cfg.grid_res
                     xyz_grid = (xyz + dphys_cfg.d_max) / dphys_cfg.grid_res
                     plt.plot(xyz_grid[:, 0], xyz_grid[:, 1], 'kx')
-                    plt.plot(xyz_pred_grid[:, 0], xyz_pred_grid[:, 1], 'r.')
+                    # plt.plot(xyz_pred_grid[:, 0], xyz_pred_grid[:, 1], 'r.')
                     plt.plot(xyz_pred_grid[ids, 0], xyz_pred_grid[ids, 1], 'rx')
                     # plt.imshow(z_grid[0].cpu().numpy().T, origin='lower')
                     # plt.xlim([0, z_grid.shape[-1]])

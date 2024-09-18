@@ -8,9 +8,9 @@ DEBUG=True
 VIS=True
 BSZ=2
 
-WEIGHTS=$HOME/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
+WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
 
-source ${HOME}/traversability_ws/devel/setup.bash
+source $HOME/workspaces/traversability_ws/devel/setup.bash
 
 ./train --bsz $BSZ --nworkers 2 --nepochs 200 --lr 0.001 --weight_decay 1e-7 \
         --debug $DEBUG --vis $VIS \
