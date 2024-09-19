@@ -9,7 +9,7 @@ from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.cloudproc import estimate_heightmap
 from monoforce.config import DPhysConfig
-from monoforce.models.terrain_encoder.model import compile_model
+from monoforce.models.terrain_encoder.lss import compile_model
 from monoforce.models.terrain_encoder.utils import img_transform, normalize_img, sample_augmentation, ego_to_cam, \
     get_only_in_img_mask
 from monoforce.ros import height_map_to_gridmap_msg

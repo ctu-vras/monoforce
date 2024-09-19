@@ -499,7 +499,7 @@ Visualization Manager:
           Marker Topic: /sampled_paths
           Name: Sampled Paths
           Namespaces:
-            paths: true
+            {}
           Queue Size: 1
           Value: true
         - Alpha: 1
@@ -636,9 +636,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 9.14034652709961
-        Y: -4.745224475860596
-        Z: -0.4597679078578949
+        X: 0
+        Y: 0
+        Z: 0
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

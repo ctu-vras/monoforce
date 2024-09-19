@@ -9,7 +9,7 @@ from monoforce.datasets import RobinGasPoints, robingas_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, vw_to_track_vel
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
-from monoforce.models.terrain_encoder.model import compile_model
+from monoforce.models.terrain_encoder.lss import compile_model
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
 from grid_map_msgs.msg import GridMap
