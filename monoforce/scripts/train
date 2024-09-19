@@ -115,7 +115,7 @@ class Trainer:
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
-        self.loss_fn = torch.nn.MSELoss(reduction='none')
+        self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
                                     f'lss_{dataset}_{robot}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
@@ -163,7 +163,7 @@ class Trainer:
         weights = weights * weights_h
 
         # compute weighted loss
-        loss = (self.loss_fn(height_pred * weights, height_gt * weights)).mean()
+        loss = (self.hm_loss_fn(height_pred * weights, height_gt * weights)).mean()
         return loss
 
     def terrain_hm_loss(self, height_pred, height_gt, weights=None):
@@ -180,7 +180,7 @@ class Trainer:
         weights = weights[mask_valid]
 
         # compute weighted loss
-        loss = (self.loss_fn(height_pred * weights, height_gt * weights)).mean()
+        loss = (self.hm_loss_fn(height_pred * weights, height_gt * weights)).mean()
         return loss
 
     def physics_loss(self, heightmap, friction, control_ts, controls, traj_ts, states):
@@ -217,6 +217,7 @@ class Trainer:
              hm_geom, hm_terrain,
              control_ts, controls,
              traj_ts, Xs, Xds, Rs, Omegas) = batch
+
             height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
             height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
@@ -311,22 +312,30 @@ class Trainer:
         ax8 = fig.add_subplot(348)
         ax9 = fig.add_subplot(349)
         ax10 = fig.add_subplot(3, 4, 10)
+        ax11 = fig.add_subplot(3, 4, 11)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11]
         for ax in axes:
             ax.clear()
 
         # visualize training predictions
         with torch.no_grad():
+            # unpack batch
+            batch = next(iter(loader))
+            batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              ts_controls, controls,
-             ts_traj, Xs, Xds, Rs, Omegas) = next(iter(loader))
+             ts_traj, Xs, Xds, Rs, Omegas) = batch
+
+            # predict height maps
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.device) for i in inputs]
             voxel_feats = self.terrain_encoder.get_voxels(*inputs)
             height_pred_geom, height_pred_diff, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
             height_pred_terrain = height_pred_geom - height_pred_diff
+
+            # predict states
+            states_pred, _ = self.dphysics(z_grid=height_pred_terrain.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
 
             batch_i = 0
             height_pred_geom = height_pred_geom[batch_i, 0].cpu()
@@ -335,6 +344,8 @@ class Trainer:
             height_geom = hm_geom[batch_i, 0].cpu()
             height_terrain = hm_terrain[batch_i, 0].cpu()
             friction_pred = friction_pred[batch_i, 0].cpu()
+            xyz_pred = states_pred[0][batch_i].cpu().numpy()
+            xyz = Xs[batch_i].cpu().numpy()
 
             # get height map points
             z_grid = height_pred_terrain
@@ -345,6 +356,8 @@ class Trainer:
             hm_points = hm_points.view(-1, 3).T
 
             # plot images with projected height map points
+            inputs = [i.cpu() for i in inputs]
+            imgs, rots, trans, intrins, post_rots, post_trans = inputs
             for imgi in range(imgs.shape[1])[:4]:
                 ax = axes[imgi]
                 img = imgs[batch_i, imgi]
@@ -375,6 +388,14 @@ class Trainer:
 
             ax10.set_title('Friction')
             ax10.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+            ax11.set_title('Trajectories')
+            ax11.plot(xyz[:, 0], xyz[:, 1], 'kx', label='GT')
+            ax11.plot(xyz_pred[:, 0], xyz_pred[:, 1], 'r.', label='Pred')
+            ax11.grid()
+            ax11.set_xlim([-self.dphys_cfg.d_max, self.dphys_cfg.d_max])
+            ax11.set_ylim([-self.dphys_cfg.d_max, self.dphys_cfg.d_max])
+            ax11.legend()
 
             return fig
 

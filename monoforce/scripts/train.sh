@@ -22,4 +22,3 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
         --only_front_cam ${ONLY_FRONT_CAM} \
         --use_rigid_semantics ${USE_SAM_RIGID_SEMANTICS}  # \
 #        --pretrained_model_path ${WEIGHTS}
-
