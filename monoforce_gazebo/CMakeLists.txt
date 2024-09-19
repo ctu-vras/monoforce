@@ -21,3 +21,9 @@ install(DIRECTORY models
 install(DIRECTORY worlds
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/worlds
 )
+
+install(
+    PROGRAMS
+        nodes/robot_gt_pose_to_tf
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
