@@ -115,6 +115,14 @@ class BevEncode(nn.Module):
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
             nn.ReLU(inplace=True),
         )
+        self.up_friction = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0),
+            nn.Sigmoid(),
+        )
 
     def backbone(self, x):
         x = self.conv1(x)
@@ -131,20 +139,23 @@ class BevEncode(nn.Module):
 
     def geom_head(self, x):
         x = self.up_geom(x)
-
         return x
 
     def diff_head(self, x):
         x = self.up_diff(x)
+        return x
 
+    def friction_head(self, x):
+        x = self.up_friction(x)
         return x
 
     def forward(self, x):
         hm_feat = self.backbone(x)
         hm_geom = self.geom_head(hm_feat)
         hm_diff = self.diff_head(hm_feat)
+        friction = self.friction_head(hm_feat)
 
-        return hm_geom, hm_diff
+        return hm_geom, hm_diff, friction
 
 
 class LiftSplatShoot(nn.Module):

@@ -193,7 +193,7 @@ def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_dat
 def explore_data(ds, modelf=None, sample_range='random', save=False):
     from tqdm import tqdm
     from monoforce.cloudproc import hm_to_cloud
-    from monoforce.models.terrain_encoder.model import compile_model
+    from monoforce.models.terrain_encoder.lss import compile_model
     from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 
     lss_cfg = ds.lss_cfg

@@ -5,7 +5,8 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
-from monoforce.models.terrain_encoder.model import compile_model
+from monoforce.models.terrain_encoder.lss import compile_model
+from monoforce.models.dphysics import DPhysics
 from monoforce.config import DPhysConfig
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm
@@ -21,10 +22,10 @@ torch.manual_seed(42)
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train LSS model')
-    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
-    parser.add_argument('--nworkers', type=int, default=10, help='Number of workers for dataloaders')
+    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
+    parser.add_argument('--nworkers', type=int, default=2, help='Number of workers for dataloaders')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
@@ -32,13 +33,14 @@ def arg_parser():
     parser.add_argument('--dphys_cfg_path', type=str, default='../config/dphys_cfg.yaml', help='Path to DPhys config')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
-    parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode: use small datasets')
+    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--only_front_cam', type=str2bool, default=False, help='Use only front heightmap')
     parser.add_argument('--use_rigid_semantics', type=str2bool, default=True, help='Use SAM semantics for rigid objects')
     parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
     parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--hdiff_weight', type=float, default=1e-4, help='Weight for height difference loss')
+    parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
 
     return parser.parse_args()
 
@@ -82,6 +84,7 @@ class Trainer:
                  geom_hm_weight=1.0,
                  terrain_hm_weight=10.0,
                  hdiff_weight=0.001,
+                 phys_weight=1.0,
                  only_front_cam=False,
                  use_rigid_semantics=True):
 
@@ -102,13 +105,16 @@ class Trainer:
         self.geom_hm_weight = geom_hm_weight
         self.terrain_hm_weight = terrain_hm_weight
         self.hdiff_weight = hdiff_weight
+        self.phys_weight = phys_weight
 
         self.only_front_cam = only_front_cam
         self.use_rigid_semantics = use_rigid_semantics
 
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
-        self.model = self.load_model(modelf=pretrained_model_path)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        self.terrain_encoder = self.load_model(modelf=pretrained_model_path)
+        self.dphysics = DPhysics(dphys_cfg, device=self.device)
+
+        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
@@ -177,42 +183,74 @@ class Trainer:
         loss = (self.loss_fn(height_pred * weights, height_gt * weights)).mean()
         return loss
 
+    def physics_loss(self, heightmap, friction, control_ts, controls, traj_ts, states):
+        # predict states
+        states_pred, _ = self.dphysics(z_grid=heightmap, controls=controls, friction=friction)
+
+        # unpack states
+        X, Xd, R, Omega = states
+        X_pred, Xd_pred, R_pred, Omega_pred, _ = states_pred
+
+        # find the closest timesteps in the trajectory to the ground truth timesteps
+        ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+
+        # compute the loss as the mean squared error between the predicted and ground truth poses
+        batch_size = X.shape[0]
+        loss = torch.nn.functional.mse_loss(X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids], X)
+
+        return loss
+
     def epoch(self, train=True):
         loader = self.train_loader if train else self.val_loader
         counter = self.train_counter if train else self.val_counter
 
         if train:
-            self.model.train()
+            self.terrain_encoder.train()
         else:
-            self.model.eval()
+            self.terrain_encoder.eval()
 
         max_grad_norm = 5.0
         epoch_loss = 0.0
         for batch in tqdm(loader, total=len(loader)):
             batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain = batch
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             control_ts, controls,
+             traj_ts, Xs, Xds, Rs, Omegas) = batch
             height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
             height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
             if train:
                 self.optimizer.zero_grad()
 
+            # terrain encoder forward pass
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            voxel_feats = self.model.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
             height_pred_terrain = height_pred_geom - height_pred_diff
 
+            # geometrical height map loss
             loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else 0
+            # rigid / terrain height map loss
             loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else 0
 
-            # add height difference loss
-            loss_hdiff = height_pred_diff.std()
+            # height difference loss
+            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else 0
 
-            loss = self.geom_hm_weight * loss_geom + self.terrain_hm_weight * loss_terrain + self.hdiff_weight * loss_hdiff
+            # physics loss: difference between predicted and ground truth states
+            loss_phys = self.physics_loss(heightmap=height_pred_terrain.squeeze(1), friction=friction_pred.squeeze(1),
+                                          control_ts=control_ts, controls=controls,
+                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else 0
+
+            # total loss
+            loss = (self.geom_hm_weight * loss_geom +
+                    self.terrain_hm_weight * loss_terrain +
+                    self.hdiff_weight * loss_hdiff +
+                    self.phys_weight * loss_phys)
 
             if train:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_grad_norm)
                 self.optimizer.step()
             epoch_loss += loss.item()
 
@@ -220,6 +258,7 @@ class Trainer:
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_terrain", loss_terrain, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_phys", loss_phys, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
         if len(loader) > 0:
@@ -238,8 +277,8 @@ class Trainer:
                 with torch.no_grad():
                     self.min_train_loss = train_loss
                     print('Saving train model...')
-                    self.model.eval()
-                    torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
+                    self.terrain_encoder.eval()
+                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
 
                     # visualize training predictions
                     fig = self.vis_pred(self.train_loader)
@@ -253,8 +292,8 @@ class Trainer:
                 if val_loss < self.min_loss:
                     self.min_loss = val_loss
                     print('Saving model...')
-                    self.model.eval()
-                    torch.save(self.model.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
+                    self.terrain_encoder.eval()
+                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
 
                     # visualize validation predictions
                     fig = self.vis_pred(self.val_loader)
@@ -271,26 +310,31 @@ class Trainer:
         ax7 = fig.add_subplot(347)
         ax8 = fig.add_subplot(348)
         ax9 = fig.add_subplot(349)
+        ax10 = fig.add_subplot(3, 4, 10)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10]
         for ax in axes:
             ax.clear()
 
         # visualize training predictions
         with torch.no_grad():
-            imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain = next(iter(loader))
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             ts_controls, controls,
+             ts_traj, Xs, Xds, Rs, Omegas) = next(iter(loader))
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i, dtype=torch.float32, device=self.device) for i in inputs]
-            voxel_feats = self.model.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff = self.model.bevencode(voxel_feats)
+            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
             height_pred_terrain = height_pred_geom - height_pred_diff
 
-            batchi = 0
-            height_pred_geom = height_pred_geom[batchi, 0].cpu()
-            height_pred_terrain = height_pred_terrain[batchi, 0].cpu()
-            height_pred_diff = height_pred_diff[batchi, 0].cpu()
-            height_geom = hm_geom[batchi, 0].cpu()
-            height_terrain = hm_terrain[batchi, 0].cpu()
+            batch_i = 0
+            height_pred_geom = height_pred_geom[batch_i, 0].cpu()
+            height_pred_terrain = height_pred_terrain[batch_i, 0].cpu()
+            height_pred_diff = height_pred_diff[batch_i, 0].cpu()
+            height_geom = hm_geom[batch_i, 0].cpu()
+            height_terrain = hm_terrain[batch_i, 0].cpu()
+            friction_pred = friction_pred[batch_i, 0].cpu()
 
             # get height map points
             z_grid = height_pred_terrain
@@ -303,12 +347,12 @@ class Trainer:
             # plot images with projected height map points
             for imgi in range(imgs.shape[1])[:4]:
                 ax = axes[imgi]
-                img = imgs[batchi, imgi]
+                img = imgs[batch_i, imgi]
                 img = denormalize_img(img[:3])
-                cam_pts = ego_to_cam(hm_points, rots[batchi, imgi], trans[batchi, imgi], intrins[batchi, imgi])
+                cam_pts = ego_to_cam(hm_points, rots[batch_i, imgi], trans[batch_i, imgi], intrins[batch_i, imgi])
                 img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
                 mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
-                plot_pts = post_rots[batchi, imgi].matmul(cam_pts) + post_trans[batchi, imgi].unsqueeze(1)
+                plot_pts = post_rots[batch_i, imgi].matmul(cam_pts) + post_trans[batch_i, imgi].unsqueeze(1)
                 ax.imshow(img)
                 ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
                            cmap='jet', vmin=-1.0, vmax=1.0)
@@ -327,7 +371,10 @@ class Trainer:
             ax8.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
             ax9.set_title('Prediction: HM Diff')
-            ax9.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax9.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+            ax10.set_title('Friction')
+            ax10.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
 
             return fig
 
@@ -355,6 +402,7 @@ def main():
                       geom_hm_weight=args.geom_hm_weight,
                       terrain_hm_weight=args.terrain_hm_weight,
                       hdiff_weight=args.hdiff_weight,
+                      phys_weight=args.phys_weight,
                       debug=args.debug, vis=args.vis,
                       only_front_cam=args.only_front_cam,
                       use_rigid_semantics=args.use_rigid_semantics)

@@ -204,9 +204,9 @@ class RobinGasBase(Dataset):
         all_ts = copy.copy(self.ts)
         il = i
         ir = np.argmin(np.abs(all_ts - (self.ts[i] + T_horizon)))
-        ir = min(ir, len(all_ts) - 1)
+        ir = min(max(ir, il+1), len(all_ts))
         poses = all_poses[il:ir]
-        stamps = np.asarray(copy.copy(self.ts[il:ir]))
+        stamps = np.asarray(all_ts[il:ir])
 
         # make sure the trajectory has the fixed length
         if len(poses) < n_frames:
@@ -779,14 +779,20 @@ class RobinGas(RobinGasBase):
         return mask
 
     def get_sample(self, i):
-        img, rot, tran, intrins, post_rots, post_trans = self.get_images_data(i)
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        control_ts, controls = self.get_track_vels(i)
+        traj_ts, states = self.get_states_traj(i)
+        Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
         if self.only_front_cam:
             mask = self.front_height_map_mask()
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        return img, rot, tran, intrins, post_rots, post_trans, hm_geom, hm_terrain
+        return (imgs, rots, trans, intrins, post_rots, post_trans,
+                hm_geom, hm_terrain,
+                control_ts, controls,
+                traj_ts, Xs, Xds, Rs, Omegas)
 
 
 class RobinGasPoints(RobinGas):
@@ -799,6 +805,9 @@ class RobinGasPoints(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        control_ts, controls = self.get_track_vels(i)
+        traj_ts, states = self.get_states_traj(i)
+        Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i, points_source=self.points_source)
         hm_terrain = self.get_terrain_height_map(i, points_source=self.points_source)
         if self.only_front_cam:
@@ -806,8 +815,11 @@ class RobinGasPoints(RobinGas):
             hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         points = torch.as_tensor(position(self.get_cloud(i, points_source=self.points_source))).T
-        return imgs, rots, trans, intrins, post_rots, post_trans, hm_geom, hm_terrain, points
-
+        return (imgs, rots, trans, intrins, post_rots, post_trans,
+                hm_geom, hm_terrain,
+                control_ts, controls,
+                traj_ts, Xs, Xds, Rs, Omegas,
+                points)
 
 
 def heightmap_demo():
