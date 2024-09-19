@@ -1,0 +1,8 @@
+robot_frame: base_link
+odom_frame: odom
+map_update_condition: delay
+map_update_delay: 1.5
+sensor_max_range: 60
+min_dist_new_point: 0.15
+compute_prob_dynamic: true
+map_tf_publish_rate: 100
