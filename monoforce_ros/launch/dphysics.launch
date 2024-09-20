@@ -6,7 +6,7 @@
     <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>
     <arg name="gridmap_layer" default="elevation" doc="Height map layer name"/>
     <arg name="device" default="cpu" doc="Device to run the warp-based differentiable physics on"/>
-    <arg name="max_age" default="1.5"/>
+    <arg name="max_age" default="2.5"/>
 
     <!-- Diff Physics node -->
     <node name="diff_physics" pkg="monoforce" type="diff_physics" output="screen">
