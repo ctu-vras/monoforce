@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
-from monoforce.models.terrain_encoder.lss import compile_model
+from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
 from monoforce.config import DPhysConfig
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
@@ -43,6 +43,7 @@ def arg_parser():
     parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
 
     return parser.parse_args()
+
 
 class Trainer:
     """
@@ -111,7 +112,8 @@ class Trainer:
         self.use_rigid_semantics = use_rigid_semantics
 
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, nworkers=nworkers, debug=debug, vis=vis)
-        self.terrain_encoder = self.load_model(modelf=pretrained_model_path)
+        self.terrain_encoder = load_model(modelf=pretrained_model_path, lss_cfg=self.lss_cfg, device=self.device)
+        self.terrain_encoder.train()
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
@@ -124,23 +126,6 @@ class Trainer:
         # save configs to log dir
         write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
         write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
-
-    def load_model(self, modelf=None):
-        in_channels = 3
-        model = compile_model(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf'], inpC=in_channels, outC=1)
-
-        # load pretrained model / update model with pretrained weights
-        if modelf is not None:
-            print('Loading pretrained LSS model from', modelf)
-            # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
-            model_dict = model.state_dict()
-            pretrained_model = torch.load(modelf)
-            model_dict.update(pretrained_model)
-            model.load_state_dict(model_dict)
-
-        model.to(self.device)
-        model.train()
-        return model
 
     def create_dataloaders(self, bsz=1, nworkers=1, debug=False, vis=False):
         # create dataset for LSS model training

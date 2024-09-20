@@ -12,7 +12,6 @@
                                              '/camera_left/camera_info',
                                              '/camera_rear/camera_info',
                                              '/camera_right/camera_info']"/>
-    <arg name="imgs_max_age" default="1.0"/>
     <!-- dphysics arguments -->
     <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
     <arg name="device" default="cpu" doc="Device to run the differentiable physics on"/>
@@ -24,7 +23,6 @@
         <arg name="output_topic" value="height_map"/>
         <arg name="hm_frame" value="base_link"/>
         <arg name="max_msgs_delay" value="0.2"/>
-        <arg name="max_age" value="$(arg imgs_max_age)"/>
         <arg name="weights" value="$(arg weights)"/>
         <arg name="dphys_config_path" value="$(arg dphys_config_path)"/>
         <arg name="lss_config_path" value="$(arg lss_config_path)"/>

@@ -9,7 +9,7 @@ from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.cloudproc import estimate_heightmap
 from monoforce.config import DPhysConfig
-from monoforce.models.terrain_encoder.lss import compile_model
+from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.terrain_encoder.utils import img_transform, normalize_img, sample_augmentation, ego_to_cam, \
     get_only_in_img_mask
 from monoforce.ros import height_map_to_gridmap_msg
@@ -27,7 +27,7 @@ import matplotlib as mpl
 torch.set_default_dtype(torch.float32)
 
 
-class LSS:
+class TerrainEncoder:
     def __init__(self, dphys_cfg: DPhysConfig,
                  lss_cfg: dict,
                  weights=None,
@@ -42,7 +42,11 @@ class LSS:
         self.lss_cfg = lss_cfg
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.model = self.load_model(weights)
+        rospy.loginfo('Loading LSS model from %s' % weights)
+        if not os.path.exists(weights):
+            rospy.logerr('Model weights file %s does not exist. Using random weights.' % weights)
+        self.model = load_model(modelf=weights, lss_cfg=self.lss_cfg, device=self.device)
+        self.model.eval()
 
         self.hm_frame = hm_frame
 
@@ -79,17 +83,6 @@ class LSS:
             self.subs.append(Subscriber(topic, CameraInfo))
         self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=self.max_msgs_delay)
         self.sync.registerCallback(self.callback)
-
-    def load_model(self, modelf):
-        model = compile_model(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf'], outC=1)
-        if not os.path.exists(modelf):
-            rospy.logerr('Model weights file %s does not exist. Using random weights.' % modelf)
-        else:
-            rospy.loginfo('Loading LSS model from %s' % modelf)
-            model.load_state_dict(torch.load(modelf, map_location=self.device))
-        model.to(self.device)
-        model.eval()
-        return model
 
     def preprocess_img(self, img):
         post_rot = torch.eye(2)
@@ -254,7 +247,7 @@ class LSS:
             pass
 
 
-class LSSDebug(LSS):
+class TerrainEncoderDebug(TerrainEncoder):
     def __init__(self,
                  dphys_cfg: DPhysConfig,
                  lss_cfg: dict,
@@ -268,7 +261,7 @@ class LSSDebug(LSS):
                  max_age=0.2,
                  n_cams=None,
                  ):
-        super(LSSDebug, self).__init__(
+        super(TerrainEncoderDebug, self).__init__(
             dphys_cfg=dphys_cfg,
             lss_cfg=lss_cfg,
             weights=weights,
@@ -460,7 +453,7 @@ def main():
     calib_path = rospy.get_param('~calib_path', '')
     n_cams = rospy.get_param('~n_cams', None)
 
-    NodeClass = LSSDebug if rospy.get_param('~debug', False) else LSS
+    NodeClass = TerrainEncoderDebug if rospy.get_param('~debug', False) else TerrainEncoder
     node = NodeClass(dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
                      weights=weights,
                      img_topics=img_topics, camera_info_topics=camera_info_topics,

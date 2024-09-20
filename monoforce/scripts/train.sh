@@ -5,7 +5,7 @@ DATASET=robingas
 ONLY_FRONT_CAM=False
 USE_SAM_RIGID_SEMANTICS=True
 DEBUG=True
-VIS=True
+VIS=False
 BSZ=2
 
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt

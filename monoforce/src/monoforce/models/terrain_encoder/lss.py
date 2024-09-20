@@ -281,7 +281,7 @@ class LiftSplatShoot(nn.Module):
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
         x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans)
-        x_geom, x_diff = self.bevencode(x)
+        x_geom, x_diff, friction = self.bevencode(x)
         assert x_geom.shape == x_diff.shape
         assert x_diff.min() >= 0.
         x = x_geom - x_diff
@@ -290,3 +290,19 @@ class LiftSplatShoot(nn.Module):
 
 def compile_model(grid_conf, data_aug_conf, inpC=3, outC=1):
     return LiftSplatShoot(grid_conf, data_aug_conf, inpC, outC)
+
+
+def load_model(modelf, lss_cfg, device):
+    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
+
+    # load pretrained model / update model with pretrained weights
+    if modelf is not None:
+        print('Loading pretrained LSS model from', modelf)
+        # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
+        model_dict = model.state_dict()
+        pretrained_model = torch.load(modelf)
+        model_dict.update(pretrained_model)
+        model.load_state_dict(model_dict)
+
+    model.to(device)
+    return model

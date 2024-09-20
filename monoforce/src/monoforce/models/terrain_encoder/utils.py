@@ -184,3 +184,5 @@ class QuickCumsum(torch.autograd.Function):
         val = gradx[back]
 
         return val, None, None
+
+
