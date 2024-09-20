@@ -221,7 +221,11 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
         sample = ds[sample_i]
         sample = [s[np.newaxis] for s in sample]
         # print('sample', sample_i, 'id', ds.ids[sample_i])
-        imgs, rots, trans, intrins, post_rots, post_trans, hm_lidar, hm_terrain, pts = sample
+        (imgs, rots, trans, intrins, post_rots, post_trans,
+         hm_lidar, hm_terrain,
+         control_ts, controls,
+         traj_ts, Xs, Xds, Rs, Omegas,
+         pts) = sample
         height_geom, mask_geom = hm_lidar[:, 0], hm_lidar[:, 1]
         height_rigid, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
 

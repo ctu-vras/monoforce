@@ -4,7 +4,6 @@ import torch
 import numpy as np
 from monoforce.config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
-from monoforce.datasets import RobinGasBase, robingas_seq_paths
 from monoforce.vis import setup_visualization, animate_trajectory
 
 

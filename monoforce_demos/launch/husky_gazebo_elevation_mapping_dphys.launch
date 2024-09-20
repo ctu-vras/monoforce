@@ -24,7 +24,7 @@
     <arg name="cloud" value="points"/>
   </include>
 
-  <!-- GT map -> odom from Gazebo -->
+  <!-- GT odom from Gazebo -->
   <node if="0" pkg="monoforce_gazebo" type="robot_gt_pose_to_tf" name="robot_gt_pose_to_tf"/>
 
   <!-- Differentiable Physics -->
