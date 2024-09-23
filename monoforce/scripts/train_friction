@@ -64,16 +64,16 @@ def main():
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # Load LSS (Terrain Encoder)
-    lss = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
+    terrain_encoder = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
     if os.path.exists(pretrained_model_path):
         # load pretrained model / update model with pretrained weights
         print('Loading pretrained LSS model from', pretrained_model_path)
         # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
-        model_dict = lss.state_dict()
+        model_dict = terrain_encoder.state_dict()
         pretrained_model = torch.load(pretrained_model_path)
         model_dict.update(pretrained_model)
-        lss.load_state_dict(model_dict)
-    lss.to(device)
+        terrain_encoder.load_state_dict(model_dict)
+    terrain_encoder.to(device)
 
     # Load dataset
     train_ds, val_ds = compile_data(dataset='robingas',
@@ -90,16 +90,17 @@ def main():
 
     # Training: Friction Head
     # https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
-    for p in lss.parameters():
+    for p in terrain_encoder.parameters():
         p.requires_grad = False
-    for p in lss.bevencode.up_friction.parameters():
+    for p in terrain_encoder.bevencode.up_friction.parameters():
         p.requires_grad = True
-    optimizer = torch.optim.Adam(lss.bevencode.up_friction.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
 
     # train loop
+    loss_min = np.inf
     for epoch in range(num_epochs):
         # epoch loop
-        lss = lss.train()
+        terrain_encoder = terrain_encoder.train()
         loss_epoch = 0
         for batch in tqdm(train_dl, total=len(train_dl)):
             batch = [b.to(device) for b in batch]
@@ -113,7 +114,7 @@ def main():
             img_data = [imgs, rots, trans, intrins, post_rots, post_trans]
 
             # forward pass
-            height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, lss, dphysics)
+            height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, terrain_encoder, dphysics)
 
             # unpack states
             Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
@@ -136,11 +137,18 @@ def main():
         loss_epoch /= len(train_dl)
         print('Train epoch:', epoch, 'Mean loss:', loss_epoch)
 
+        # save model if loss is minimum
+        if loss_epoch < loss_min:
+            loss_min = loss_epoch
+            print('Saving model...')
+            os.makedirs('../config/weights/lss', exist_ok=True)
+            torch.save(terrain_encoder.state_dict(), f'../config/weights/lss/lss_robingas_{robot}_friction.pt')
+
         # evaluate model and visualize predictions
         if vis:
             with torch.no_grad():
                 # evaluate model
-                lss = lss.eval()
+                terrain_encoder = terrain_encoder.eval()
 
                 # validation data sample
                 batch_val = next(iter(val_dl))
@@ -155,7 +163,7 @@ def main():
                 img_data = [imgs, rots, trans, intrins, post_rots, post_trans]
 
                 # forward pass
-                height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, lss, dphysics)
+                height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, terrain_encoder, dphysics)
                 # print('Heightmap mean:', height_pred_geom.mean().item(), 'Friction mean:', friction_pred.mean().item())
 
                 # unpack states
