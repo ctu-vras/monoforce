@@ -20,12 +20,13 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 # Training parameters
-batch_size = 16
-num_epochs = 100
+batch_size = 64
+num_epochs = 1000
 lr = 1e-4
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 robot = 'tradr2'
-small_data = True
+small_data = False
+
 
 def monoforce_forward(img_data, controls, lss, dphysics):
     # terrain encoder forward pass
