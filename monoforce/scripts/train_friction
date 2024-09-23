@@ -3,9 +3,9 @@
 import os
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import matplotlib
 import numpy as np
 from monoforce.models.dphysics import DPhysics
 from monoforce.config import DPhysConfig
@@ -14,8 +14,6 @@ from monoforce.models.terrain_encoder.lss import compile_model
 from monoforce.utils import compile_data
 from monoforce.models.terrain_encoder.utils import denormalize_img
 
-# matplotlib setup
-matplotlib.use('TkAgg')
 
 # Set random seed for reproducibility
 torch.manual_seed(42)
@@ -28,7 +26,6 @@ lr = 1e-4
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 robot = 'tradr2'
 small_data = True
-vis = True
 
 def monoforce_forward(img_data, controls, lss, dphysics):
     # terrain encoder forward pass
@@ -96,6 +93,12 @@ def main():
         p.requires_grad = True
     optimizer = torch.optim.Adam(terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
 
+    # tensorboard writer
+    log_dir = f'../config/tb_runs/lss_robingas_{robot}_friction'
+    os.makedirs(log_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir=log_dir)
+    counter = 0
+
     # train loop
     loss_min = np.inf
     for epoch in range(num_epochs):
@@ -125,6 +128,10 @@ def main():
             # compute the loss as the mean squared error between the predicted and ground truth poses
             loss = torch.nn.functional.mse_loss(Xs_pred[torch.arange(Xs_pred.shape[0]).unsqueeze(1), ts_ids], Xs)
 
+            # tensorboard
+            writer.add_scalar('Train loss (iter)', loss.item(), counter)
+            counter += 1
+
             # accumulate loss
             loss_epoch += loss.item()
 
@@ -136,77 +143,78 @@ def main():
         # print epoch loss
         loss_epoch /= len(train_dl)
         print('Train epoch:', epoch, 'Mean loss:', loss_epoch)
+        writer.add_scalar('Mean train loss (epoch)', loss_epoch, epoch)
 
         # save model if loss is minimum
         if loss_epoch < loss_min:
             loss_min = loss_epoch
             print('Saving model...')
-            os.makedirs('../config/weights/lss', exist_ok=True)
-            torch.save(terrain_encoder.state_dict(), f'../config/weights/lss/lss_robingas_{robot}_friction.pt')
+            torch.save(terrain_encoder.state_dict(), os.path.join(log_dir, f'lss_robingas_{robot}_friction.pt'))
 
         # evaluate model and visualize predictions
-        if vis:
-            with torch.no_grad():
-                # evaluate model
-                terrain_encoder = terrain_encoder.eval()
+        with torch.no_grad():
+            # evaluate model
+            terrain_encoder = terrain_encoder.eval()
 
-                # validation data sample
-                batch_val = next(iter(val_dl))
-                batch_val = [b.to(device) for b in batch_val]
+            # validation data sample
+            batch_val = next(iter(val_dl))
+            batch_val = [b.to(device) for b in batch_val]
 
-                # unpack batch
-                (imgs, rots, trans, intrins, post_rots, post_trans,
-                 hm_geom, hm_terrain,
-                 control_ts, controls,
-                 traj_ts, Xs, Xds, Rs, Omegas) = batch_val
-                # monoforce inputs
-                img_data = [imgs, rots, trans, intrins, post_rots, post_trans]
+            # unpack batch
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             control_ts, controls,
+             traj_ts, Xs, Xds, Rs, Omegas) = batch_val
+            # monoforce inputs
+            img_data = [imgs, rots, trans, intrins, post_rots, post_trans]
 
-                # forward pass
-                height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, terrain_encoder, dphysics)
-                # print('Heightmap mean:', height_pred_geom.mean().item(), 'Friction mean:', friction_pred.mean().item())
+            # forward pass
+            height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, terrain_encoder, dphysics)
+            # print('Heightmap mean:', height_pred_geom.mean().item(), 'Friction mean:', friction_pred.mean().item())
 
-                # unpack states
-                Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
+            # unpack states
+            Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
 
-                # find the closest timesteps in the trajectory to the ground truth timesteps
-                ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+            # find the closest timesteps in the trajectory to the ground truth timesteps
+            ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
 
-                # compute the loss as the mean squared error between the predicted and ground truth poses
-                loss_val = torch.nn.functional.mse_loss(Xs_pred[torch.arange(Xs_pred.shape[0]).unsqueeze(1), ts_ids], Xs)
-                print('Validation sample Loss:', loss_val.item())
+            # compute the loss as the mean squared error between the predicted and ground truth poses
+            loss_val = torch.nn.functional.mse_loss(Xs_pred[torch.arange(Xs_pred.shape[0]).unsqueeze(1), ts_ids], Xs)
+            print('Validation sample Loss:', loss_val.item())
+            writer.add_scalar('Validation loss (epoch)', loss_val.item(), epoch)
 
-                # visualize
-                plt.figure(figsize=(20, 4))
-                plt.subplot(1, 5, 1)
-                plt.imshow(denormalize_img(imgs[0, 0]))
-                plt.title('Input Image')
-                plt.axis('off')
+            # visualize
+            fig = plt.figure(figsize=(20, 4))
+            plt.subplot(1, 5, 1)
+            plt.imshow(denormalize_img(imgs[0, 0]))
+            plt.title('Input Image')
+            plt.axis('off')
 
-                plt.subplot(1, 5, 2)
-                plt.imshow(height_pred_geom[0, 0].cpu().numpy().T,  origin='lower', vmin=-1, vmax=1, cmap='jet')
-                plt.colorbar()
-                plt.title('Predicted Heightmap')
+            plt.subplot(1, 5, 2)
+            plt.imshow(height_pred_geom[0, 0].cpu().numpy().T,  origin='lower', vmin=-1, vmax=1, cmap='jet')
+            plt.colorbar()
+            plt.title('Predicted Heightmap')
 
-                plt.subplot(1, 5, 3)
-                plt.imshow(hm_geom[0, 0].cpu().numpy().T, origin='lower', vmin=-1, vmax=1, cmap='jet')
-                plt.colorbar()
-                plt.title('Ground Truth Heightmap')
+            plt.subplot(1, 5, 3)
+            plt.imshow(hm_geom[0, 0].cpu().numpy().T, origin='lower', vmin=-1, vmax=1, cmap='jet')
+            plt.colorbar()
+            plt.title('Ground Truth Heightmap')
 
-                plt.subplot(1, 5, 4)
-                plt.imshow(friction_pred[0, 0].cpu().numpy(), origin='lower', vmin=0, vmax=1, cmap='jet')
-                plt.colorbar()
-                plt.title('Predicted Friction')
+            plt.subplot(1, 5, 4)
+            plt.imshow(friction_pred[0, 0].cpu().numpy(), origin='lower', vmin=0, vmax=1, cmap='jet')
+            plt.colorbar()
+            plt.title('Predicted Friction')
 
-                plt.subplot(1, 4, 4)
-                plt.plot(Xs[0, :, 0].cpu().numpy(), Xs[0, :, 1].cpu().numpy(), 'r', label='GT poses')
-                plt.plot(Xs_pred[0, :, 0].cpu().numpy(), Xs_pred[0, :, 1].cpu().numpy(), 'b', label='Pred poses')
-                plt.grid()
-                plt.axis('equal')
-                plt.legend()
-                plt.title('Trajectory')
+            plt.subplot(1, 4, 4)
+            plt.plot(Xs[0, :, 0].cpu().numpy(), Xs[0, :, 1].cpu().numpy(), 'r', label='GT poses')
+            plt.plot(Xs_pred[0, :, 0].cpu().numpy(), Xs_pred[0, :, 1].cpu().numpy(), 'b', label='Pred poses')
+            plt.grid()
+            plt.axis('equal')
+            plt.legend()
+            plt.title('Trajectory')
 
-                plt.show()
+            # tensorboard
+            writer.add_figure('Validation sample', fig, epoch)
 
 
 if __name__ == '__main__':
