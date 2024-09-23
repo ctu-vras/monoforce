@@ -484,7 +484,7 @@ class RobinGas(RobinGasBase):
         self.is_train = is_train
         self.only_front_cam = only_front_cam
         self.use_rigid_semantics = use_rigid_semantics
-        self.cameras = self.camera_names[:1] if only_front_cam else self.camera_names
+        self.camera_names = self.camera_names[:1] if only_front_cam else self.camera_names
 
         # initialize image augmentations
         self.lss_cfg = lss_cfg
@@ -511,7 +511,7 @@ class RobinGas(RobinGasBase):
 
     def get_raw_image(self, i, camera=None):
         if camera is None:
-            camera = self.cameras[0]
+            camera = self.camera_names[0]
         ind = self.ids[i]
         img_path = os.path.join(self.path, 'images', '%s_%s.png' % (ind, camera))
         assert os.path.exists(img_path), f'Image path {img_path} does not exist'
@@ -520,14 +520,14 @@ class RobinGas(RobinGasBase):
 
     def get_raw_img_size(self, i=0, cam=None):
         if cam is None:
-            cam = self.cameras[0]
+            cam = self.camera_names[0]
         img = self.get_raw_image(i, cam)
         img = np.asarray(img)
         return img.shape[0], img.shape[1]
 
     def get_image(self, i, camera=None, undistort=False):
         if camera is None:
-            camera = self.cameras[0]
+            camera = self.camera_names[0]
         img = self.get_raw_image(i, camera)
         for key in self.calib.keys():
             if camera in key:
@@ -551,7 +551,7 @@ class RobinGas(RobinGasBase):
         post_trans = []
         intrins = []
 
-        for cam in self.cameras:
+        for cam in self.camera_names:
             img, K = self.get_image(i, cam, undistort=False)
             # if self.is_train:
             #     img = self.img_augs(image=np.asarray(img))['image']
@@ -609,7 +609,7 @@ class RobinGas(RobinGasBase):
 
     def get_seg_label(self, i, camera=None):
         if camera is None:
-            camera = self.cameras[0]
+            camera = self.camera_names[0]
         id = self.ids[i]
         seg_path = os.path.join(self.path, 'images/seg/', '%s_%s.npy' % (id, camera))
         assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
@@ -632,7 +632,7 @@ class RobinGas(RobinGasBase):
         lidar_points = position(self.get_cloud(i, points_source=points_source))
         points = []
         labels = []
-        for cam in self.cameras[::-1]:
+        for cam in self.camera_names[::-1]:
             seg_label_cam = self.get_seg_label(i, camera=cam)
             seg_label_cam = np.asarray(seg_label_cam)
 
@@ -752,7 +752,7 @@ class RobinGas(RobinGasBase):
         return heightmap
 
     def front_height_map_mask(self):
-        camera = self.cameras[0]
+        camera = self.camera_names[0]
         K = self.calib[camera]['camera_matrix']['data']
         r, c = self.calib[camera]['camera_matrix']['rows'], self.calib[camera]['camera_matrix']['cols']
         K = np.asarray(K, dtype=np.float32).reshape((r, c))

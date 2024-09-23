@@ -16,9 +16,27 @@ import rospy
 from visualization_msgs.msg import Marker
 
 
+def numpy_to_gridmap_layer(data):
+    assert isinstance(data, np.ndarray)
+    assert data.ndim == 2
+
+    data_array = Float32MultiArray()
+    data_array.layout.dim.append(MultiArrayDimension())
+    data_array.layout.dim.append(MultiArrayDimension())
+    data_array.layout.dim[0].label = 'column_index'
+    data_array.layout.dim[0].size = data.shape[0]
+    data_array.layout.dim[0].stride = data.shape[0] * data.shape[1]
+    data_array.layout.dim[1].label = 'row_index'
+    data_array.layout.dim[1].size = data.shape[1]
+    data_array.layout.dim[1].stride = data.shape[1]
+    data_array.data = rotate(data.T, 180).flatten().tolist()
+
+    return data_array
+
 def height_map_to_gridmap_msg(height, grid_res,
                               xyz=np.array([0, 0, 0]), q=np.array([0., 0., 0., 1.]),
-                              mask=None):
+                              height_layer_name='elevation',
+                              mask=None, mask_layer_name='mask'):
     assert isinstance(height, np.ndarray)
     assert height.ndim == 2
     if mask is not None:
@@ -26,46 +44,21 @@ def height_map_to_gridmap_msg(height, grid_res,
         assert mask.ndim == 2
         assert mask.shape == height.shape
 
-    H, W = height.shape
-    # rotate height map
-    height = height.T
-    height = rotate(height, 180)
-
     map = GridMap()
+    H, W = height.shape
     map.info.resolution = grid_res
     map.info.length_x = W * grid_res
     map.info.length_y = H * grid_res
     map.info.pose.position = msgify(Point, xyz)
     map.info.pose.orientation = msgify(Quaternion, q)
 
-    map.layers.append('elevation')
-
-    height_array = Float32MultiArray()
-    height_array.layout.dim.append(MultiArrayDimension())
-    height_array.layout.dim.append(MultiArrayDimension())
-    height_array.layout.dim[0].label = 'column_index'
-    height_array.layout.dim[0].size = H
-    height_array.layout.dim[0].stride = H * W
-    height_array.layout.dim[1].label = 'row_index'
-    height_array.layout.dim[1].size = W
-    height_array.layout.dim[1].stride = W
-    height_array.data = height.ravel().tolist()
+    map.layers.append(height_layer_name)
+    height_array = numpy_to_gridmap_layer(height)
     map.data.append(height_array)
 
     if mask is not None:
-        mask = mask.T
-        mask = rotate(mask, 180)
-        map.layers.append('mask')
-        mask_array = Float32MultiArray()
-        mask_array.layout.dim.append(MultiArrayDimension())
-        mask_array.layout.dim.append(MultiArrayDimension())
-        mask_array.layout.dim[0].label = 'column_index'
-        mask_array.layout.dim[0].size = H
-        mask_array.layout.dim[0].stride = H * W
-        mask_array.layout.dim[1].label = 'row_index'
-        mask_array.layout.dim[1].size = W
-        mask_array.layout.dim[1].stride = W
-        mask_array.data = mask.ravel().tolist()
+        map.layers.append(mask_layer_name)
+        mask_array = numpy_to_gridmap_layer(mask)
         map.data.append(mask_array)
 
     return map

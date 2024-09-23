@@ -137,7 +137,7 @@ def learn_terrain_properties():
     np.random.seed(0)
     torch.manual_seed(0)
     vis = True
-    batch_size = 32
+    batch_size = 4
     device = torch.device('cuda')
 
     class Data(RobinGasBase):
@@ -204,21 +204,23 @@ def learn_terrain_properties():
                 for batch_i in [np.random.choice(batch_size)]:
                     plt.figure(figsize=(20, 10))
                     plt.subplot(121)
+                    plt.title(f'Trajectories loss: {loss.item()}')
                     xyz_pred = states_pred[0].cpu().numpy()[batch_i]
                     xyz = states[0].cpu().numpy()[batch_i]
                     ids = ts_ids[batch_i].cpu().numpy()
                     xyz_pred_grid = (xyz_pred + dphys_cfg.d_max) / dphys_cfg.grid_res
                     xyz_grid = (xyz + dphys_cfg.d_max) / dphys_cfg.grid_res
-                    plt.plot(xyz_grid[:, 0], xyz_grid[:, 1], 'kx')
-                    # plt.plot(xyz_pred_grid[:, 0], xyz_pred_grid[:, 1], 'r.')
-                    plt.plot(xyz_pred_grid[ids, 0], xyz_pred_grid[ids, 1], 'rx')
+                    plt.plot(xyz_grid[:, 0], xyz_grid[:, 1], 'kx', label='Ground truth')
+                    plt.plot(xyz_pred_grid[ids, 0], xyz_pred_grid[ids, 1], 'rx', label='Predicted')
                     # plt.imshow(z_grid[0].cpu().numpy().T, origin='lower')
                     # plt.xlim([0, z_grid.shape[-1]])
                     # plt.ylim([0, z_grid.shape[-2]])
                     plt.axis('equal')
+                    plt.legend()
                     plt.grid()
 
                     plt.subplot(122)
+                    plt.title(f'Mean friction: {friction.mean().item()}')
                     plt.plot(xyz_pred_grid[ids, 0], xyz_pred_grid[ids, 1], 'r.')
                     plt.imshow(friction[0].cpu().numpy().T, origin='lower')
                     plt.colorbar()

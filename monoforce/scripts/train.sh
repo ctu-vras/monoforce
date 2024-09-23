@@ -4,9 +4,9 @@ ROBOT=tradr2
 DATASET=robingas
 ONLY_FRONT_CAM=False
 USE_SAM_RIGID_SEMANTICS=True
-DEBUG=True
+DEBUG=False
 VIS=False
-BSZ=2
+BSZ=16
 
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
 

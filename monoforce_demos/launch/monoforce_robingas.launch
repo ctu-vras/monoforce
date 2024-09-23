@@ -14,9 +14,14 @@
     <node pkg="monoforce" type="monoforce" name="monoforce" output="screen">
         <rosparam subst_value="true">
             robot: $(arg robot)
-            total_sim_time: 7.0
-            pub_cloud: true
-            pub_path: true
+            lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss_robingas_$(arg robot).pt
+
+<!--             robot: tradr2 -->
+<!--             lss_weights_path: $(find monoforce)/../monoforce/config/tb_runs/friction_head/lss_robingas_tradr2.pt -->
+<!--             lss_weights_path: $(find monoforce)/../monoforce/config/tb_runs/lss_robingas_tradr2_2024_09_20_14_41_16/lss.pt -->
+
+<!--             robot: tradr -->
+<!--             lss_weights_path: $(find monoforce)/../monoforce/config/tb_runs/lss_robingas_tradr_2024_09_19_19_46_06/lss.pt -->
         </rosparam>
     </node>
 
