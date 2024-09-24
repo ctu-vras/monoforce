@@ -479,7 +479,7 @@ class RobinGas(RobinGasBase):
                  dphys_cfg=DPhysConfig(),
                  is_train=False,
                  only_front_cam=False,
-                 use_rigid_semantics=False):
+                 use_rigid_semantics=True):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_cam = only_front_cam
@@ -591,11 +591,11 @@ class RobinGas(RobinGasBase):
             post_rots.append(post_rot)
             post_trans.append(post_tran)
 
-        inputs = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
+        img_data = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
                   torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
-        inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
+        img_data = [torch.as_tensor(i, dtype=torch.float32) for i in img_data]
 
-        return inputs
+        return img_data
 
     def seg_label_to_color(self, seg_label):
         coco_colors = [(np.array(color['color'])).tolist() for color in COCO_CATEGORIES] + [[0, 0, 0]]
@@ -693,61 +693,35 @@ class RobinGas(RobinGasBase):
             o3d.visualization.draw_geometries([hm_pcd])
         return global_hm_cloud
 
-    def get_terrain_height_map(self, i, method='footprint', cached=False, dir_name=None, points_source='lidar'):
+    def get_terrain_height_map(self, i, cached=False, dir_name=None, points_source='lidar'):
         """
         Get height map from trajectory points.
         :param i: index of the sample
-        :param method: method to estimate height map from trajectory points
         :param cached: if True, load height map from file if it exists, otherwise estimate it
         :param dir_name: directory to save/load height map
         :param obstacle_classes: classes of obstacles to include in the height map
         :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
-        assert method in ['dphysics', 'footprint']
         if dir_name is None:
             dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
-        if method == 'dphysics':
-            height = self.get_traj_dphysics_terrain(i)
-            h, w = (int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res),
-                    int(2 * self.dphys_cfg.d_max // self.dphys_cfg.grid_res))
-            # Optimized height map shape is 256 x 256. We need to crop it to 128 x 128
-            H, W = height.shape
-            if H == 256 and W == 256:
-                # print(f'Height map shape is {H} x {W}). Cropping to 128 x 128')
-                # select only the h x w area from the center of the height map
-                height = height[int(H // 2 - h // 2):int(H // 2 + h // 2),
-                                int(W // 2 - w // 2):int(W // 2 + w // 2)]
-            # poses in grid coordinates
-            poses = self.get_traj(i)['poses']
-            poses_grid = poses[:, :2, 3] / self.dphys_cfg.grid_res + np.asarray([w / 2, h / 2])
-            poses_grid = poses_grid.astype(int)
-            # crop poses to observation area defined by square grid
-            poses_grid = poses_grid[(poses_grid[:, 0] > 0) & (poses_grid[:, 0] < w) &
-                                    (poses_grid[:, 1] > 0) & (poses_grid[:, 1] < h)]
 
-            # visited by poses dilated height map area mask
-            kernel = np.ones((3, 3), dtype=np.uint8)
-            mask = np.zeros((h, w), dtype=np.uint8)
-            mask[poses_grid[:, 0], poses_grid[:, 1]] = 1
-            mask = cv2.dilate(mask, kernel, iterations=2)
+        file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
+        if cached and os.path.exists(file_path):
+            hm_rigid = np.load(file_path, allow_pickle=True).item()
         else:
-            assert method == 'footprint'
-            file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
-            if cached and os.path.exists(file_path):
-                hm_rigid = np.load(file_path, allow_pickle=True).item()
+            traj_points = self.get_footprint_traj_points(i)
+            if self.use_rigid_semantics:
+                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
+                                                        points_source=points_source, vis=False)
+                points = np.concatenate((seg_points, traj_points), axis=0)
             else:
-                traj_points = self.get_footprint_traj_points(i)
-                if self.use_rigid_semantics:
-                    seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
-                                                            points_source=points_source, vis=False)
-                    points = np.concatenate((seg_points, traj_points), axis=0)
-                else:
-                    points = traj_points
-                hm_rigid = self.estimate_heightmap(points, robot_radius=None)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                np.save(file_path, hm_rigid)
-            height = hm_rigid['z']
-            mask = hm_rigid['mask']
+                points = traj_points
+            hm_rigid = self.estimate_heightmap(points, robot_radius=None)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            np.save(file_path, hm_rigid)
+        height = hm_rigid['z']
+        mask = hm_rigid['mask']
+
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 

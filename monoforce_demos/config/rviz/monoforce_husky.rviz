@@ -331,12 +331,20 @@ Visualization Manager:
       Visual Enabled: true
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /forces
-      Name: Forces
+      Marker Topic: /normal_forces
+      Name: Normal Forces
       Namespaces:
         "": true
       Queue Size: 100
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: false
+      Marker Topic: /friction_forces
+      Name: Friction Forces
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: false
     - Class: rviz/Group
       Displays:
         - Alpha: 0.5
@@ -499,13 +507,14 @@ Visualization Manager:
               Image Right: true
               Value: true
             Cloud: true
-            Forces: true
+            Friction Forces: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
               GridMap Pred Geom: true
               GridMap Pred Terrain: true
               Value: true
+            Normal Forces: true
             Path: true
             RobotModel: true
             TF: true
@@ -536,13 +545,14 @@ Visualization Manager:
               Image Right: true
               Value: true
             Cloud: true
-            Forces: true
+            Friction Forces: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
               GridMap Pred Geom: true
               GridMap Pred Terrain: true
               Value: true
+            Normal Forces: true
             Path: true
             RobotModel: true
             TF: true
@@ -573,13 +583,14 @@ Visualization Manager:
               Image Right: true
               Value: true
             Cloud: true
-            Forces: true
+            Friction Forces: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
               GridMap Pred Geom: true
               GridMap Pred Terrain: true
               Value: true
+            Normal Forces: true
             Path: true
             RobotModel: true
             TF: true
@@ -610,13 +621,14 @@ Visualization Manager:
               Image Right: true
               Value: true
             Cloud: true
-            Forces: true
+            Friction Forces: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
               GridMap Pred Geom: true
               GridMap Pred Terrain: true
               Value: true
+            Normal Forces: true
             Path: true
             RobotModel: true
             TF: true

@@ -50,3 +50,5 @@ obstacle_classes:
 - 'wall'
 - 'bench'
 - 'rock'
+- 'car'
+- 'truck'

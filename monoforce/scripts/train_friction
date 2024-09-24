@@ -10,7 +10,7 @@ import numpy as np
 from monoforce.models.dphysics import DPhysics
 from monoforce.config import DPhysConfig
 from monoforce.utils import read_yaml
-from monoforce.models.terrain_encoder.lss import compile_model
+from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.utils import compile_data
 from monoforce.models.terrain_encoder.utils import denormalize_img
 
@@ -62,15 +62,7 @@ def main():
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # Load LSS (Terrain Encoder)
-    terrain_encoder = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
-    if os.path.exists(pretrained_model_path):
-        # load pretrained model / update model with pretrained weights
-        print('Loading pretrained LSS model from', pretrained_model_path)
-        # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
-        model_dict = terrain_encoder.state_dict()
-        pretrained_model = torch.load(pretrained_model_path)
-        model_dict.update(pretrained_model)
-        terrain_encoder.load_state_dict(model_dict)
+    terrain_encoder = load_model(modelf=pretrained_model_path, lss_cfg=lss_cfg, device=device)
     terrain_encoder.to(device)
 
     # Load dataset
@@ -86,7 +78,7 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
-    # Training: Friction Head
+    # Training: Friction Head only
     # https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
     for p in terrain_encoder.parameters():
         p.requires_grad = False
@@ -150,7 +142,7 @@ def main():
         if loss_epoch < loss_min:
             loss_min = loss_epoch
             print('Saving model...')
-            torch.save(terrain_encoder.state_dict(), os.path.join(log_dir, f'lss_robingas_{robot}_friction.pt'))
+            torch.save(terrain_encoder.state_dict(), os.path.join(log_dir, 'lss.pt'))
 
         # evaluate model and visualize predictions
         with torch.no_grad():

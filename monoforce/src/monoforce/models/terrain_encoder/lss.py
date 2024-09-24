@@ -292,7 +292,7 @@ def compile_model(grid_conf, data_aug_conf, inpC=3, outC=1):
     return LiftSplatShoot(grid_conf, data_aug_conf, inpC, outC)
 
 
-def load_model(modelf, lss_cfg, device):
+def load_model(modelf, lss_cfg, device=None):
     model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
 
     # load pretrained model / update model with pretrained weights
@@ -304,5 +304,7 @@ def load_model(modelf, lss_cfg, device):
         model_dict.update(pretrained_model)
         model.load_state_dict(model_dict)
 
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     return model
