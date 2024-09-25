@@ -20,17 +20,19 @@ device = torch.device('cpu')
 def motion():
     from scipy.spatial.transform import Rotation
     import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.use('Qt5Agg')
 
     # simulation parameters
     dt = dphys_cfg.dt
     dphys_cfg.traj_sim_time = 5.0
-    dphys_cfg.k_friction = 0.5
+    dphys_cfg.k_friction = 1.0
     T = dphys_cfg.traj_sim_time
 
     # control inputs: [vel_left, vel_right] in m/s
     controls = torch.stack([
-        torch.tensor([[2.0, 0.0]] * int(T / dt)),
-        torch.tensor([[1.5, 0.5]] * int(T / dt))
+        torch.tensor([[0.5, 0.6]] * int(T / dt)),
+        # torch.tensor([[-0.4, -0.6]] * int(T / dt))
     ]).to(device)
     B, N_ts = controls.shape[:2]
     assert controls.shape == (B, N_ts, 2)
@@ -38,12 +40,13 @@ def motion():
     # initial state
     x = torch.stack([
         torch.tensor([0.0, 0.0, 0.2]),
-        torch.tensor([-2.0, 0.0, 0.2])
+        # torch.tensor([-2.0, 0.0, 0.2])
     ]).to(device)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
-    R = torch.tensor(Rotation.from_euler('z', [0.0, np.pi/4]).as_matrix(), dtype=torch.float32, device=device)
+    R = torch.tensor(Rotation.from_euler('z', [0.0]).as_matrix(), dtype=torch.float32, device=device)
+    # R = torch.tensor(Rotation.from_euler('z', [0.0, np.pi/4]).as_matrix(), dtype=torch.float32, device=device)
     assert R.shape == (B, 3, 3)
     omega = torch.zeros_like(x)
     assert omega.shape == (B, 3)
@@ -58,7 +61,8 @@ def motion():
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
     # z_grid = (torch.sin(x_grid) * torch.cos(y_grid)).to(device)
-    z_grid = torch.zeros_like(x_grid)
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2).to(device)
+    # z_grid = torch.zeros_like(x_grid)
     stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
     friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
@@ -80,44 +84,44 @@ def motion():
     states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0,
                               stiffness=stiffness, friction=friction)
 
-    # plot velocity profile
-    Xs, Xds, Rs, Omegas, X_points = states
-    tt = torch.arange(0, T, dt)
-    Xs_np, Xds_np, Rs_np, Omegas_np = [s.detach().cpu().numpy() for s in [Xs, Xds, Rs, Omegas]]
-    tt_np = tt.detach().cpu().numpy()
-    fig, axs = plt.subplots(2, 1, figsize=(10, 10))
-    axs[0].plot(tt_np, Xs_np[0, :, 0], label='X', color='r')
-    axs[0].plot(tt_np, Xs_np[0, :, 1], label='Y', color='g')
-    # axs[0].plot(tt_np, Xs_np[0, :, 2], label='Z', color='b')
-    axs[0].set_title('Position')
-    axs[0].legend()
-    axs[1].plot(tt_np, Xds_np[0, :, 0], label='Vx', color='r')
-    axs[1].plot(tt_np, Xds_np[0, :, 1], label='Vy', color='g')
-    # axs[1].plot(tt_np, Xds_np[0, :, 2], label='Vz', color='b')
-    axs[1].set_title('Velocity')
-    axs[1].legend()
-    plt.show()
-    # return
-
     # visualize using mayavi
     for b in range(len(states[0])):
+        # plot velocity profile
+        Xs, Xds, Rs, Omegas, X_points = states
+        tt = torch.arange(0, T, dt)
+        Xs_np, Xds_np, Rs_np, Omegas_np = [s.detach().cpu().numpy() for s in [Xs, Xds, Rs, Omegas]]
+        tt_np = tt.detach().cpu().numpy()
+        fig, axs = plt.subplots(2, 1, figsize=(10, 10))
+        axs[0].plot(tt_np, Xs_np[b, :, 0], label='X', color='r')
+        axs[0].plot(tt_np, Xs_np[b, :, 1], label='Y', color='g')
+        # axs[0].plot(tt_np, Xs_np[b, :, 2], label='Z', color='b')
+        axs[0].set_title('Position')
+        axs[0].legend()
+        axs[1].plot(tt_np, Xds_np[b, :, 0], label='Vx', color='r')
+        axs[1].plot(tt_np, Xds_np[b, :, 1], label='Vy', color='g')
+        # axs[1].plot(tt_np, Xds_np[b, :, 2], label='Vz', color='b')
+        axs[1].set_title('Velocity')
+        axs[1].legend()
+        plt.show()
+        # return
+
         # get the states and forces for the b-th rigid body and move them to the cpu
         xs, R, xds, omegas, x_points = [s[b].detach().cpu().numpy() for s in states]
-        F_spring, F_friction, F_thrust_left, F_thrust_right = [f[b].detach().cpu().numpy() for f in forces]
+        F_spring, F_friction = [f[b].detach().cpu().numpy() for f in forces]
         x_grid_np, y_grid_np, z_grid_np = [g[b].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
         mask_left_np = dphysics.robot_mask_left.detach().cpu().numpy()
         mask_right_np = dphysics.robot_mask_right.detach().cpu().numpy()
 
         # set up the visualization
         vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
-                                      forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                                      forces=(F_spring, F_friction),
                                       x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np,
                                       mask_left=mask_left_np, mask_right=mask_right_np)
 
         # visualize animated trajectory
         animate_trajectory(states=(xs, R, xds, omegas, x_points),
-                           forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
-                           z_grid=z_grid_np, mask_left=mask_left_np, mask_right=mask_right_np,
+                           forces=(F_spring, F_friction),
+                           z_grid=z_grid_np,
                            vis_cfg=vis_cfg, step=10)
 
 
@@ -127,6 +131,8 @@ def shoot_multiple():
     from monoforce.models.dphysics import vw_to_track_vel
     from monoforce.vis import set_axes_equal
     import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.use('Qt5Agg')
 
     # simulation parameters
     dphys_cfg = DPhysConfig()

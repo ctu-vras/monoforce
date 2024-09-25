@@ -11,21 +11,20 @@ def visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
         for b in range(len(states[0])):
             # get the states and forces for the b-th rigid body and move them to the cpu
             xs, R, xds, omegas, x_points = [s[b].cpu().numpy() for s in states]
-            F_spring, F_friction, F_thrust_left, F_thrust_right = [f[b].cpu().numpy() for f in forces]
+            F_spring, F_friction = [f[b].cpu().numpy() for f in forces]
             x_grid_np, y_grid_np, z_grid_np = [g[b].cpu().numpy() for g in [x_grid, y_grid, z_grid]]
             mask_left_np, mask_right_np = mask_left.cpu().numpy(), mask_right.cpu().numpy()
 
             # set up the visualization
             vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
-                                          forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                                          forces=(F_spring, F_friction),
                                           x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np,
                                           mask_left=mask_left_np, mask_right=mask_right_np)
 
             # visualize animated trajectory
             animate_trajectory(states=(xs, R, xds, omegas, x_points),
-                               forces=(F_spring, F_friction, F_thrust_left, F_thrust_right),
+                               forces=(F_spring, F_friction),
                                z_grid=z_grid_np,
-                               mask_left=mask_left_np, mask_right=mask_right_np,
                                vis_cfg=vis_cfg, step=10)
 
 
@@ -39,7 +38,7 @@ def optimize_heightmap():
     dphys_cfg.traj_sim_time = T
     n_iters = 100
     lr = 0.01
-    vis = False
+    vis = True
 
     # rigid body parameters
     x_points = torch.as_tensor(dphys_cfg.robot_points)

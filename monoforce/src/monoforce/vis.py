@@ -57,55 +57,39 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid, mask_left, mask_
     mlab.clf()
     visu_traj = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=2.0)
     if forces is not None:
-        F_spring, F_friction, F_thrust_left, F_thrust_right = forces
+        F_spring, F_friction = forces
         visu_Ns = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
                                 F_spring[0, :, 0].mean(), F_spring[0, :, 1].mean(), F_spring[0, :, 2].mean(),
                                 line_width=4.0, scale_factor=0.005, color=(0, 0, 1))
         visu_Frs = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
                                  F_friction[0, :, 0].mean(), F_friction[0, :, 1].mean(), F_friction[0, :, 2].mean(),
                                  line_width=4.0, scale_factor=0.005, color=(0, 1, 0))
-        visu_F_th_l = mlab.quiver3d(x_points[0, mask_left].mean(axis=0)[0], x_points[0, mask_left].mean(axis=0)[1],
-                                    x_points[0, mask_left].mean(axis=0)[2],
-                                    F_thrust_left[0, 0], F_thrust_left[0, 1], F_thrust_left[0, 2],
-                                    line_width=4.0, scale_factor=0.005, color=(1, 0, 0))
-        visu_F_th_r = mlab.quiver3d(x_points[0, mask_right].mean(axis=0)[0], x_points[0, mask_right].mean(axis=0)[1],
-                                    x_points[0, mask_right].mean(axis=0)[2],
-                                    F_thrust_right[0, 0], F_thrust_right[0, 1], F_thrust_right[0, 2],
-                                    line_width=4.0, scale_factor=0.005, color=(1, 0, 0))
     else:
-        visu_Ns = visu_Frs = visu_F_th_l = visu_F_th_r = None
+        visu_Ns = visu_Frs = None
     visu_terrain = mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
     visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
                                scale_factor=0.1, color=(0, 0, 0))
     # mlab.view(azimuth=150, elevation=80, distance=16.0)
-    return visu_traj, visu_Ns, visu_Frs, visu_F_th_l, visu_F_th_r, visu_terrain, visu_robot
+    return visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot
 
 
-def animate_trajectory(states, forces, z_grid, mask_left, mask_right, vis_cfg, step=1):
+def animate_trajectory(states, forces, z_grid, vis_cfg, step=1):
     # unpack the states and forces
     xs, R, xds, omegas, x_points = states
 
     # unpack the visualization configuration
-    visu_traj, visu_Ns, visu_Frs, visu_F_th_l, visu_F_th_r, visu_terrain, visu_robot = vis_cfg
+    visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot = vis_cfg
 
     visu_terrain.mlab_source.scalars = z_grid
     for t in range(len(xs)):
         visu_robot.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2])
         if forces is not None:
-            F_spring, F_friction, F_thrust_left, F_thrust_right = forces
+            F_spring, F_friction = forces
             visu_Ns.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
                                     u=F_spring[t, :, 0].mean(), v=F_spring[t, :, 1].mean(), w=F_spring[t, :, 2].mean())
             visu_Frs.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
                                      u=F_friction[t, :, 0].mean(), v=F_friction[t, :, 1].mean(),
                                      w=F_friction[t, :, 2].mean())
-            visu_F_th_l.mlab_source.set(x=x_points[t, mask_left].mean(axis=0)[0],
-                                        y=x_points[t, mask_left].mean(axis=0)[1],
-                                        z=x_points[t, mask_left].mean(axis=0)[2],
-                                        u=F_thrust_left[t, 0], v=F_thrust_left[t, 1], w=F_thrust_left[t, 2])
-            visu_F_th_r.mlab_source.set(x=x_points[t, mask_right].mean(axis=0)[0],
-                                        y=x_points[t, mask_right].mean(axis=0)[1],
-                                        z=x_points[t, mask_right].mean(axis=0)[2],
-                                        u=F_thrust_right[t, 0], v=F_thrust_right[t, 1], w=F_thrust_right[t, 2])
         visu_traj.mlab_source.set(x=xs[:, 0], y=xs[:, 1], z=xs[:, 2])
         if t % step == 0:
             path = os.path.join(os.path.dirname(__file__), '../gen/robot_control')

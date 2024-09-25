@@ -8,7 +8,7 @@ from mayavi import mlab
 import argparse
 from monoforce.config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, vw_to_track_vel
-from monoforce.models.terrain_encoder.model import compile_model
+from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
 from monoforce.vis import visualize_imgs
@@ -67,20 +67,12 @@ class MonoForce:
         self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
 
         self.model_path = model_path
-        self.terrain_encoder = self.load_terrain_encoder()
+        self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
 
         # load calibration
         self.calib = load_calib(calib_path=self.calib_path)
         self.cameras = self.get_cameras() if cameras is None else cameras
         assert len(self.cameras) > 0, 'No camera calibration found in path %s' % self.calib_path
-
-    def load_terrain_encoder(self):
-        model = compile_model(self.lss_config['grid_conf'], self.lss_config['data_aug_conf'], outC=1)
-        print('Loading model from: %s' % self.model_path)
-        model.load_state_dict(torch.load(self.model_path, map_location=self.device))
-        model.eval()
-        model.to(self.device)
-        return model
 
     def poses_from_states(self, states):
         xyz = states[0].squeeze().cpu().numpy()

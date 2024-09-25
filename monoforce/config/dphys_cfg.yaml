@@ -9,7 +9,7 @@ k_damping: 894.4271909999159
 k_friction: 0.5
 k_stiffness: 5000.0
 n_sim_trajs: 32
-omega_max: 1.2
+omega_max: 0.4
 robot_I:
 - - 30.0
   - -8.940696716308594e-07
@@ -108,4 +108,4 @@ robot_size:
 - 1.0
 - 0.5
 traj_sim_time: 5.0
-vel_max: 1.5
+vel_max: 1.2

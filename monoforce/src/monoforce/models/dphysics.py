@@ -117,41 +117,25 @@ class DPhysics(torch.nn.Module):
         assert F_spring.shape == (B, n_pts, 3)
 
         # friction forces: https://en.wikipedia.org/wiki/Friction
-        N = torch.norm(F_spring, dim=2)
-        xd_points_tau = xd_points - xd_points_n * n  # tangential velocities at the contact points
-        tau = normailized(xd_points_tau)  # tangential directions of the velocities
-        F_friction = -friction_points * N.unsqueeze(2) * tau  # F_fr = -k_fr * N * tau
+        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
+        N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
+        v_l = (u_left.unsqueeze(1) * thrust_dir).unsqueeze(1)  # left track velocity
+        v_r = (u_right.unsqueeze(1) * thrust_dir).unsqueeze(1)  # right track velocity
+        F_friction = torch.zeros_like(F_spring)  # initialize friction forces
+        # F_fr = -mu * N * tanh(v_cmd - xd_points)  # left and right track friction forces
+        F_friction[:, mask_left] = (friction_points * N.unsqueeze(2) * torch.tanh(v_l - xd_points))[:, mask_left]
+        F_friction[:, mask_right] = (friction_points * N.unsqueeze(2) * torch.tanh(v_r - xd_points))[:, mask_right]
         assert F_friction.shape == (B, n_pts, 3)
 
-        # thrust forces: left and right
-        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
-        x_left = x_points[:, mask_left].mean(dim=1)  # left thrust is applied at the mean of the left points
-        x_right = x_points[:, mask_right].mean(dim=1)  # right thrust is applied at the mean of the right points
-        xd_left = xd_points[:, mask_left].mean(dim=1)  # mean velocity of the left points
-        xd_right = xd_points[:, mask_right].mean(dim=1)  # mean velocity of the right points
-        assert x_left.shape == x_right.shape == xd_left.shape == xd_right.shape == (B, 3)
-
-        # compute thrust forces in a way that left part of the robot moves with the desired velocity u_left and right part with u_right
-        v_l = (xd_left * thrust_dir).sum(dim=-1)  # v_l = xd_l . thrust_dir
-        v_r = (xd_right * thrust_dir).sum(dim=-1)  # v_r = xd_r . thrust_dir
-        F_thrust_left = (N.mean(dim=1) * (u_left - v_l)).unsqueeze(1) * thrust_dir * in_contact[:, mask_left].mean(dim=1)  # F_l = N * (u_l - v_l) * thrust_dir
-        F_thrust_right = (N.mean(dim=1) * (u_right - v_r)).unsqueeze(1) * thrust_dir * in_contact[:, mask_right].mean(dim=1)  # F_r = N * (u_r - v_r) * thrust_dir
-
-        assert F_thrust_left.shape == (B, 3) == F_thrust_right.shape
-        torque_left = torch.cross(x_left - x, F_thrust_left)  # M_l = (x_l - x) x F_l
-        torque_right = torch.cross(x_right - x, F_thrust_right)  # M_r = (x_r - x) x F_r
-        torque_thrust = torque_left + torque_right  # M_thrust = M_l + M_r
-        assert torque_thrust.shape == (B, 3)
-
         # rigid body rotation: M = sum(r_i x F_i)
-        torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1) + torque_thrust
+        torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
 
         # motion of the cog
         F_grav = torch.tensor([[0.0, 0.0, -m * self.g]], device=self.device)  # F_grav = [0, 0, -m * g]
-        F_cog = F_grav + F_spring.mean(dim=1) + F_friction.mean(dim=1) + F_thrust_left + F_thrust_right  # ma = sum(F_i)
+        F_cog = F_grav + F_spring.mean(dim=1) + F_friction.mean(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
 
@@ -160,7 +144,7 @@ class DPhysics(torch.nn.Module):
         assert xd_points.shape == (B, n_pts, 3)
 
         dstate = (xd, xdd, dR, omega_d, xd_points)
-        forces = (F_spring, F_friction, F_thrust_left, F_thrust_right)
+        forces = (F_spring, F_friction)
 
         return dstate, forces
 
@@ -412,7 +396,7 @@ class DPhysics(torch.nn.Module):
 
         # dynamics of the rigid body
         Xs, Xds, Rs, Omegas, Omega_ds, X_points = [], [], [], [], [], []
-        F_springs, F_frictions, F_thrusts_left, F_thrusts_right = [], [], [], []
+        F_springs, F_frictions = [], []
         ts = range(N_ts)
         B, N_ts, N_pts = x.shape[0], len(ts), x_points.shape[1]
         for t in ts:
@@ -431,7 +415,7 @@ class DPhysics(torch.nn.Module):
             # unpack state, its differential, and forces
             x, xd, R, omega, x_points = state
             _, xdd, dR, omega_d, xd_points = dstate
-            F_spring, F_friction, F_thrust_left, F_thrust_right = forces
+            F_spring, F_friction = forces
 
             # save states
             Xs.append(x)
@@ -443,8 +427,6 @@ class DPhysics(torch.nn.Module):
             # save forces
             F_springs.append(F_spring)
             F_frictions.append(F_friction)
-            F_thrusts_left.append(F_thrust_left)
-            F_thrusts_right.append(F_thrust_right)
 
         # to tensors
         Xs = torch.stack(Xs).transpose(1, 0)
@@ -461,13 +443,9 @@ class DPhysics(torch.nn.Module):
         assert F_springs.shape == (B, N_ts, N_pts, 3)
         F_frictions = torch.stack(F_frictions).transpose(1, 0)
         assert F_frictions.shape == (B, N_ts, N_pts, 3)
-        F_thrusts_left = torch.stack(F_thrusts_left).transpose(1, 0)
-        assert F_thrusts_left.shape == (B, N_ts, 3)
-        F_thrusts_right = torch.stack(F_thrusts_right).transpose(1, 0)
-        assert F_thrusts_right.shape == (B, N_ts, 3)
 
         States = Xs, Xds, Rs, Omegas, X_points
-        Forces = F_springs, F_frictions, F_thrusts_left, F_thrusts_right
+        Forces = F_springs, F_frictions
 
         return States, Forces
 

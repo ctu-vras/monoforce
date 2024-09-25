@@ -395,7 +395,7 @@ class DiffPhysicsTorch(DiffPhysBase):
         # compute path costs
         # TODO: think about a better way to compute path costs
         #  (maybe normal forces should be aligned with Z axis or be consistent)
-        F_springs, F_frictions, _, _ = forces
+        F_springs, F_frictions = forces
         assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
         assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
         # path_costs = torch.norm(F_springs, dim=-1).nanmean(dim=-1).nanmean(dim=-1)
