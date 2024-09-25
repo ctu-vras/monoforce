@@ -2,212 +2,336 @@
 
 import os
 import torch
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 import numpy as np
+from torch.utils.data import DataLoader
+from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
+from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
 from monoforce.config import DPhysConfig
-from monoforce.utils import read_yaml
-from monoforce.models.terrain_encoder.lss import load_model
-from monoforce.utils import compile_data
-from monoforce.models.terrain_encoder.utils import denormalize_img
+from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+import matplotlib.pyplot as plt
+import argparse
 
 
-# Set random seed for reproducibility
-torch.manual_seed(42)
 np.random.seed(42)
-
-# Training parameters
-batch_size = 64
-num_epochs = 1000
-lr = 1e-4
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-robot = 'tradr2'
-small_data = False
+torch.manual_seed(42)
 
 
-def monoforce_forward(img_data, controls, lss, dphysics):
-    # terrain encoder forward pass
-    with torch.no_grad():
-        voxel_feats = lss.get_voxels(*img_data)
-        hm_feats = lss.bevencode.backbone(voxel_feats)
-        height_pred_geom = lss.bevencode.up_geom(hm_feats)
-        height_pred_diff = lss.bevencode.up_diff(hm_feats)
-    friction_pred = lss.bevencode.up_friction(hm_feats)
+def arg_parser():
+    parser = argparse.ArgumentParser(description='Train Friction head of the MonoForce model')
+    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
+    parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
+    parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
+    parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
+    parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
+    parser.add_argument('--dphys_cfg_path', type=str, default='../config/dphys_cfg.yaml', help='Path to DPhys config')
+    parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
+    parser.add_argument('--pretrained_model_path', type=str, default='../config/weights/lss/lss_robingas_tradr.pt', help='Path to pretrained model')
+    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
+    parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
 
-    # predict states with differentiable physics
-    states_pred, _ = dphysics(z_grid=height_pred_geom.squeeze(1),
-                              controls=controls,
-                              friction=friction_pred.squeeze(1))
-
-    return height_pred_geom, height_pred_diff, friction_pred, states_pred
+    return parser.parse_args()
 
 
-def main():
-    # load configs: Differentiable Physics
-    dphys_cfg = DPhysConfig()
-    dphys_config_path = '../config/dphys_cfg.yaml'
-    assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
-    dphys_cfg.from_yaml(dphys_config_path)
+class Trainer:
+    """
+    Trainer for MonoForce model Friction head
 
-    # load configs: LSS (Terrain Encoder)
-    lss_config_path = f'../config/lss_cfg_{robot}.yaml'
-    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
-    lss_cfg = read_yaml(lss_config_path)
-    pretrained_model_path = f'../config/weights/lss/lss_robingas_{robot}.pt'
+    Args:
+    dataset: str, dataset name
+    robot: str, robot name
+    dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
+    lss_cfg: dict, LSS model configuration
+    bsz: int, batch size
+    lr: float, learning rate
+    weight_decay: float, weight decay
+    nepochs: int, number of epochs
+    pretrained_model_path: str, path to pretrained model
+    log_dir: str, path to log directory
+    debug: bool, debug mode: use small datasets
+    vis: bool, visualize training samples
+    """
 
-    # Load Differentiable Physics
-    dphysics = DPhysics(dphys_cfg, device=device)
+    def __init__(self,
+                 dataset,
+                 robot,
+                 dphys_cfg,
+                 lss_cfg,
+                 bsz=1,
+                 lr=1e-5,
+                 nepochs=1000,
+                 pretrained_model_path=None,
+                 debug=False,
+                 vis=False):
 
-    # Load LSS (Terrain Encoder)
-    terrain_encoder = load_model(modelf=pretrained_model_path, lss_cfg=lss_cfg, device=device)
-    terrain_encoder.to(device)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.dataset = dataset
+        assert dataset in ['rellis3d', 'robingas'], 'Unknown dataset: %s' % dataset
+        self.robot = robot
+        assert robot in ['husky', 'tradr', 'tradr2', 'husky_oru', 'marv'], 'Unknown robot: %s' % robot
+        self.dphys_cfg = dphys_cfg
+        self.lss_cfg = lss_cfg
 
-    # Load dataset
-    train_ds, val_ds = compile_data(dataset='robingas',
-                                    robot=robot,
-                                    lss_cfg=lss_cfg,
-                                    dphys_cfg=dphys_cfg,
-                                    small_data=small_data)
-    print('Train dataset:', len(train_ds))
-    print('Validation dataset:', len(val_ds))
+        self.nepochs = nepochs
+        self.min_loss = np.inf
+        self.min_train_loss = np.inf
+        self.train_counter = 0
+        self.val_counter = 0
 
-    # Create dataloaders
-    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis)
+        self.terrain_encoder = load_model(modelf=pretrained_model_path, lss_cfg=self.lss_cfg, device=self.device)
+        self.terrain_encoder.train()
+        self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
-    # Training: Friction Head only
-    # https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
-    for p in terrain_encoder.parameters():
-        p.requires_grad = False
-    for p in terrain_encoder.bevencode.up_friction.parameters():
-        p.requires_grad = True
-    optimizer = torch.optim.Adam(terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
+        # Training: Friction Head only
+        # https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
+        for p in self.terrain_encoder.parameters():
+            p.requires_grad = False
+        for p in self.terrain_encoder.bevencode.up_friction.parameters():
+            p.requires_grad = True
+        self.optimizer = torch.optim.Adam(self.terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
 
-    # tensorboard writer
-    log_dir = f'../config/tb_runs/lss_robingas_{robot}_friction'
-    os.makedirs(log_dir, exist_ok=True)
-    writer = SummaryWriter(log_dir=log_dir)
-    counter = 0
+        self.log_dir = os.path.join('../config/tb_runs',
+                                    f'lss_{dataset}_{robot}_friction/{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
-    # train loop
-    loss_min = np.inf
-    for epoch in range(num_epochs):
-        # epoch loop
-        terrain_encoder = terrain_encoder.train()
-        loss_epoch = 0
-        for batch in tqdm(train_dl, total=len(train_dl)):
-            batch = [b.to(device) for b in batch]
+        self.writer = SummaryWriter(log_dir=self.log_dir)
+        # save configs to log dir
+        write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
+        write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
-            # unpack batch
+    def create_dataloaders(self, bsz=1, debug=False, vis=False):
+        # create dataset for LSS model training
+        train_ds, val_ds = compile_data(dataset=self.dataset, robot=self.robot,
+                                        dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
+                                        small_data=debug, vis=vis)
+
+        # create dataloaders
+        train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False)
+
+        return train_loader, val_loader
+
+    def physics_loss(self, heightmap, friction, control_ts, controls, traj_ts, states):
+        # predict states
+        states_pred, _ = self.dphysics(z_grid=heightmap, controls=controls, friction=friction)
+
+        # unpack states
+        X, Xd, R, Omega = states
+        X_pred, Xd_pred, R_pred, Omega_pred, _ = states_pred
+
+        # find the closest timesteps in the trajectory to the ground truth timesteps
+        ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+
+        # compute the loss as the mean squared error between the predicted and ground truth poses
+        X_pred_traj_ts = X_pred[torch.arange(X_pred.shape[0]).unsqueeze(1), ts_ids]
+        loss = torch.nn.functional.mse_loss(X_pred_traj_ts, X)
+
+        return loss
+
+    def epoch(self, train=True):
+        loader = self.train_loader if train else self.val_loader
+        counter = self.train_counter if train else self.val_counter
+
+        if train:
+            self.terrain_encoder.train()
+        else:
+            self.terrain_encoder.eval()
+
+        epoch_loss = 0.0
+        for batch in tqdm(loader, total=len(loader)):
+            batch = [torch.as_tensor(b, device=self.device) for b in batch]
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              control_ts, controls,
              traj_ts, Xs, Xds, Rs, Omegas) = batch
-            # monoforce inputs
-            img_data = [imgs, rots, trans, intrins, post_rots, post_trans]
 
-            # forward pass
-            height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, terrain_encoder, dphysics)
+            if train:
+                self.optimizer.zero_grad()
 
-            # unpack states
-            Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
+            # terrain encoder forward pass
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            with torch.no_grad():
+                voxel_feats = self.terrain_encoder.get_voxels(*inputs)
+                hm_feats = self.terrain_encoder.bevencode.backbone(voxel_feats)
+                height_pred_geom = self.terrain_encoder.bevencode.up_geom(hm_feats)
+                height_pred_diff = self.terrain_encoder.bevencode.up_diff(hm_feats)
+                height_pred_terrain = height_pred_geom - height_pred_diff
+            friction_pred = self.terrain_encoder.bevencode.up_friction(hm_feats)
 
-            # find the closest timesteps in the trajectory to the ground truth timesteps
-            ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+            # physics loss: difference between predicted and ground truth states
+            loss = self.physics_loss(heightmap=height_pred_terrain.squeeze(1), friction=friction_pred.squeeze(1),
+                                     control_ts=control_ts, controls=controls,
+                                     traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas])
 
-            # compute the loss as the mean squared error between the predicted and ground truth poses
-            loss = torch.nn.functional.mse_loss(Xs_pred[torch.arange(Xs_pred.shape[0]).unsqueeze(1), ts_ids], Xs)
+            if train:
+                loss.backward()
+                self.optimizer.step()
 
-            # tensorboard
-            writer.add_scalar('Train loss (iter)', loss.item(), counter)
+            if torch.isnan(loss):
+                print('Loss is NaN')
+                continue
+            epoch_loss += loss.item() / len(loader)
             counter += 1
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
-            # accumulate loss
-            loss_epoch += loss.item()
+        return epoch_loss, counter
 
-            # backpropagate
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+    def train(self):
+        for e in range(self.nepochs):
+            # training epoch
+            train_loss, self.train_counter = self.epoch(train=True)
+            print('Epoch:', e, 'Train loss:', train_loss)
+            self.writer.add_scalar('train/epoch_loss', train_loss, e)
 
-        # print epoch loss
-        loss_epoch /= len(train_dl)
-        print('Train epoch:', epoch, 'Mean loss:', loss_epoch)
-        writer.add_scalar('Mean train loss (epoch)', loss_epoch, epoch)
+            if train_loss < self.min_train_loss:
+                with torch.no_grad():
+                    self.min_train_loss = train_loss
+                    print('Saving train model...')
+                    self.terrain_encoder.eval()
+                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
 
-        # save model if loss is minimum
-        if loss_epoch < loss_min:
-            loss_min = loss_epoch
-            print('Saving model...')
-            torch.save(terrain_encoder.state_dict(), os.path.join(log_dir, 'lss.pt'))
+                    # visualize training predictions
+                    fig = self.vis_pred(self.train_loader)
+                    self.writer.add_figure('train/prediction', fig, e)
 
-        # evaluate model and visualize predictions
+            # validation epoch
+            with torch.no_grad():
+                val_loss, self.val_counter = self.epoch(train=False)
+                print('Epoch:', e, 'Validation loss:', val_loss)
+                self.writer.add_scalar('val/epoch_loss', val_loss, e)
+                if val_loss < self.min_loss:
+                    self.min_loss = val_loss
+                    print('Saving model...')
+                    self.terrain_encoder.eval()
+                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
+
+                    # visualize validation predictions
+                    fig = self.vis_pred(self.val_loader)
+                    self.writer.add_figure('val/prediction', fig, e)
+
+    def vis_pred(self, loader):
+        fig = plt.figure(figsize=(20, 12))
+        ax1 = fig.add_subplot(341)
+        ax2 = fig.add_subplot(342)
+        ax3 = fig.add_subplot(343)
+        ax4 = fig.add_subplot(344)
+        ax5 = fig.add_subplot(345)
+        ax6 = fig.add_subplot(346)
+        ax7 = fig.add_subplot(347)
+        ax8 = fig.add_subplot(348)
+        ax9 = fig.add_subplot(349)
+        ax10 = fig.add_subplot(3, 4, 10)
+        ax11 = fig.add_subplot(3, 4, 11)
+
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11]
+        for ax in axes:
+            ax.clear()
+
+        # visualize training predictions
         with torch.no_grad():
-            # evaluate model
-            terrain_encoder = terrain_encoder.eval()
-
-            # validation data sample
-            batch_val = next(iter(val_dl))
-            batch_val = [b.to(device) for b in batch_val]
-
             # unpack batch
+            batch = next(iter(loader))
+            batch = [torch.as_tensor(b, device=self.device) for b in batch]
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
-             control_ts, controls,
-             traj_ts, Xs, Xds, Rs, Omegas) = batch_val
-            # monoforce inputs
-            img_data = [imgs, rots, trans, intrins, post_rots, post_trans]
+             ts_controls, controls,
+             ts_traj, Xs, Xds, Rs, Omegas) = batch
 
-            # forward pass
-            height_pred_geom, height_pred_diff, friction_pred, states_pred = monoforce_forward(img_data, controls, terrain_encoder, dphysics)
-            # print('Heightmap mean:', height_pred_geom.mean().item(), 'Friction mean:', friction_pred.mean().item())
+            # predict height maps
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
+            height_pred_geom, height_pred_diff, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
+            height_pred_terrain = height_pred_geom - height_pred_diff
 
-            # unpack states
-            Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
+            # predict states
+            states_pred, _ = self.dphysics(z_grid=height_pred_terrain.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
 
-            # find the closest timesteps in the trajectory to the ground truth timesteps
-            ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+            batch_i = 0
+            height_pred_geom = height_pred_geom[batch_i, 0].cpu()
+            height_pred_terrain = height_pred_terrain[batch_i, 0].cpu()
+            height_pred_diff = height_pred_diff[batch_i, 0].cpu()
+            height_geom = hm_geom[batch_i, 0].cpu()
+            height_terrain = hm_terrain[batch_i, 0].cpu()
+            friction_pred = friction_pred[batch_i, 0].cpu()
+            xyz_pred = states_pred[0][batch_i].cpu().numpy()
+            xyz = Xs[batch_i].cpu().numpy()
 
-            # compute the loss as the mean squared error between the predicted and ground truth poses
-            loss_val = torch.nn.functional.mse_loss(Xs_pred[torch.arange(Xs_pred.shape[0]).unsqueeze(1), ts_ids], Xs)
-            print('Validation sample Loss:', loss_val.item())
-            writer.add_scalar('Validation loss (epoch)', loss_val.item(), epoch)
+            # get height map points
+            z_grid = height_pred_terrain
+            x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+            y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+            hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+            hm_points = hm_points.view(-1, 3).T
 
-            # visualize
-            fig = plt.figure(figsize=(20, 4))
-            plt.subplot(1, 5, 1)
-            plt.imshow(denormalize_img(imgs[0, 0]))
-            plt.title('Input Image')
-            plt.axis('off')
+            # plot images with projected height map points
+            inputs = [i.cpu() for i in inputs]
+            imgs, rots, trans, intrins, post_rots, post_trans = inputs
+            for imgi in range(imgs.shape[1])[:4]:
+                ax = axes[imgi]
+                img = imgs[batch_i, imgi]
+                img = denormalize_img(img[:3])
+                cam_pts = ego_to_cam(hm_points, rots[batch_i, imgi], trans[batch_i, imgi], intrins[batch_i, imgi])
+                img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+                mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
+                plot_pts = post_rots[batch_i, imgi].matmul(cam_pts) + post_trans[batch_i, imgi].unsqueeze(1)
+                ax.imshow(img)
+                ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
+                           cmap='jet', vmin=-1.0, vmax=1.0)
+                ax.axis('off')
 
-            plt.subplot(1, 5, 2)
-            plt.imshow(height_pred_geom[0, 0].cpu().numpy().T,  origin='lower', vmin=-1, vmax=1, cmap='jet')
-            plt.colorbar()
-            plt.title('Predicted Heightmap')
+            ax5.set_title('Prediction: Geom')
+            ax5.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            plt.subplot(1, 5, 3)
-            plt.imshow(hm_geom[0, 0].cpu().numpy().T, origin='lower', vmin=-1, vmax=1, cmap='jet')
-            plt.colorbar()
-            plt.title('Ground Truth Heightmap')
+            ax6.set_title('Label: Geom')
+            ax6.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            plt.subplot(1, 5, 4)
-            plt.imshow(friction_pred[0, 0].cpu().numpy(), origin='lower', vmin=0, vmax=1, cmap='jet')
-            plt.colorbar()
-            plt.title('Predicted Friction')
+            ax7.set_title('Prediction: Terrain')
+            ax7.imshow(height_pred_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            plt.subplot(1, 4, 4)
-            plt.plot(Xs[0, :, 0].cpu().numpy(), Xs[0, :, 1].cpu().numpy(), 'r', label='GT poses')
-            plt.plot(Xs_pred[0, :, 0].cpu().numpy(), Xs_pred[0, :, 1].cpu().numpy(), 'b', label='Pred poses')
-            plt.grid()
-            plt.axis('equal')
-            plt.legend()
-            plt.title('Trajectory')
+            ax8.set_title('Label: Terrain')
+            ax8.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            # tensorboard
-            writer.add_figure('Validation sample', fig, epoch)
+            ax9.set_title('Prediction: HM Diff')
+            ax9.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+            ax10.set_title('Friction')
+            ax10.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0)
+
+            ax11.set_title('Trajectories')
+            ax11.plot(xyz[:, 0], xyz[:, 1], 'kx', label='GT')
+            ax11.plot(xyz_pred[:, 0], xyz_pred[:, 1], 'r.', label='Pred')
+            ax11.grid()
+            ax11.axis('equal')
+            ax11.legend()
+
+            return fig
+
+
+def main():
+    args = arg_parser()
+    print(args)
+
+    # load configs: DPhys
+    dphys_cfg = DPhysConfig()
+    dphys_config_path = args.dphys_cfg_path
+    assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
+    dphys_cfg.from_yaml(dphys_config_path)
+    # load configs: LSS
+    lss_config_path = args.lss_cfg_path
+    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+    lss_cfg = read_yaml(lss_config_path)
+
+    # create trainer
+    trainer = Trainer(dataset=args.dataset, robot=args.robot,
+                      dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
+                      bsz=args.bsz, nepochs=args.nepochs,
+                      lr=args.lr, pretrained_model_path=args.pretrained_model_path,
+                      debug=args.debug, vis=args.vis)
+    trainer.train()
 
 
 if __name__ == '__main__':

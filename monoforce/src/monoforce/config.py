@@ -65,14 +65,14 @@ class DPhysConfig:
         self.h_max_above_ground = 1.0  # above ground frame (base_footprint)
         self.k_stiffness = 5_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
-        self.k_friction = 0.5
+        self.k_friction = 1.0
         self.hm_interp_method = None
 
         # trajectory shooting parameters
         self.traj_sim_time = 5.0
         self.dt = 0.01
         self.n_sim_trajs = 32
-        self.integration_mode = 'euler'  # 'euler', 'rk2', 'rk4'
+        self.integration_mode = 'rk4'  # 'euler', 'rk2', 'rk4'
 
     def rigid_body_geometry(self, from_mesh=False):
         """

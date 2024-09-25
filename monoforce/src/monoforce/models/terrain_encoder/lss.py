@@ -121,7 +121,7 @@ class BevEncode(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
-            nn.Sigmoid(),
+            nn.ReLU(inplace=True),
         )
 
     def backbone(self, x):
