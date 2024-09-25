@@ -35,10 +35,10 @@
             -->
             max_path_dist: [2.0, 2.5, 2.5, 2.5]
             look_ahead: $(arg look_ahead)
-            max_speed: 0.2
+            max_speed: 0.5
             allow_backward: true
             max_force_through_speed: 0.2
-            max_angular_rate: 0.2
+            max_angular_rate: 0.3
             keep_path: $(arg keep_path)
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
             clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]

@@ -1,21 +1,3 @@
-- BoundingBoxDataPointsFilter:
-    xMin: -1.5
-    xMax: 0.5
-    yMin: -1
-    yMax: 1
-    zMin: -1
-    zMax: 0.5
-    removeInside: 1
-
-- BoundingBoxDataPointsFilter:
-    xMin: -6
-    xMax: -1.5
-    yMin: -2.5
-    yMax: 2.5
-    zMin: -1
-    zMax: 1
-    removeInside: 1
-
 - RandomSamplingDataPointsFilter:
     prob: 0.8
 

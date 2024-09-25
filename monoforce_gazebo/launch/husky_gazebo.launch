@@ -6,7 +6,8 @@
   <arg name="headless" default="true"/>
   <arg name="gui" default="false"/>
   <arg name="rviz" default="false"/>
-  <arg name="enable_ekf" default="$(optenv ENABLE_EKF true)"/>
+  <arg name="enable_ekf" default="true"/>
+  <arg name="publish_gt_odom" default="false"/>
   <!-- Optionally disable teleop control -->
   <arg name="joystick" default="false" />
   <!-- Robot pose -->
@@ -27,11 +28,19 @@
   </include>
 
   <!-- Start EKF for localization -->
-  <group if="$(arg enable_ekf)" >
-    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization">
-      <rosparam command="load" file="$(find husky_control)/config/localization.yaml" />
-    </node>
-  </group>
+  <node if="$(arg enable_ekf)" pkg="robot_localization" type="ekf_localization_node" name="ekf_localization">
+    <rosparam command="load" file="$(find monoforce_gazebo)/config/localization.yaml" />
+  </node>
+
+  <!-- Ground Truth Odometry -->
+  <node if="$(arg publish_gt_odom)" pkg="monoforce_gazebo" type="robot_gt_pose_to_odom" name="robot_gt_pose_to_odom" output="screen">
+    <rosparam subst_value="true">
+      static_frame: odom
+      robot_frame: base_link
+      robot_name: husky
+      rate: 50
+    </rosparam>
+  </node>
 
   <!-- Start joystick teleop -->
   <include if="$(arg joystick)" file="$(find husky_control)/launch/teleop.launch">

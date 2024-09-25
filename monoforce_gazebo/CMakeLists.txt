@@ -24,6 +24,6 @@ install(DIRECTORY worlds
 
 install(
     PROGRAMS
-        nodes/robot_gt_pose_to_tf
+        nodes/robot_gt_pose_to_odom
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
