@@ -8,7 +8,7 @@
 
 Examples of predicted trajectories and autonomous traversal through vegetation:
 
-[![](https://img.youtube.com/vi/JGi-OzTBG1k/0.jpg)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
+[![](./monoforce/docs/imgs/demo_oru.png)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
 
 Input: onboard camera images:
 
@@ -31,6 +31,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 - [Differentiable Physics](./monoforce/docs/DPHYS.md)
 - [Running](#running)
 - [ROS Integration](#ros-integration)
+- [Terrain Properties Prediction](#terrain-properties-prediction)
 - [Navigation](#navigation)
 - [Citation](#citation)
 
@@ -52,18 +53,12 @@ python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 
 
 For example if you want to test the model with the provided images from the RobinGas dataset:
 ```commandline
-cd monoforce/
-python scripts/run --img-paths config/data_sample/tradr/images/1666267171_394104004_camera_front.png \
-                               config/data_sample/tradr/images/1666267171_394104004_camera_left.png \
-                               config/data_sample/tradr/images/1666267171_394104004_camera_right.png \
-                               config/data_sample/tradr/images/1666267171_394104004_camera_rear_left.png \
-                               config/data_sample/tradr/images/1666267171_394104004_camera_rear_right.png \
-                   --cameras camera_front camera_left camera_right camera_rear_left camera_rear_right \
-                   --calibration-path config/data_sample/tradr/calibration/ \
-                   --lss_cfg_path config/lss_cfg_tradr.yaml --model_path config/weights/lss/lss_robingas_tradr.pt --dphys_cfg_path config/dphys_cfg.yaml \
-                   --linear-vel 1.0 --angular-vel -0.1
+cd monoforce/scripts/
+./run.sh
 ```
 Please, refer to the [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
+
+## ROS Integration
 
 If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
 ```commandline
@@ -71,11 +66,12 @@ docker pull agishrus/monoforce
 cd monoforce_demos/scripts/
 ./demo.sh
 ```
+or equivalently:
+```commandline
+roslaunch monoforce_demos monoforce_robingas.launch
+```
 
 <img src="./monoforce/docs/imgs/monoforce.gif" width="800"/>
-
-
-## ROS Integration
 
 We provide a ROS nodes for both the trained Terrain Encoder model and the Differentiable Physics module.
 They are integrated into the launch file:
@@ -84,9 +80,32 @@ They are integrated into the launch file:
 roslaunch monoforce monoforce.launch
 ```
 
+## Terrain Properties Prediction
+
+Except for the terrain shape (**Elevation**), we estimate the additional terrain properties:
+- **Friction**: The friction coefficient between the robot and the terrain.
+- **Stiffness**: The terrain stiffness.
+- **Damping**: The terrain damping.
+
+An example of the predicted elevation and friction maps:
+<p align="center">
+  <a href="https://drive.google.com/file/d/15Uo82hwE_OiRHsuGd0-9qcvrYOXsosn0/view?usp=drive_link">
+  <img src="./monoforce/docs/imgs/friction_prediction_tradr.png" alt="video link">
+  </a>
+</p>
+One can see that the model predicts the friction map with
+higher values for road areas and with the smaller value
+for grass where the robot could have less traction.
+
+Please refer to the
+[train_friction_head_with_pretrained_terrain_encoder.ipynb](./monoforce/examples/train_friction_head_with_pretrained_terrain_encoder.ipynb)
+notebook for the example of the terrain properties learning
+with the pretrained Terrain Encoder model and differentiable physics loss.
+
 ## Navigation
 
-Navigation method only using RGB images.
+Navigation method with MonoForce predicting terrain properties
+and possible robot trajectories from RGB images and control inputs.
 The package is used as robot-terrain interaction and path planning pipeline.
 
 <p align="center">
@@ -95,13 +114,16 @@ The package is used as robot-terrain interaction and path planning pipeline.
   </a>
 </p>
 
-Trajectories prediction is based on the
+We provide the two differentiable physics models for robot-terrain interaction prediction:
+- **Warp**: The model is based on the
 [NVIDIA/warp](https://github.com/NVIDIA/warp) and
 [ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
 packages.
-Take a look at the
-[trajectory_shooting_with_warp_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_warp_diff_physics.ipynb)
-notebook for the example of the trajectories prediction.
+Take a look at the [trajectory_shooting_with_warp_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_warp_diff_physics.ipynb)
+notebook for the example of the trajectory prediction.
+- **Pytorch**: The model is implemented in Pytorch. Please refer to the
+[trajectory_shooting_with_torch_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_torch_diff_physics.ipynb)
+notebook for the example of the trajectory prediction.
 
 Navigation consists of the following stages:
 - **Height map prediction**: The Terrain Encoder part of the MonoForce is used to estimate terrain properties.
@@ -109,6 +131,10 @@ Navigation consists of the following stages:
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
+To run the navigation pipeline in the Gazebo simulator:
+```commandline
+roslaunch monoforce_demos husky_gazebo_monoforce.launch
+```
 
 ## Citation
 

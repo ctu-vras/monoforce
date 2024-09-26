@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import yaml
@@ -65,7 +66,7 @@ class DPhysConfig:
         self.h_max_above_ground = 1.0  # above ground frame (base_footprint)
         self.k_stiffness = 5_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
-        self.k_friction = 1.0
+        self.k_friction = 0.5
         self.hm_interp_method = None
 
         # trajectory shooting parameters
@@ -81,11 +82,11 @@ class DPhysConfig:
         if from_mesh:
             import open3d as o3d
             robot = 'tradr'
-            mesh_file = f'../../data/meshes/{robot}.obj'
+            mesh_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../../data/meshes/{robot}.obj')
             mesh = o3d.io.read_triangle_mesh(mesh_file)
-            n_points = 128
-            x_points = np.asarray(mesh.sample_points_uniformly(n_points).points)
-            x_points = torch.tensor(x_points)
+            n_points = 32
+            x_points = np.asarray(mesh.sample_points_uniformly(n_points).points, dtype=np.float32)
+            x_points = torch.as_tensor(x_points)
         else:
             size = self.robot_size
             s_x, s_y = size
