@@ -161,10 +161,10 @@ class RobinGasBase(Dataset):
     def get_pose(self, i):
         return self.poses[i]
 
-    def get_track_vels(self, i):
+    def get_controls(self, i):
         if not os.path.exists(self.controls_path):
             print(f'Controls file {self.controls_path} does not exist')
-            return None
+            return None, None
 
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
         all_stamps, all_vels = data[:, 0], data[:, 1:]
@@ -772,7 +772,7 @@ class RobinGas(RobinGasBase):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        control_ts, controls = self.get_track_vels(i)
+        control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
         Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
@@ -797,7 +797,7 @@ class RobinGasPoints(RobinGas):
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        control_ts, controls = self.get_track_vels(i)
+        control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
         Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i, points_source=self.points_source)

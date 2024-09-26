@@ -144,7 +144,7 @@ def learn_terrain_properties():
             super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
 
         def get_sample(self, i):
-            control_ts, controls = self.get_track_vels(i)
+            control_ts, controls = self.get_controls(i)
             ts, states = self.get_states_traj(i)
             Xs, Xds, Rs, Omegas = states
             heightmap = self.get_geom_height_map(i)[0]

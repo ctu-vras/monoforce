@@ -140,6 +140,7 @@ class Trainer:
         else:
             self.terrain_encoder.eval()
 
+        max_grad_norm = 5.0
         epoch_loss = 0.0
         for batch in tqdm(loader, total=len(loader)):
             batch = [torch.as_tensor(b, device=self.device) for b in batch]
@@ -168,6 +169,7 @@ class Trainer:
 
             if train:
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.terrain_encoder.bevencode.up_friction.parameters(), max_grad_norm)
                 self.optimizer.step()
 
             if torch.isnan(loss):
