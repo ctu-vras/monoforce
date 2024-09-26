@@ -7,7 +7,8 @@ import torchvision
 from skimage.draw import polygon
 from torch.utils.data import Dataset
 from matplotlib import pyplot as plt
-from ..models.terrain_encoder.utils import img_transform, normalize_img, ego_to_cam, get_only_in_img_mask, sample_augmentation
+from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
+from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range
@@ -518,10 +519,10 @@ class RobinGas(RobinGasBase):
         img = Image.open(img_path)
         return img
 
-    def get_raw_img_size(self, i=0, cam=None):
-        if cam is None:
-            cam = self.camera_names[0]
-        img = self.get_raw_image(i, cam)
+    def get_raw_img_size(self, i=0, camera=None):
+        if camera is None:
+            camera = self.camera_names[0]
+        img = self.get_raw_image(i, camera)
         img = np.asarray(img)
         return img.shape[0], img.shape[1]
 
@@ -543,6 +544,20 @@ class RobinGas(RobinGasBase):
             img, K = undistort_image(img, K, D)
         return img, K
 
+    def get_cached_resized_img(self, i, camera=None):
+        cache_dir = os.path.join(self.path, 'images', 'resized')
+        os.makedirs(cache_dir, exist_ok=True)
+        cached_img_path = os.path.join(cache_dir, '%s_%s.png' % (self.ids[i], camera))
+        if os.path.exists(cached_img_path):
+            img = Image.open(cached_img_path)
+            K = self.calib[camera]['camera_matrix']['data']
+            K = np.asarray(K, dtype=np.float32).reshape((3, 3))
+            return img, K
+        img, K = self.get_image(i, camera)
+        img = resize_img(img)
+        img.save(cached_img_path)
+        return img, K
+
     def get_images_data(self, i):
         imgs = []
         rots = []
@@ -552,9 +567,8 @@ class RobinGas(RobinGasBase):
         intrins = []
 
         for cam in self.camera_names:
-            img, K = self.get_image(i, cam, undistort=False)
-            # if self.is_train:
-            #     img = self.img_augs(image=np.asarray(img))['image']
+            # img, K = self.get_image(i, cam, undistort=False)
+            img, K = self.get_cached_resized_img(i, cam)
 
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
@@ -693,7 +707,7 @@ class RobinGas(RobinGasBase):
             o3d.visualization.draw_geometries([hm_pcd])
         return global_hm_cloud
 
-    def get_terrain_height_map(self, i, cached=False, dir_name=None, points_source='lidar'):
+    def get_terrain_height_map(self, i, cached=True, dir_name=None, points_source='lidar'):
         """
         Get height map from trajectory points.
         :param i: index of the sample

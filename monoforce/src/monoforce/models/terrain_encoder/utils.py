@@ -111,6 +111,8 @@ normalize_img = torchvision.transforms.Compose((
                 torchvision.transforms.Normalize(mean=mean, std=std),
 ))
 
+resize_img = torchvision.transforms.Resize(512, interpolation=Image.BICUBIC)
+
 
 def sample_augmentation(lss_cfg, is_train=False):
     H, W = lss_cfg['data_aug_conf']['H'], lss_cfg['data_aug_conf']['W']

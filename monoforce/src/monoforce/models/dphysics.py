@@ -191,14 +191,14 @@ class DPhysics(torch.nn.Module):
         Omega_x = skew_symmetric(omega)
 
         # Compute exponential map of the skew-symmetric matrix
-        theta = torch.norm(omega, dim=-1, keepdim=True).unsqueeze(-1) * dt
+        theta = torch.norm(omega, dim=-1, keepdim=True).unsqueeze(-1)
 
         # Normalize the angular velocities
-        Omega_x_norm = Omega_x / (theta / dt + eps)
+        Omega_x_norm = Omega_x / (theta + eps)
 
-        # Rodrigues' formula: R_new = R * (I + |Omega_x| * sin(theta) + |Omega_x|^2 * (1 - cos(theta)))
+        # Rodrigues' formula: R_new = R * (I + Omega_x * sin(theta * dt) + Omega_x^2 * (1 - cos(theta * dt)))
         I = torch.eye(3).to(R.device)
-        R_new = R @ (I + Omega_x_norm * torch.sin(theta) + Omega_x_norm @ Omega_x_norm * (1 - torch.cos(theta)))
+        R_new = R @ (I + Omega_x_norm * torch.sin(theta * dt) + Omega_x_norm @ Omega_x_norm * (1 - torch.cos(theta * dt)))
 
         return R_new
 
