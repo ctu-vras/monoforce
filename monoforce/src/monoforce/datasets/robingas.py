@@ -148,6 +148,7 @@ class RobinGasBase(Dataset):
             return None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
         stamps, Ts = data[:, 0], data[:, 1:13]
+        stamps -= stamps[0]  # start time from 0
         lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
         Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
@@ -168,6 +169,7 @@ class RobinGasBase(Dataset):
 
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
         all_stamps, all_vels = data[:, 0], data[:, 1:]
+        all_stamps -= all_stamps[0]  # start time from 0
         time_left = copy.copy(self.ts[i])
         T_horizon, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         time_right = time_left + T_horizon
@@ -179,6 +181,17 @@ class RobinGasBase(Dataset):
         timestamps = np.asarray(all_stamps[il:ir])
         timestamps = timestamps - timestamps[0]
         vels = all_vels[il:ir]
+
+        if vels.shape[1] == 4:
+            # velocities of the tracks: front left, front right, rear left, rear right
+            v_fl, v_fr, v_rl, v_rr = vels[:, 0], vels[:, 1], vels[:, 2], vels[:, 3]
+
+            # average left and right tracks velocities
+            v_left = (v_fl + v_rl) / 2
+            v_right = (v_fr + v_rr) / 2
+            vels = np.stack([v_left, v_right], axis=1)
+        else:
+            assert vels.shape[1] == 2, f'Velocities array has wrong shape: {vels.shape}'
 
         # velocities interpolation
         interp_times = np.arange(0.0, time_right - time_left, dt)

@@ -235,8 +235,8 @@ class Trainer:
         # visualize training predictions
         with torch.no_grad():
             # unpack batch
-            batch = next(iter(loader))
-            batch = [torch.as_tensor(b, device=self.device) for b in batch]
+            sample = loader.dataset[np.random.choice(len(loader.dataset))]
+            batch = [torch.as_tensor(b[None], device=self.device) for b in sample]
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              ts_controls, controls,
