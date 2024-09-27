@@ -125,6 +125,65 @@ def motion():
                            vis_cfg=vis_cfg, step=10)
 
 
+def motion_dataset():
+    import matplotlib.pyplot as plt
+    from monoforce.datasets import RobinGasBase, robingas_seq_paths
+    from monoforce.vis import set_axes_equal
+
+    class Data(RobinGasBase):
+        def __init__(self, path, dphys_cfg=DPhysConfig()):
+            super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
+
+        def get_sample(self, i):
+            _, controls = self.get_controls(i)
+            _, states = self.get_states_traj(i)
+            heightmap = self.get_geom_height_map(i)[0]
+            return controls, states, heightmap
+
+    # load the dataset
+    path = robingas_seq_paths['tradr'][0]
+    ds = Data(path, dphys_cfg=dphys_cfg)
+
+    # instantiate the simulator
+    dphysics = DPhysics(dphys_cfg, device=device)
+
+    # get a sample from the dataset
+    sample = ds[np.random.randint(len(ds))]
+    controls, states, z_grid = sample
+
+    # differentiable physics simulation
+    z_grid = torch.as_tensor(z_grid)[None].to(device)
+    controls = torch.as_tensor(controls)[None].to(device)
+    states_pred, _ = dphysics(z_grid=z_grid, controls=controls)
+    Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
+
+    # helper quantities for visualization
+    Xs = torch.as_tensor(states[0])[None]
+    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
+    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+
+    # visualize predicted and ground truth trajectories and the heightmap surface
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(x_grid.numpy(), y_grid.numpy(), z_grid[0].cpu().numpy(), alpha=0.6, cmap='terrain')
+    ax.plot(Xs[0, :, 0].cpu().numpy(),
+            Xs[0, :, 1].cpu().numpy(),
+            Xs[0, :, 2].cpu().numpy(),
+            c='b', label='GT trajectory')
+    ax.plot(Xs_pred[0, :, 0].cpu().numpy(),
+            Xs_pred[0, :, 1].cpu().numpy(),
+            Xs_pred[0, :, 2].cpu().numpy(),
+            c='r', label='Predicted trajectory')
+    ax.set_title('Ground truth and predicted trajectories')
+    ax.legend()
+    ax.set_xlabel('X [m]')
+    ax.set_ylabel('Y [m]')
+    ax.set_zlabel('Z [m]')
+    set_axes_equal(ax)
+    plt.show()
+
+
 def shoot_multiple():
     from time import time
     from scipy.spatial.transform import Rotation
@@ -224,7 +283,8 @@ def shoot_multiple():
 
 
 def main():
-    motion()
+    # motion()
+    motion_dataset()
     # shoot_multiple()
 
 

@@ -55,6 +55,8 @@ robingas_seq_paths = {
         # os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-16-37-03'),
         # os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-15-18-34'),
         os.path.join(data_dir, 'RobinGas/marv/24-08-14-monoforce-long_drive'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-46-51'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-54-43'),
     ],
     'tradr': [
         os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-30-57'),
@@ -65,6 +67,10 @@ robingas_seq_paths = {
     'tradr2': [
         os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-10-17-02-31'),
         os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-10-17-12-12'),
+        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-13-54-18'),
+        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-13-58-46'),
+        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-14-03-57'),
+        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-14-14-42'),
     ],
     'husky_oru': [
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-02-33_0'),
@@ -492,12 +498,10 @@ class RobinGas(RobinGasBase):
                  lss_cfg,
                  dphys_cfg=DPhysConfig(),
                  is_train=False,
-                 only_front_cam=False,
-                 use_rigid_semantics=True):
+                 only_front_cam=False):
         super(RobinGas, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_cam = only_front_cam
-        self.use_rigid_semantics = use_rigid_semantics
         self.camera_names = self.camera_names[:1] if only_front_cam else self.camera_names
 
         # initialize image augmentations
@@ -737,12 +741,9 @@ class RobinGas(RobinGasBase):
             hm_rigid = np.load(file_path, allow_pickle=True).item()
         else:
             traj_points = self.get_footprint_traj_points(i)
-            if self.use_rigid_semantics:
-                seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
-                                                        points_source=points_source, vis=False)
-                points = np.concatenate((seg_points, traj_points), axis=0)
-            else:
-                points = traj_points
+            seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
+                                                    points_source=points_source, vis=False)
+            points = np.concatenate((seg_points, traj_points), axis=0)
             hm_rigid = self.estimate_heightmap(points, robot_radius=None)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, hm_rigid)
@@ -802,9 +803,9 @@ class RobinGas(RobinGasBase):
 
 class RobinGasPoints(RobinGas):
     def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True,
-                 only_front_cam=False, use_rigid_semantics=True, points_source='lidar'):
+                 only_front_cam=False, points_source='lidar'):
         super(RobinGasPoints, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
-                                             only_front_cam=only_front_cam, use_rigid_semantics=use_rigid_semantics)
+                                             only_front_cam=only_front_cam)
         assert points_source in ['lidar', 'radar', 'lidar_radar']
         self.points_source = points_source
 

@@ -50,3 +50,4 @@ obstacle_classes:
 - 'car'
 - 'truck'
 - 'wall'
+- 'tree'
