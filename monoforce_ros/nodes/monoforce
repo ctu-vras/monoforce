@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import RobinGasPoints, robingas_seq_paths
+from monoforce.datasets import RobinGasVis, robingas_seq_paths
 from monoforce.config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, vw_to_track_vel
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
@@ -172,7 +172,7 @@ class MonoForce:
         return states, forces
 
     def run(self):
-        ds = RobinGasPoints(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
+        ds = RobinGasVis(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
         rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
         sample_i = np.random.choice(range(len(ds)))
         rospy.loginfo('Using sample %d' % sample_i)

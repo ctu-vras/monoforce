@@ -1,10 +1,10 @@
 #!/bin/bash
 
-ROBOT=tradr2
+ROBOT=marv
 DATASET=robingas
 ONLY_FRONT_CAM=False
-DEBUG=True
-VIS=True
+DEBUG=False
+VIS=False
 BSZ=4
 
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt

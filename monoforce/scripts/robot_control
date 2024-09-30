@@ -141,7 +141,8 @@ def motion_dataset():
             return controls, states, heightmap
 
     # load the dataset
-    path = robingas_seq_paths['tradr'][0]
+    robot = 'marv'
+    path = robingas_seq_paths[robot][0]
     ds = Data(path, dphys_cfg=dphys_cfg)
 
     # instantiate the simulator

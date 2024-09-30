@@ -37,7 +37,7 @@ __all__ = [
     'data_dir',
     'RobinGasBase',
     'RobinGas',
-    'RobinGasPoints',
+    'RobinGasVis',
     'robingas_seq_paths',
 ]
 
@@ -52,8 +52,6 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky/husky_2022-06-30-15-58-37'),
     ],
     'marv': [
-        # os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-16-37-03'),
-        # os.path.join(data_dir, 'RobinGas/marv/ugv_2022-08-12-15-18-34'),
         os.path.join(data_dir, 'RobinGas/marv/24-08-14-monoforce-long_drive'),
         os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-54-43'),
@@ -62,7 +60,6 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-30-57'),
         os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-05-42'),
         os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-13-58-22'),
-        # os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-06-30-11-30-57'),
     ],
     'tradr2': [
         os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-10-17-02-31'),
@@ -193,8 +190,8 @@ class RobinGasBase(Dataset):
             v_fl, v_fr, v_rl, v_rr = vels[:, 0], vels[:, 1], vels[:, 2], vels[:, 3]
 
             # average left and right tracks velocities
-            v_left = (v_fl + v_rl) / 2
-            v_right = (v_fr + v_rr) / 2
+            v_left = np.mean([v_fl, v_rl], axis=0)
+            v_right = np.mean([v_fr, v_rr], axis=0)
             vels = np.stack([v_left, v_right], axis=1)
         else:
             assert vels.shape[1] == 2, f'Velocities array has wrong shape: {vels.shape}'
@@ -559,6 +556,7 @@ class RobinGas(RobinGasBase):
             D = np.array(D)
             img = np.asarray(img)
             img, K = undistort_image(img, K, D)
+            img = Image.fromarray(img)
         return img, K
 
     def get_cached_resized_img(self, i, camera=None):
@@ -575,7 +573,7 @@ class RobinGas(RobinGasBase):
         img.save(cached_img_path)
         return img, K
 
-    def get_images_data(self, i):
+    def get_images_data(self, i, undistort=False):
         imgs = []
         rots = []
         trans = []
@@ -584,8 +582,10 @@ class RobinGas(RobinGasBase):
         intrins = []
 
         for cam in self.camera_names:
-            # img, K = self.get_image(i, cam, undistort=False)
-            img, K = self.get_cached_resized_img(i, cam)
+            if undistort:
+                img, K = self.get_image(i, cam, undistort=True)
+            else:
+                img, K = self.get_cached_resized_img(i, cam)
 
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
@@ -801,16 +801,16 @@ class RobinGas(RobinGasBase):
                 traj_ts, Xs, Xds, Rs, Omegas)
 
 
-class RobinGasPoints(RobinGas):
+class RobinGasVis(RobinGas):
     def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True,
                  only_front_cam=False, points_source='lidar'):
-        super(RobinGasPoints, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
-                                             only_front_cam=only_front_cam)
+        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
+                                          only_front_cam=only_front_cam)
         assert points_source in ['lidar', 'radar', 'lidar_radar']
         self.points_source = points_source
 
     def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i, undistort=True)
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
         Xs, Xds, Rs, Omegas = states
