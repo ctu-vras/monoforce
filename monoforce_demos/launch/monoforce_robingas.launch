@@ -5,7 +5,8 @@
 
     <!-- Load robot description -->
     <rosparam command="load" file="$(dirname)/../config/params/$(arg robot).params"/>
-    <remap if="$(eval robot == 'tradr')" from="robot_description" to="nifti_robot_description"/>
+    <remap if="$(eval 'tradr' in robot)" from="robot_description" to="nifti_robot_description"/>
+    <remap if="$(eval 'marv' in robot)" from="robot_description" to="marv/robot_description"/>
 
     <!-- Robot state publisher -->
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
