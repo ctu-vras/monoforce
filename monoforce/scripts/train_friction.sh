@@ -2,7 +2,7 @@
 
 ROBOT=tradr
 DATASET=robingas
-DEBUG=True
+DEBUG=False
 VIS=False
 BSZ=4
 
@@ -14,6 +14,5 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
                  --debug $DEBUG --vis $VIS \
                  --dataset $DATASET \
                  --robot $ROBOT \
-                 --dphys_cfg_path ../config/dphys_cfg.yaml \
                  --lss_cfg_path ../config/lss_cfg_$ROBOT.yaml \
                  --pretrained_model_path ${WEIGHTS}

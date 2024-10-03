@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -27,7 +27,6 @@ def arg_parser():
     parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
-    parser.add_argument('--dphys_cfg_path', type=str, default='../config/dphys_cfg.yaml', help='Path to DPhys config')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default='../config/weights/lss/lss_robingas_tradr.pt', help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
@@ -318,10 +317,7 @@ def main():
     print(args)
 
     # load configs: DPhys
-    dphys_cfg = DPhysConfig()
-    dphys_config_path = args.dphys_cfg_path
-    assert os.path.isfile(dphys_config_path), 'Config file %s does not exist' % dphys_config_path
-    dphys_cfg.from_yaml(dphys_config_path)
+    dphys_cfg = DPhysConfig(robot=args.robot)
     # load configs: LSS
     lss_config_path = args.lss_cfg_path
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path

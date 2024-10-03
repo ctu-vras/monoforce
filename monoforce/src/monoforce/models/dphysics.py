@@ -1,5 +1,5 @@
 import torch
-from ..config import DPhysConfig
+from ..dphys_config import DPhysConfig
 
 
 def normailized(x, eps=1e-6):
@@ -68,16 +68,14 @@ def vw_to_tracks_vel(v, w, robot_size, n_tracks=2):
         raise ValueError(f'Unsupported number of tracks: {n_tracks}. Supported values are 2 and 4.')
     return controls
 
+
 class DPhysics(torch.nn.Module):
     def __init__(self, dphys_cfg=DPhysConfig(), device='cpu'):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
         self.device = device
-        self.I = torch.as_tensor(dphys_cfg.robot_I, device=device)
-        self.I_inv = torch.inverse(self.I)
-        self.g = 9.81  # gravity, m/s^2
-        # rigid body parts (point masks) that are designed to drive the robot, like tracks or wheels
-        self.driving_parts = [torch.as_tensor(p, device=device) for p in dphys_cfg.driving_parts]
+        self.I = torch.as_tensor(self.dphys_cfg.robot_I, device=device)  # 3x3 inertia tensor, kg*m^2
+        self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
 
     def forward_kinematics(self, state, xd_points,
                            z_grid, stiffness, damping, friction,
@@ -155,8 +153,8 @@ class DPhysics(torch.nn.Module):
         dR = Omega_skew @ R  # dR = [omega]_x R
 
         # motion of the cog
-        m = self.dphys_cfg.robot_mass
-        F_grav = torch.tensor([[0.0, 0.0, -m * self.g]], device=self.device)  # F_grav = [0, 0, -m * g]
+        m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
+        F_grav = torch.tensor([[0.0, 0.0, -m * g]], device=self.device)  # F_grav = [0, 0, -m * g]
         F_cog = F_grav + F_spring.mean(dim=1) + F_friction.mean(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
@@ -425,7 +423,7 @@ class DPhysics(torch.nn.Module):
             dstate, forces = self.forward_kinematics(state=state, xd_points=xd_points,
                                                      z_grid=z_grid,
                                                      stiffness=stiffness, damping=damping, friction=friction,
-                                                     driving_parts=self.driving_parts,
+                                                     driving_parts=self.dphys_cfg.driving_parts,
                                                      controls=controls[:, t])
             # update state: integration steps
             state = self.update_state(state, dstate, dt)

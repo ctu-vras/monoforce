@@ -8,7 +8,7 @@ from PIL import ImageFile
 import torch
 import open3d as o3d
 from mayavi import mlab
-from .config import DPhysConfig
+from .dphys_config import DPhysConfig
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 

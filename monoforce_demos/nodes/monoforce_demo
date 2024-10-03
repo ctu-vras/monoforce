@@ -6,7 +6,7 @@ import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasVis, robingas_seq_paths
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
 from monoforce.models.terrain_encoder.lss import load_model
@@ -238,7 +238,7 @@ class MonoForce:
                 rospy.logdebug('Predicted normal forces shape: %s' % str(F_springs.shape))
                 F_frictions = forces[1].squeeze().cpu().numpy()
                 rospy.logdebug('Predicted friction forces shape: %s' % str(F_frictions.shape))
-                robot_points = np.asarray(self.dphys_cfg.robot_points)
+                robot_points = self.dphys_cfg.robot_points.cpu().numpy()
                 rospy.logdebug('Robot contact points shape: %s' % str(robot_points.shape))
                 # publish paths
                 path_msg = poses_to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)

@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from matplotlib import pyplot as plt
 from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
 from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
-from ..config import DPhysConfig
+from ..dphys_config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range
 from ..utils import position, timing, read_yaml

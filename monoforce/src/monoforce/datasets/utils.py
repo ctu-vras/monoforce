@@ -1,8 +1,6 @@
 import os
-
 import numpy as np
-
-from ..config import DPhysConfig
+from ..dphys_config import DPhysConfig
 from ..transformations import xyz_rpy_to_matrix
 from scipy.spatial.transform import Rotation
 

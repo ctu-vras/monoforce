@@ -2,7 +2,7 @@
 
 import torch
 import numpy as np
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
 from monoforce.vis import setup_visualization, animate_trajectory
 
@@ -11,6 +11,7 @@ from monoforce.vis import setup_visualization, animate_trajectory
 robot = 'marv'
 dphys_cfg = DPhysConfig(robot=robot)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 def motion():
     from scipy.spatial.transform import Rotation
@@ -23,6 +24,9 @@ def motion():
     dphys_cfg.traj_sim_time = 5.0
     dphys_cfg.k_friction = 1.0
     T = dphys_cfg.traj_sim_time
+
+    # instantiate the simulator
+    dphysics = DPhysics(dphys_cfg, device=device)
 
     # control inputs: track vels in m/s
     if dphys_cfg.robot in ['marv', 'husky']:
@@ -80,7 +84,6 @@ def motion():
     assert friction.shape == (B, H, W)
 
     # simulate the rigid body dynamics
-    dphysics = DPhysics(dphys_cfg, device=device)
     states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0,
                               stiffness=stiffness, friction=friction)
 
@@ -197,6 +200,9 @@ def shoot_multiple():
     num_trajs = dphys_cfg.n_sim_trajs
     vel_max, omega_max = dphys_cfg.vel_max, dphys_cfg.omega_max
 
+    # instantiate the simulator
+    dphysics = DPhysics(dphys_cfg, device=device)
+
     # rigid body parameters
     x_points = torch.as_tensor(dphys_cfg.robot_points, device=device)
 
@@ -247,9 +253,6 @@ def shoot_multiple():
     state0 = tuple([s.to(device) for s in state0])
     z_grid = z_grid.to(device)
     controls = controls.to(device)
-
-    # create the dphysics model
-    dphysics = DPhysics(dphys_cfg, device=device)
 
     # simulate the rigid body dynamics
     with torch.no_grad():

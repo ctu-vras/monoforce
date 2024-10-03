@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
-import os
 from time import time
-import rospkg
 import torch
 import warp as wp
 import numpy as np
@@ -11,7 +9,7 @@ from threading import RLock
 import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
 from monoforce.models.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
