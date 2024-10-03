@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from ..config import DPhysConfig
 
 
@@ -37,13 +36,37 @@ def skew_symmetric(v):
     U[:, 2, 1] = v[:, 0]
     return U
 
-def vw_to_track_vel(v, w, r=1.0):
-    # v: linear velocity, w: angular velocity, r: robot radius
-    # v = (v_l + v_r) / 2
-    # w = (v_l - v_r) / (2 * r)
+def vw_to_tracks_vel(v, w, robot_size, n_tracks=2):
+    """
+    Converts the linear and angular velocities to the track velocities
+    according to the differential drive model.
     v_l = v + r * w
     v_r = v - r * w
-    return v_l, v_r
+
+    Parameters:
+    - v: Linear velocity.
+    - w: Angular velocity.
+    - robot_size: Size of the robot.
+    - n_tracks: Number of tracks.
+
+    Returns:
+    - Tuple of the left and right track velocities.
+    """
+    s_x, s_y = robot_size
+    r = s_y / 2
+    if n_tracks == 2:
+        v_l = v + r * w
+        v_r = v - r * w
+        controls = [v_l, v_r]
+    elif n_tracks == 4:
+        v_fl = v + r * w
+        v_fr = v - r * w
+        v_rl = v + r * w
+        v_rr = v - r * w
+        controls = [v_fl, v_fr, v_rl, v_rr]
+    else:
+        raise ValueError(f'Unsupported number of tracks: {n_tracks}. Supported values are 2 and 4.')
+    return controls
 
 class DPhysics(torch.nn.Module):
     def __init__(self, dphys_cfg=DPhysConfig(), device='cpu'):
@@ -53,13 +76,13 @@ class DPhysics(torch.nn.Module):
         self.I = torch.as_tensor(dphys_cfg.robot_I, device=device)
         self.I_inv = torch.inverse(self.I)
         self.g = 9.81  # gravity, m/s^2
-        self.robot_mask_left = torch.as_tensor(dphys_cfg.robot_mask_left, device=device)
-        self.robot_mask_right = torch.as_tensor(dphys_cfg.robot_mask_right, device=device)
+        # rigid body parts (point masks) that are designed to drive the robot, like tracks or wheels
+        self.driving_parts = [torch.as_tensor(p, device=device) for p in dphys_cfg.driving_parts]
 
     def forward_kinematics(self, state, xd_points,
                            z_grid, stiffness, damping, friction,
-                           m, mask_left, mask_right,
-                           u_left, u_right):
+                           driving_parts,
+                           controls):
         # unpack state
         x, xd, R, omega, x_points = state
         assert x.dim() == 2 and x.shape[1] == 3  # (B, 3)
@@ -67,15 +90,10 @@ class DPhysics(torch.nn.Module):
         assert R.dim() == 3 and R.shape[-2:] == (3, 3)  # (B, 3, 3)
         assert x_points.dim() == 3 and x_points.shape[-1] == 3  # (B, N, 3)
         assert xd_points.dim() == 3 and xd_points.shape[-1] == 3  # (B, N, 3)
-        assert mask_left.dim() == 1 and mask_left.shape[0] == x_points.shape[1]  # (N,)
-        assert mask_right.dim() == 1 and mask_right.shape[0] == x_points.shape[1]  # (N,)
-        # if scalar, convert to tensor
-        if isinstance(u_left, (int, float)):
-            u_left = torch.tensor([u_left], device=self.device)
-        if isinstance(u_right, (int, float)):
-            u_right = torch.tensor([u_right], device=self.device)
-        assert u_left.dim() == 1  # scalar
-        assert u_right.dim() == 1  # scalar
+        for p in driving_parts:
+            assert p.dim() == 1 and p.shape[0] == x_points.shape[1]  # (N,)
+        assert controls.dim() == 2 and controls.shape[0] == x.shape[0]  # (B, n_driving_parts)
+        assert controls.shape[1] == len(driving_parts)
         assert z_grid.dim() == 3  # (B, H, W)
         B, n_pts, D = x_points.shape
 
@@ -119,21 +137,25 @@ class DPhysics(torch.nn.Module):
         # friction forces: https://en.wikipedia.org/wiki/Friction
         thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
-        v_l = (u_left.unsqueeze(1) * thrust_dir).unsqueeze(1)  # left track velocity
-        v_r = (u_right.unsqueeze(1) * thrust_dir).unsqueeze(1)  # right track velocity
         F_friction = torch.zeros_like(F_spring)  # initialize friction forces
-        # F_fr = -mu * N * tanh(v_cmd - xd_points)  # left and right track friction forces
-        F_friction[:, mask_left] = (friction_points * N.unsqueeze(2) * torch.tanh(v_l - xd_points))[:, mask_left]
-        F_friction[:, mask_right] = (friction_points * N.unsqueeze(2) * torch.tanh(v_r - xd_points))[:, mask_right]
+        # F_fr = -mu * N * tanh(v_cmd - xd_points)  # tracks friction forces
+        for i in range(len(driving_parts)):
+            u = controls[:, i].unsqueeze(1)  # control input
+            v_cmd = u * thrust_dir  # commanded velocity
+            mask = driving_parts[i]
+            F_friction[:, mask] = (friction_points * N.unsqueeze(2) * torch.tanh(v_cmd.unsqueeze(1) - xd_points))[:, mask]
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
+        # limit the angular acceleration for stability
+        omega_d = torch.clamp(omega_d, -self.dphys_cfg.omega_max, self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
 
         # motion of the cog
+        m = self.dphys_cfg.robot_mass
         F_grav = torch.tensor([[0.0, 0.0, -m * self.g]], device=self.device)  # F_grav = [0, 0, -m * g]
         F_cog = F_grav + F_spring.mean(dim=1) + F_friction.mean(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
@@ -142,6 +164,8 @@ class DPhysics(torch.nn.Module):
         # motion of point composed of cog motion and rotation of the rigid body (Koenig's theorem in mechanics)
         xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
         assert xd_points.shape == (B, n_pts, 3)
+        # limit the linear acceleration for stability
+        xd = torch.clamp(xd, -self.dphys_cfg.vel_max, self.dphys_cfg.vel_max)
 
         dstate = (xd, xdd, dR, omega_d, xd_points)
         forces = (F_spring, F_friction)
@@ -360,13 +384,9 @@ class DPhysics(torch.nn.Module):
         T = self.dphys_cfg.traj_sim_time
         batch_size = z_grid.shape[0]
 
-        # robot geometry masks for left and right thrust points
-        mask_left = self.robot_mask_left
-        mask_right = self.robot_mask_right
-
         # initial state
         if state is None:
-            x = torch.tensor([0.0, 0.0, 0.2]).to(device).repeat(batch_size, 1)
+            x = torch.tensor([0.0, 0.0, 0.0]).to(device).repeat(batch_size, 1)
             xd = torch.zeros_like(x)
             R = torch.eye(3).to(device).repeat(batch_size, 1, 1)
             omega = torch.zeros_like(x)
@@ -382,7 +402,8 @@ class DPhysics(torch.nn.Module):
 
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
-        assert controls.shape == (B, N_ts, 2)  # for each time step, left and right thrust forces
+        # for each trajectory and time step driving parts are being controlled
+        assert controls.shape == (B, N_ts, len(self.dphys_cfg.driving_parts)), f'{controls.shape}'
 
         # TODO: there is some bug, had to transpose grid map
         z_grid = z_grid.transpose(1, 2)  # (B, H, W) -> (B, W, H)
@@ -400,15 +421,12 @@ class DPhysics(torch.nn.Module):
         ts = range(N_ts)
         B, N_ts, N_pts = x.shape[0], len(ts), x_points.shape[1]
         for t in ts:
-            # control inputs
-            u_left, u_right = controls[:, t, 0], controls[:, t, 1]  # thrust forces, Newtons or kg*m/s^2
             # forward kinematics
             dstate, forces = self.forward_kinematics(state=state, xd_points=xd_points,
                                                      z_grid=z_grid,
                                                      stiffness=stiffness, damping=damping, friction=friction,
-                                                     m=self.dphys_cfg.robot_mass,
-                                                     mask_left=mask_left, mask_right=mask_right,
-                                                     u_left=u_left, u_right=u_right,)
+                                                     driving_parts=self.driving_parts,
+                                                     controls=controls[:, t])
             # update state: integration steps
             state = self.update_state(state, dstate, dt)
 

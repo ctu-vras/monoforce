@@ -48,7 +48,7 @@ def draw_points_on_image(points, color, image):
     return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
 
 
-def setup_visualization(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
+def setup_visualization(states, forces, x_grid, y_grid, z_grid):
     # unpack the states and forces
     xs, R, xds, omegas, x_points = states
 

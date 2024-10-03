@@ -5,7 +5,7 @@ from monoforce.config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
 
 
-def visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
+def visualize(states, forces, x_grid, y_grid, z_grid):
     with torch.no_grad():
         # visualize using mayavi
         for b in range(len(states[0])):
@@ -13,13 +13,11 @@ def visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right):
             xs, R, xds, omegas, x_points = [s[b].cpu().numpy() for s in states]
             F_spring, F_friction = [f[b].cpu().numpy() for f in forces]
             x_grid_np, y_grid_np, z_grid_np = [g[b].cpu().numpy() for g in [x_grid, y_grid, z_grid]]
-            mask_left_np, mask_right_np = mask_left.cpu().numpy(), mask_right.cpu().numpy()
 
             # set up the visualization
             vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
                                           forces=(F_spring, F_friction),
-                                          x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np,
-                                          mask_left=mask_left_np, mask_right=mask_right_np)
+                                          x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
 
             # visualize animated trajectory
             animate_trajectory(states=(xs, R, xds, omegas, x_points),
@@ -42,8 +40,6 @@ def optimize_heightmap():
 
     # rigid body parameters
     x_points = torch.as_tensor(dphys_cfg.robot_points)
-    mask_left = torch.as_tensor(dphys_cfg.robot_mask_left)
-    mask_right = torch.as_tensor(dphys_cfg.robot_mask_right)
 
     # initial state
     x = torch.tensor([[-1.0, 0.0, 0.1]])
@@ -72,7 +68,7 @@ def optimize_heightmap():
     dphysics = DPhysics(dphys_cfg)
     states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0)
     if vis:
-        visualize(states_gt, forces_gt, x_grid, y_grid, z_grid_gt, mask_left, mask_right)
+        visualize(states_gt, forces_gt, x_grid, y_grid, z_grid_gt)
 
     # initial guess for the heightmap
     z_grid = torch.zeros_like(z_grid_gt, requires_grad=True)
@@ -119,12 +115,12 @@ def optimize_heightmap():
         if vis and i % 20 == 0:
             dphys_cfg.traj_sim_time = T
             states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
-            visualize(states, forces, x_grid, y_grid, z_grid, mask_left, mask_right)
+            visualize(states, forces, x_grid, y_grid, z_grid)
 
     # visualize the best heightmap
     dphys_cfg.traj_sim_time = T
     states, forces = dphysics(z_grid=z_grid_best, controls=controls, state=state0)
-    visualize(states, forces, x_grid, y_grid, z_grid_best, mask_left, mask_right)
+    visualize(states, forces, x_grid, y_grid, z_grid_best)
 
 
 def learn_terrain_properties():

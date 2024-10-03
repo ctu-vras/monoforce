@@ -24,7 +24,6 @@
         <arg name="hm_frame" value="base_link"/>
         <arg name="max_msgs_delay" value="0.2"/>
         <arg name="weights" value="$(arg weights)"/>
-        <arg name="dphys_config_path" value="$(arg dphys_config_path)"/>
         <arg name="lss_config_path" value="$(arg lss_config_path)"/>
     </include>
 

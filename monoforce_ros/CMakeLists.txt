@@ -20,7 +20,6 @@ install(
     PROGRAMS
         nodes/diff_physics
         nodes/terrain_encoder
-        nodes/monoforce
         nodes/geom_hm_estimator
         nodes/gridmaps_merger
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

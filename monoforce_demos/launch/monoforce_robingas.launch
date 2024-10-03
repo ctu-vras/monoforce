@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="robot" default="husky"/>
+    <arg name="robot" default="marv"/>
     <arg name="rviz" default="true"/>
 
     <!-- Load robot description -->
@@ -12,20 +12,13 @@
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher"/>
 
-    <node pkg="monoforce" type="monoforce" name="monoforce" output="screen">
+    <node pkg="monoforce_demos" type="monoforce_demo" name="monoforce_demo" output="screen">
         <rosparam subst_value="true">
             robot: $(arg robot)
             lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss_robingas_$(arg robot).pt
-
-<!--             robot: tradr2 -->
-<!--             lss_weights_path: $(find monoforce)/../monoforce/config/tb_runs/friction_head/lss_robingas_tradr2.pt -->
-<!--             lss_weights_path: $(find monoforce)/../monoforce/config/tb_runs/lss_robingas_tradr2_2024_09_20_14_41_16/lss.pt -->
-
-<!--             robot: tradr -->
-<!--             lss_weights_path: $(find monoforce)/../monoforce/config/tb_runs/lss_robingas_tradr_2024_09_19_19_46_06/lss.pt -->
+            traj_sim_time: 8.0
         </rosparam>
     </node>
 
-    <node if="$(arg rviz)"
-          pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/monoforce_$(arg robot).rviz"/>
+    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/monoforce_$(arg robot).rviz"/>
 </launch>

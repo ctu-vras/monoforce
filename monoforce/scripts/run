@@ -7,7 +7,7 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, vw_to_track_vel
+from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
@@ -37,7 +37,6 @@ class MonoForce:
     def __init__(self, imgs_path, calib_path,
                  cameras=None,
                  linear_vel=None, angular_vel=None,
-                 dphys_cfg_path=os.path.join('..', 'config/dphys_cfg.yaml'),
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg_tradr.yaml'),
                  model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -56,9 +55,6 @@ class MonoForce:
 
         # load DPhys config
         self.dphys_cfg = DPhysConfig()
-        self.dphys_config_path = dphys_cfg_path
-        assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
-        self.dphys_cfg.from_yaml(self.dphys_config_path)
 
         # load LSS config
         self.lss_config_path = lss_cfg_path
@@ -85,10 +81,10 @@ class MonoForce:
     def predict_states(self, z_grid, v, w):
         # constant linear and angular velocities as control inputs
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-        v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
-        thrusts = torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
-        thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
-        states, forces = self.dphysics(z_grid, controls=thrusts)
+        controls_t = vw_to_tracks_vel(v, w, self.dphys_cfg.robot_size)
+        controls = torch.tensor([controls_t] * int(T / dt), device=self.device)
+        controls = controls.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, N_controls]
+        states, forces = self.dphysics(z_grid, controls=controls)
         return states, forces
 
     def get_cameras(self):
@@ -204,7 +200,6 @@ def main():
                           cameras=args.cameras,
                           linear_vel=args.linear_vel,
                           angular_vel=args.angular_vel,
-                          dphys_cfg_path=args.dphys_cfg_path,
                           lss_cfg_path=args.lss_cfg_path,
                           model_path=args.model_path)
     monoforce.run()

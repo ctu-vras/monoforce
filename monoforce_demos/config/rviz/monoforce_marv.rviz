@@ -71,14 +71,14 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
-      Color: 64; 99; 191
+      Color: 115; 210; 22
       Enabled: true
       Head Diameter: 0.07999999821186066
       Head Length: 0.03999999910593033
       Length: 0.30000001192092896
       Line Style: Billboards
       Line Width: 0.10000000149011612
-      Name: Path
+      Name: Predicted Path
       Offset:
         X: 0
         Y: 0
@@ -92,6 +92,30 @@ Visualization Manager:
       Topic: /path
       Unreliable: false
       Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 64; 99; 191
+      Enabled: false
+      Head Diameter: 0.07999999821186066
+      Head Length: 0.03999999910593033
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.10000000149011612
+      Name: GT Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.019999999552965164
+      Shaft Length: 0.10000000149011612
+      Topic: /path_gt
+      Unreliable: false
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -130,99 +154,117 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        base_footprint:
+        antenna:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
         base_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        bullet:
+        battery1:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        bullet_antenna:
+        battery2:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        cam1_base:
+        bottom_plate:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        cam2_base:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera_0:
+        camera_fisheye_front:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_1:
+        camera_fisheye_rear:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_2:
+        camera_front:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_3:
+        camera_left:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        crystal:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        front_bumper_link:
+        camera_rear:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        front_left_wheel_link:
+        camera_right:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        front_right_wheel_link:
+        camera_up:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        gps:
+        deck:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        dgps_aux_antenna:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        dgps_main_antenna:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_left_flipper:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_left_flipper_end_point:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_left_flipper_end_point_inflated:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_left_motor:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_right_flipper:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_right_flipper_end_point:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_right_flipper_end_point_inflated:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_right_motor:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        gps_antenna:
           Alpha: 1
           Show Axes: false
           Show Trail: false
         imu:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        imu_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        inertial_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        jetson:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        lidar:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        mount_base:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -231,98 +273,85 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        ouster_mount:
+        ouster_calib:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_fisheye_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_fisheye_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_left:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_right:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        pylon_camera_up:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_left_flipper:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        ouster_mount_top:
+        rear_left_flipper_end_point:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        payload_frame:
+        rear_left_flipper_end_point_inflated:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        rear_bumper_link:
+        rear_left_motor:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        rear_left_wheel_link:
+        rear_right_box:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        rear_right_corner:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rear_right_wheel_link:
+        rear_right_flipper:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        rs_lidar:
+        rear_right_flipper_end_point:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        rslidar:
+        rear_right_flipper_end_point_inflated:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        top_chassis_link:
+        rear_right_motor:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        top_plate_front_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        top_plate_link:
+        top_box:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        top_plate_rear_link:
+        total_mass_60_006:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        tower:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        tower_camera_floor:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        tower_cap:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        tower_cap_top:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        tower_lower_floor:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        tower_rear_right_corner:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        user_rail_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
       Name: RobotModel
       Robot Description: robot_description
       TF Prefix: ""
@@ -330,13 +359,13 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /normal_forces
       Name: Normal Forces
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: false
       Marker Topic: /friction_forces
@@ -508,6 +537,7 @@ Visualization Manager:
               Value: true
             Cloud: true
             Friction Forces: true
+            GT Path: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
@@ -515,7 +545,7 @@ Visualization Manager:
               GridMap Pred Terrain: true
               Value: true
             Normal Forces: true
-            Path: true
+            Predicted Path: true
             RobotModel: true
             TF: true
             Value: true
@@ -546,6 +576,7 @@ Visualization Manager:
               Value: true
             Cloud: true
             Friction Forces: true
+            GT Path: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
@@ -553,7 +584,7 @@ Visualization Manager:
               GridMap Pred Terrain: true
               Value: true
             Normal Forces: true
-            Path: true
+            Predicted Path: true
             RobotModel: true
             TF: true
             Value: true
@@ -584,6 +615,7 @@ Visualization Manager:
               Value: true
             Cloud: true
             Friction Forces: true
+            GT Path: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
@@ -591,7 +623,7 @@ Visualization Manager:
               GridMap Pred Terrain: true
               Value: true
             Normal Forces: true
-            Path: true
+            Predicted Path: true
             RobotModel: true
             TF: true
             Value: true
@@ -622,6 +654,7 @@ Visualization Manager:
               Value: true
             Cloud: true
             Friction Forces: true
+            GT Path: true
             Grid: true
             GridMap:
               GridMap Pred Diff: true
@@ -629,7 +662,7 @@ Visualization Manager:
               GridMap Pred Terrain: true
               Value: true
             Normal Forces: true
-            Path: true
+            Predicted Path: true
             RobotModel: true
             TF: true
             Value: true
@@ -730,7 +763,7 @@ Visualization Manager:
       Near Clip Distance: 1
       Pitch: 0.7853981852531433
       Target Frame: <Fixed Frame>
-      Yaw: 0.7853981852531433
+      Yaw: 3.1414999961853027
     Saved:
       - Class: rviz/Orbit
         Distance: 10
@@ -774,7 +807,7 @@ Window Geometry:
     collapsed: false
   Image Right:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001790000025bfc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc000001800000025b000000e60100001cfa000000010100000002fb0000000a005600690065007700730100000000ffffffff0000010000fffffffb000000100044006900730070006c0061007900730100000000000001790000015600fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f0000035afc0200000002fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b20000000000000000000000020000073800000164fc0100000005fc00000000000001ce000000a000fffffffa000000000200000002fb0000001600430061006d0065007200610020004c0065006600740100000000ffffffff0000001600fffffffb000000140049006d0061006700650020004c0065006600740100000016000001060000001600fffffffc000001d4000001cf000000a900fffffffa000000000200000002fb0000001800430061006d006500720061002000460072006f006e00740100000000ffffffff0000001600fffffffb000000160049006d006100670065002000460072006f006e00740100000016000000da0000001600fffffffc000003a9000001ce000000a300fffffffa000000000200000002fb0000001600430061006d006500720061002000520065006100720100000000ffffffff0000001600fffffffb000000140049006d006100670065002000520065006100720100000016000001060000001600fffffffc0000057d000001bb000000a800fffffffa000000000200000002fb0000001800430061006d0065007200610020005200690067006800740100000000ffffffff0000001600fffffffb000000160049006d0061006700650020005200690067006800740100000016000001060000001600fffffffb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000003efc0100000002fb0000000800540069006d00650000000000000007380000041800fffffffb0000000800540069006d00650100000000000004500000000000000000000005b90000025b00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001790000025bfc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc000001800000025b000000e60100001cfa000000010100000002fb0000000a005600690065007700730100000000ffffffff0000010000fffffffb000000100044006900730070006c0061007900730100000000000001790000015600fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f0000035afc0200000002fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b20000000000000000000000020000073800000164fc0100000005fc00000000000001ce000000a000fffffffa000000000200000002fb0000001600430061006d0065007200610020004c0065006600740100000000ffffffff0000001600fffffffb000000140049006d0061006700650020004c0065006600740100000016000001060000001600fffffffc000001d4000001ce000000a900fffffffa000000000200000002fb0000001800430061006d006500720061002000460072006f006e00740100000000ffffffff0000001600fffffffb000000160049006d006100670065002000460072006f006e00740100000016000000da0000001600fffffffc000003a8000001cf000000a300fffffffa000000000200000002fb0000001600430061006d006500720061002000520065006100720100000000ffffffff0000001600fffffffb000000140049006d006100670065002000520065006100720100000016000001060000001600fffffffc0000057d000001bb000000a800fffffffa000000000200000002fb0000001800430061006d0065007200610020005200690067006800740100000000ffffffff0000001600fffffffb000000160049006d0061006700650020005200690067006800740100000016000001060000001600fffffffb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000003efc0100000002fb0000000800540069006d00650000000000000007380000041800fffffffb0000000800540069006d00650100000000000004500000000000000000000005b90000025b00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -785,4 +818,4 @@ Window Geometry:
     collapsed: false
   Width: 1848
   X: 72
-  Y: 27
+  Y: 1227

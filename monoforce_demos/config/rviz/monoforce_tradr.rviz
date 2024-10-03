@@ -430,13 +430,13 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /normal_forces
       Name: Normal Forces
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: false
       Marker Topic: /friction_forces
@@ -866,4 +866,4 @@ Window Geometry:
     collapsed: false
   Width: 1848
   X: 72
-  Y: 27
+  Y: 1227

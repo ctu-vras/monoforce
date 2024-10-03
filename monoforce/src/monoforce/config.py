@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 import yaml
+import open3d as o3d
 
 
 def inertia_tensor(mass, points):
@@ -49,15 +50,27 @@ def inertia_tensor(mass, points):
 
 
 class DPhysConfig:
-    def __init__(self):
+    def __init__(self, robot='tradr'):
         # robot parameters
-        self.robot_mass = 40.  # kg
-        self.robot_size = (1.0, 0.5)  # length, width in meters
-        self.robot_points, self.robot_mask_left, self.robot_mask_right = self.rigid_body_geometry(from_mesh=False)
+        self.robot = robot
+        if 'tradr' in robot:
+            self.robot_mass = 40.  # kg
+            self.robot_points, self.driving_parts, self.robot_size = self.tradr_geometry()
+            self.vel_max = 1.2  # m/s
+            self.omega_max = 0.8  # rad/s
+        elif 'marv' in robot:
+            self.robot_mass = 60.  # kg
+            self.robot_points, self.driving_parts, self.robot_size = self.marv_geometry()
+            self.vel_max = 1.2  # m/s
+            self.omega_max = 0.8  # rad/s
+        elif 'husky' in robot:
+            self.robot_mass = 50.
+            self.robot_points, self.driving_parts, self.robot_size = self.husky_geometry()
+            self.vel_max = 1.2  # m/s
+            self.omega_max = 0.8  # rad/s
+        else:
+            raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
         self.robot_I = inertia_tensor(self.robot_mass, self.robot_points)  # 3x3 inertia tensor, kg*m^2
-        self.robot_I *= 10.  # increase inertia for stability, as the point cloud is very sparse
-        self.vel_max = 1.2  # m/s
-        self.omega_max = 0.4  # rad/s
 
         # height map parameters
         self.grid_res = 0.1
@@ -75,21 +88,27 @@ class DPhysConfig:
         self.n_sim_trajs = 32
         self.integration_mode = 'rk4'  # 'euler', 'rk2', 'rk4'
 
-    def rigid_body_geometry(self, from_mesh=False):
+    def get_points_from_robot_mesh(self, robot, voxel_size=0.1, return_mesh=False):
+        mesh_path = os.path.join(os.path.dirname(__file__), f'../../data/meshes/{robot}.obj')
+        mesh = o3d.io.read_triangle_mesh(mesh_path)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = mesh.vertices
+        if voxel_size:
+            pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+        x_points = torch.from_numpy(np.asarray(pcd.points, dtype=np.float32))
+        if return_mesh:
+            return x_points, mesh
+        return x_points
+
+    def tradr_geometry(self, from_mesh=True):
         """
         Returns the parameters of the rigid body.
         """
         if from_mesh:
-            import open3d as o3d
-            robot = 'tradr'
-            mesh_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../../data/meshes/{robot}.obj')
-            mesh = o3d.io.read_triangle_mesh(mesh_file)
-            n_points = 32
-            x_points = np.asarray(mesh.sample_points_uniformly(n_points).points, dtype=np.float32)
-            x_points = torch.as_tensor(x_points)
+            x_points = self.get_points_from_robot_mesh('tradr')
+            s_x, s_y = x_points[:, 0].max() - x_points[:, 0].min(), x_points[:, 1].max() - x_points[:, 1].min()
         else:
-            size = self.robot_size
-            s_x, s_y = size
+            s_x, s_y = (1.0, 0.5)
             x_points = torch.stack([
                 torch.hstack([torch.linspace(-s_x / 2., s_x / 2., 16 // 2),
                               torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
@@ -101,10 +120,83 @@ class DPhysConfig:
 
         # divide the point cloud into left and right parts
         cog = x_points.mean(dim=0)
-        mask_left = x_points[..., 1] > cog[1]
-        mask_right = x_points[..., 1] < cog[1]
+        mask_left = x_points[..., 1] > (cog[1] + s_y / 4.)
+        mask_right = x_points[..., 1] < (cog[1] - s_y / 4.)
 
-        return x_points, mask_left, mask_right
+        # driving parts: left and right tracks
+        driving_parts = [mask_left, mask_right]
+
+        # robot size
+        robot_size = (s_x, s_y)
+
+        return x_points, driving_parts, robot_size
+
+    def marv_geometry(self, from_mesh=True):
+        """
+        Returns the parameters of the rigid body.
+        """
+        if from_mesh:
+            # TODO: create a mesh for marv, using the tradr mesh for now
+            x_points = self.get_points_from_robot_mesh('tradr')
+            s_x, s_y = x_points[:, 0].max() - x_points[:, 0].min(), x_points[:, 1].max() - x_points[:, 1].min()
+        else:
+            s_x, s_y = (1.2, 0.6)
+            x_points = torch.stack([
+                torch.hstack([torch.linspace(-s_x / 2., s_x / 2., 16 // 2),
+                              torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
+                torch.hstack([s_y / 2. * torch.ones(16 // 2),
+                              -s_y / 2. * torch.ones(16 // 2)]),
+                torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2]),
+                              torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2])])
+            ]).T
+            mask = [True, True, True, False, False, True, True, True,
+                    True, True, True, False, False, True, True, True]
+            x_points = x_points[mask]
+
+        # divide the point cloud into front left, front right, rear left, rear right flippers
+        cog = x_points.mean(dim=0)
+        mask_fl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
+                                    x_points[..., 1] > (cog[1] + s_y / 3.))
+        mask_fr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
+                                    x_points[..., 1] < (cog[1] - s_y / 3.))
+        mask_rl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
+                                    x_points[..., 1] > (cog[1] + s_y / 3.))
+        mask_rr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
+                                    x_points[..., 1] < (cog[1] - s_y / 3.))
+
+        # driving parts: front left, front right, rear left, rear right flippers
+        driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
+
+        # robot size
+        robot_size = (s_x, s_y)
+
+        return x_points, driving_parts, robot_size
+
+    def husky_geometry(self):
+        """
+        Returns the parameters of the rigid body.
+        """
+        x_points = self.get_points_from_robot_mesh('husky')
+        s_x, s_y = x_points[:, 0].max() - x_points[:, 0].min(), x_points[:, 1].max() - x_points[:, 1].min()
+
+        # divide the point cloud into front left, front right, rear left, rear right flippers
+        cog = x_points.mean(dim=0)
+        mask_fl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
+                                    x_points[..., 1] > (cog[1] + s_y / 3.))
+        mask_fr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
+                                    x_points[..., 1] < (cog[1] - s_y / 3.))
+        mask_rl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
+                                    x_points[..., 1] > (cog[1] + s_y / 3.))
+        mask_rr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
+                                    x_points[..., 1] < (cog[1] - s_y / 3.))
+
+        # driving parts: front left, front right, rear left, rear right flippers
+        driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
+
+        # robot size
+        robot_size = (s_x, s_y)
+
+        return x_points, driving_parts, robot_size
 
     def __str__(self):
         return str(self.__dict__)
@@ -142,6 +234,31 @@ class DPhysConfig:
             setattr(self, k, v)
 
 
-if __name__ == '__main__':
+def show_robot():
+    import matplotlib
+    import open3d as o3d
+    matplotlib.use('Qt5Agg')
+
+    robot = 'husky'
+    cfg = DPhysConfig(robot=robot)
+    points = cfg.robot_points
+    points_driving = [points[mask] for mask in cfg.driving_parts]
+
+    pcd_driving = o3d.geometry.PointCloud()
+    pcd_driving.points = o3d.utility.Vector3dVector(torch.vstack(points_driving))
+    pcd_driving.paint_uniform_color([1.0, 0.0, 0.0])
+    o3d.visualization.draw_geometries([pcd_driving])
+
+    mesh = cfg.get_points_from_robot_mesh(robot, return_mesh=True)[1]
+
+    o3d.visualization.draw_geometries([mesh, pcd_driving])
+
+
+def save_cfg():
     cfg = DPhysConfig()
     cfg.to_yaml('../../config/dphys_cfg.yaml')
+
+
+if __name__ == '__main__':
+    show_robot()
+    # save_cfg()

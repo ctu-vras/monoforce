@@ -4,7 +4,6 @@
     <arg name="output_topic" default="height_map"/>
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
-    <arg name="dphys_config_path" default="$(dirname)/../../monoforce/config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
     <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss_robingas).pt"/>
     <arg name="max_msgs_delay" default="0.1"/>
@@ -15,7 +14,6 @@
     <!-- Terrain encoder node (LSS) -->
     <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder" output="screen">
         <rosparam subst_value="true">
-            dphys_config_path: $(arg dphys_config_path)
             lss_config_path: $(arg lss_config_path)
             img_topics: $(arg img_topics)
             camera_info_topics: $(arg camera_info_topics)
@@ -25,7 +23,6 @@
             max_age: $(arg max_age)
             calib_path: $(arg calib_path)
             n_cams: $(arg n_cams)
-            debug: false
         </rosparam>
         <remap from="height_map" to="$(arg output_topic)"/>
     </node>

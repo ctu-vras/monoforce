@@ -136,7 +136,7 @@ class RobinGasBase(Dataset):
 
     def get_ids(self):
         ids = [f[:-4] for f in os.listdir(self.cloud_path)]
-        ids = np.sort(ids)
+        ids = sorted(ids)
         return ids
 
     @staticmethod
@@ -185,20 +185,9 @@ class RobinGasBase(Dataset):
         timestamps = timestamps - timestamps[0]
         vels = all_vels[il:ir]
 
-        if vels.shape[1] == 4:
-            # velocities of the tracks: front left, front right, rear left, rear right
-            v_fl, v_fr, v_rl, v_rr = vels[:, 0], vels[:, 1], vels[:, 2], vels[:, 3]
-
-            # average left and right tracks velocities
-            v_left = np.mean([v_fl, v_rl], axis=0)
-            v_right = np.mean([v_fr, v_rr], axis=0)
-            vels = np.stack([v_left, v_right], axis=1)
-        else:
-            assert vels.shape[1] == 2, f'Velocities array has wrong shape: {vels.shape}'
-
         # velocities interpolation
         interp_times = np.arange(0.0, time_right - time_left, dt)
-        interp_vels = np.zeros((len(interp_times), 2))
+        interp_vels = np.zeros((len(interp_times), vels.shape[1]))
         for i in range(vels.shape[1]):
             interp_vels[:, i] = np.interp(interp_times, timestamps, vels[:, i])
 

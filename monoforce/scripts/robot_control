@@ -7,15 +7,10 @@ from monoforce.models.dphysics import DPhysics
 from monoforce.vis import setup_visualization, animate_trajectory
 
 
-# rigid body and terrain parameters
-dphys_cfg = DPhysConfig()
-dphys_cfg.grid_res = 0.1
-dphys_cfg.d_max = 6.4
-dphys_cfg.d_min = 1.
-dphys_cfg.traj_sim_time = 5.0
-dphys_cfg.dt = 0.01
-device = torch.device('cpu')
-
+# simulation parameters
+robot = 'marv'
+dphys_cfg = DPhysConfig(robot=robot)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def motion():
     from scipy.spatial.transform import Rotation
@@ -29,24 +24,29 @@ def motion():
     dphys_cfg.k_friction = 1.0
     T = dphys_cfg.traj_sim_time
 
-    # control inputs: [vel_left, vel_right] in m/s
-    controls = torch.stack([
-        torch.tensor([[0.5, 0.6]] * int(T / dt)),
-        # torch.tensor([[-0.4, -0.6]] * int(T / dt))
-    ]).to(device)
+    # control inputs: track vels in m/s
+    if dphys_cfg.robot in ['marv', 'husky']:
+        # fl, fr, rl, rr
+        controls = torch.stack([
+            torch.tensor([[0.5, 0.8, 0.5, 0.8]] * int(T / dt)),
+        ]).to(device)
+    elif dphys_cfg.robot in ['tradr', 'tradr2']:
+        controls = torch.stack([
+            torch.tensor([[0.8, 0.5]] * int(T / dt)),
+        ]).to(device)
+    else:
+        raise ValueError(f'Unknown robot: {dphys_cfg.robot}')
     B, N_ts = controls.shape[:2]
-    assert controls.shape == (B, N_ts, 2)
+    assert controls.shape == (B, N_ts, len(dphys_cfg.driving_parts))
 
     # initial state
     x = torch.stack([
         torch.tensor([0.0, 0.0, 0.2]),
-        # torch.tensor([-2.0, 0.0, 0.2])
     ]).to(device)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
     R = torch.tensor(Rotation.from_euler('z', [0.0]).as_matrix(), dtype=torch.float32, device=device)
-    # R = torch.tensor(Rotation.from_euler('z', [0.0, np.pi/4]).as_matrix(), dtype=torch.float32, device=device)
     assert R.shape == (B, 3, 3)
     omega = torch.zeros_like(x)
     assert omega.shape == (B, 3)
@@ -60,12 +60,12 @@ def motion():
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-    # z_grid = (torch.sin(x_grid) * torch.cos(y_grid)).to(device)
-    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2).to(device)
+    # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # z_grid = torch.zeros_like(x_grid)
+    x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
     friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
-    x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
@@ -109,14 +109,11 @@ def motion():
         xs, R, xds, omegas, x_points = [s[b].detach().cpu().numpy() for s in states]
         F_spring, F_friction = [f[b].detach().cpu().numpy() for f in forces]
         x_grid_np, y_grid_np, z_grid_np = [g[b].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
-        mask_left_np = dphysics.robot_mask_left.detach().cpu().numpy()
-        mask_right_np = dphysics.robot_mask_right.detach().cpu().numpy()
 
         # set up the visualization
         vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
                                       forces=(F_spring, F_friction),
-                                      x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np,
-                                      mask_left=mask_left_np, mask_right=mask_right_np)
+                                      x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
 
         # visualize animated trajectory
         animate_trajectory(states=(xs, R, xds, omegas, x_points),
@@ -141,8 +138,8 @@ def motion_dataset():
             return controls, states, heightmap
 
     # load the dataset
-    robot = 'marv'
-    path = robingas_seq_paths[robot][0]
+    path = np.random.choice(robingas_seq_paths[robot])
+    dphys_cfg = DPhysConfig(robot=robot)
     ds = Data(path, dphys_cfg=dphys_cfg)
 
     # instantiate the simulator
@@ -188,14 +185,13 @@ def motion_dataset():
 def shoot_multiple():
     from time import time
     from scipy.spatial.transform import Rotation
-    from monoforce.models.dphysics import vw_to_track_vel
+    from monoforce.models.dphysics import vw_to_tracks_vel
     from monoforce.vis import set_axes_equal
     import matplotlib.pyplot as plt
     import matplotlib
     matplotlib.use('Qt5Agg')
 
     # simulation parameters
-    dphys_cfg = DPhysConfig()
     dt = dphys_cfg.dt
     T = dphys_cfg.traj_sim_time
     num_trajs = dphys_cfg.n_sim_trajs
@@ -216,8 +212,8 @@ def shoot_multiple():
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2).to(device)
-    # z_grid = (torch.sin(x_grid) * torch.cos(y_grid)).to(device)
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
+    # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
     # z_grid = torch.zeros_like(x_grid)
 
     stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
@@ -234,17 +230,14 @@ def shoot_multiple():
     vels_x = torch.cat([-vel_max * torch.ones((num_trajs // 2, int(T / dt))),
                         vel_max * torch.ones((num_trajs // 2, int(T / dt)))])
     omegas_z = torch.cat([torch.linspace(-omega_max, omega_max, num_trajs // 2),
-                          torch.linspace(-omega_max, omega_max, num_trajs // 2)])
+                          torch.linspace(-omega_max, omega_max, num_trajs // 2)]).repeat(int(T / dt), 1).T
     assert vels_x.shape == (num_trajs, int(T / dt))
-    assert omegas_z.shape == (num_trajs,)
-    vels = torch.zeros((num_trajs, int(T / dt), 3))
-    vels[:, :, 0] = vels_x
-    omegas = torch.zeros((num_trajs, 3))
-    omegas[:, 2] = omegas_z
+    assert omegas_z.shape == (num_trajs, int(T / dt))
 
-    controls = torch.zeros((num_trajs, int(T / dt), 2))
-    for i in range(num_trajs):
-        controls[i, :, 0], controls[i, :, 1] = vw_to_track_vel(vels[i, :, 0], omegas[i, 2])
+    controls = vw_to_tracks_vel(v=vels_x, w=omegas_z,
+                                robot_size=dphys_cfg.robot_size,
+                                n_tracks=len(dphys_cfg.driving_parts))
+    controls = torch.stack(controls, dim=2)
     controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
 
     # initial state
@@ -284,9 +277,9 @@ def shoot_multiple():
 
 
 def main():
-    # motion()
+    motion()
     motion_dataset()
-    # shoot_multiple()
+    shoot_multiple()
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import RobinGasVis, robingas_seq_paths
 from monoforce.config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, vw_to_track_vel
+from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
 from monoforce.models.terrain_encoder.lss import load_model
 from nav_msgs.msg import Path
@@ -24,7 +24,6 @@ class MonoForce:
     def __init__(self,
                  name='monoforce',
                  robot='husky',
-                 dphys_config_path=None,
                  lss_config_path=None,
                  lss_weights_path=None,
                  map_frame='map',
@@ -33,17 +32,12 @@ class MonoForce:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.robot = robot
 
-        self.dphys_cfg = DPhysConfig()
         self.lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
-        path = np.random.choice(robingas_seq_paths[self.robot])
-        if os.path.exists(path):
-            self.data_seq = path
-        else:
+        self.data_seq = np.random.choice(robingas_seq_paths[self.robot])
+        if not os.path.isdir(self.data_seq):
             rospy.loginfo('Data sequence for robot %s does not exist. Using sample data.' % self.robot)
             self.data_seq = os.path.join(self.lib_path, 'config/data_sample', self.robot)
-        self.dphys_config_path = dphys_config_path
-        assert os.path.isfile(self.dphys_config_path), 'Config file %s does not exist' % self.dphys_config_path
-        self.dphys_cfg.from_yaml(self.dphys_config_path)
+        self.dphys_cfg = DPhysConfig(robot=robot)
         self.dphys_cfg.from_rosparams(node_name=name)
         # load dphysics model
         self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
@@ -161,21 +155,17 @@ class MonoForce:
         poses[:, :3, 3] = xyz
         return poses
 
-    def predict_states(self, z_grid, v, w):
+    def predict_states(self, z_grid, controls):
         with torch.no_grad():
-            # constant linear and angular velocities as control inputs
-            T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-            v_l, v_r = vw_to_track_vel(v, w, self.dphys_cfg.robot_size[1])
-            thrusts = torch.tensor([[v_l, v_r]] * int(T / dt), device=self.device)
-            thrusts = thrusts.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
-            states, forces = self.dphysics(z_grid, controls=thrusts)
+            controls = controls.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
+            states, forces = self.dphysics(z_grid, controls=controls)
         return states, forces
 
     def run(self):
         ds = RobinGasVis(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
         rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
         sample_i = np.random.choice(range(len(ds)))
-        rospy.loginfo('Using sample %d' % sample_i)
+        rospy.loginfo('Using sample number %d that corresponds to timestamp %f' % (sample_i, ds.ts[sample_i]))
 
         self.camera_frames = ds.camera_names
         self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
@@ -229,14 +219,18 @@ class MonoForce:
                 self.publish_images(imgs_raw, Ks, stamp)
 
                 # predict path poses
-                v = np.random.uniform(0.9, 1.5)
+                v = np.random.uniform(0.5 * self.dphys_cfg.vel_max, self.dphys_cfg.vel_max)
                 # if robot has more than one (front-facing) camera, randomly change commanded linear velocity direction
                 if len(self.camera_frames) > 1 and np.random.random() > 0.5:
                     v = -v
                 w = np.random.uniform(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max)
-
                 rospy.loginfo('Predicting path with v=%.3f, w=%.3f' % (v, w))
-                states, forces = self.predict_states(height_terrain_pred.squeeze(1), v=v, w=w)
+                T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
+                us = vw_to_tracks_vel(v, w, robot_size=self.dphys_cfg.robot_size, n_tracks=len(self.dphys_cfg.driving_parts))
+                controls = torch.tensor([us] * int(T / dt))
+                # controls = torch.as_tensor(ds.get_controls(sample_i)[1])
+
+                states, forces = self.predict_states(z_grid=height_terrain_pred.squeeze(1), controls=controls)
                 poses = self.poses_from_states(states)
                 poses[:, 2, 3] += 0.132  # add robot clearance
                 rospy.logdebug('Predicted poses shape: %s' % str(poses.shape))
@@ -285,7 +279,6 @@ def main():
     lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
     rospy.loginfo('Library path: %s' % lib_path)
     robot = rospy.get_param('~robot', 'husky')
-    dphys_config_path = rospy.get_param('~dphys_config_path', os.path.join(lib_path, 'config/dphys_cfg.yaml'))
     lss_config_path = rospy.get_param('~lss_config_path', os.path.join(lib_path, f'config/lss_cfg_{robot}.yaml'))
     lss_weights_path = rospy.get_param('~lss_weights_path', os.path.join(lib_path, f'config/weights/lss/lss_robingas_{robot}.pt'))
     map_frame = rospy.get_param('~map_frame', 'map')
@@ -293,7 +286,6 @@ def main():
     robot_frame = rospy.get_param('~robot_frame', 'base_link')
     
     node = MonoForce(robot=robot,
-                     dphys_config_path=dphys_config_path,
                      lss_config_path=lss_config_path,
                      lss_weights_path=lss_weights_path,
                      map_frame=map_frame,

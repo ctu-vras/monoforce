@@ -12,7 +12,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.config import DPhysConfig
-from monoforce.models.dphysics import DPhysics
+from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
 from monoforce.models.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
@@ -28,14 +28,12 @@ class DiffPhysBase:
     def __init__(self,
                  gridmap_topic='/grid_map/terrain',
                  gridmap_layer='elevation',
-                 robot='tradr',
                  robot_frame='base_link',
                  dphys_cfg: DPhysConfig = None,
                  max_age=0.5,
                  device='cpu',
                  dt=0.001):
-        self.robot = robot
-        self.robot_size = self.get_robot_size()
+        self.robot_size = dphys_cfg.robot_size
         self.robot_frame = robot_frame
         self.dphys_cfg = dphys_cfg
         self.gridmap_layer = gridmap_layer
@@ -75,17 +73,6 @@ class DiffPhysBase:
         grid_map_tf.transform.rotation = gridmap_msg.info.pose.orientation
         self.tf_broadcaster.sendTransform(grid_map_tf)
 
-    def get_robot_size(self):
-        # TODO: add other robots, calculate bbox sizes from URDF models
-        if self.robot == 'tradr':
-            return np.array([1.0, 0.5, 0.4])
-        elif self.robot == 'husky':
-            return np.array([1.0, 0.5, 0.7])
-        elif self.robot == 'husky_oru':
-            return np.array([1.0, 0.5, 1.2])
-        else:
-            raise ValueError('Unknown robot: %s' % self.robot)
-
     def init_poses(self):
         """
         Initialize robot poses.
@@ -95,39 +82,37 @@ class DiffPhysBase:
         xyz_q[:, 6] = 1.0  # quaternion w
         return xyz_q
 
-    def init_controls(self, linear_vel, angular_vel_max, wheels_dist, allow_backward=True):
+    def init_controls(self, linear_vel, angular_vel_max, robot_size, allow_backward=True):
         """
         Initialize control commands through input linear and angular velocities.
         The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
-        v_l(t) = v(t) + d * w(t)
-        v_r(t) = v(t) - d * w(t),
-        d is the distance between the robot's wheels.
+        v_l(t) = v(t) + r * w(t)
+        v_r(t) = v(t) - r * w(t),
+        r is half of the robot's width, r = robot_size[1] / 2.
 
         where v(t) = V = const for t in [0 .. T], linear velocity,
         w(t) = [-W_max .. W_max], angular velocity.,
         T is trajectories time horizon.
         """
-        T = self.n_sim_steps
         assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
         if allow_backward:
-            vels = np.concatenate([-linear_vel * np.ones((self.n_sim_trajs // 2, T)),
-                                   +linear_vel * np.ones((self.n_sim_trajs // 2, T))])
-            omegas = np.concatenate([np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
-                                     np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)])
+            vels = torch.cat([-linear_vel * torch.ones((self.n_sim_trajs // 2, self.n_sim_steps)),
+                              +linear_vel * torch.ones((self.n_sim_trajs // 2, self.n_sim_steps))])
+            omegas = torch.cat([torch.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
+                                torch.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)]).repeat(self.n_sim_steps, 1).T
         else:
-            vels = linear_vel * np.ones((self.n_sim_trajs, T))
-            omegas = np.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs)
-        assert vels.shape == (self.n_sim_trajs, T), 'vels shape: %s' % str(vels.shape)
-        assert omegas.shape == (self.n_sim_trajs,), 'omegas shape: %s' % str(omegas.shape)
+            vels = linear_vel * torch.ones((self.n_sim_trajs, self.n_sim_steps))
+            omegas = torch.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs).repeat(self.n_sim_steps, 1).T
+        assert vels.shape == (self.n_sim_trajs, self.n_sim_steps), 'vels shape: %s' % str(vels.shape)
+        assert omegas.shape == (self.n_sim_trajs, self.n_sim_steps), 'omegas shape: %s' % str(omegas.shape)
 
-        track_vels = np.zeros((self.n_sim_trajs, T, 2))
-        for i in range(self.n_sim_trajs):
-            d = wheels_dist
-            v_l = vels[i] + d * omegas[i]
-            v_r = vels[i] - d * omegas[i]
-            track_vels[i, :, 0], track_vels[i, :, 1] = v_l, v_r
+        # convert linear and angular velocities to track velocities
+        n_tracks = len(self.dphys_cfg.driving_parts)
+        track_vels = vw_to_tracks_vel(vels, omegas, robot_size, n_tracks=n_tracks)
+        track_vels = torch.stack(track_vels, dim=2)
+        assert track_vels.shape == (self.n_sim_trajs, self.n_sim_steps, n_tracks), 'track_vels shape: %s' % str(track_vels.shape)
 
-        return track_vels, vels, omegas
+        return track_vels
 
     def get_pose(self, target_frame, source_frame, stamp=None):
         if stamp is None:
@@ -245,22 +230,22 @@ class DiffPhysicsWarp(DiffPhysBase):
                  dphys_cfg: DPhysConfig = None,
                  gridmap_topic='/grid_map/terrain',
                  gridmap_layer='elevation',
-                 robot='tradr',
                  robot_frame='base_link',
                  max_age=0.5,
                  allow_backward=True,
                  dt=0.001,
                  device='cpu'):
-        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
+        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot_frame=robot_frame,
                          max_age=max_age, device=device, dt=dt)
         # initialize warp
         wp.init()
+        assert 'tradr' in dphys_cfg.robot, 'Only Tradr robot is supported for WARP engine'
 
         self.n_sim_trajs = dphys_cfg.n_sim_trajs if dphys_cfg.n_sim_trajs % 2 == 0 else dphys_cfg.n_sim_trajs + 1
 
         self.xyz_q0 = self.init_poses()
-        self.track_vels, _, _ = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
-                                                   wheels_dist=self.robot_size[1], allow_backward=allow_backward)
+        self.track_vels = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
+                                             robot_size=self.robot_size, allow_backward=allow_backward)
         self.flipper_angles = self.init_flippers()
         height0 = np.zeros((int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res),
                             int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res)))
@@ -345,17 +330,16 @@ class DiffPhysicsTorch(DiffPhysBase):
                  dphys_cfg: DPhysConfig,
                  gridmap_topic='/grid_map/terrain',
                  gridmap_layer='elevation',
-                 robot='tradr',
                  robot_frame='base_link',
                  max_age=0.5,
                  allow_backward=False,
                  dt=0.01,
                  device='cpu'):
-        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot=robot, robot_frame=robot_frame,
+        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot_frame=robot_frame,
                          max_age=max_age, device=device, dt=dt)
         self.dphysics = DPhysics(dphys_cfg, device=device)
-        self.track_vels, _, _ = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
-                                                   wheels_dist=self.robot_size[1], allow_backward=allow_backward)
+        self.track_vels = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
+                                             robot_size=self.robot_size, allow_backward=allow_backward)
         # grid map subscriber
         self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
 
@@ -366,8 +350,9 @@ class DiffPhysicsTorch(DiffPhysBase):
         #     assert grid_map.shape[0] == grid_map.shape[1]
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
         assert grid_maps.shape[0] == self.n_sim_trajs
-        thrusts = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
-        assert thrusts.shape == (self.n_sim_trajs, self.n_sim_steps, 2)
+        controls = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
+        n_tracks = len(self.dphys_cfg.driving_parts)
+        assert controls.shape == (self.n_sim_trajs, self.n_sim_steps, n_tracks)
 
         # initial state
         x = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)
@@ -380,7 +365,7 @@ class DiffPhysicsTorch(DiffPhysBase):
         state0 = (x, xd, R, omega, x_points)
 
         # simulate trajectories
-        states, forces = self.dphysics(grid_maps, controls=thrusts, state=state0)
+        states, forces = self.dphysics(grid_maps, controls=controls, state=state0)
         Xs, Xds, Rs, Omegas, X_points = states
         assert Xs.shape == (self.n_sim_trajs, self.n_sim_steps, 3)
         assert Rs.shape == (self.n_sim_trajs, self.n_sim_steps, 3, 3)
@@ -412,13 +397,8 @@ class DiffPhysicsTorch(DiffPhysBase):
 def main():
     rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
 
-    lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
-    dphys_cfg = DPhysConfig()
-    config_path = rospy.get_param('~config_path', os.path.join(lib_path, 'config/dphys_cfg.yaml'))
-    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    dphys_cfg.from_yaml(config_path)
-
     robot = rospy.get_param('~robot', 'tradr')
+    dphys_cfg = DPhysConfig(robot=robot)
     robot_frame = rospy.get_param('~robot_frame', 'base_link')
     gridmap_topic = rospy.get_param('~gridmap_topic')
     gridmap_layer = rospy.get_param('~gridmap_layer', 'elevation')
@@ -431,7 +411,6 @@ def main():
     DPhysEngine = DiffPhysicsTorch if engine == 'torch' else DiffPhysicsWarp
 
     node = DPhysEngine(dphys_cfg=dphys_cfg,
-                       robot=robot,
                        robot_frame=robot_frame,
                        gridmap_topic=gridmap_topic,
                        gridmap_layer=gridmap_layer,
