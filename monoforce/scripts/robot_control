@@ -260,7 +260,7 @@ def shoot_multiple():
         states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
         t1 = time()
         Xs, Xds, Rs, Omegas, X_points = states
-        print(Xs.shape)
+        print(f'Robot body points shape: {X_points.shape}')
         print(f'Simulation took {(t1-t0):.3f} [sec] on device: {device}')
 
     # visualize

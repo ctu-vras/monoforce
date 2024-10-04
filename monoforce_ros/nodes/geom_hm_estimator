@@ -4,7 +4,7 @@ import os
 import numpy as np
 import rospy
 from grid_map_msgs.msg import GridMap
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.cloudproc import estimate_heightmap, filter_grid, filter_range
 from monoforce.utils import position
@@ -144,9 +144,6 @@ def main():
     rospy.init_node('hm_estimator', anonymous=True, log_level=rospy.INFO)
 
     cfg = DPhysConfig()
-    config_path = rospy.get_param('~config_path', os.path.join(lib_path, 'config/dphys_cfg.yaml'))
-    assert os.path.isfile(config_path), 'Config file %s does not exist' % config_path
-    cfg.from_yaml(config_path)
     cfg.hm_interp_method = rospy.get_param('~hm_interp_method', 'nearest')
     # cfg.to_rosparam()
 

@@ -35,7 +35,7 @@ class DPhysConfig:
         self.h_max_above_ground = 1.0  # above ground frame (base_footprint)
         self.k_stiffness = 5_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
-        self.k_friction = 0.5
+        self.k_friction = 1.0
         self.hm_interp_method = None
 
         # trajectory shooting parameters
@@ -130,13 +130,13 @@ class DPhysConfig:
             driving_parts = [mask_left, mask_right]
         elif robot in ['marv', 'husky']:
             # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
-            mask_fl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
+            mask_fl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 12.),
                                         x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_fr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
+            mask_fr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 12.),
                                         x_points[..., 1] < (cog[1] - s_y / 3.))
-            mask_rl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
+            mask_rl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 12.),
                                         x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_rr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
+            mask_rr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 12.),
                                         x_points[..., 1] < (cog[1] - s_y / 3.))
             # driving parts: front left, front right, rear left, rear right flippers / wheels
             driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
@@ -198,14 +198,66 @@ def show_robot():
     points = cfg.robot_points
     points_driving = [points[mask] for mask in cfg.driving_parts]
 
+    tradr_flipper_joint_positions = {
+        'fl': [0.250, 0.272, 0.019],
+        'fr': [0.250, -0.272, 0.019],
+        'rl': [-0.250, 0.272, 0.019],
+        'rr': [-0.250, -0.272, 0.019]
+    }
+    husky_wheel_joint_positions = {
+        'fl': [0.256, 0.285, 0.033],
+        'fr': [0.256, -0.285, 0.033],
+        'rl': [-0.256, 0.285, 0.033],
+        'rr': [-0.256, -0.285, 0.033]
+    }
+    joint_positions = husky_wheel_joint_positions if 'husky' in robot else tradr_flipper_joint_positions
+
+    joint_angles = {
+        'fl': 1.0,
+        'fr': 0.0,
+        'rl': 0.0,
+        'rr': 0.0
+    }
+    assert len(joint_positions) == len(joint_angles) == len(points_driving)
+
+    # rotate driving parts according to joint angles
+    for i, (points, angle, xyz) in enumerate(zip(points_driving, joint_angles.values(), joint_positions.values())):
+        # rotate around y-axis of the joint position
+        xyz = torch.tensor(xyz)
+        R = torch.tensor([[np.cos(angle), 0, np.sin(angle)],
+                          [0, 1, 0],
+                          [-np.sin(angle), 0, np.cos(angle)]]).float()
+        points -= xyz
+        points = points @ R.T
+        points += xyz
+        points_driving[i] = points
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.paint_uniform_color([0.0, 0.0, 1.0])
+
     pcd_driving = o3d.geometry.PointCloud()
     pcd_driving.points = o3d.utility.Vector3dVector(torch.vstack(points_driving))
     pcd_driving.paint_uniform_color([1.0, 0.0, 0.0])
-    o3d.visualization.draw_geometries([pcd_driving])
 
     mesh = cfg.get_points_from_robot_mesh(robot, return_mesh=True)[1]
 
-    o3d.visualization.draw_geometries([mesh, pcd_driving])
+    joint_poses = []
+    for joint in joint_positions.values():
+        # sphere
+        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+        sphere.translate(joint)
+        sphere.paint_uniform_color([0.0, 1.0, 0.0])
+        joint_poses.append(sphere)
+    base_link_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+    base_link_sphere.translate([0, 0, 0])
+    base_link_sphere.paint_uniform_color([0.0, 0.0, 1.0])
+
+    # visualize
+    o3d.visualization.draw_geometries([mesh, pcd_driving, base_link_sphere] + joint_poses)
+    # o3d.visualization.draw_geometries([pcd, pcd_driving] + joint_poses)
+    # o3d.visualization.draw_geometries([pcd, pcd_driving])
+    # o3d.visualization.draw_geometries([mesh, pcd, pcd_driving])
 
 
 def save_cfg():

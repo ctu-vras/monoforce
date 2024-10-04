@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from mayavi import mlab
 import argparse
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
@@ -18,8 +18,6 @@ def arg_parser():
     base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     parser = argparse.ArgumentParser(description='Run MonoForce')
-    parser.add_argument('--dphys_cfg_path', type=str,
-                        default=os.path.join(base_path, 'config/dphys_cfg.yaml'), help='Path to the DPhys config file')
     parser.add_argument('--lss_cfg_path', type=str,
                         default=os.path.join(base_path, 'config/lss_cfg_tradr.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str,
@@ -54,7 +52,8 @@ class MonoForce:
             self.angular_vel = w
 
         # load DPhys config
-        self.dphys_cfg = DPhysConfig()
+        self.dphys_cfg = DPhysConfig(robot='tradr')
+        self.dphys_cfg.traj_sim_time = 8.0
 
         # load LSS config
         self.lss_config_path = lss_cfg_path
@@ -173,21 +172,22 @@ class MonoForce:
         mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.8)
         mlab.plot3d(poses[:, 0, 3], poses[:, 1, 3], poses[:, 2, 3], color=(0, 0, 0), line_width=2.0)
         visu_robot = mlab.points3d(robot_points0[:, 0], robot_points0[:, 1], robot_points0[:, 2],
-                                   color=(0, 0, 1), scale_factor=0.2)
+                                   color=(0, 0, 1), scale_factor=0.1)
         visu_forces = mlab.quiver3d(robot_points0[:, 0], robot_points0[:, 1], robot_points0[:, 2],
                                     F_springs[0, :, 0], F_springs[0, :, 1], F_springs[0, :, 2],
-                                    line_width=4.0, scale_factor=0.005)
+                                    line_width=1.0, scale_factor=0.001)
         for i in range(len(poses)):
             # robot-terrain contact points
             robot_points = robot_points0 @ poses[i, :3, :3].T + poses[i, :3, 3:4].T
+            robot_points[..., 2] += 0.132
             visu_robot.mlab_source.set(x=robot_points[:, 0], y=robot_points[:, 1], z=robot_points[:, 2])
             visu_forces.mlab_source.set(x=robot_points[:, 0], y=robot_points[:, 1], z=robot_points[:, 2],
                                         u=F_springs[i, :, 0], v=F_springs[i, :, 1], w=F_springs[i, :, 2])
-            mlab.view(azimuth=i/5, elevation=60, distance=20)
+            mlab.view(azimuth=i/10, elevation=60, distance=20)
             # mlab pause
             if i % 5 == 0:
                 os.makedirs('./gen', exist_ok=True)
-                mlab.savefig(f'./gen/pose_{i//5}.png')
+                mlab.savefig(f'./gen/{i//5:04d}.png')
         mlab.show()
 
 
