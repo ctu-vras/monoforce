@@ -4,7 +4,7 @@ ROBOT=tradr
 DATASET=robingas
 DEBUG=False
 VIS=False
-BSZ=4
+BSZ=128
 
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss_${DATASET}_${ROBOT}.pt
 
