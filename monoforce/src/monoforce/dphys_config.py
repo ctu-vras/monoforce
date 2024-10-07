@@ -13,17 +13,55 @@ class DPhysConfig:
             self.robot_mass = 40.  # kg
             self.vel_max = 1.0  # m/s
             self.omega_max = 0.7  # rad/s
+            self.joint_positions = {
+                'fl': [0.250, 0.272, 0.019],
+                'fr': [0.250, -0.272, 0.019],
+                'rl': [-0.250, 0.272, 0.019],
+                'rr': [-0.250, -0.272, 0.019]
+            }
+            self.joint_angles = {
+                'fl': 0.0,
+                'fr': 0.0,
+                'rl': 0.0,
+                'rr': 0.0
+            }
         elif 'marv' in robot:
             self.robot_mass = 60.  # kg
             self.vel_max = 1.2  # m/s
             self.omega_max = 0.8  # rad/s
+            self.joint_positions = {
+                'fl': [0.250, 0.272, 0.019],
+                'fr': [0.250, -0.272, 0.019],
+                'rl': [-0.250, 0.272, 0.019],
+                'rr': [-0.250, -0.272, 0.019]
+            }
+            self.joint_angles = {
+                'fl': -1.0,
+                'fr': -1.0,
+                'rl': 1.0,
+                'rr': 1.0
+            }
         elif 'husky' in robot:
             self.robot_mass = 50.
             self.vel_max = 1.4  # m/s
             self.omega_max = 1.0  # rad/s
+            self.joint_positions = {
+                'fl': [0.256, 0.285, 0.033],
+                'fr': [0.256, -0.285, 0.033],
+                'rl': [-0.256, 0.285, 0.033],
+                'rr': [-0.256, -0.285, 0.033]
+            }
+            self.joint_angles = {
+                'fl': 0.0,
+                'fr': 0.0,
+                'rl': 0.0,
+                'rr': 0.0
+            }
         else:
             raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
         self.robot_points, self.driving_parts, self.robot_size = self.robot_geometry(robot=robot)
+        if 'marv' in robot:
+            self.update_driving_parts()
         self.robot_I = self.inertia_tensor(self.robot_mass, self.robot_points)
 
         self.gravity = 9.81  # acceleration due to gravity, m/s^2
@@ -114,6 +152,17 @@ class DPhysConfig:
 
         return x_points
 
+    def get_points(self, s_x=0.5, s_y=0.5):
+        x_points = torch.stack([
+            torch.hstack([torch.linspace(-s_x / 2., s_x / 2., 16 // 2),
+                          torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
+            torch.hstack([s_y / 2. * torch.ones(16 // 2),
+                          -s_y / 2. * torch.ones(16 // 2)]),
+            torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2]),
+                          torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2])])
+        ]).T
+        return x_points
+
     def robot_geometry(self, robot, device='cpu'):
         """
         Returns the parameters of the rigid body.
@@ -124,19 +173,19 @@ class DPhysConfig:
         cog = x_points.mean(dim=0)
         if robot in ['tradr', 'tradr2']:
             # divide the point cloud into left and right parts
-            mask_left = x_points[..., 1] > (cog[1] + s_y / 4.)
-            mask_right = x_points[..., 1] < (cog[1] - s_y / 4.)
+            mask_l = x_points[..., 1] > (cog[1] + s_y / 4.)
+            mask_r = x_points[..., 1] < (cog[1] - s_y / 4.)
             # driving parts: left and right tracks
-            driving_parts = [mask_left, mask_right]
+            driving_parts = [mask_l, mask_r]
         elif robot in ['marv', 'husky']:
             # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
-            mask_fl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 12.),
+            mask_fl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
                                         x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_fr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 12.),
+            mask_fr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
                                         x_points[..., 1] < (cog[1] - s_y / 3.))
-            mask_rl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 12.),
+            mask_rl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
                                         x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_rr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 12.),
+            mask_rr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
                                         x_points[..., 1] < (cog[1] - s_y / 3.))
             # driving parts: front left, front right, rear left, rear right flippers / wheels
             driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
@@ -151,6 +200,25 @@ class DPhysConfig:
         driving_parts = [p.to(device) for p in driving_parts]
 
         return x_points, driving_parts, robot_size
+
+    def update_driving_parts(self):
+        """
+        Update the driving parts according to the joint angles
+        """
+        assert self.robot in ['marv'], 'Only MARV is supported for now.'
+        # rotate driving parts according to joint angles
+        for i, (angle, xyz) in enumerate(zip(self.joint_angles.values(), self.joint_positions.values())):
+            # rotate around y-axis of the joint position
+            xyz = torch.tensor(xyz)
+            R = torch.tensor([[np.cos(angle), 0, np.sin(angle)],
+                              [0, 1, 0],
+                              [-np.sin(angle), 0, np.cos(angle)]]).float()
+            mask = self.driving_parts[i]
+            points = self.robot_points[mask]
+            points -= xyz
+            points = points @ R.T
+            points += xyz
+            self.robot_points[mask] = points
 
     def __str__(self):
         return str(self.__dict__)
@@ -194,43 +262,9 @@ def show_robot():
     matplotlib.use('Qt5Agg')
 
     robot = 'marv'
-    cfg = DPhysConfig(robot=robot)
-    points = cfg.robot_points
-    points_driving = [points[mask] for mask in cfg.driving_parts]
-
-    tradr_flipper_joint_positions = {
-        'fl': [0.250, 0.272, 0.019],
-        'fr': [0.250, -0.272, 0.019],
-        'rl': [-0.250, 0.272, 0.019],
-        'rr': [-0.250, -0.272, 0.019]
-    }
-    husky_wheel_joint_positions = {
-        'fl': [0.256, 0.285, 0.033],
-        'fr': [0.256, -0.285, 0.033],
-        'rl': [-0.256, 0.285, 0.033],
-        'rr': [-0.256, -0.285, 0.033]
-    }
-    joint_positions = husky_wheel_joint_positions if 'husky' in robot else tradr_flipper_joint_positions
-
-    joint_angles = {
-        'fl': 1.0,
-        'fr': 0.0,
-        'rl': 0.0,
-        'rr': 0.0
-    }
-    assert len(joint_positions) == len(joint_angles) == len(points_driving)
-
-    # rotate driving parts according to joint angles
-    for i, (points, angle, xyz) in enumerate(zip(points_driving, joint_angles.values(), joint_positions.values())):
-        # rotate around y-axis of the joint position
-        xyz = torch.tensor(xyz)
-        R = torch.tensor([[np.cos(angle), 0, np.sin(angle)],
-                          [0, 1, 0],
-                          [-np.sin(angle), 0, np.cos(angle)]]).float()
-        points -= xyz
-        points = points @ R.T
-        points += xyz
-        points_driving[i] = points
+    dphys_cfg = DPhysConfig(robot=robot)
+    points = dphys_cfg.robot_points
+    points_driving = [points[mask] for mask in dphys_cfg.driving_parts]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
@@ -240,10 +274,10 @@ def show_robot():
     pcd_driving.points = o3d.utility.Vector3dVector(torch.vstack(points_driving))
     pcd_driving.paint_uniform_color([1.0, 0.0, 0.0])
 
-    mesh = cfg.get_points_from_robot_mesh(robot, return_mesh=True)[1]
+    mesh = dphys_cfg.get_points_from_robot_mesh(robot, return_mesh=True)[1]
 
     joint_poses = []
-    for joint in joint_positions.values():
+    for joint in dphys_cfg.joint_positions.values():
         # sphere
         sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
         sphere.translate(joint)

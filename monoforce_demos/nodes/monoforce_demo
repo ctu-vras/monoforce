@@ -254,7 +254,30 @@ class MonoForce:
                 pose = np.eye(4)
                 pose[:3, :3] = rot.numpy()
                 pose[:3, 3] = tran.numpy()
-                tf = to_tf(pose, self.robot_initial_frame, cam, stamp)
+                tf = to_tf(pose, self.robot_frame, cam, stamp)
+                self.tf_broadcast.sendTransform(tf)
+
+            # flipper positions
+            for flipper_name in self.dphys_cfg.joint_angles.keys():
+                Tr = np.eye(4)
+                Tr[:3, 3] = self.dphys_cfg.joint_positions[flipper_name]
+                angle = self.dphys_cfg.joint_angles[flipper_name]
+                if flipper_name == 'fl':
+                    frame = 'front_left_flipper'
+                elif flipper_name == 'fr':
+                    frame = 'front_right_flipper'
+                    angle = np.pi + angle
+                elif flipper_name == 'rl':
+                    frame = 'rear_left_flipper'
+                    angle = np.pi + angle
+                elif flipper_name == 'rr':
+                    frame = 'rear_right_flipper'
+                else:
+                    raise ValueError('Unknown flipper name: %s' % flipper_name)
+                Tr[:3, :3] = np.array([[np.cos(angle),  0, np.sin(angle)],
+                                       [0,              1,             0],
+                                       [-np.sin(angle), 0, np.cos(angle)]])
+                tf = to_tf(Tr, self.robot_frame, frame, stamp)
                 self.tf_broadcast.sendTransform(tf)
 
             # robot's current pose
