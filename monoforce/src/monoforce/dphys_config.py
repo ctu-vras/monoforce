@@ -71,7 +71,7 @@ class DPhysConfig:
         self.d_min = 1.0
         self.d_max = 6.4
         self.h_max_above_ground = 1.0  # above ground frame (base_footprint)
-        self.k_stiffness = 5_000.
+        self.k_stiffness = 10_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
         self.k_friction = 1.0
         self.hm_interp_method = None

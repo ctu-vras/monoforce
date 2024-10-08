@@ -238,7 +238,7 @@ class Trainer:
 
             if train:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_norm=max_grad_norm)
                 self.optimizer.step()
             epoch_loss += loss.item()
 

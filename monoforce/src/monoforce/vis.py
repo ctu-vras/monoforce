@@ -56,16 +56,13 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid):
     mlab.figure(size=(1280, 720))
     mlab.clf()
     visu_traj = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=2.0)
-    if forces is not None:
-        F_spring, F_friction = forces
-        visu_Ns = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
-                                F_spring[0, :, 0].mean(), F_spring[0, :, 1].mean(), F_spring[0, :, 2].mean(),
-                                line_width=4.0, scale_factor=0.005, color=(0, 0, 1))
-        visu_Frs = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
-                                 F_friction[0, :, 0].mean(), F_friction[0, :, 1].mean(), F_friction[0, :, 2].mean(),
-                                 line_width=4.0, scale_factor=0.005, color=(0, 1, 0))
-    else:
-        visu_Ns = visu_Frs = None
+    F_spring, F_friction = forces
+    visu_Ns = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+                            F_spring[0, :, 0], F_spring[0, :, 1], F_spring[0, :, 2],
+                            line_width=1.0, scale_factor=0.1, color=(0, 0, 1))
+    visu_Frs = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+                             F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
+                             line_width=1.0, scale_factor=0.1, color=(0, 1, 0))
     visu_terrain = mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
     visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
                                scale_factor=0.1, color=(0, 0, 0))
@@ -83,13 +80,12 @@ def animate_trajectory(states, forces, z_grid, vis_cfg, step=1):
     visu_terrain.mlab_source.scalars = z_grid
     for t in range(len(xs)):
         visu_robot.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2])
-        if forces is not None:
-            F_spring, F_friction = forces
-            visu_Ns.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
-                                    u=F_spring[t, :, 0].mean(), v=F_spring[t, :, 1].mean(), w=F_spring[t, :, 2].mean())
-            visu_Frs.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
-                                     u=F_friction[t, :, 0].mean(), v=F_friction[t, :, 1].mean(),
-                                     w=F_friction[t, :, 2].mean())
+        F_spring, F_friction = forces
+        visu_Ns.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2],
+                                u=F_spring[t, :, 0], v=F_spring[t, :, 1], w=F_spring[t, :, 2])
+        visu_Frs.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2],
+                                 u=F_friction[t, :, 0], v=F_friction[t, :, 1],
+                                 w=F_friction[t, :, 2])
         visu_traj.mlab_source.set(x=xs[:, 0], y=xs[:, 1], z=xs[:, 2])
         if t % step == 0:
             path = os.path.join(os.path.dirname(__file__), '../gen/robot_control')

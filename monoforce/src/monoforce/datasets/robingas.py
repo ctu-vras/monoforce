@@ -554,6 +554,7 @@ class RobinGas(RobinGasBase):
         cached_img_path = os.path.join(cache_dir, '%s_%s.png' % (self.ids[i], camera))
         if os.path.exists(cached_img_path):
             img = Image.open(cached_img_path)
+            assert img is not None, f'Image path {cached_img_path} does not exist'
             K = self.calib[camera]['camera_matrix']['data']
             K = np.asarray(K, dtype=np.float32).reshape((3, 3))
             return img, K

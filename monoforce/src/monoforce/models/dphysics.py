@@ -13,7 +13,8 @@ def normailized(x, eps=1e-6):
     Returns:
     - Normalized tensor.
     """
-    return x / (torch.norm(x, dim=-1, keepdim=True) + eps)
+    norm = torch.norm(x, dim=-1, keepdim=True)
+    return x / torch.clamp(norm, min=eps)
 
 
 def skew_symmetric(v):
@@ -129,41 +130,40 @@ class DPhysics(torch.nn.Module):
         xd_points_n = (xd_points * n).sum(dim=-1, keepdims=True)  # normal velocity
         assert xd_points_n.shape == (B, n_pts, 1)
         F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
-        F_spring = torch.mul(F_spring, in_contact)
+        F_spring = torch.mul(F_spring, in_contact) / n_pts  # apply forces only at the contact points
+        F_spring = torch.clamp(F_spring, min=0.0)  # apply forces only in the normal direction
         assert F_spring.shape == (B, n_pts, 3)
 
         # friction forces: https://en.wikipedia.org/wiki/Friction
         thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
+        m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
+        N = torch.clamp(N, min=0.0)
         F_friction = torch.zeros_like(F_spring)  # initialize friction forces
-        # F_fr = -mu * N * tanh(v_cmd - xd_points)  # tracks friction forces
         for i in range(len(driving_parts)):
             u = controls[:, i].unsqueeze(1)  # control input
             v_cmd = u * thrust_dir  # commanded velocity
             mask = driving_parts[i]
-            F_friction[:, mask] = (friction_points * N.unsqueeze(2) * torch.tanh(v_cmd.unsqueeze(1) - xd_points))[:, mask]
+            # F_fr = -mu * N * tanh(v_cmd - xd_points)  # tracks friction forces
+            dv = v_cmd.unsqueeze(1) - xd_points
+            F_friction[:, mask] = (friction_points * N.unsqueeze(2) * torch.tanh(dv))[:, mask]
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
-        # limit the angular acceleration for stability
-        omega_d = torch.clamp(omega_d, -self.dphys_cfg.omega_max, self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
 
         # motion of the cog
-        m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         F_grav = torch.tensor([[0.0, 0.0, -m * g]], device=self.device)  # F_grav = [0, 0, -m * g]
-        F_cog = F_grav + F_spring.mean(dim=1) + F_friction.mean(dim=1)  # ma = sum(F_i)
+        F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
 
         # motion of point composed of cog motion and rotation of the rigid body (Koenig's theorem in mechanics)
         xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
         assert xd_points.shape == (B, n_pts, 3)
-        # limit the linear acceleration for stability
-        xd = torch.clamp(xd, -self.dphys_cfg.vel_max, self.dphys_cfg.vel_max)
 
         dstate = (xd, xdd, dR, omega_d, xd_points)
         forces = (F_spring, F_friction)
@@ -216,7 +216,7 @@ class DPhysics(torch.nn.Module):
         theta = torch.norm(omega, dim=-1, keepdim=True).unsqueeze(-1)
 
         # Normalize the angular velocities
-        Omega_x_norm = Omega_x / (theta + eps)
+        Omega_x_norm = Omega_x / torch.clamp(theta, min=eps)
 
         # Rodrigues' formula: R_new = R * (I + Omega_x * sin(theta * dt) + Omega_x^2 * (1 - cos(theta * dt)))
         I = torch.eye(3).to(R.device)
