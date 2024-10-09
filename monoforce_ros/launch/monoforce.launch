@@ -2,8 +2,8 @@
 <launch>
     <arg name="robot" default="marv" doc="Robot type: husky, tradr or marv"/>
     <arg name="dphys_config_path" default="$(dirname)/../../monoforce/config/dphys_cfg.yaml"/>
-    <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg_$(arg robot).yaml"/>
-    <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss_robingas_$(arg robot).pt"/>
+    <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
+    <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
                                      '/camera_left/image_color/compressed',
                                      '/camera_rear/image_color/compressed',

@@ -30,7 +30,7 @@ def arg_parser():
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
     parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
-    parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg_tradr.yaml', help='Path to LSS config')
+    parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')

@@ -5,7 +5,7 @@
     <arg name="camera_info_topics" default="[]"/>
     <arg name="hm_frame" default="base_link"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
-    <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss_robingas).pt"/>
+    <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="max_msgs_delay" default="0.1"/>
     <arg name="max_age" default="2.0"/>
     <arg name="calib_path" default="''"/>
