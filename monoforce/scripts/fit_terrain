@@ -1,7 +1,9 @@
+import sys
+sys.path.append('../src')
 import numpy as np
 import torch
 from monoforce.models.dphysics import DPhysics
-from monoforce.config import DPhysConfig
+from monoforce.dphys_config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
 
 
