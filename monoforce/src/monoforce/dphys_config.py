@@ -257,9 +257,7 @@ class DPhysConfig:
 
 
 def show_robot():
-    import matplotlib
     import open3d as o3d
-    matplotlib.use('Qt5Agg')
 
     robot = 'marv'
     dphys_cfg = DPhysConfig(robot=robot)
