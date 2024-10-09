@@ -113,6 +113,7 @@ class Trainer:
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10, verbose=True)
         self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
@@ -230,6 +231,12 @@ class Trainer:
                                           control_ts=control_ts, controls=controls,
                                           traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else 0
 
+            # check if loss is nan
+            if torch.isnan(loss_geom) or torch.isnan(loss_terrain) or torch.isnan(loss_hdiff) or torch.isnan(loss_phys):
+                print('NaN loss detected, skipping the batch...')
+                print('Losses:', loss_geom, loss_terrain, loss_hdiff, loss_phys)
+                continue
+
             # total loss
             loss = (self.geom_hm_weight * loss_geom +
                     self.terrain_hm_weight * loss_terrain +
@@ -240,6 +247,9 @@ class Trainer:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_norm=max_grad_norm)
                 self.optimizer.step()
+            else:
+                # decrease learning rate on validation if loss is not decreasing
+                self.lr_scheduler.step(loss)
             epoch_loss += loss.item()
 
             counter += 1

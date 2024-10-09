@@ -152,6 +152,7 @@ class DPhysics(torch.nn.Module):
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
+        omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
 
@@ -162,6 +163,7 @@ class DPhysics(torch.nn.Module):
         assert xdd.shape == (B, 3)
 
         # motion of point composed of cog motion and rotation of the rigid body (Koenig's theorem in mechanics)
+        xd = torch.clamp(xd, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
         xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
         assert xd_points.shape == (B, n_pts, 3)
 
