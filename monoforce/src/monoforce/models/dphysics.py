@@ -146,7 +146,9 @@ class DPhysics(torch.nn.Module):
             mask = driving_parts[i]
             # F_fr = -mu * N * tanh(v_cmd - xd_points)  # tracks friction forces
             dv = v_cmd.unsqueeze(1) - xd_points
-            F_friction[:, mask] = (friction_points * N.unsqueeze(2) * torch.tanh(dv))[:, mask]
+            dv_n = (dv * n).sum(dim=-1, keepdims=True)  # normal component of the relative velocity
+            dv_tau = dv - dv_n * n  # tangential component of the relative velocity
+            F_friction[:, mask] = (friction_points * N.unsqueeze(2) * torch.tanh(dv_tau))[:, mask]
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
