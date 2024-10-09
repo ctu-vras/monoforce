@@ -17,7 +17,6 @@ from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..utils import normalize, load_calib
 from .coco import COCO_CATEGORIES
-import cv2
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm

@@ -19,9 +19,9 @@ def arg_parser():
 
     parser = argparse.ArgumentParser(description='Run MonoForce')
     parser.add_argument('--lss_cfg_path', type=str,
-                        default=os.path.join(base_path, 'config/lss_cfg_tradr.yaml'), help='Path to the LSS config file')
+                        default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str,
-                        default=os.path.join(base_path, 'config/weights/lss/lss_robingas_tradr.pt'), help='Path to the LSS model')
+                        default=os.path.join(base_path, 'config/weights/lss/lss.pt'), help='Path to the LSS model')
     parser.add_argument('--img-paths', type=str, required=True, nargs='+', help='Paths to the input RGB images')
     parser.add_argument('--calibration-path', type=str, required=True, help='Path to the calibration files')
     parser.add_argument('--cameras', type=str, nargs='+', default=None, help='Camera names')
@@ -35,7 +35,7 @@ class MonoForce:
     def __init__(self, imgs_path, calib_path,
                  cameras=None,
                  linear_vel=None, angular_vel=None,
-                 lss_cfg_path=os.path.join('..', 'config/lss_cfg_tradr.yaml'),
+                 lss_cfg_path=os.path.join('..', 'config/lss_cfg.yaml'),
                  model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.imgs_path = imgs_path
