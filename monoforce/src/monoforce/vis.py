@@ -62,14 +62,12 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid):
     mlab.clf()
     visu_traj = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=2.0)
     F_spring, F_friction = forces
-    # visu_Ns = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
-    #                         F_spring[0, :, 0], F_spring[0, :, 1], F_spring[0, :, 2],
-    #                         line_width=1.0, scale_factor=0.1, color=(0, 0, 1))
-    # visu_Frs = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
-    #                          F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
-    #                          line_width=1.0, scale_factor=1.0, color=(0, 1, 0))
-    visu_Ns = None
-    visu_Frs = None
+    visu_Ns = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+                            F_spring[0, :, 0], F_spring[0, :, 1], F_spring[0, :, 2],
+                            line_width=1.0, scale_factor=0.1, color=(0, 0, 1))
+    visu_Frs = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+                             F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
+                             line_width=1.0, scale_factor=1.0, color=(0, 1, 0))
     visu_terrain = mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
     visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
                                scale_factor=0.03, color=(0, 0, 0))
