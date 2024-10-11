@@ -135,7 +135,7 @@ class DPhysics(torch.nn.Module):
         assert F_spring.shape == (B, n_pts, 3)
 
         # friction forces: https://en.wikipedia.org/wiki/Friction
-        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
+        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))  # thrust direction, x-axis
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         N = torch.clamp(N, min=0.0)

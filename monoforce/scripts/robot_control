@@ -54,7 +54,7 @@ def motion():
     assert controls.shape == (B, N_ts, len(dphys_cfg.driving_parts))
 
     # initial state
-    x = torch.tensor([[0.0, 0.0, 0.0]], device=device).repeat(B, 1)
+    x = torch.tensor([[0.0, 0.0, 0.2]], device=device).repeat(B, 1)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
