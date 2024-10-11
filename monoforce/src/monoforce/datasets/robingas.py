@@ -54,6 +54,15 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/marv/24-08-14-monoforce-long_drive'),
         os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-54-43'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-12-34-53'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-01-40'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-17-08'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-29-39'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-43-21'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-57-57'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-14-12-29'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-14-22-10'),
+        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-14-28-15'),
     ],
     'tradr': [
         os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-30-57'),
@@ -82,7 +91,6 @@ robingas_seq_paths = {
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),  # no radar
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
-        # os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-01-15-48-29_0'),  # localization must be fixed
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-24-13-21-28_0'),  # no radar
         os.path.join(data_dir, 'RobinGas/husky_oru/radarize_2024-06-12-10-06-11_0'),  # high grass with radar
     ],

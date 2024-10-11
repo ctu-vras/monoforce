@@ -2,7 +2,7 @@ import torch
 from ..dphys_config import DPhysConfig
 
 
-def normailized(x, eps=1e-6):
+def normalized(x, eps=1e-6):
     """
     Normalizes the input tensor.
 
@@ -131,14 +131,12 @@ class DPhysics(torch.nn.Module):
         assert xd_points_n.shape == (B, n_pts, 1)
         F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
         F_spring = torch.mul(F_spring, in_contact) / n_pts  # apply forces only at the contact points
-        F_spring = torch.clamp(F_spring, min=0.0)  # apply forces only in the normal direction
         assert F_spring.shape == (B, n_pts, 3)
 
         # friction forces: https://en.wikipedia.org/wiki/Friction
-        thrust_dir = normailized(R @ torch.tensor([1.0, 0.0, 0.0], device=self.device))
+        thrust_dir = normalized(R[..., 0])  # direction of the thrust
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
-        N = torch.clamp(N, min=0.0)
         F_friction = torch.zeros_like(F_spring)  # initialize friction forces
         for i in range(len(driving_parts)):
             u = controls[:, i].unsqueeze(1)  # control input
@@ -154,7 +152,6 @@ class DPhysics(torch.nn.Module):
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
-        omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
 
@@ -164,8 +161,8 @@ class DPhysics(torch.nn.Module):
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
 
-        # motion of point composed of cog motion and rotation of the rigid body (Koenig's theorem in mechanics)
-        xd = torch.clamp(xd, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
+        # motion of point composed of cog motion and rotation of the rigid body
+        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
         xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
         assert xd_points.shape == (B, n_pts, 3)
 
@@ -306,7 +303,7 @@ class DPhysics(torch.nn.Module):
         dz_dx = (z10 - z00) * (1 - y_f) + (z11 - z01) * y_f
         dz_dy = (z01 - z00) * (1 - x_f) + (z11 - z10) * x_f
         n = torch.stack([-dz_dx, -dz_dy, torch.ones_like(dz_dx)], dim=-1)  # n = [-dz/dx, -dz/dy, 1]
-        n = normailized(n)
+        n = normalized(n)
 
         return n
 

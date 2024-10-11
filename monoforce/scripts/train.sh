@@ -13,7 +13,7 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
 
 ./train --bsz $BSZ --nworkers 16 --nepochs 1000 --lr 1e-3 --weight_decay 1e-7 \
         --debug $DEBUG --vis $VIS \
-        --geom_hm_weight 1.0 --terrain_hm_weight 10.0 --hdiff_weight 1e-6 --phys_weight 10.0 \
+        --geom_hm_weight 1.0 --terrain_hm_weight 100.0 --hdiff_weight 1e-6 --phys_weight 1.0 \
         --dataset $DATASET \
         --robot $ROBOT \
         --only_front_cam ${ONLY_FRONT_CAM} \
