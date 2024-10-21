@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+from copy import copy
 from threading import RLock
 import torch
 import numpy as np
@@ -83,7 +84,9 @@ class TerrainEncoder:
         post_tran = torch.zeros(2)
 
         # preprocessing parameters (resize, crop)
-        resize, resize_dims, crop, flip, rotate = sample_augmentation(self.lss_cfg, is_train=False)
+        lss_cfg = copy(self.lss_cfg)
+        lss_cfg['data_aug_conf']['H'], lss_cfg['data_aug_conf']['W'] = img.shape[:2]
+        resize, resize_dims, crop, flip, rotate = sample_augmentation(lss_cfg, is_train=False)
         img, post_rot2, post_tran2 = img_transform(PILImage.fromarray(img), post_rot, post_tran,
                                                    resize=resize,
                                                    resize_dims=resize_dims,
@@ -160,14 +163,15 @@ class TerrainEncoder:
             assert isinstance(info_msg, CameraInfo)
 
             img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
+            rospy.logdebug('Input image shape: %s' % str(img.shape))
             # BGR to RGB
             img = img[..., ::-1]
             if self.calib is not None:
-                rospy.logdebug('Using calibration from yaml file')
+                # rospy.logdebug('Using calibration from yaml file')
                 cam_name = self.camera_info_topics[cam_i].split('/')[1]
                 E, K, D = self.get_cam_calib_from_yaml(cam_name)
             else:
-                rospy.logdebug('Using calibration from CameraInfo message')
+                # rospy.logdebug('Using calibration from CameraInfo message')
                 E, K, D = self.get_cam_calib_from_info_msg(info_msg)
 
             img, post_rot, post_tran = self.preprocess_img(img)
@@ -184,7 +188,7 @@ class TerrainEncoder:
         intrins = np.stack(intriniscs)
         cams_to_robot = np.stack(cams_to_robot)
         rots, trans = cams_to_robot[:, :3, :3], cams_to_robot[:, :3, 3]
-        rospy.loginfo('Preprocessed image shape: %s' % str(imgs.shape))
+        rospy.logdebug('Preprocessed image shape: %s' % str(imgs.shape))
 
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         inputs = [torch.as_tensor(i[np.newaxis], dtype=torch.float32) for i in inputs]
@@ -218,11 +222,12 @@ class TerrainEncoder:
 
         inputs = self.get_lss_inputs(img_msgs, info_msgs)
         inputs = [i.to(self.device) for i in inputs]
+        t1 = time()
+        rospy.logdebug('Preprocessing time: %.3f [sec]' % (t1 - t0))
 
         # model inference
-        t1 = time()
         height_pred_rigid = self.model(*inputs)
-        rospy.logdebug('LSS Processing time: %.3f [sec]' % (time() - t1))
+        rospy.loginfo('LSS inference time: %.3f [sec]' % (time() - t1))
         rospy.loginfo('Predicted height map shape: %s' % str(height_pred_rigid.shape))
 
         # publish height map as grid map

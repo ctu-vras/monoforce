@@ -171,6 +171,7 @@ class DiffPhysBase:
             rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
 
+        t0 = time()
         if self.gridmap_frame is None:
             self.gridmap_frame = gridmap_msg.info.header.frame_id
 
@@ -188,29 +189,33 @@ class DiffPhysBase:
             return
         robot_pose_wrt_gridmap = np.linalg.inv(grid_map_pose) @ robot_pose
         robot_xyz_q_wrt_gridmap = pose_to_xyz_q(robot_pose_wrt_gridmap)
-        # rpy = Rotation.from_quat(robot_xyz_q_wrt_gridmap[3:]).as_euler('xyz')
-        # rospy.logdebug('Robot xyz_rpy wrt gridmap: %s' % str(np.concatenate([robot_xyz_q_wrt_gridmap[:3], rpy])))
+        t1 = time()
+        rospy.logdebug('Grid map processing took %.3f [sec]' % (t1 - t0))
 
         # predict path
-        with self.path_lock:
-            grid_maps = [grid_map for _ in range(self.n_sim_trajs)]
-            xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None, :], self.n_sim_trajs, axis=0)
-            with torch.no_grad():
-                xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
+        grid_maps = [grid_map for _ in range(self.n_sim_trajs)]
+        xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None, :], self.n_sim_trajs, axis=0)
+        with torch.no_grad():
+            t2 = time()
+            xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
+            t3 = time()
+            rospy.loginfo('Path prediction took %.3f [sec]' % (t3 - t2))
 
-            # update path cost bounds
-            if path_costs is not None:
-                self.path_cost_min = min(self.path_cost_min, np.min(path_costs))
-                self.path_cost_max = max(self.path_cost_max, np.max(path_costs))
-                rospy.logdebug('Path cost min: %.3f' % self.path_cost_min)
-                rospy.logdebug('Path cost max: %.3f' % self.path_cost_max)
+        # update path cost bounds
+        if path_costs is not None:
+            self.path_cost_min = min(self.path_cost_min, torch.min(path_costs).item())
+            self.path_cost_max = max(self.path_cost_max, torch.max(path_costs).item())
+            rospy.logdebug('Path cost min: %.3f' % self.path_cost_min)
+            rospy.logdebug('Path cost max: %.3f' % self.path_cost_max)
 
-            # publish paths
-            if xyz_qs is not None:
-                t_start = time()
-                self.publish_paths_and_costs(xyz_qs, path_costs, stamp=gridmap_msg.info.header.stamp,
-                                             frame=self.gridmap_center_frame, pose_step=self.pose_step)
-                rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t_start))
+        # publish paths
+        if xyz_qs is not None:
+            t4 = time()
+            xyz_qs_np = xyz_qs.cpu().numpy()
+            path_costs_np = path_costs.cpu().numpy()
+            self.publish_paths_and_costs(xyz_qs_np, path_costs_np, stamp=gridmap_msg.info.header.stamp,
+                                         frame=self.gridmap_center_frame, pose_step=self.pose_step)
+            rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t4))
 
     @staticmethod
     def spin():
@@ -296,22 +301,22 @@ class DiffPhysicsWarp(DiffPhysBase):
         # simulate trajectories
         t_start = time()
         # TODO: does not work with CUDA, warp simulation breaks
+        assert self.device == 'cpu', 'WARP-based dphysics does not support CUDA'
         self.update_heightmaps(heights=grid_maps)
         self.update_robot_poses(xyz_q=xyz_qs_init)
         xyz_qs = self.simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
         rospy.loginfo('WARP Simulation took %.3f [sec]' % (time() - t_start))
 
         t_start = time()
-        xyz_qs_np = xyz_qs.numpy().transpose(1, 0, 2)
-        forces_np = self.simulator.body_f.numpy().transpose(1, 0, 2)
-        rospy.logdebug('xyz_qs: %s' % str(xyz_qs_np.shape))
-        rospy.logdebug('forces: %s' % str(forces_np.shape))
-        assert xyz_qs_np.shape == (self.n_sim_trajs, self.n_sim_steps + 1, 7)
-        assert forces_np.shape == (self.n_sim_trajs, self.n_sim_steps, 6)
+        xyz_qs = torch.as_tensor(xyz_qs.numpy().transpose(1, 0, 2))
+        forces = torch.as_tensor(self.simulator.body_f.numpy().transpose(1, 0, 2))
+        rospy.logdebug('xyz_qs: %s' % str(xyz_qs.shape))
+        rospy.logdebug('forces: %s' % str(forces.shape))
+        assert xyz_qs.shape == (self.n_sim_trajs, self.n_sim_steps + 1, 7)
+        assert forces.shape == (self.n_sim_trajs, self.n_sim_steps, 6)
 
         # path cost as a sum of force magnitudes
-        # path_costs = np.linalg.norm(forces_np, axis=-1).mean(axis=-1)
-        path_costs = np.linalg.norm(forces_np, axis=-1).std(axis=-1)
+        path_costs = torch.linalg.norm(forces, dim=-1).std(dim=-1)
         assert path_costs.shape == (self.n_sim_trajs,)
 
         # remove unfeasible paths
@@ -320,7 +325,7 @@ class DiffPhysicsWarp(DiffPhysBase):
             return None, None
 
         rospy.logdebug('Paths post-processing took %.3f [sec]' % (time() - t_start))
-        return xyz_qs_np, path_costs
+        return xyz_qs, path_costs
 
 
 class DiffPhysicsTorch(DiffPhysBase):
@@ -369,11 +374,11 @@ class DiffPhysicsTorch(DiffPhysBase):
         assert Rs.shape == (self.n_sim_trajs, self.n_sim_steps, 3, 3)
 
         # convert rotation matrices to quaternions
-        poses = np.zeros((self.n_sim_trajs, self.n_sim_steps, 4, 4))
+        poses = torch.zeros((self.n_sim_trajs, self.n_sim_steps, 4, 4), device=self.device)
         poses[:, :, :3, 3] = Xs
         poses[:, :, :3, :3] = Rs
         poses[:, :, 3, 3] = 1.0
-        assert not np.any(np.isnan(poses))
+        assert not torch.any(torch.isnan(poses))
 
         # compute path costs
         # TODO: think about a better way to compute path costs
@@ -381,11 +386,8 @@ class DiffPhysicsTorch(DiffPhysBase):
         F_springs, F_frictions = forces
         assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
         assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
-        # path_costs = torch.norm(F_springs, dim=-1).nanmean(dim=-1).nanmean(dim=-1)
         path_costs = torch.norm(F_springs, dim=-1).std(dim=-1).std(dim=-1)
-        path_costs = path_costs.cpu().numpy()
-        assert not np.any(np.isnan(path_costs))
-        rospy.logdebug(f'Path costs: {path_costs}')
+        assert not torch.any(torch.isnan(path_costs))
         assert poses.shape == (self.n_sim_trajs, self.n_sim_steps, 4, 4)
         assert path_costs.shape == (self.n_sim_trajs,)
 
