@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="robot" default="marv"/>
+    <arg name="robot" default="husky"/>
     <arg name="rviz" default="true"/>
 
     <!-- Load robot description -->
@@ -15,7 +15,8 @@
     <node pkg="monoforce_demos" type="monoforce_demo" name="monoforce_demo" output="screen">
         <rosparam subst_value="true">
             robot: $(arg robot)
-            lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss.pt
+<!--             lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss.pt -->
+            lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss_robingas_$(arg robot).pt
             traj_sim_time: 8.0
         </rosparam>
     </node>

@@ -5,7 +5,7 @@
   <arg name="input" default="points" doc="Input point cloud topic."/>
   <arg name="output" default="grid_map/terrain" doc="Output elevation map topic."/>
   <arg name="robot_frame" default="base_footprint" doc="Robot frame."/>
-  <arg name="fixed_frame" default="map" doc="Fixed frame."/>
+  <arg name="fixed_frame" default="odom" doc="Fixed frame."/>
 
   <!-- Launch cloud filter nodelet. -->
   <node name="range_filter" pkg="nodelet" type="nodelet" args="standalone cloud_proc/range_filter">
