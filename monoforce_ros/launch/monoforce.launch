@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="robot" default="marv" doc="Robot type: husky, tradr or marv"/>
-    <arg name="dphys_config_path" default="$(dirname)/../../monoforce/config/dphys_cfg.yaml"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
     <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
@@ -30,7 +29,7 @@
     <!-- Diff Physics: paths sampling -->
     <include file="$(dirname)/dphysics.launch">
         <arg name="engine" value="$(arg engine)"/>
-        <arg name="robot" value="husky"/>
+        <arg name="robot" value="$(arg robot)"/>
         <arg name="gridmap_topic" value="grid_map/terrain"/>
         <arg name="gridmap_frame" value="base_link"/>
         <arg name="device" value="$(arg device)"/>

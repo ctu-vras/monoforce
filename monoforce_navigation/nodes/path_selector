@@ -86,6 +86,16 @@ class PathSelector:
         return pose
 
     def wp_dist_callback(self, event):
+        # check if waypoint is reached
+        if self.xy_dist_to_wp < self.waypoint_reached_dist:
+            self.wp_i += 1
+            rospy.loginfo(f'Waypoint reached. New waypoint index: {self.wp_i}')
+            if self.wp_i == len(self.waypoints_list):
+                rospy.loginfo('All waypoints reached. Unsubscribing from topics.')
+                for sub in self.subs:
+                    sub.unregister()
+                return
+
         robot_pose = self.get_pose(self.robot_frame)
         if robot_pose is None:
             rospy.logwarn('Could not get robot pose')
@@ -213,16 +223,6 @@ class PathSelector:
         current_wp_xyz = current_wp_xyzq[:3]
         current_wp_xyz_paths_origin = paths_origin_pose[:3, :3].T @ (current_wp_xyz - paths_origin_pose[:3, 3])
 
-        # check if waypoint is reached
-        if self.xy_dist_to_wp < self.waypoint_reached_dist:
-            self.wp_i += 1
-            rospy.loginfo(f'Waypoint reached. New waypoint index: {self.wp_i}')
-            if self.wp_i == len(self.waypoints_list):
-                rospy.loginfo('All waypoints reached. Unsubscribing from topics.')
-                for sub in self.subs:
-                    sub.unregister()
-                return
-
         # calculate distance to each path from the waypoint
         path_dists_to_wp = []
         path_costs = []
@@ -266,14 +266,14 @@ class PathSelector:
 
 
 def main():
-    rospy.init_node('path_selector', anonymous=True, log_level=rospy.INFO)
+    rospy.init_node('path_selector', anonymous=True, log_level=rospy.DEBUG)
 
     paths_topic = rospy.get_param('~paths_topic', 'sampled_paths')
     path_costs_topic = rospy.get_param('~path_costs_topic', 'path_costs')
     selected_path_topic = rospy.get_param('~selected_path_topic', 'selected_path')
     robot_frame = rospy.get_param('~robot_frame', 'base_link')
     map_frame = rospy.get_param('~map_frame', 'map')
-    max_msgs_delay = rospy.get_param('~max_msgs_delay', 0.1)
+    max_msgs_delay = rospy.get_param('~max_msgs_delay', 0.2)
     proc_time_period = rospy.get_param('~proc_time_period', 1.0)
     waypoints_list = rospy.get_param('~waypoints_list', [[0., 0., 0., 0., 0., 0., 1.]])
     waypoint_reached_dist = rospy.get_param('~waypoint_reached_dist', 1.0)

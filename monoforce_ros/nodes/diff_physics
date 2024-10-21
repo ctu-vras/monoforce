@@ -152,8 +152,8 @@ class DiffPhysBase:
         # publish lower cost path
         lower_cost_traj_i = np.argmin(path_costs)
         lower_cost_xyz_q = poses[lower_cost_traj_i]
-        rospy.logdebug('Min path cost: %.3f' % path_costs[lower_cost_traj_i])
-        rospy.logdebug('Max path cost: %.3f' % np.max(path_costs))
+        # rospy.logdebug('Min path cost: %.3f' % path_costs[lower_cost_traj_i])
+        # rospy.logdebug('Max path cost: %.3f' % np.max(path_costs))
         rospy.loginfo('Publishing lower cost path of length: %d' % len(lower_cost_xyz_q[::pose_step]))
         path_msg = poses_to_path(lower_cost_xyz_q[::pose_step], stamp=stamp, frame_id=self.gridmap_frame)
         self.lc_path_pub.publish(path_msg)

@@ -7,7 +7,7 @@
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
     <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="max_msgs_delay" default="0.1"/>
-    <arg name="max_age" default="2.0"/>
+    <arg name="max_age" default="0.2"/>
     <arg name="calib_path" default="''"/>
     <arg name="n_cams" default="''"/>
 
