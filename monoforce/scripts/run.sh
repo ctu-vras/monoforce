@@ -7,5 +7,5 @@ python run --img-paths ../config/data_sample/husky/images/1666877643_267394304_c
            --cameras camera_front camera_left camera_right camera_rear \
            --calibration-path ../config/data_sample/husky/calibration/ \
            --lss_cfg_path ../config/lss_cfg.yaml \
-           --model_path ../config/weights/lss/lss.pt \
+           --model_path ../config/weights/lss/lss_robingas_husky.pt \
            --linear-vel 1.0 --angular-vel 1.0

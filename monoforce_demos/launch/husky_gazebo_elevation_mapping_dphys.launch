@@ -6,6 +6,7 @@
   <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
   <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
   <arg name="device" default="cpu" doc="Device to run the differentiable physics"/>
+  <arg name="robot" default="husky" doc="Robot name"/>
 
   <!-- Gazebo world and spawn Husky robot -->
   <include file="$(find monoforce_gazebo)/launch/husky_sim.launch">
@@ -17,6 +18,7 @@
   <include file="$(find monoforce_navigation)/launch/elevation_mapping.launch">
     <arg name="input" value="points"/>
     <arg name="output" value="grid_map/terrain"/>
+    <arg name="fixed_frame" value="odom"/>
   </include>
 
   <!-- SLAM -->
@@ -30,7 +32,7 @@
   <!-- Differentiable Physics -->
   <include if="1" file="$(find monoforce)/launch/dphysics.launch">
     <arg name="engine" value="$(arg engine)"/>
-    <arg name="robot" value="husky"/>
+    <arg name="robot" value="$(arg robot)"/>
     <arg name="gridmap_topic" value="grid_map/terrain"/>
     <arg name="gridmap_layer" value="elevation_inpainted"/>
     <arg name="device" value="$(arg device)"/>
