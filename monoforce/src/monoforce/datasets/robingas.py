@@ -571,7 +571,16 @@ class RobinGas(RobinGasBase):
             K = np.asarray(K, dtype=np.float32).reshape((3, 3))
             return img, K
         img, K = self.get_image(i, camera)
+        # W, H = img.size
         img = resize_img(img)
+        # w, h = img.size
+        # # adjust intrinsic matrix
+        # sx, sy = w / W, h / H
+        # K[0, 0] *= sx
+        # K[1, 1] *= sy
+        # K[0, 2] *= sx
+        # K[1, 2] *= sy
+        # self.calib[camera]['camera_matrix']['data'] = K.flatten().tolist()
         img.save(cached_img_path)
         return img, K
 
@@ -625,7 +634,7 @@ class RobinGas(RobinGasBase):
             post_trans.append(post_tran)
 
         img_data = [torch.stack(imgs), torch.stack(rots), torch.stack(trans),
-                  torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
+                    torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans)]
         img_data = [torch.as_tensor(i, dtype=torch.float32) for i in img_data]
 
         return img_data

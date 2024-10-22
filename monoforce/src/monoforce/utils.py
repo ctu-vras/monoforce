@@ -189,21 +189,14 @@ def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_dat
     return train_ds, val_ds
 
 
-def explore_data(ds, modelf=None, sample_range='random', save=False):
+def explore_data(ds, sample_range='random', save=False):
     from tqdm import tqdm
-    from monoforce.cloudproc import hm_to_cloud
     from monoforce.models.terrain_encoder.lss import compile_model
     from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 
     lss_cfg = ds.lss_cfg
     dphys_cfg = ds.dphys_cfg
-    grid_conf = lss_cfg['grid_conf']
-    data_aug_conf = lss_cfg['data_aug_conf']
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    if modelf is not None:
-        model.load_state_dict(torch.load(modelf))
-        print('Loaded LSS model from', modelf)
-        model.eval()
+    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
 
     H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
     cams = ds.camera_names
@@ -227,16 +220,6 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
          pts) = sample
         height_geom, mask_geom = hm_lidar[:, 0], hm_lidar[:, 1]
         height_rigid, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
-
-        if modelf is not None:
-            with torch.no_grad():
-                # replace height maps with model output
-                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                inputs = [torch.as_tensor(i, dtype=torch.float32) for i in inputs]
-                height_rigid = model(*inputs)
-                # replace lidar cloud with model height map output
-                pts = hm_to_cloud(height_rigid.squeeze(), dphys_cfg).T
-                pts = pts.unsqueeze(0)
 
         frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
@@ -288,7 +271,7 @@ def explore_data(ds, modelf=None, sample_range='random', save=False):
             plt.colorbar()
 
             if save:
-                save_dir = os.path.join(ds.path, 'visuals_pred' if modelf is not None else 'visuals')
+                save_dir = os.path.join(ds.path, 'visuals')
                 os.makedirs(save_dir, exist_ok=True)
                 imname = f'{ds.ids[sample_i]}.jpg'
                 imname = os.path.join(save_dir, imname)

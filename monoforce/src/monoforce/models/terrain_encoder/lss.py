@@ -284,8 +284,15 @@ class LiftSplatShoot(nn.Module):
         x_geom, x_diff, friction = self.bevencode(x)
         assert x_geom.shape == x_diff.shape
         assert x_diff.min() >= 0.
-        x = x_geom - x_diff
-        return x
+        x_terrain = x_geom - x_diff
+
+        out = {
+            'geom': x_geom,
+            'diff': x_diff,
+            'terrain': x_terrain,
+            'friction': friction,
+        }
+        return out
 
 
 def compile_model(grid_conf, data_aug_conf, inpC=3, outC=1):

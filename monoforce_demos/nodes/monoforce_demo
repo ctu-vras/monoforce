@@ -190,9 +190,9 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
-            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
-            height_geom_pred, height_diff_pred, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
-            height_terrain_pred = height_geom_pred - height_diff_pred
+            out = self.terrain_encoder(*inputs)
+            height_geom_pred, height_terrain_pred, height_diff_pred, friction_pred = (out['geom'], out['terrain'],
+                                                                                      out['diff'], out['friction'])
             # height_terrain_pred = self.model(*inputs)
             rospy.logdebug('Friction values range, min: %.3f, max: %.3f' % (friction_pred.min(), friction_pred.max()))
 

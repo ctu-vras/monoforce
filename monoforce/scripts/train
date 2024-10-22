@@ -31,7 +31,7 @@ def arg_parser():
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
     parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
-    parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
+    parser.add_argument('--robot', type=str, default='marv', help='Dataset name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
@@ -40,7 +40,7 @@ def arg_parser():
     parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
     parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--hdiff_weight', type=float, default=1e-4, help='Weight for height difference loss')
-    parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
+    parser.add_argument('--phys_weight', type=float, default=0.1, help='Weight for physics loss')
 
     return parser.parse_args()
 
@@ -216,9 +216,10 @@ class Trainer:
 
             # terrain encoder forward pass
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
-            height_pred_terrain = height_pred_geom - height_pred_diff
+            out = self.terrain_encoder(*inputs)
+            (height_pred_geom, height_pred_diff,
+             height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
+                                                    out['terrain'], out['friction'])
 
             # geometrical height map loss
             loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else 0
@@ -329,9 +330,10 @@ class Trainer:
 
             # predict height maps
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            voxel_feats = self.terrain_encoder.get_voxels(*inputs)
-            height_pred_geom, height_pred_diff, friction_pred = self.terrain_encoder.bevencode(voxel_feats)
-            height_pred_terrain = height_pred_geom - height_pred_diff
+            out = self.terrain_encoder(*inputs)
+            (height_pred_geom, height_pred_diff,
+             height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
+                                                    out['terrain'], out['friction'])
 
             # predict states
             states_pred, _ = self.dphysics(z_grid=height_pred_terrain.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))

@@ -153,7 +153,8 @@ class MonoForce:
         with torch.no_grad():
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None]) for i in inputs]
-            z_grid = self.terrain_encoder(*inputs).squeeze(1)
+            out = self.terrain_encoder(*inputs)
+            z_grid = out['terrain'].squeeze(1)
 
             # predict trajectory and interaction forces
             v, w = self.linear_vel, self.angular_vel
