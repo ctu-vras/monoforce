@@ -77,9 +77,6 @@
 
     <!-- Path selector -->
     <include if="1" file="$(find monoforce_navigation)/launch/path_selector.launch">
-        <arg name="input_paths" value="sampled_paths"/>
-        <arg name="input_path_costs" value="path_costs"/>
-        <arg name="output_path" value="selected_path"/>
         <!-- x, y, z, qx, qy, qz, qw -->
         <arg name="waypoints_list" value="[
                                            [10, -5, 0, 0, 0, 0, 1],
@@ -88,9 +85,6 @@
                                            [0, -5, 0, 0, 0, 0, 1],
                                            [0, 0, 0, 0, 0, 0, 1],
                                            ]"/>
-        <arg name="waypoint_weight" default="1.0"/>
-        <arg name="path_force_weight" default="1.0"/>
-        <arg name="map_frame" value="map"/>
     </include>
 
     <!-- Path follower -->
