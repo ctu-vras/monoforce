@@ -256,7 +256,7 @@ class PathSelector:
                       f' and closest point id: {selected_path_closest_point_id}')
 
         # publish selected path
-        self.publish_selected_path(paths_msg.markers[selected_path_id], paths_origin_pose, selected_path_closest_point_id, stamp=stamp)
+        self.publish_selected_path(paths_msg.markers[selected_path_id], paths_origin_pose, selected_path_closest_point_id, stamp=rospy.Time.now())
 
     def spin(self):
         try:

@@ -30,7 +30,6 @@ except:
     pass
 
 
-
 # simulation parameters
 robot = 'marv'
 dphys_cfg = DPhysConfig(robot=robot)
@@ -41,8 +40,6 @@ def motion():
     from scipy.spatial.transform import Rotation
     # simulation parameters
     dt = dphys_cfg.dt
-    dphys_cfg.traj_sim_time = 5.0
-    dphys_cfg.k_friction = 1.0
     T = dphys_cfg.traj_sim_time
 
     # instantiate the simulator

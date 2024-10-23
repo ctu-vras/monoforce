@@ -8,12 +8,11 @@ import numpy as np
 import rospy
 from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
-from monoforce.models.terrain_encoder.lss import load_model
-from monoforce.models.terrain_encoder.utils import img_transform, normalize_img, sample_augmentation
 from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.utils import read_yaml, timing, load_calib
+from monoforce.models.terrain_encoder.lss import load_model
+from monoforce.models.terrain_encoder.utils import img_transform, normalize_img, sample_augmentation
 from sensor_msgs.msg import CompressedImage, CameraInfo
-import rospkg
 from time import time
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import tf2_ros
@@ -21,34 +20,34 @@ from PIL import Image as PILImage
 from ros_numpy import numpify
 
 torch.set_default_dtype(torch.float32)
+lib_path = os.path.join(__file__, '..', '..', '..')
 
 
 class TerrainEncoder:
     def __init__(self,
-                 lss_cfg: dict,
-                 weights=None,
-                 hm_frame='base_link',
-                 img_topics=[],
-                 camera_info_topics=[],
-                 calib_path='',
-                 max_msgs_delay=0.1,
-                 max_age=0.2,
-                 n_cams=None):
+                 lss_cfg: dict):
         self.lss_cfg = lss_cfg
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        rate = rospy.get_param('~rate', None)
+        self.rate = rospy.Rate(rate) if rate is not None else None
 
+        weights = rospy.get_param('~weights', os.path.join(lib_path, 'config/weights/lss/lss.pt'))
         rospy.loginfo('Loading LSS model from %s' % weights)
         if not os.path.exists(weights):
             rospy.logerr('Model weights file %s does not exist. Using random weights.' % weights)
         self.model = load_model(modelf=weights, lss_cfg=self.lss_cfg, device=self.device)
         self.model.eval()
 
-        self.hm_frame = hm_frame
+        self.robot_frame = rospy.get_param('~robot_frame', 'base_link')
 
+        img_topics = rospy.get_param('~img_topics', [])
+        n_cams = rospy.get_param('~n_cams', None)
         self.img_topics = img_topics[:n_cams] if isinstance(n_cams, int) else img_topics
+        camera_info_topics = rospy.get_param('~camera_info_topics', [])
         self.camera_info_topics = camera_info_topics[:n_cams] if isinstance(n_cams, int) else camera_info_topics
         assert len(self.img_topics) == len(self.camera_info_topics)
 
+        calib_path = rospy.get_param('~calib_path', '')
         self.calib = load_calib(calib_path)
         if self.calib is not None:
             rospy.loginfo('Loaded calibration from %s' % calib_path)
@@ -61,11 +60,18 @@ class TerrainEncoder:
         # grid map publisher
         self.gridmap_pub = rospy.Publisher('/grid_map/terrain', GridMap, queue_size=1)
 
-        # subscribe to camera intrinsics (ones)
+        # lock for processing
         self.proc_lock = RLock()
 
-        self.max_msgs_delay = max_msgs_delay
-        self.max_age = max_age
+        self.max_msgs_delay = rospy.get_param('~max_msgs_delay', 0.1)
+        self.max_age = rospy.get_param('~max_age', 0.2)
+
+    @staticmethod
+    def spin():
+        try:
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
 
     def start(self):
         # subscribe to images with approximate time synchronization
@@ -135,10 +141,10 @@ class TerrainEncoder:
         time = rospy.Time(0)
         timeout = rospy.Duration.from_sec(1.0)
         try:
-            tf = self.tf_buffer.lookup_transform(self.hm_frame, msg.header.frame_id, time, timeout)
+            tf = self.tf_buffer.lookup_transform(self.robot_frame, msg.header.frame_id, time, timeout)
         except Exception as ex:
             rospy.logerr('Could not transform from camera %s to robot %s: %s.',
-                         msg.header.frame_id, self.hm_frame, ex)
+                         msg.header.frame_id, self.robot_frame, ex)
             raise ex
 
         E = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
@@ -208,6 +214,9 @@ class TerrainEncoder:
             with self.proc_lock:
                 self.proc(*msgs)
 
+        if self.rate is not None:
+            self.rate.sleep()
+
     def proc(self, *msgs):
         t0 = time()
         n = len(msgs)
@@ -226,53 +235,30 @@ class TerrainEncoder:
         rospy.logdebug('Preprocessing time: %.3f [sec]' % (t1 - t0))
 
         # model inference
-        height_pred_terrain = self.model(*inputs)['terrain']
+        out = self.model(*inputs)
+        height_terrain, friction = out['terrain'], out['friction']
         rospy.loginfo('LSS inference time: %.3f [sec]' % (time() - t1))
-        rospy.loginfo('Predicted height map shape: %s' % str(height_pred_terrain.shape))
+        rospy.loginfo('Predicted height map shape: %s' % str(height_terrain.shape))
 
         # publish height map as grid map
         stamp = msgs[0].header.stamp
-        height = height_pred_terrain.squeeze().cpu().numpy()
+        height = height_terrain.squeeze().cpu().numpy()
         grid_msg = height_map_to_gridmap_msg(height, grid_res=self.lss_cfg['grid_conf']['xbound'][2],
                                              xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
         grid_msg.info.header.stamp = stamp
-        grid_msg.info.header.frame_id = self.hm_frame
+        grid_msg.info.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(grid_msg)
-
-    def spin(self):
-        try:
-            rospy.spin()
-        except rospy.ROSInterruptException:
-            pass
 
 
 def main():
-    rospy.init_node('lss', anonymous=True, log_level=rospy.DEBUG)
-    lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
-    rospy.loginfo('MonoForce library path: %s' % lib_path)
+    rospy.init_node('terrain_encoder', anonymous=True, log_level=rospy.DEBUG)
 
     # load configs
-    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(lib_path, 'config/lss_cfg_tradr.yaml'))
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(lib_path, 'config/lss_cfg.yaml'))
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_cfg = read_yaml(lss_config_path)
 
-    img_topics = rospy.get_param('~img_topics', [])
-    camera_info_topics = rospy.get_param('~camera_info_topics', [])
-    hm_frame = rospy.get_param('~hm_frame', 'base_link')
-    weights = rospy.get_param('~weights', os.path.join(lib_path, 'config/weights/lss/lss.pt'))
-    max_msgs_delay = rospy.get_param('~max_msgs_delay', 0.1)
-    max_age = rospy.get_param('~max_age', 0.2)
-    calib_path = rospy.get_param('~calib_path', '')
-    n_cams = rospy.get_param('~n_cams', None)
-
-    node = TerrainEncoder(lss_cfg=lss_cfg,
-                          weights=weights,
-                          img_topics=img_topics, camera_info_topics=camera_info_topics,
-                          hm_frame=hm_frame,
-                          max_msgs_delay=max_msgs_delay,
-                          max_age=max_age,
-                          calib_path=calib_path,
-                          n_cams=n_cams)
+    node = TerrainEncoder(lss_cfg=lss_cfg)
     node.start()
     node.spin()
 

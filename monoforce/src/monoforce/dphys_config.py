@@ -80,7 +80,7 @@ class DPhysConfig:
         self.traj_sim_time = 5.0
         self.dt = 0.01
         self.n_sim_trajs = 32
-        self.integration_mode = 'rk4'  # 'euler', 'rk2', 'rk4'
+        self.integration_mode = 'euler'  # 'euler', 'rk2', 'rk4'
 
     @staticmethod
     def inertia_tensor(mass, points):

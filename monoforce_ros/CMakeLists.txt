@@ -18,10 +18,11 @@ catkin_package(
 
 install(
     PROGRAMS
-        nodes/diff_physics
-        nodes/terrain_encoder
-        nodes/geom_hm_estimator
-        nodes/gridmaps_merger
+        nodes/diff_physics.py
+        nodes/terrain_encoder.py
+        nodes/geom_hm_estimator.py
+        nodes/gridmaps_merger.py
+        nodes/monoforce_node.py
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

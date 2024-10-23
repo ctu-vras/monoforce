@@ -13,14 +13,14 @@
                                              '/camera_right/camera_info']"/>
     <!-- dphysics arguments -->
     <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
-    <arg name="device" default="cpu" doc="Device to run the differentiable physics on"/>
+    <arg name="device" default="cuda" doc="Device to run the differentiable physics on"/>
 
     <!-- RGB Terrain Encoder -->
     <include file="$(dirname)/terrain_encoder.launch">
         <arg name="img_topics" value="$(arg img_topics)"/>
         <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
         <arg name="output_topic" value="height_map"/>
-        <arg name="hm_frame" value="base_link"/>
+        <arg name="robot_frame" value="base_link"/>
         <arg name="max_msgs_delay" value="0.2"/>
         <arg name="weights" value="$(arg weights)"/>
         <arg name="lss_config_path" value="$(arg lss_config_path)"/>

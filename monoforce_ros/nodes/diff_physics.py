@@ -30,7 +30,7 @@ class DiffPhysBase:
                  dphys_cfg: DPhysConfig = None,
                  max_age=0.5,
                  device='cpu',
-                 dt=0.001):
+                 dt=0.01):
         self.robot_size = dphys_cfg.robot_size
         self.robot_frame = robot_frame
         self.dphys_cfg = dphys_cfg
@@ -190,7 +190,7 @@ class DiffPhysBase:
         robot_pose_wrt_gridmap = np.linalg.inv(grid_map_pose) @ robot_pose
         robot_xyz_q_wrt_gridmap = pose_to_xyz_q(robot_pose_wrt_gridmap)
         t1 = time()
-        rospy.logdebug('Grid map processing took %.3f [sec]' % (t1 - t0))
+        rospy.logdebug('Grid map preprocessing took %.3f [sec]' % (t1 - t0))
 
         # predict path
         grid_maps = [grid_map for _ in range(self.n_sim_trajs)]

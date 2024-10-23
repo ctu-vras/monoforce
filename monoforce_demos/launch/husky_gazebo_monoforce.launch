@@ -14,7 +14,7 @@
     </include>
 
     <!-- Resize images with img_proc -->
-    <include file="$(find monoforce)/launch/resize_imgs.launch"/>
+    <include if="1" file="$(find monoforce)/launch/resize_imgs.launch"/>
     
     <!-- MonoForce -->
     <include file="$(find monoforce)/launch/monoforce.launch">
@@ -57,11 +57,9 @@
     </include>
 
     <!-- Path follower -->
-    <include file="$(find monoforce_navigation)/launch/path_follower.launch">
+    <include if="1" file="$(find monoforce_navigation)/launch/path_follower.launch">
         <arg name="path_to_follow" value="selected_path"/>
-        <arg name="max_age" value="10.0"/>
-        <arg name="map_frame" value="map"/>
-        <arg name="keep_path" value="2.0"/>
+        <arg name="max_age" value="1.0"/>
     </include>
 
     <!-- RViz -->

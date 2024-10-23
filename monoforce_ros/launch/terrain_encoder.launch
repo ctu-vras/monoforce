@@ -3,7 +3,7 @@
     <arg name="img_topics" default="[]"/>
     <arg name="output_topic" default="height_map"/>
     <arg name="camera_info_topics" default="[]"/>
-    <arg name="hm_frame" default="base_link"/>
+    <arg name="robot_frame" default="base_link"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
     <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="max_msgs_delay" default="0.1"/>
@@ -12,12 +12,12 @@
     <arg name="n_cams" default="''"/>
 
     <!-- Terrain encoder node (LSS) -->
-    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder" output="screen">
+    <node name="terrain_encoder" pkg="monoforce" type="terrain_encoder.py">
         <rosparam subst_value="true">
             lss_config_path: $(arg lss_config_path)
             img_topics: $(arg img_topics)
             camera_info_topics: $(arg camera_info_topics)
-            hm_frame: $(arg hm_frame)
+            robot_frame: $(arg robot_frame)
             weights: $(arg weights)
             max_msgs_delay: $(arg max_msgs_delay)
             max_age: $(arg max_age)
