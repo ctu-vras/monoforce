@@ -43,7 +43,6 @@ class DiffPhysBase:
         self.device = device
         self.n_sim_trajs = dphys_cfg.n_sim_trajs
 
-        self.path_lock = RLock()
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
 

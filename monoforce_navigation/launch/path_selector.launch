@@ -9,7 +9,7 @@
     <arg name="path_force_weight" default="1.0"/>
     <arg name="waypoints_list" default="[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]]"/>
 
-    <node name="path_selector" pkg="monoforce_navigation" type="path_selector" output="screen">
+    <node name="path_selector" pkg="monoforce_navigation" type="path_selector">
         <rosparam subst_value="true">
             robot_frame: $(arg robot_frame)
             map_frame: $(arg map_frame)

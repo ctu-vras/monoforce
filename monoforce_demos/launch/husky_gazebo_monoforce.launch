@@ -3,8 +3,6 @@
     <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
     <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
     <arg name="robot" default="husky" doc="Robot name"/>
-    <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
-    <arg name="device" default="cpu" doc="Device to run the differentiable physics on"/>
     <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
 
     <!-- Gazebo world and spawn Husky robot -->
@@ -14,29 +12,27 @@
     </include>
 
     <!-- Resize images with img_proc -->
-    <include if="1" file="$(find monoforce)/launch/resize_imgs.launch"/>
+    <include if="0" file="$(find monoforce)/launch/resize_imgs.launch"/>
     
     <!-- MonoForce -->
     <include file="$(find monoforce)/launch/monoforce.launch">
         <arg name="robot" value="$(arg robot)"/>
-        <arg name="img_topics" value="['/camera_front/resize/image/compressed',
-                                       '/camera_left/resize/image/compressed',
-                                       '/camera_rear/resize/image/compressed',
-                                       '/camera_right/resize/image/compressed',]"/>
-        <arg name="camera_info_topics" value="['/camera_front/resize/camera_info',
-                                               '/camera_left/resize/camera_info',
-                                               '/camera_rear/resize/camera_info',
-                                               '/camera_right/resize/camera_info']"/>
-<!--         <arg name="img_topics" value="['/camera_front/image_raw/compressed', -->
-<!--                                        '/camera_left/image_raw/compressed', -->
-<!--                                        '/camera_rear/image_raw/compressed', -->
-<!--                                        '/camera_right/image_raw/compressed',]"/> -->
-<!--         <arg name="camera_info_topics" value="['/camera_front/camera_info', -->
-<!--                                                '/camera_left/camera_info', -->
-<!--                                                '/camera_rear/camera_info', -->
-<!--                                                '/camera_right/camera_info']"/> -->
-        <arg name="engine" value="$(arg engine)"/>
-        <arg name="device" value="$(arg device)"/>
+<!--         <arg name="img_topics" value="['/camera_front/resize/image/compressed', -->
+<!--                                        '/camera_left/resize/image/compressed', -->
+<!--                                        '/camera_rear/resize/image/compressed', -->
+<!--                                        '/camera_right/resize/image/compressed',]"/> -->
+<!--         <arg name="camera_info_topics" value="['/camera_front/resize/camera_info', -->
+<!--                                                '/camera_left/resize/camera_info', -->
+<!--                                                '/camera_rear/resize/camera_info', -->
+<!--                                                '/camera_right/resize/camera_info']"/> -->
+        <arg name="img_topics" value="['/camera_front/image_raw/compressed',
+                                       '/camera_left/image_raw/compressed',
+                                       '/camera_rear/image_raw/compressed',
+                                       '/camera_right/image_raw/compressed',]"/>
+        <arg name="camera_info_topics" value="['/camera_front/camera_info',
+                                               '/camera_left/camera_info',
+                                               '/camera_rear/camera_info',
+                                               '/camera_right/camera_info']"/>
     </include>
 
     <!-- SLAM -->

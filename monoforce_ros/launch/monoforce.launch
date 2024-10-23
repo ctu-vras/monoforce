@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="robot" default="marv" doc="Robot type: husky, tradr or marv"/>
+    <arg name="robot" default="tradr2" doc="Robot type: husky, tradr or marv"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
     <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
@@ -11,27 +11,19 @@
                                              '/camera_left/camera_info',
                                              '/camera_rear/camera_info',
                                              '/camera_right/camera_info']"/>
-    <!-- dphysics arguments -->
-    <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
-    <arg name="device" default="cuda" doc="Device to run the differentiable physics on"/>
 
-    <!-- RGB Terrain Encoder -->
-    <include file="$(dirname)/terrain_encoder.launch">
-        <arg name="img_topics" value="$(arg img_topics)"/>
-        <arg name="camera_info_topics" value="$(arg camera_info_topics)"/>
-        <arg name="output_topic" value="height_map"/>
-        <arg name="robot_frame" value="base_link"/>
-        <arg name="max_msgs_delay" value="0.2"/>
-        <arg name="weights" value="$(arg weights)"/>
-        <arg name="lss_config_path" value="$(arg lss_config_path)"/>
-    </include>
-
-    <!-- Diff Physics: paths sampling -->
-    <include file="$(dirname)/dphysics.launch">
-        <arg name="engine" value="$(arg engine)"/>
-        <arg name="robot" value="$(arg robot)"/>
-        <arg name="gridmap_topic" value="grid_map/terrain"/>
-        <arg name="gridmap_frame" value="base_link"/>
-        <arg name="device" value="$(arg device)"/>
-    </include>
+    <!-- MonoForce node -->
+    <node name="monoforce" pkg="monoforce" type="monoforce_node.py" output="screen">
+        <rosparam subst_value="true">
+            lss_config_path: $(arg lss_config_path)
+            img_topics: $(arg img_topics)
+            camera_info_topics: $(arg camera_info_topics)
+            weights: $(arg weights)
+            robot_frame: 'base_link'
+            max_msgs_delay: 0.2
+            max_age: 2.0
+            robot: tradr2
+        </rosparam>
+        <remap from="height_map" to="height_map"/>
+    </node>
 </launch>
