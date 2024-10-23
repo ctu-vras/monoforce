@@ -14,58 +14,27 @@
     </include>
 
     <!-- Resize images with img_proc -->
-    <group ns="ids_camera_front">
-        <node name="resize" pkg="nodelet" type="nodelet" args="standalone image_proc/resize" respawn="false" output="screen">
-             <param name="width" value="416"/>
-             <param name="height" value="256"/>
-             <param name="use_scale" value="false"/>
-             <remap from="image" to="image_raw"/>
-        </node>
-    </group>
-    <group ns="ids_camera_left">
-        <node name="resize" pkg="nodelet" type="nodelet" args="standalone image_proc/resize" respawn="false" output="screen">
-             <param name="width" value="416"/>
-             <param name="height" value="256"/>
-             <param name="use_scale" value="false"/>
-             <remap from="image" to="image_raw"/>
-        </node>
-    </group>
-    <group ns="ids_camera_rear">
-        <node name="resize" pkg="nodelet" type="nodelet" args="standalone image_proc/resize" respawn="false" output="screen">
-             <param name="width" value="416"/>
-             <param name="height" value="256"/>
-             <param name="use_scale" value="false"/>
-             <remap from="image" to="image_raw"/>
-        </node>
-    </group>
-    <group ns="ids_camera_right">
-        <node name="resize" pkg="nodelet" type="nodelet" args="standalone image_proc/resize" respawn="false" output="screen">
-             <param name="width" value="416"/>
-             <param name="height" value="256"/>
-             <param name="use_scale" value="false"/>
-             <remap from="image" to="image_raw"/>
-        </node>
-    </group>
-
+    <include file="$(find monoforce)/launch/resize_imgs.launch"/>
+    
     <!-- MonoForce -->
     <include file="$(find monoforce)/launch/monoforce.launch">
         <arg name="robot" value="$(arg robot)"/>
-        <arg name="img_topics" value="['/ids_camera_front/resize/image/compressed',
-                                       '/ids_camera_left/resize/image/compressed',
-                                       '/ids_camera_rear/resize/image/compressed',
-                                       '/ids_camera_right/resize/image/compressed',]"/>
-        <arg name="camera_info_topics" value="['/ids_camera_front/resize/camera_info',
-                                               '/ids_camera_left/resize/camera_info',
-                                               '/ids_camera_rear/resize/camera_info',
-                                               '/ids_camera_right/resize/camera_info']"/>
-<!--         <arg name="img_topics" value="['/ids_camera_front/image_raw/compressed', -->
-<!--                                        '/ids_camera_left/image_raw/compressed', -->
-<!--                                        '/ids_camera_rear/image_raw/compressed', -->
-<!--                                        '/ids_camera_right/image_raw/compressed',]"/> -->
-<!--         <arg name="camera_info_topics" value="['/ids_camera_front/camera_info', -->
-<!--                                                '/ids_camera_left/camera_info', -->
-<!--                                                '/ids_camera_rear/camera_info', -->
-<!--                                                '/ids_camera_right/camera_info']"/> -->
+        <arg name="img_topics" value="['/camera_front/resize/image/compressed',
+                                       '/camera_left/resize/image/compressed',
+                                       '/camera_rear/resize/image/compressed',
+                                       '/camera_right/resize/image/compressed',]"/>
+        <arg name="camera_info_topics" value="['/camera_front/resize/camera_info',
+                                               '/camera_left/resize/camera_info',
+                                               '/camera_rear/resize/camera_info',
+                                               '/camera_right/resize/camera_info']"/>
+<!--         <arg name="img_topics" value="['/camera_front/image_raw/compressed', -->
+<!--                                        '/camera_left/image_raw/compressed', -->
+<!--                                        '/camera_rear/image_raw/compressed', -->
+<!--                                        '/camera_right/image_raw/compressed',]"/> -->
+<!--         <arg name="camera_info_topics" value="['/camera_front/camera_info', -->
+<!--                                                '/camera_left/camera_info', -->
+<!--                                                '/camera_rear/camera_info', -->
+<!--                                                '/camera_right/camera_info']"/> -->
         <arg name="engine" value="$(arg engine)"/>
         <arg name="device" value="$(arg device)"/>
     </include>

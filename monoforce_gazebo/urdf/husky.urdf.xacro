@@ -29,34 +29,34 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
   <xacro:arg name="imu_rpy"     default="$(optenv HUSKY_IMU_RPY 0 -1.5708 3.1416)"/>
   <xacro:arg name="imu_parent"  default="$(optenv HUSKY_IMU_PARENT base_link)"/>
 
-  <!-- FRONT IDS Camera -->
-  <xacro:arg name="ids_front_enabled"             default="$(optenv HUSKY_IDS_FRONT_ENABLED 1)" />
-  <xacro:arg name="ids_front_xyz"                 default="$(optenv HUSKY_IDS_FRONT_XYZ 0.4 0 0.1)"/>
-  <xacro:arg name="ids_front_rpy"                 default="$(optenv HUSKY_IDS_FRONT_RPY 0 0 0)"/>
-  <xacro:arg name="ids_front_parent"              default="$(optenv HUSKY_IDS_FRONT_PARENT top_plate_link)"/>
-  <xacro:arg name="ids_front_topic"               default="$(optenv HUSKY_IDS_FRONT_TOPIC ids_camera)"/>
-  <xacro:arg name="ids_front_label"               default="$(optenv HUSKY_IDS_FRONT_LABEL front)"/>
-  <!-- Left IDS Camera -->
-  <xacro:arg name="ids_left_enabled"               default="$(optenv HUSKY_IDS_LEFT_ENABLED 1)" />
-  <xacro:arg name="ids_left_xyz"                   default="$(optenv HUSKY_IDS_LEFT_XYZ 0 0.2 0.1)"/>
-  <xacro:arg name="ids_left_rpy"                   default="$(optenv HUSKY_IDS_LEFT_RPY 0 0 1.57)"/>
-  <xacro:arg name="ids_left_parent"                default="$(optenv HUSKY_IDS_LEFT_PARENT top_plate_link)"/>
-  <xacro:arg name="ids_left_topic"                 default="$(optenv HUSKY_IDS_LEFT_TOPIC ids_camera)"/>
-  <xacro:arg name="ids_left_label"                 default="$(optenv HUSKY_IDS_LEFT_LABEL left)"/>
-  <!-- Right IDS Camera -->
-  <xacro:arg name="ids_right_enabled"              default="$(optenv HUSKY_IDS_RIGHT_ENABLED 1)" />
-  <xacro:arg name="ids_right_xyz"                  default="$(optenv HUSKY_IDS_RIGHT_XYZ 0 -0.2 0.1)"/>
-  <xacro:arg name="ids_right_rpy"                  default="$(optenv HUSKY_IDS_RIGHT_RPY 0 0 -1.57)"/>
-  <xacro:arg name="ids_right_parent"               default="$(optenv HUSKY_IDS_RIGHT_PARENT top_plate_link)"/>
-  <xacro:arg name="ids_right_topic"                default="$(optenv HUSKY_IDS_RIGHT_TOPIC ids_camera)"/>
-  <xacro:arg name="ids_right_label"                default="$(optenv HUSKY_IDS_RIGHT_LABEL right)"/>
-  <!-- Rear IDS Camera -->
-  <xacro:arg name="ids_rear_enabled"               default="$(optenv HUSKY_IDS_REAR_ENABLED 1)" />
-  <xacro:arg name="ids_rear_xyz"                   default="$(optenv HUSKY_IDS_REAR_XYZ -0.4 0 0.1)"/>
-  <xacro:arg name="ids_rear_rpy"                   default="$(optenv HUSKY_IDS_REAR_RPY 0 0 3.14)"/>
-  <xacro:arg name="ids_rear_parent"                default="$(optenv HUSKY_IDS_REAR_PARENT top_plate_link)"/>
-  <xacro:arg name="ids_rear_topic"                 default="$(optenv HUSKY_IDS_REAR_TOPIC ids_camera)"/>
-  <xacro:arg name="ids_rear_label"                 default="$(optenv HUSKY_IDS_REAR_LABEL rear)"/>
+  <!-- FRONT Camera -->
+  <xacro:arg name="camera_front_enabled"             default="$(optenv HUSKY_camera_FRONT_ENABLED 1)" />
+  <xacro:arg name="camera_front_xyz"                 default="$(optenv HUSKY_camera_FRONT_XYZ 0.4 0 0.1)"/>
+  <xacro:arg name="camera_front_rpy"                 default="$(optenv HUSKY_camera_FRONT_RPY 0 0 0)"/>
+  <xacro:arg name="camera_front_parent"              default="$(optenv HUSKY_camera_FRONT_PARENT top_plate_link)"/>
+  <xacro:arg name="camera_front_topic"               default="$(optenv HUSKY_camera_FRONT_TOPIC camera)"/>
+  <xacro:arg name="camera_front_label"               default="$(optenv HUSKY_camera_FRONT_LABEL front)"/>
+  <!-- Left Camera -->
+  <xacro:arg name="camera_left_enabled"               default="$(optenv HUSKY_camera_LEFT_ENABLED 1)" />
+  <xacro:arg name="camera_left_xyz"                   default="$(optenv HUSKY_camera_LEFT_XYZ 0 0.2 0.1)"/>
+  <xacro:arg name="camera_left_rpy"                   default="$(optenv HUSKY_camera_LEFT_RPY 0 0 1.57)"/>
+  <xacro:arg name="camera_left_parent"                default="$(optenv HUSKY_camera_LEFT_PARENT top_plate_link)"/>
+  <xacro:arg name="camera_left_topic"                 default="$(optenv HUSKY_camera_LEFT_TOPIC camera)"/>
+  <xacro:arg name="camera_left_label"                 default="$(optenv HUSKY_camera_LEFT_LABEL left)"/>
+  <!-- Right Camera -->
+  <xacro:arg name="camera_right_enabled"              default="$(optenv HUSKY_camera_RIGHT_ENABLED 1)" />
+  <xacro:arg name="camera_right_xyz"                  default="$(optenv HUSKY_camera_RIGHT_XYZ 0 -0.2 0.1)"/>
+  <xacro:arg name="camera_right_rpy"                  default="$(optenv HUSKY_camera_RIGHT_RPY 0 0 -1.57)"/>
+  <xacro:arg name="camera_right_parent"               default="$(optenv HUSKY_camera_RIGHT_PARENT top_plate_link)"/>
+  <xacro:arg name="camera_right_topic"                default="$(optenv HUSKY_camera_RIGHT_TOPIC camera)"/>
+  <xacro:arg name="camera_right_label"                default="$(optenv HUSKY_camera_RIGHT_LABEL right)"/>
+  <!-- Rear Camera -->
+  <xacro:arg name="camera_rear_enabled"               default="$(optenv HUSKY_camera_REAR_ENABLED 1)" />
+  <xacro:arg name="camera_rear_xyz"                   default="$(optenv HUSKY_camera_REAR_XYZ -0.4 0 0.1)"/>
+  <xacro:arg name="camera_rear_rpy"                   default="$(optenv HUSKY_camera_REAR_RPY 0 0 3.14)"/>
+  <xacro:arg name="camera_rear_parent"                default="$(optenv HUSKY_camera_REAR_PARENT top_plate_link)"/>
+  <xacro:arg name="camera_rear_topic"                 default="$(optenv HUSKY_camera_REAR_TOPIC camera)"/>
+  <xacro:arg name="camera_rear_label"                 default="$(optenv HUSKY_camera_REAR_LABEL rear)"/>
 
   <!-- LiDAR -->
   <xacro:arg name="ouster_enabled"              default="$(optenv HUSKY_OUSTER_ENABLED 1)" />
@@ -80,7 +80,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
   <xacro:property name="gpu" value="$(arg gpu)" />
 
   <!-- Included URDF/XACRO Files -->
-  <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/ids_camera.urdf.xacro"/>
+  <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/camera.urdf.xacro"/>
   <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/ouster_lidar.urdf.xacro"/>
   <xacro:include filename="$(find ouster_description)/urdf/OS0-32.urdf.xacro"/>
   <xacro:include filename="$(find monoforce_gazebo)/urdf/accessories/imu.urdf.xacro"/>
@@ -164,38 +164,38 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
   <!-- Husky Decorations -->
   <xacro:husky_decorate />
 
-  <!-- IDS Cameras -->
-  <xacro:if value="$(arg ids_front_enabled)">
-      <xacro:ids_sensor xyz="$(arg ids_front_xyz)"
-                        rpy="$(arg ids_front_rpy)"
-                        parent="$(arg ids_front_parent)"
-                        topic="$(arg ids_front_topic)"
-                        label="$(arg ids_front_label)">
-      </xacro:ids_sensor>
+  <!-- Cameras -->
+  <xacro:if value="$(arg camera_front_enabled)">
+      <xacro:camera_sensor xyz="$(arg camera_front_xyz)"
+                        rpy="$(arg camera_front_rpy)"
+                        parent="$(arg camera_front_parent)"
+                        topic="$(arg camera_front_topic)"
+                        label="$(arg camera_front_label)">
+      </xacro:camera_sensor>
   </xacro:if>
-  <xacro:if value="$(arg ids_left_enabled)">
-      <xacro:ids_sensor xyz="$(arg ids_left_xyz)"
-                          rpy="$(arg ids_left_rpy)"
-                          parent="$(arg ids_left_parent)"
-                          topic="$(arg ids_left_topic)"
-                          label="$(arg ids_left_label)">
-      </xacro:ids_sensor>
+  <xacro:if value="$(arg camera_left_enabled)">
+      <xacro:camera_sensor xyz="$(arg camera_left_xyz)"
+                          rpy="$(arg camera_left_rpy)"
+                          parent="$(arg camera_left_parent)"
+                          topic="$(arg camera_left_topic)"
+                          label="$(arg camera_left_label)">
+      </xacro:camera_sensor>
   </xacro:if>
-  <xacro:if value="$(arg ids_right_enabled)">
-      <xacro:ids_sensor xyz="$(arg ids_right_xyz)"
-                          rpy="$(arg ids_right_rpy)"
-                          parent="$(arg ids_right_parent)"
-                          topic="$(arg ids_right_topic)"
-                          label="$(arg ids_right_label)">
-      </xacro:ids_sensor>
+  <xacro:if value="$(arg camera_right_enabled)">
+      <xacro:camera_sensor xyz="$(arg camera_right_xyz)"
+                          rpy="$(arg camera_right_rpy)"
+                          parent="$(arg camera_right_parent)"
+                          topic="$(arg camera_right_topic)"
+                          label="$(arg camera_right_label)">
+      </xacro:camera_sensor>
   </xacro:if>
-  <xacro:if value="$(arg ids_rear_enabled)">
-      <xacro:ids_sensor xyz="$(arg ids_rear_xyz)"
-                          rpy="$(arg ids_rear_rpy)"
-                          parent="$(arg ids_rear_parent)"
-                          topic="$(arg ids_rear_topic)"
-                          label="$(arg ids_rear_label)">
-      </xacro:ids_sensor>
+  <xacro:if value="$(arg camera_rear_enabled)">
+      <xacro:camera_sensor xyz="$(arg camera_rear_xyz)"
+                          rpy="$(arg camera_rear_rpy)"
+                          parent="$(arg camera_rear_parent)"
+                          topic="$(arg camera_rear_topic)"
+                          label="$(arg camera_rear_label)">
+      </xacro:camera_sensor>
   </xacro:if>
 
   <!-- Ouster LiDAR -->

@@ -265,7 +265,7 @@ Visualization Manager:
         - Class: rviz/Camera
           Enabled: true
           Image Rendering: background and overlay
-          Image Topic: /ids_camera_front/image_raw
+          Image Topic: /camera_front/image_raw
           Name: Camera Front
           Overlay Alpha: 0.5
           Queue Size: 2
@@ -303,7 +303,7 @@ Visualization Manager:
         - Class: rviz/Camera
           Enabled: true
           Image Rendering: background and overlay
-          Image Topic: /ids_camera_left/image_raw
+          Image Topic: /camera_left/image_raw
           Name: Camera Left
           Overlay Alpha: 0.5
           Queue Size: 2
@@ -341,7 +341,7 @@ Visualization Manager:
         - Class: rviz/Camera
           Enabled: true
           Image Rendering: background and overlay
-          Image Topic: /ids_camera_rear/image_raw
+          Image Topic: /camera_rear/image_raw
           Name: Camera Rear
           Overlay Alpha: 0.5
           Queue Size: 2
@@ -379,7 +379,7 @@ Visualization Manager:
         - Class: rviz/Camera
           Enabled: true
           Image Rendering: background and overlay
-          Image Topic: /ids_camera_right/image_raw
+          Image Topic: /camera_right/image_raw
           Name: Camera Right
           Overlay Alpha: 0.5
           Queue Size: 2

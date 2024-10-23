@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
-    <xacro:macro name="ids_sensor" params="xyz rpy parent topic label">
+    <xacro:macro name="camera_sensor" params="xyz rpy parent topic label">
       
-      <joint name="ids_joint_${label}" type="fixed">
+      <joint name="camera_joint_${label}" type="fixed">
         <origin xyz="${xyz}" rpy="${rpy}"/>
         <parent link="${parent}"/>
         <child link="camera_${label}"/>
@@ -13,14 +13,14 @@
 
       <!-- Virtual camera Z-front frame -->
       <link name="camera_${label}_gazebo"/>
-      <joint name="ids_joint_${label}_gazebo" type="fixed">
+      <joint name="camera_joint_${label}_gazebo" type="fixed">
        <parent link="camera_${label}"/>
        <child link="camera_${label}_gazebo"/>
        <origin xyz="0.0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
      </joint>
 
       <gazebo reference="camera_${label}">
-        <sensor type="camera" name="ids_camera_${label}">
+        <sensor type="camera" name="camera_${label}">
           <update_rate>10.0</update_rate>
           <camera name="head">
             <horizontal_fov>1.2257772057691048</horizontal_fov>
@@ -42,7 +42,7 @@
               <stddev>0.007</stddev>
             </noise>
           </camera>
-          <plugin name="ids_controller" filename="libgazebo_ros_camera.so">
+          <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
             <alwaysOn>true</alwaysOn>
             <updateRate>10.0</updateRate>
             <cameraName>${topic}_${label}</cameraName>
