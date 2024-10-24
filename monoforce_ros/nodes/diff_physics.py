@@ -10,7 +10,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
+from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.models.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
@@ -48,7 +48,7 @@ class DiffPhysBase:
 
         self.path_cost_min = np.inf
         self.path_cost_max = -np.inf
-        self.pose_step = int(0.2 / self.dt)  # publish poses with 0.2 [sec] step
+        self.pose_step = int(0.5 / self.dt)  # publish poses with 0.5 [sec] step
 
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
@@ -79,37 +79,21 @@ class DiffPhysBase:
         xyz_q[:, 6] = 1.0  # quaternion w
         return xyz_q
 
-    def init_controls(self, linear_vel, angular_vel_max, robot_size, allow_backward=True):
-        """
-        Initialize control commands through input linear and angular velocities.
-        The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
-        v_l(t) = v(t) + r * w(t)
-        v_r(t) = v(t) - r * w(t),
-        r is half of the robot's width, r = robot_size[1] / 2.
-
-        where v(t) = V = const for t in [0 .. T], linear velocity,
-        w(t) = [-W_max .. W_max], angular velocity.,
-        T is trajectories time horizon.
-        """
-        assert self.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
-        if allow_backward:
-            vels = torch.cat([-linear_vel * torch.ones((self.n_sim_trajs // 2, self.n_sim_steps)),
-                              +linear_vel * torch.ones((self.n_sim_trajs // 2, self.n_sim_steps))])
-            omegas = torch.cat([torch.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2),
-                                torch.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs // 2)]).repeat(self.n_sim_steps, 1).T
-        else:
-            vels = linear_vel * torch.ones((self.n_sim_trajs, self.n_sim_steps))
-            omegas = torch.linspace(-angular_vel_max, angular_vel_max, self.n_sim_trajs).repeat(self.n_sim_steps, 1).T
-        assert vels.shape == (self.n_sim_trajs, self.n_sim_steps), 'vels shape: %s' % str(vels.shape)
-        assert omegas.shape == (self.n_sim_trajs, self.n_sim_steps), 'omegas shape: %s' % str(omegas.shape)
-
-        # convert linear and angular velocities to track velocities
-        n_tracks = len(self.dphys_cfg.driving_parts)
-        track_vels = vw_to_tracks_vel(vels, omegas, robot_size, n_tracks=n_tracks)
-        track_vels = torch.stack(track_vels, dim=2)
-        assert track_vels.shape == (self.n_sim_trajs, self.n_sim_steps, n_tracks), 'track_vels shape: %s' % str(track_vels.shape)
-
-        return track_vels
+    def init_controls(self):
+        controls_front, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
+                                                    robot_base=self.dphys_cfg.robot_size[1].item(),
+                                                    v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
+                                                    w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                                    time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt,
+                                                    n_tracks=len(self.dphys_cfg.driving_parts))
+        controls_back, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
+                                                   robot_base=self.dphys_cfg.robot_size[1].item(),
+                                                   v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
+                                                   w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                                   time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt,
+                                                   n_tracks=len(self.dphys_cfg.driving_parts))
+        controls = torch.cat([controls_front, controls_back], dim=0)
+        return controls
 
     def get_pose(self, target_frame, source_frame, stamp=None):
         if stamp is None:
@@ -246,8 +230,7 @@ class DiffPhysicsWarp(DiffPhysBase):
         self.n_sim_trajs = dphys_cfg.n_sim_trajs if dphys_cfg.n_sim_trajs % 2 == 0 else dphys_cfg.n_sim_trajs + 1
 
         self.xyz_q0 = self.init_poses()
-        self.track_vels = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
-                                             robot_size=self.robot_size, allow_backward=allow_backward)
+        self.track_vels = self.init_controls()
         self.flipper_angles = self.init_flippers()
         height0 = np.zeros((int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res),
                             int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res)))
@@ -340,8 +323,7 @@ class DiffPhysicsTorch(DiffPhysBase):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot_frame=robot_frame,
                          max_age=max_age, device=device, dt=dt)
         self.dphysics = DPhysics(dphys_cfg, device=device)
-        self.track_vels = self.init_controls(dphys_cfg.vel_max, dphys_cfg.omega_max,
-                                             robot_size=self.robot_size, allow_backward=allow_backward)
+        self.track_vels = self.init_controls()
         # grid map subscriber
         self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
 
@@ -354,7 +336,8 @@ class DiffPhysicsTorch(DiffPhysBase):
         assert grid_maps.shape[0] == self.n_sim_trajs
         controls = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
         n_tracks = len(self.dphys_cfg.driving_parts)
-        assert controls.shape == (self.n_sim_trajs, self.n_sim_steps, n_tracks)
+        assert controls.shape == (self.n_sim_trajs, self.n_sim_steps, n_tracks), \
+            f'controls shape: {controls.shape} != {(self.n_sim_trajs, self.n_sim_steps, n_tracks)}'
 
         # initial state
         x = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)

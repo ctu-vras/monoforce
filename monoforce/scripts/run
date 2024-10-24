@@ -9,7 +9,7 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
+from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
@@ -27,8 +27,6 @@ def arg_parser():
     parser.add_argument('--img-paths', type=str, required=True, nargs='+', help='Paths to the input RGB images')
     parser.add_argument('--calibration-path', type=str, required=True, help='Path to the calibration files')
     parser.add_argument('--cameras', type=str, nargs='+', default=None, help='Camera names')
-    parser.add_argument('--linear-vel', type=float, default=None, help='Linear velocity of the robot')
-    parser.add_argument('--angular-vel', type=float, default=None, help='Angular velocity of the robot')
 
     return parser.parse_args()
 
@@ -36,22 +34,11 @@ def arg_parser():
 class MonoForce:
     def __init__(self, imgs_path, calib_path,
                  cameras=None,
-                 linear_vel=None, angular_vel=None,
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg.yaml'),
                  model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.imgs_path = imgs_path
         self.calib_path = calib_path
-        self.linear_vel = linear_vel
-        self.angular_vel = angular_vel
-        if linear_vel is None:
-            v = np.random.uniform(0.4, 0.8)
-            if np.random.random() > 0.5:
-                v = -v
-            self.linear_vel = v
-        if angular_vel is None:
-            w = np.random.uniform(-0.2, 0.2)
-            self.angular_vel = w
 
         # load DPhys config
         self.dphys_cfg = DPhysConfig(robot='tradr')
@@ -79,12 +66,14 @@ class MonoForce:
         poses[:, :3, 3] = xyz
         return poses
 
-    def predict_states(self, z_grid, v, w):
-        # constant linear and angular velocities as control inputs
+    def predict_states(self, z_grid):
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-        controls_t = vw_to_tracks_vel(v, w, self.dphys_cfg.robot_size)
-        controls = torch.tensor([controls_t] * int(T / dt), device=self.device)
-        controls = controls.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, N_controls]
+        controls, _ = generate_control_inputs(n_trajs=z_grid.shape[0],
+                                              robot_base=self.dphys_cfg.robot_size[1].item(),
+                                              v_range=(self.dphys_cfg.vel_max / 2., self.dphys_cfg.vel_max),
+                                              w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                              time_horizon=T, dt=dt)
+        controls = controls.to(self.device)
         states, forces = self.dphysics(z_grid, controls=controls)
         return states, forces
 
@@ -157,9 +146,7 @@ class MonoForce:
             z_grid = out['terrain'].squeeze(1)
 
             # predict trajectory and interaction forces
-            v, w = self.linear_vel, self.angular_vel
-            print('Predicting path with v=%.3f, w=%.3f' % (v, w))
-            states, forces = self.predict_states(z_grid, v=v, w=w)
+            states, forces = self.predict_states(z_grid)
             poses = self.poses_from_states(states)
             print('Predicted poses shape: %s' % str(poses.shape))
             F_springs = forces[0].squeeze().cpu().numpy()
@@ -201,8 +188,6 @@ def main():
     monoforce = MonoForce(imgs_path=args.img_paths,
                           calib_path=args.calibration_path,
                           cameras=args.cameras,
-                          linear_vel=args.linear_vel,
-                          angular_vel=args.angular_vel,
                           lss_cfg_path=args.lss_cfg_path,
                           model_path=args.model_path)
     monoforce.run()

@@ -9,10 +9,10 @@ class DPhysConfig:
     def __init__(self, robot='tradr'):
         # robot parameters
         self.robot = robot
+        self.vel_max = 1.0  # m/s
+        self.omega_max = 2.0  # rad/s
         if 'tradr' in robot:
             self.robot_mass = 40.  # kg
-            self.vel_max = 1.0  # m/s
-            self.omega_max = 0.7  # rad/s
             self.joint_positions = {
                 'fl': [0.250, 0.272, 0.019],
                 'fr': [0.250, -0.272, 0.019],
@@ -27,8 +27,6 @@ class DPhysConfig:
             }
         elif 'marv' in robot:
             self.robot_mass = 60.  # kg
-            self.vel_max = 1.2  # m/s
-            self.omega_max = 0.8  # rad/s
             self.joint_positions = {
                 'fl': [0.250, 0.272, 0.019],
                 'fr': [0.250, -0.272, 0.019],
@@ -43,8 +41,6 @@ class DPhysConfig:
             }
         elif 'husky' in robot:
             self.robot_mass = 50.
-            self.vel_max = 1.4  # m/s
-            self.omega_max = 1.0  # rad/s
             self.joint_positions = {
                 'fl': [0.256, 0.285, 0.033],
                 'fr': [0.256, -0.285, 0.033],
@@ -79,7 +75,7 @@ class DPhysConfig:
         # trajectory shooting parameters
         self.traj_sim_time = 5.0
         self.dt = 0.01
-        self.n_sim_trajs = 32
+        self.n_sim_trajs = 64
         self.integration_mode = 'euler'  # 'euler', 'rk2', 'rk4'
 
     @staticmethod
@@ -146,7 +142,7 @@ class DPhysConfig:
         pcd.points = mesh.vertices
         if voxel_size:
             pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
-        x_points = torch.from_numpy(np.asarray(pcd.points, dtype=np.float32))
+        x_points = torch.as_tensor(np.asarray(pcd.points), dtype=torch.float32)
         if return_mesh:
             return x_points, mesh
 

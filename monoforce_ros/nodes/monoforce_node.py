@@ -13,7 +13,7 @@ from std_msgs.msg import Float32MultiArray
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, poses_to_marker
 from monoforce.utils import read_yaml, timing
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, vw_to_tracks_vel
+from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from terrain_encoder import TerrainEncoder
 import rospkg
 
@@ -29,55 +29,33 @@ class MonoForce(TerrainEncoder):
         self.allow_backward = rospy.get_param('~allow_backward', True)
         self.dphys_cfg = DPhysConfig(robot=self.robot)
         self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
-        self.track_vels = self.init_controls(self.dphys_cfg.vel_max,
-                                             self.dphys_cfg.omega_max,
-                                             robot_size=self.dphys_cfg.robot_size,
-                                             allow_backward=self.allow_backward)
+        self.track_vels = self.init_controls()
         rospy.loginfo('Control inputs are set up. Shape: %s' % str(self.track_vels.shape))
         self.path_cost_min = np.inf
         self.path_cost_max = -np.inf
-        self.pose_step = int(0.2 / self.dphys_cfg.dt)  # publish poses with 0.2 [sec] step
+        self.pose_step = int(0.5 / self.dphys_cfg.dt)  # publish poses with 0.2 [sec] step
 
         self.sampled_paths_pub = rospy.Publisher('/sampled_paths', MarkerArray, queue_size=1)
         self.lc_path_pub = rospy.Publisher('/lower_cost_path', Path, queue_size=1)
         self.path_costs_pub = rospy.Publisher('/path_costs', Float32MultiArray, queue_size=1)
         rospy.loginfo('MonoForce node is ready')
 
-    def init_controls(self, linear_vel, angular_vel_max, robot_size, allow_backward=True):
-        """
-        Initialize control commands through input linear and angular velocities.
-        The differentiable drive robot model is used to calculate left and right 'track' (wheel) speed:
-        v_l(t) = v(t) + r * w(t)
-        v_r(t) = v(t) - r * w(t),
-        r is half of the robot's width, r = robot_size[1] / 2.
+    def init_controls(self):
+        controls_front, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
+                                                    robot_base=self.dphys_cfg.robot_size[1].item(),
+                                                    v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
+                                                    w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                                    time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
+        controls_back, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
+                                                   robot_base=self.dphys_cfg.robot_size[1].item(),
+                                                   v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
+                                                   w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                                   time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
+        controls = torch.cat([controls_front, controls_back], dim=0)
+        return controls
 
-        where v(t) = V = const for t in [0 .. T], linear velocity,
-        w(t) = [-W_max .. W_max], angular velocity.,
-        T is trajectories time horizon.
-        """
-        N_trajs = self.dphys_cfg.n_sim_trajs
-        N_steps = int(self.dphys_cfg.traj_sim_time / self.dphys_cfg.dt)
-        assert self.dphys_cfg.n_sim_trajs % 2 == 0, 'n_sim_trajs must be even'
-        if allow_backward:
-            vels = torch.cat([-linear_vel * torch.ones((N_trajs // 2, N_steps)),
-                              +linear_vel * torch.ones((N_trajs // 2, N_steps))])
-            omegas = torch.cat([torch.linspace(-angular_vel_max, angular_vel_max, N_trajs // 2),
-                                torch.linspace(-angular_vel_max, angular_vel_max, N_trajs // 2)]).repeat(N_steps, 1).T
-        else:
-            vels = linear_vel * torch.ones((N_trajs, N_steps))
-            omegas = torch.linspace(-angular_vel_max, angular_vel_max, N_trajs).repeat(N_steps, 1).T
-        assert vels.shape == (N_trajs, N_steps), 'vels shape: %s' % str(vels.shape)
-        assert omegas.shape == (N_trajs, N_steps), 'omegas shape: %s' % str(omegas.shape)
-
-        # convert linear and angular velocities to track velocities
-        n_tracks = len(self.dphys_cfg.driving_parts)
-        track_vels = vw_to_tracks_vel(vels, omegas, robot_size, n_tracks=n_tracks)
-        track_vels = torch.stack(track_vels, dim=2)
-        assert track_vels.shape == (N_trajs, N_steps, n_tracks), 'track_vels shape: %s' % str(track_vels.shape)
-
-        return track_vels
-    
-    def predict_paths(self, grid_maps, xyz_qs_init, frictions):
+    @timing
+    def predict_paths(self, grid_maps, xyz_qs_init, frictions=None):
         assert len(grid_maps) == len(xyz_qs_init) == self.dphys_cfg.n_sim_trajs
         # for grid_map in grid_maps:
         #     assert isinstance(grid_map, np.ndarray)
@@ -123,11 +101,11 @@ class MonoForce(TerrainEncoder):
 
         return poses, path_costs
 
+    @timing
     def publish_paths_and_costs(self, poses, path_costs, frame, stamp=None, pose_step=1):
         assert len(poses) == len(path_costs), 'xyz_q_np: %s, path_costs: %s' % (str(poses.shape), str(path_costs.shape))
         if stamp is None:
             stamp = rospy.Time.now()
-
         num_trajs = len(poses)
 
         # paths marker array
@@ -162,6 +140,7 @@ class MonoForce(TerrainEncoder):
         path_costs_msg.data = path_costs
         self.path_costs_pub.publish(path_costs_msg)
 
+    @timing
     def proc(self, *msgs):
         n = len(msgs)
         assert n % 2 == 0
@@ -179,10 +158,8 @@ class MonoForce(TerrainEncoder):
         rospy.loginfo('Predicted height map shape: %s' % str(height_terrain.shape))
 
         grid_maps = height_terrain.squeeze(1).repeat(self.dphys_cfg.n_sim_trajs, 1, 1)
-        frictions = friction.squeeze(1).repeat(self.dphys_cfg.n_sim_trajs, 1, 1)
         xyz_qs_init = torch.tensor([[0., 0., 0., 0., 0., 0., 1.]]).repeat(self.dphys_cfg.n_sim_trajs, 1)
-        with torch.no_grad():
-            xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init, frictions)
+        xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
 
         # update path cost bounds
         if path_costs is not None:
@@ -202,7 +179,6 @@ class MonoForce(TerrainEncoder):
 
         # publish height map as grid map
         grid_msg = height_map_to_gridmap_msg(height=height_terrain.squeeze().cpu().numpy(),
-                                             mask=friction.squeeze().cpu().numpy(),
                                              grid_res=self.lss_cfg['grid_conf']['xbound'][2],
                                              xyz=np.array([0., 0., 0.]),
                                              q=np.array([0., 0., 0., 1.]))

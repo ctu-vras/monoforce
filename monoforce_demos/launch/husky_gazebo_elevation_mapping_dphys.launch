@@ -5,7 +5,7 @@
   <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
   <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
   <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
-  <arg name="device" default="cpu" doc="Device to run the differentiable physics"/>
+  <arg name="device" default="cuda" doc="Device to run the differentiable physics"/>
   <arg name="robot" default="husky" doc="Robot name"/>
 
   <!-- Gazebo world and spawn Husky robot -->

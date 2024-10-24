@@ -326,8 +326,8 @@ class DiffSim:
             self.renderer.clear()
 
     def set_control(self, control_np, flipper_angles_np):
-        assert control_np.shape == (self.n_robots, self.T, 2)
-        assert flipper_angles_np.shape == (self.n_robots, self.T, 4)
+        assert control_np.shape == (self.n_robots, self.T, 2), f'control shape: {control_np.shape} != {(self.n_robots, self.T, 2)}'
+        assert flipper_angles_np.shape == (self.n_robots, self.T, 4), f'flipper angles shape: {flipper_angles_np.shape} != {(self.n_robots, self.T, 4)}'
         self.track_velocities = wp.array(control_np, dtype=wp.float32, device=self.device, requires_grad=False)
         self.flipper_angles = wp.array(flipper_angles_np, dtype=wp.float32, device=self.device, requires_grad=False)
 

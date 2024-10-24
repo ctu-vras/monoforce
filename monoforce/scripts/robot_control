@@ -5,33 +5,13 @@ sys.path.append('../src')
 import torch
 import numpy as np
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics
+from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-try:
-    mpl.use('TkAgg')
-except:
-    try:
-        mpl.use('QtAgg')
-    except:
-        print('Cannot set matplotlib backend')
-    pass
-
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-try:
-    mpl.use('TkAgg')
-except:
-    try:
-        mpl.use('QtAgg')
-    except:
-        print('Cannot set matplotlib backend')
-    pass
 
 
 # simulation parameters
-robot = 'marv'
+robot = 'tradr2'
 dphys_cfg = DPhysConfig(robot=robot)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -180,11 +160,9 @@ def motion_dataset():
     set_axes_equal(ax)
     plt.show()
 
-
 def shoot_multiple():
     from time import time
     from scipy.spatial.transform import Rotation
-    from monoforce.models.dphysics import vw_to_tracks_vel
     from monoforce.vis import set_axes_equal
 
     # simulation parameters
@@ -225,18 +203,16 @@ def shoot_multiple():
     friction = friction.repeat(x.shape[0], 1, 1)
 
     # control inputs in m/s and rad/s
+    controls_front, _ = generate_control_inputs(n_trajs=num_trajs // 2,
+                                                robot_base=dphys_cfg.robot_size[1].item(),
+                                                v_range=(vel_max / 2, vel_max), w_range=(-omega_max, omega_max),
+                                                time_horizon=T, dt=dt)
+    controls_back, _ = generate_control_inputs(n_trajs=num_trajs // 2,
+                                               robot_base=dphys_cfg.robot_size[1].item(),
+                                               v_range=(-vel_max, -vel_max / 2), w_range=(-omega_max, omega_max),
+                                               time_horizon=T, dt=dt)
+    controls = torch.cat([controls_front, controls_back], dim=0)
     assert num_trajs % 2 == 0, 'num_trajs must be even'
-    vels_x = torch.cat([-vel_max * torch.ones((num_trajs // 2, int(T / dt))),
-                        vel_max * torch.ones((num_trajs // 2, int(T / dt)))])
-    omegas_z = torch.cat([torch.linspace(-omega_max, omega_max, num_trajs // 2),
-                          torch.linspace(-omega_max, omega_max, num_trajs // 2)]).repeat(int(T / dt), 1).T
-    assert vels_x.shape == (num_trajs, int(T / dt))
-    assert omegas_z.shape == (num_trajs, int(T / dt))
-
-    controls = vw_to_tracks_vel(v=vels_x, w=omegas_z,
-                                robot_size=dphys_cfg.robot_size,
-                                n_tracks=len(dphys_cfg.driving_parts))
-    controls = torch.stack(controls, dim=2)
     controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
 
     # initial state

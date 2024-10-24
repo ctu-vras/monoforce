@@ -1,5 +1,4 @@
 import os
-import cv2
 from matplotlib import cm, pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
@@ -38,14 +37,6 @@ def visualize_imgs(images, names=None):
             plt.title(names[i])
     plt.tight_layout()
     plt.show()
-
-def draw_points_on_image(points, color, image):
-    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-    for i in range(points.shape[1]):
-        cv2.circle(hsv_image, (np.int32(points[0][i]), np.int32(points[1][i])), 4, (int(color[i]), 255, 255), -1)
-
-    return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
 
 
 def setup_visualization(states, forces, x_grid, y_grid, z_grid):

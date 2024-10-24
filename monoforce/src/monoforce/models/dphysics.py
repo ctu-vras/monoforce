@@ -37,37 +37,53 @@ def skew_symmetric(v):
     U[:, 2, 1] = v[:, 0]
     return U
 
-def vw_to_tracks_vel(v, w, robot_size, n_tracks=2):
+def generate_control_inputs(n_trajs=10,
+                            time_horizon=5.0, dt=0.01,
+                            robot_base=1.0,
+                            v_range=(-1.0, 1.0), w_range=(-1.0, 1.0),
+                            n_tracks=2):
     """
-    Converts the linear and angular velocities to the track velocities
-    according to the differential drive model.
-    v_l = v + r * w
-    v_r = v - r * w
+    Generates control inputs for the robot trajectories.
 
     Parameters:
-    - v: Linear velocity.
-    - w: Angular velocity.
-    - robot_size: Size of the robot.
-    - n_tracks: Number of tracks.
+    - n_trajs: Number of trajectories.
+    - time_horizon: Time horizon for each trajectory.
+    - dt: Time step.
+    - robot_base: Distance between the tracks.
+    - v_range: Range of the forward speed.
+    - w_range: Range of the rotational speed.
+    - n_tracks: Number of tracks (2 or 4).
 
     Returns:
-    - Tuple of the left and right track velocities.
+    - Control inputs for the robot trajectories.
+    - Time stamps for the trajectories.
     """
-    s_x, s_y = robot_size
-    r = s_y / 2
+    # rewrite the above code using torch instead of numpy
+    time_steps = int(time_horizon / dt)
+    time_stamps = torch.linspace(0, time_horizon, time_steps)
+
+    # List to store control inputs (left and right wheel velocities)
+    control_inputs = torch.zeros((n_trajs, time_steps, n_tracks))
+
+    v = torch.rand(n_trajs) * (v_range[1] - v_range[0]) + v_range[0]  # Forward speed
+    w = torch.rand(n_trajs) * (w_range[1] - w_range[0]) + w_range[0]  # Rotational speed
+
     if n_tracks == 2:
-        v_l = v + r * w
-        v_r = v - r * w
-        controls = [v_l, v_r]
+        v_L = v - (w * robot_base) / 2.0  # Left wheel velocity
+        v_R = v + (w * robot_base) / 2.0  # Right wheel velocity
+        control_inputs[:, :, 0] = v_L[:, None].repeat(1, time_steps)
+        control_inputs[:, :, 1] = v_R[:, None].repeat(1, time_steps)
     elif n_tracks == 4:
-        v_fl = v + r * w
-        v_fr = v - r * w
-        v_rl = v + r * w
-        v_rr = v - r * w
-        controls = [v_fl, v_fr, v_rl, v_rr]
+        v_L = v - (w * robot_base) / 2.0
+        v_R = v + (w * robot_base) / 2.0
+        control_inputs[:, :, 0] = v_L[:, None].repeat(1, time_steps)
+        control_inputs[:, :, 1] = v_R[:, None].repeat(1, time_steps)
+        control_inputs[:, :, 2] = v_L[:, None].repeat(1, time_steps)
+        control_inputs[:, :, 3] = v_R[:, None].repeat(1, time_steps)
     else:
-        raise ValueError(f'Unsupported number of tracks: {n_tracks}. Supported values are 2 and 4.')
-    return controls
+        raise ValueError('n_tracks must be 2 or 4')
+
+    return control_inputs, time_stamps
 
 
 class DPhysics(torch.nn.Module):
@@ -402,7 +418,7 @@ class DPhysics(torch.nn.Module):
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
         # for each trajectory and time step driving parts are being controlled
-        assert controls.shape == (B, N_ts, len(self.dphys_cfg.driving_parts)), f'{controls.shape}'
+        assert controls.shape == (B, N_ts, len(self.dphys_cfg.driving_parts)), f'Its shape {controls.shape} != {(B, N_ts, len(self.dphys_cfg.driving_parts))}'
 
         # TODO: there is some bug, had to transpose grid map
         z_grid = z_grid.transpose(1, 2)  # (B, H, W) -> (B, W, H)

@@ -11,7 +11,6 @@
                                              '/camera_left/camera_info',
                                              '/camera_rear/camera_info',
                                              '/camera_right/camera_info']"/>
-
     <!-- MonoForce node -->
     <node name="monoforce" pkg="monoforce" type="monoforce_node.py" output="screen">
         <rosparam subst_value="true">
@@ -21,7 +20,7 @@
             weights: $(arg weights)
             robot_frame: 'base_link'
             max_msgs_delay: 0.2
-            max_age: 2.0
+            max_age: 1.2
             robot: tradr2
         </rosparam>
         <remap from="height_map" to="height_map"/>
