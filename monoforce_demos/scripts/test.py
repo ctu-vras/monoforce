@@ -9,6 +9,7 @@ import os
 import numpy as np
 import torch
 import argparse
+from datetime import datetime
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import load_model
@@ -26,7 +27,7 @@ def arg_parser():
                         default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str,
                         default=os.path.join(base_path, 'config/weights/lss/lss.pt'), help='Path to the LSS model')
-
+    parser.add_argument('--seq_i', type=int, default=0, help='Data sequence index')
     return parser.parse_args()
 
 
@@ -34,7 +35,8 @@ class Predictor:
     def __init__(self,
                  robot='marv',
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg.yaml'),
-                 model_path=os.path.join('..', 'config/weights/lss/lss.pt')):
+                 model_path=os.path.join('..', 'config/weights/lss/lss.pt'),
+                 seq_i=0):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # load DPhys config
@@ -49,7 +51,7 @@ class Predictor:
         self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
 
         # load dataset
-        self.path = robingas_seq_paths[robot][0]
+        self.path = robingas_seq_paths[robot][seq_i]
         self.ds = RobinGas(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
 
     def poses_from_states(self, states):
@@ -76,6 +78,7 @@ class Predictor:
             y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
 
+            output_folder = f'./gen_{os.path.basename(self.path)}_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
             for i in tqdm(range(len(self.ds))):
                 # get a sample from the dataset
                 sample = self.ds[i]
@@ -144,13 +147,13 @@ class Predictor:
                 plt.pause(0.01)
                 plt.draw()
 
-                os.makedirs('./gen', exist_ok=True)
-                plt.savefig(f'./gen/{i:04d}.png')
+                os.makedirs(output_folder, exist_ok=True)
+                plt.savefig(f'{output_folder}/{i:04d}.png')
 
             plt.close(fig)
 
             # create a video from the generated images using ffmpeg
-            os.system(f'ffmpeg -y -r 10 -i ./gen/%04d.png -vcodec libx264 -pix_fmt yuv420p -crf 25 -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" ./gen/{os.path.basename(self.path)}.mp4')
+            os.system(f'ffmpeg -y -r 10 -i {output_folder}/%04d.png -vcodec libx264 -pix_fmt yuv420p -crf 25 -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" {output_folder}/{os.path.basename(self.path)}.mp4')
 
 
 def main():
@@ -158,7 +161,8 @@ def main():
     print(args)
     monoforce = Predictor(robot=args.robot,
                           lss_cfg_path=args.lss_cfg_path,
-                          model_path=args.model_path)
+                          model_path=args.model_path,
+                          seq_i=args.seq_i)
     monoforce.run()
 
 

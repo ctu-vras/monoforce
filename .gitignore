@@ -160,7 +160,7 @@ cython_debug/
 .idea/
 
 data/*
-gen/
+gen*/
 *.pth
 *.pt
 *.bak
