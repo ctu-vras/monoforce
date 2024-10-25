@@ -74,7 +74,7 @@ class PathSelector:
 
     def get_pose(self, frame, target_frame=None, stamp=None):
         if stamp is None:
-            stamp = rospy.Time(0)
+            stamp = rospy.Time.now()
         if target_frame is None:
             target_frame = self.map_frame
         try:
@@ -108,7 +108,7 @@ class PathSelector:
         current_wp_xyz = current_wp_xyzq[:3]
         current_wp_xyz_robot = robot_pose[:3, :3].T @ (current_wp_xyz - robot_pose[:3, 3])
         self.xy_dist_to_wp = np.linalg.norm(current_wp_xyz_robot[:2])
-        rospy.loginfo(f'Distance to waypoint: {self.xy_dist_to_wp}')
+        rospy.loginfo(f'XY distance to waypoint: {self.xy_dist_to_wp}')
 
     def path_selection_callback(self, *msgs):
         with self.proc_lock:
