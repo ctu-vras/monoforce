@@ -3,43 +3,6 @@ import torch.nn as nn
 from .lss import LiftSplatShoot
 
 
-def voxelize_point_cloud(point_clouds, voxel_size, grid_size):
-    """
-    Voxelizes batched point clouds into a 3D grid.
-
-    Args:
-        point_clouds (torch.Tensor): The input point clouds of shape (B, 3, N),
-                                     where B is the batch size, N is the number of points.
-        voxel_size (float): The size of each voxel.
-        grid_size (tuple): The size of the voxel grid (D, H, W).
-
-    Returns:
-        voxel_grid (torch.Tensor): A voxelized grid of shape (B, D, H, W).
-    """
-    # Step 1: Find the minimum point per batch in the point cloud
-    min_bound = point_clouds.min(dim=2, keepdim=True)[0]  # Shape (B, 3, 1)
-
-    # Step 2: Subtract the minimum point and scale by voxel size
-    shifted_points = (point_clouds - min_bound) / voxel_size  # Normalize and scale
-
-    # Step 3: Floor the points to get voxel indices
-    grid_indices = torch.floor(shifted_points).long()  # Shape (B, 3, N)
-
-    # Step 4: Clip indices to be within the voxel grid size
-    grid_indices = torch.clamp(grid_indices, 0, grid_size[0] - 1)  # Clip along D
-    grid_indices = torch.clamp(grid_indices, 0, grid_size[1] - 1)  # Clip along H
-    grid_indices = torch.clamp(grid_indices, 0, grid_size[2] - 1)  # Clip along W
-
-    # Step 5: Create a batch of voxel grids and mark occupied voxels
-    B = point_clouds.shape[0]
-    voxel_grid = torch.zeros((B, *grid_size), dtype=torch.float32)  # (B, D, H, W)
-
-    for b in range(B):
-        batch_indices = grid_indices[b]  # Get indices for the b-th batch
-        voxel_grid[b, batch_indices[0, :], batch_indices[1, :], batch_indices[2, :]] = 1.0
-
-    return voxel_grid
-
 class LiDAREncoder(nn.Module):
     def __init__(self, in_channels=1, out_channels=64):
         super(LiDAREncoder, self).__init__()
@@ -77,10 +40,48 @@ class LiDARToBEV(nn.Module):
         self.lidar_encoder = LiDAREncoder(in_channels=1, out_channels=out_channels)
         self.bev_flatten = BEVFlatten()
 
+    def voxelize(self, point_clouds):
+        """
+        Voxelizes batched point clouds into a 3D grid.
+
+        Args:
+            point_clouds (torch.Tensor): The input point clouds of shape (B, 3, N),
+                                         where B is the batch size, N is the number of points.
+            voxel_size (float): The size of each voxel.
+            grid_size (tuple): The size of the voxel grid (D, H, W).
+
+        Returns:
+            voxel_grid (torch.Tensor): A voxelized grid of shape (B, D, H, W).
+        """
+        # Step 1: Find the minimum point per batch in the point cloud
+        min_bound = point_clouds.min(dim=2, keepdim=True)[0]  # Shape (B, 3, 1)
+
+        # Step 2: Subtract the minimum point and scale by voxel size
+        shifted_points = (point_clouds - min_bound) / self.voxel_size  # Normalize and scale
+
+        # Step 3: Floor the points to get voxel indices
+        grid_indices = torch.floor(shifted_points).long()  # Shape (B, 3, N)
+
+        # Step 4: Clip indices to be within the voxel grid size
+        grid_indices = torch.clamp(grid_indices, 0, self.grid_size[0] - 1)  # Clip along D
+        grid_indices = torch.clamp(grid_indices, 0, self.grid_size[1] - 1)  # Clip along H
+        grid_indices = torch.clamp(grid_indices, 0, self.grid_size[2] - 1)  # Clip along W
+
+        # Step 5: Create a batch of voxel grids and mark occupied voxels
+        B = point_clouds.shape[0]
+        voxel_grid = torch.zeros((B, *self.grid_size), dtype=torch.float32)  # (B, D, H, W)
+
+        for b in range(B):
+            batch_indices = grid_indices[b]  # Get indices for the b-th batch
+            voxel_grid[b, batch_indices[0, :], batch_indices[1, :], batch_indices[2, :]] = 1.0
+
+        voxel_grid = voxel_grid.unsqueeze(1)  # Add channel dimension
+
+        return voxel_grid
+
     def forward(self, point_cloud):
         # Step 1: Voxelize the raw point cloud
-        voxel_grid = voxelize_point_cloud(point_cloud, self.voxel_size, self.grid_size)
-        voxel_grid = voxel_grid.unsqueeze(1)  # Add channel dimension
+        voxel_grid = self.voxelize(point_cloud)
 
         # Step 2: Encode the voxelized point cloud using 3D CNN
         lidar_features = self.lidar_encoder(voxel_grid)
