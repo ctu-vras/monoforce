@@ -124,7 +124,7 @@ def load_calib(calib_path):
 def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=False, **kwargs):
     from torch.utils.data import ConcatDataset, Subset
     from monoforce.datasets import Rellis3D, Rellis3DPoints, rellis3d_seq_paths
-    from monoforce.datasets import RobinGas, RobinGasVis, robingas_seq_paths
+    from monoforce.datasets import ROUGH, ROUGHPoints, rough_seq_paths
     """
     Compile datasets for LSS model training
 
@@ -145,12 +145,12 @@ def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_dat
         Data = Rellis3D
         DataVis = Rellis3DPoints
         data_paths = rellis3d_seq_paths
-    elif dataset == 'robingas':
-        Data = RobinGas
-        DataVis = RobinGasVis
-        data_paths = robingas_seq_paths[robot]
+    elif dataset == 'rough':
+        Data = ROUGH
+        DataVis = ROUGHPoints
+        data_paths = rough_seq_paths[robot]
     else:
-        raise ValueError(f'Unknown dataset: {dataset}. Supported datasets are rellis3d and robingas.')
+        raise ValueError(f'Unknown dataset: {dataset}. Supported datasets are rellis3d and rough.')
     print('Data paths:', data_paths)
     for path in data_paths:
         assert os.path.exists(path)

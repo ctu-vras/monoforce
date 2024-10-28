@@ -1,6 +1,6 @@
 #!/bin/bash
 
-WEIGHTS=$HOME/workspaces//traversability_ws/src/monoforce/monoforce/config/weights/lss/lss.pt
+WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/lss/lss.pt
 ROBOT=tradr2
 SEQ_I=0
 

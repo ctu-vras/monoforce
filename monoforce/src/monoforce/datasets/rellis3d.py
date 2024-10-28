@@ -7,7 +7,7 @@ from ..utils import position, read_yaml, timing
 from ..transformations import transform_cloud
 from ..cloudproc import filter_grid, estimate_heightmap
 from ..dphys_config import DPhysConfig
-from .robingas import data_dir
+from .rough import data_dir
 from copy import copy
 import torch
 import yaml

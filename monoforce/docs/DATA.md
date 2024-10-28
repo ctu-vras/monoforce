@@ -1,15 +1,19 @@
 ## Traversability Data Structure and Processing
 
+> [!IMPORTANT]
+> Please note that the dataset is under construction is being updated.
+> More information is available at [ctu-vras/rough-dataset](https://github.com/ctu-vras/rough-dataset).
+> This page contains a description of the dataset preliminary version.
+
 Self-supervised traversability data generated using lidar SLAM.
 The data sequences are available at 
 [https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
 
-The dataset (RobinGas) contains:
+The dataset (ROUGH) contains:
   - point clouds, 
   - camera images,
   - calibration data: camera-lidar extrinsics, camera intrinsics, and distortion parameters,
   - localization data: robot poses for each point cloud stamp,
-  - robot's future trajectories data (10 seconds long).
 
 The traversability dataset has the following structure:
 ```commandline
@@ -24,7 +28,6 @@ The traversability dataset has the following structure:
     ├── terrain
     │   ├── lidar
     │   └── traj
-    ├── trajectories
     └── visuals
 ```
 
@@ -43,12 +46,12 @@ To explore the data, please follow the tutorial
 at [../examples/explore_data_rgb_rigid_terrain.ipynb](../examples/explore_data_rgb_rigid_terrain.ipynb)
 or run the module:
 ```commandline
-python -m monoforce.datasets.robingas
+python -m monoforce.datasets.rough
 ```
 
 ### Data Sample
 
-The [LSS](https://github.com/nv-tlabs/lift-splat-shoot) model training data example include:
+The [Terrain Encoder](./TERRAIN_ENCODER.md) model training data example include:
 - input RGB images,
 - terrain heightmap estimated from lidar,
 - robot footprint trajectory,

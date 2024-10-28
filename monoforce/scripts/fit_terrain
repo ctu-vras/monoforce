@@ -127,7 +127,7 @@ def optimize_heightmap():
 
 def learn_terrain_properties():
     import matplotlib.pyplot as plt
-    from monoforce.datasets import RobinGasBase, robingas_seq_paths
+    from monoforce.datasets import ROUGHBase, rough_seq_paths
     from torch.utils.data import DataLoader
     from time import time
 
@@ -137,7 +137,7 @@ def learn_terrain_properties():
     batch_size = 4
     device = torch.device('cuda')
 
-    class Data(RobinGasBase):
+    class Data(ROUGHBase):
         def __init__(self, path, dphys_cfg=DPhysConfig()):
             super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
 
@@ -149,7 +149,7 @@ def learn_terrain_properties():
             return control_ts, controls, ts, Xs, Xds, Rs, Omegas, heightmap
 
     dphys_cfg = DPhysConfig()
-    path = robingas_seq_paths['tradr'][0]
+    path = rough_seq_paths['tradr'][0]
 
     # load the dataset
     ds = Data(path, dphys_cfg=dphys_cfg)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ROBOT=marv
-DATASET=robingas
+DATASET=rough
 ONLY_FRONT_CAM=False
 DEBUG=False
 VIS=False
