@@ -5,7 +5,7 @@
 [![Video](http://img.shields.io/badge/video-13mins-blue.svg?style=plastic)](https://drive.google.com/file/d/1XP0o5xvUlE1_pGOX9tKGPCKOJVdANM_H/view?usp=sharing)
 [![Video](http://img.shields.io/badge/video-1min-blue.svg?style=plastic)](https://drive.google.com/file/d/1tTt1Oi5k1jKPDYn3CnzArhV3NPSNxKvD/view?usp=sharing)
 [![Poster](http://img.shields.io/badge/poster-A0-blue.svg?style=plastic)](https://docs.google.com/presentation/d/1A9yT6MC-B9DdzMdzCZ44Y8nVHtBHWxpLAUOZKS_GUcU/edit?usp=sharing)
-[![Data](http://img.shields.io/badge/data-RobinGas-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing)
+[![Data](http://img.shields.io/badge/data-ROUGH-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing)
 
 Examples of predicted trajectories and autonomous traversal through vegetation:
 
@@ -52,7 +52,7 @@ cd monoforce/
 python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
 
-For example if you want to test the model with the provided images from the RobinGas dataset:
+For example if you want to test the model with the provided images from the ROUGH dataset:
 ```commandline
 cd monoforce/scripts/
 ./run.sh
@@ -69,7 +69,7 @@ cd monoforce_demos/scripts/
 ```
 or equivalently:
 ```commandline
-roslaunch monoforce_demos monoforce_robingas.launch
+roslaunch monoforce_demos monoforce_rough.launch
 ```
 
 <img src="./monoforce/docs/imgs/monoforce.gif" width="800"/>

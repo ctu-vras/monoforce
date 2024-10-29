@@ -103,10 +103,10 @@ def motion():
 
 
 def motion_dataset():
-    from monoforce.datasets import RobinGasBase, robingas_seq_paths
+    from monoforce.datasets import ROUGHBase, rough_seq_paths
     from monoforce.vis import set_axes_equal
 
-    class Data(RobinGasBase):
+    class Data(ROUGHBase):
         def __init__(self, path, dphys_cfg=DPhysConfig()):
             super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
 
@@ -117,7 +117,7 @@ def motion_dataset():
             return controls, states, heightmap
 
     # load the dataset
-    path = np.random.choice(robingas_seq_paths[robot])
+    path = np.random.choice(rough_seq_paths[robot])
     dphys_cfg = DPhysConfig(robot=robot)
     ds = Data(path, dphys_cfg=dphys_cfg)
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ROBOT=tradr2
-DATASET=robingas
+DATASET=rough
 DEBUG=False
 VIS=False
 BSZ=128

@@ -27,10 +27,10 @@ def arg_parser():
     parser.add_argument('--bsz', type=int, default=4, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
-    parser.add_argument('--dataset', type=str, default='robingas', help='Dataset name')
+    parser.add_argument('--dataset', type=str, default='rough', help='Dataset name')
     parser.add_argument('--robot', type=str, default='tradr', help='Dataset name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
-    parser.add_argument('--pretrained_model_path', type=str, default='../config/weights/lss/lss_robingas_tradr.pt', help='Path to pretrained model')
+    parser.add_argument('--pretrained_model_path', type=str, default='../config/weights/lss/lss_rough_tradr.pt', help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
 
@@ -70,7 +70,7 @@ class Trainer:
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.dataset = dataset
-        assert dataset in ['rellis3d', 'robingas'], 'Unknown dataset: %s' % dataset
+        assert dataset in ['rellis3d', 'rough'], 'Unknown dataset: %s' % dataset
         self.robot = robot
         assert robot in ['husky', 'tradr', 'tradr2', 'husky_oru', 'marv'], 'Unknown robot: %s' % robot
         self.dphys_cfg = dphys_cfg

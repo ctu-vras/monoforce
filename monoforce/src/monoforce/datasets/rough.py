@@ -34,70 +34,70 @@ except:
 
 __all__ = [
     'data_dir',
-    'RobinGasBase',
-    'RobinGas',
-    'RobinGasVis',
-    'robingas_seq_paths',
+    'ROUGHBase',
+    'ROUGH',
+    'ROUGHPoints',
+    'rough_seq_paths',
 ]
 
 data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
 
-robingas_seq_paths = {
+rough_seq_paths = {
     'husky': [
-        os.path.join(data_dir, 'RobinGas/husky/husky_2022-10-27-15-33-57'),
-        os.path.join(data_dir, 'RobinGas/husky/husky_2022-09-27-10-33-15'),
-        os.path.join(data_dir, 'RobinGas/husky/husky_2022-09-27-15-01-44'),
-        os.path.join(data_dir, 'RobinGas/husky/husky_2022-09-23-12-38-31'),
-        os.path.join(data_dir, 'RobinGas/husky/husky_2022-06-30-15-58-37'),
+        os.path.join(data_dir, 'ROUGH/husky/husky_2022-10-27-15-33-57'),
+        os.path.join(data_dir, 'ROUGH/husky/husky_2022-09-27-10-33-15'),
+        os.path.join(data_dir, 'ROUGH/husky/husky_2022-09-27-15-01-44'),
+        os.path.join(data_dir, 'ROUGH/husky/husky_2022-09-23-12-38-31'),
+        os.path.join(data_dir, 'ROUGH/husky/husky_2022-06-30-15-58-37'),
     ],
     'marv': [
-        os.path.join(data_dir, 'RobinGas/marv/24-08-14-monoforce-long_drive'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-46-51'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-09-26-13-54-43'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-12-34-53'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-01-40'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-17-08'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-29-39'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-43-21'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-13-57-57'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-14-12-29'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-14-22-10'),
-        os.path.join(data_dir, 'RobinGas/marv/marv_2024-10-05-14-28-15'),
+        os.path.join(data_dir, 'ROUGH/marv/24-08-14-monoforce-long_drive'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-46-51'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-54-43'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-12-34-53'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-01-40'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-17-08'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-29-39'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-43-21'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-57-57'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-12-29'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-22-10'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-28-15'),
     ],
     'tradr': [
-        os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-30-57'),
-        os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-14-05-42'),
-        os.path.join(data_dir, 'RobinGas/tradr/ugv_2022-10-20-13-58-22'),
+        os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-14-30-57'),
+        os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-14-05-42'),
+        os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-13-58-22'),
     ],
     'tradr2': [
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-10-17-02-31'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-10-17-12-12'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-13-54-18'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-13-58-46'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-14-03-57'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-09-26-14-14-42'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-10-05-15-40-41'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-10-05-15-48-31'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-10-05-15-58-52'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-10-05-16-08-30'),
-        os.path.join(data_dir, 'RobinGas/tradr2/ugv_2024-10-05-16-24-48'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-02-31'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-12-12'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-13-54-18'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-13-58-46'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-14-03-57'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-14-14-42'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-40-41'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-48-31'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-58-52'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-16-08-30'),
+        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-16-24-48'),
     ],
     'husky_oru': [
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-02-33_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-09-06_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-24-37_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-37-14_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-44-56_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2023-08-16-11-54-42_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-02-07-10-47-13_0'),  # no radar
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-04-27-15-02-12_0'),
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize__2024-05-24-13-21-28_0'),  # no radar
-        os.path.join(data_dir, 'RobinGas/husky_oru/radarize_2024-06-12-10-06-11_0'),  # high grass with radar
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-02-33_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-09-06_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-24-37_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-37-14_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-44-56_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-54-42_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2024-02-07-10-47-13_0'),  # no radar
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2024-04-27-15-02-12_0'),
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2024-05-24-13-21-28_0'),  # no radar
+        os.path.join(data_dir, 'ROUGH/husky_oru/radarize_2024-06-12-10-06-11_0'),  # high grass with radar
     ],
 }
 
 
-class RobinGasBase(Dataset):
+class ROUGHBase(Dataset):
     """
     Class to wrap traversability data generated using lidar odometry.
 
@@ -475,7 +475,7 @@ class RobinGasBase(Dataset):
         return len(self.ids)
 
 
-class RobinGas(RobinGasBase):
+class ROUGH(ROUGHBase):
     """
     A dataset for traversability estimation from camera and lidar data.
 
@@ -497,7 +497,7 @@ class RobinGas(RobinGasBase):
                  dphys_cfg=DPhysConfig(),
                  is_train=False,
                  only_front_cam=False):
-        super(RobinGas, self).__init__(path, dphys_cfg)
+        super(ROUGH, self).__init__(path, dphys_cfg)
         self.is_train = is_train
         self.only_front_cam = only_front_cam
         self.camera_names = self.camera_names[:1] if only_front_cam else self.camera_names
@@ -812,10 +812,10 @@ class RobinGas(RobinGasBase):
                 traj_ts, Xs, Xds, Rs, Omegas)
 
 
-class RobinGasVis(RobinGas):
+class ROUGHPoints(ROUGH):
     def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True,
                  only_front_cam=False, points_source='lidar'):
-        super(RobinGasVis, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
+        super(ROUGHPoints, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
                                           only_front_cam=only_front_cam)
         assert points_source in ['lidar', 'radar', 'lidar_radar']
         self.points_source = points_source
@@ -845,11 +845,11 @@ def heightmap_demo():
     import matplotlib.pyplot as plt
 
     robot = 'husky_oru'
-    path = robingas_seq_paths[robot][0]
+    path = rough_seq_paths[robot][0]
     assert os.path.exists(path)
 
     cfg = DPhysConfig()
-    ds = RobinGasBase(path, dphys_cfg=cfg)
+    ds = ROUGHBase(path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -876,11 +876,11 @@ def extrinsics_demo():
     from ..vis import draw_coord_frames, draw_coord_frame
 
     robot = 'husky_oru'
-    for path in robingas_seq_paths[robot]:
+    for path in rough_seq_paths[robot]:
         assert os.path.exists(path)
 
         cfg = DPhysConfig()
-        ds = RobinGasBase(path, dphys_cfg=cfg)
+        ds = ROUGHBase(path, dphys_cfg=cfg)
 
         robot_pose = np.eye(4)
         robot_frame = 'base_link'
@@ -907,7 +907,7 @@ def extrinsics_demo():
 
 def traversed_height_map():
     robot = 'husky_oru'
-    path = np.random.choice(robingas_seq_paths[robot])
+    path = np.random.choice(rough_seq_paths[robot])
     assert os.path.exists(path)
 
     dphys_cfg = DPhysConfig()
@@ -915,7 +915,7 @@ def traversed_height_map():
 
     lss_cfg = read_yaml(os.path.join(data_dir, f'../config/lss_cfg_{robot}.yaml'))
 
-    ds = RobinGas(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
+    ds = ROUGH(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
     i = np.random.choice(range(len(ds)))
 
     # trajectory poses
@@ -983,9 +983,9 @@ def vis_estimated_height_map():
     # cfg.hm_interp_method = None
     cfg.hm_interp_method = 'nearest'
 
-    # path = np.random.choice(robingas_seq_paths['husky'])
-    path = np.random.choice(robingas_seq_paths['tradr'])
-    ds = RobinGasBase(path=path, dphys_cfg=cfg)
+    # path = np.random.choice(rough_seq_paths['husky'])
+    path = np.random.choice(rough_seq_paths['tradr'])
+    ds = ROUGHBase(path=path, dphys_cfg=cfg)
 
     i = np.random.choice(range(len(ds)))
     # i = 0
@@ -1009,19 +1009,19 @@ def vis_estimated_height_map():
 def global_cloud_demo():
     robot = 'husky_oru'
     assert robot in ['husky_oru', 'tradr', 'husky']
-    paths = robingas_seq_paths[robot]
+    paths = rough_seq_paths[robot]
     for path in paths:
-        ds = RobinGasBase(path=path)
+        ds = ROUGHBase(path=path)
         ds.get_global_cloud(vis=True, cached=False, step=10)
 
 
 def trajectory_footprint_heightmap():
     robot = 'husky_oru'
-    for path in robingas_seq_paths[robot]:
+    for path in rough_seq_paths[robot]:
         assert os.path.exists(path)
 
         cfg = DPhysConfig()
-        ds = RobinGasBase(path, dphys_cfg=cfg)
+        ds = ROUGHBase(path, dphys_cfg=cfg)
 
         i = np.random.choice(range(len(ds)))
         sample = ds[i]

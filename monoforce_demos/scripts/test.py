@@ -13,7 +13,7 @@ from datetime import datetime
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import load_model
-from monoforce.datasets.robingas import RobinGas, robingas_seq_paths
+from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml
 
@@ -51,8 +51,8 @@ class Predictor:
         self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
 
         # load dataset
-        self.path = robingas_seq_paths[robot][seq_i]
-        self.ds = RobinGas(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
+        self.path = rough_seq_paths[robot][seq_i]
+        self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
 
     def poses_from_states(self, states):
         xyz = states[0].squeeze().cpu().numpy()
