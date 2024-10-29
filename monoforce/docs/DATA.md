@@ -7,7 +7,7 @@
 
 Self-supervised traversability data generated using lidar SLAM.
 The data sequences are available at 
-[https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
+[Google Drive](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
 
 The dataset (ROUGH) contains:
   - point clouds, 
