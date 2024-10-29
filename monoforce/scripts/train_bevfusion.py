@@ -1,0 +1,497 @@
+#!/usr/bin/env python
+
+import sys
+sys.path.append('../src')
+import os
+import torch
+import numpy as np
+from torch.utils.data import DataLoader, ConcatDataset, Subset
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion
+from monoforce.datasets.rough import ROUGH, rough_seq_paths
+from monoforce.transformations import transform_cloud
+from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
+from monoforce.models.dphysics import DPhysics
+from monoforce.dphys_config import DPhysConfig
+from monoforce.utils import read_yaml, write_to_yaml, str2bool, position
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+import matplotlib.pyplot as plt
+import argparse
+
+
+np.random.seed(42)
+torch.manual_seed(42)
+
+def arg_parser():
+    parser = argparse.ArgumentParser(description='Train MonoForce model')
+    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
+    parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
+    parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
+    parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
+    parser.add_argument('--robot', type=str, default='marv', help='Robot name')
+    parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
+    parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
+    parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
+    parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
+    parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
+    parser.add_argument('--hdiff_weight', type=float, default=1e-4, help='Weight for height difference loss')
+    parser.add_argument('--phys_weight', type=float, default=0.1, help='Weight for physics loss')
+
+    return parser.parse_args()
+
+
+class Data(ROUGH):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True):
+        super(Data, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
+
+    def get_cloud(self, i, points_source='lidar'):
+        cloud = self.get_raw_cloud(i)
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
+        return cloud
+
+    def get_sample(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        control_ts, controls = self.get_controls(i)
+        traj_ts, states = self.get_states_traj(i)
+        Xs, Xds, Rs, Omegas = states
+        hm_geom = self.get_geom_height_map(i)
+        hm_terrain = self.get_terrain_height_map(i)
+        points = torch.as_tensor(position(self.get_cloud(i))).T
+        return (imgs, rots, trans, intrins, post_rots, post_trans,
+                hm_geom, hm_terrain,
+                control_ts, controls,
+                traj_ts, Xs, Xds, Rs, Omegas,
+                points)
+
+
+def compile_data(robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False):
+    """
+    Compile datasets for LSS model training
+
+    :param dataset: str, dataset name
+    :param robot: str, robot name
+    :param lss_cfg: dict, LSS model configuration
+    :param dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
+    :param val_fraction: float, fraction of the dataset to use for validation
+    :param small_data: bool, debug mode: use small datasets
+    :param kwargs: additional arguments
+
+    :return: train_ds, val_ds
+    """
+    train_datasets = []
+    val_datasets = []
+
+    data_paths = rough_seq_paths[robot][:3]
+    print('Data paths:', data_paths)
+    for path in data_paths:
+        assert os.path.exists(path)
+        train_ds = Data(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg)
+        val_ds = Data(path, is_train=False, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg)
+
+        # randomly select a subset of the dataset
+        val_ds_size = int(val_fraction * len(train_ds))
+        val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
+        train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
+        assert len(train_ids) + len(val_ids) == len(train_ds)
+        # check that there is no overlap between train and val ids
+        assert len(np.intersect1d(train_ids, val_ids)) == 0
+
+        train_ds = train_ds[train_ids]
+        val_ds = val_ds[val_ids]
+        print(f'Train dataset from path {path} size is {len(train_ds)}')
+        print(f'Validation dataset from path {path} size is {len(val_ds)}')
+
+        train_datasets.append(train_ds)
+        val_datasets.append(val_ds)
+
+    # concatenate datasets
+    train_ds = ConcatDataset(train_datasets)
+    val_ds = ConcatDataset(val_datasets)
+    if small_data:
+        print('Debug mode: using small datasets')
+        train_ds = Subset(train_ds, np.random.choice(len(train_ds), min(32, len(train_ds)), replace=False))
+        val_ds = Subset(val_ds, np.random.choice(len(val_ds), min(8, len(val_ds)), replace=False))
+    print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
+
+    return train_ds, val_ds
+
+
+class Trainer:
+    """
+    Trainer for LSS terrain encoder model
+
+    Args:
+    robot: str, robot name
+    dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
+    lss_cfg: dict, LSS model configuration
+    bsz: int, batch size
+    lr: float, learning rate
+    weight_decay: float, weight decay
+    nepochs: int, number of epochs
+    pretrained_model_path: str, path to pretrained model
+    log_dir: str, path to log directory
+    debug: bool, debug mode: use small datasets
+    geom_hm_weight: float, weight for geometry heightmap loss
+    terrain_hm_weight: float, weight for terrain heightmap loss
+    hdiff_weight: float, weight for height difference loss
+    phys_weight: float, weight for physics loss
+    """
+
+    def __init__(self,
+                 robot,
+                 dphys_cfg,
+                 lss_cfg,
+                 bsz=1,
+                 lr=1e-3,
+                 weight_decay=1e-7,
+                 nepochs=1000,
+                 pretrained_model_path=None,
+                 debug=False,
+                 geom_hm_weight=1.0,
+                 terrain_hm_weight=10.0,
+                 hdiff_weight=0.001,
+                 phys_weight=1.0):
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.robot = robot
+        assert robot in ['husky', 'tradr', 'tradr2', 'husky_oru', 'marv'], 'Unknown robot: %s' % robot
+        self.dphys_cfg = dphys_cfg
+        self.lss_cfg = lss_cfg
+
+        self.nepochs = nepochs
+        self.min_loss = np.inf
+        self.min_train_loss = np.inf
+        self.train_counter = 0
+        self.val_counter = 0
+
+        self.geom_hm_weight = geom_hm_weight
+        self.terrain_hm_weight = terrain_hm_weight
+        self.hdiff_weight = hdiff_weight
+        self.phys_weight = phys_weight
+
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug)
+        self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
+                                         data_aug_conf=self.lss_cfg['data_aug_conf']).to(self.device)
+        self.terrain_encoder.train()
+        self.dphysics = DPhysics(dphys_cfg, device=self.device)
+
+        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=100, verbose=True)
+        self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
+
+        self.log_dir = os.path.join('../config/tb_runs',
+                                    f'bevfusion_rough_{robot}/{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+
+        self.writer = SummaryWriter(log_dir=self.log_dir)
+        # save configs to log dir
+        write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
+        write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
+
+    def create_dataloaders(self, bsz=1, debug=False):
+        # create dataset for LSS model training
+        train_ds, val_ds = compile_data(robot=self.robot,
+                                        dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
+                                        small_data=debug)
+
+        # create dataloaders
+        train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False)
+
+        return train_loader, val_loader
+
+    def geom_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+
+        # handle imbalanced height distribution (increase weights for higher heights / obstacles)
+        h_mean = height_gt[weights.bool()].mean()
+        # the higher the difference from mean the higher the weight
+        weights_h = 1.0 + torch.abs(height_gt - h_mean)
+        # apply height difference weights
+        weights = weights * weights_h
+
+        # compute weighted loss
+        loss = (self.hm_loss_fn(height_pred * weights, height_gt * weights)).mean()
+        return loss
+
+    def terrain_hm_loss(self, height_pred, height_gt, weights=None):
+        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+        if weights is None:
+            weights = torch.ones_like(height_gt)
+        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+
+        # mask of valid labels
+        mask_valid = ~torch.isnan(height_gt)
+        # apply mask
+        height_gt = height_gt[mask_valid]
+        height_pred = height_pred[mask_valid]
+        weights = weights[mask_valid]
+
+        # compute weighted loss
+        loss = (self.hm_loss_fn(height_pred * weights, height_gt * weights)).mean()
+        return loss
+
+    def physics_loss(self, heightmap, friction, control_ts, controls, traj_ts, states):
+        # predict states
+        states_pred, _ = self.dphysics(z_grid=heightmap, controls=controls, friction=friction)
+
+        # unpack states
+        X, Xd, R, Omega = states
+        X_pred, Xd_pred, R_pred, Omega_pred, _ = states_pred
+
+        # find the closest timesteps in the trajectory to the ground truth timesteps
+        ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+
+        # compute the loss as the mean squared error between the predicted and ground truth poses
+        batch_size = X.shape[0]
+        loss = torch.nn.functional.mse_loss(X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids], X)
+
+        return loss
+
+    def epoch(self, train=True):
+        loader = self.train_loader if train else self.val_loader
+        counter = self.train_counter if train else self.val_counter
+
+        if train:
+            self.terrain_encoder.train()
+        else:
+            self.terrain_encoder.eval()
+
+        max_grad_norm = 5.0
+        epoch_loss = 0.0
+        for batch in tqdm(loader, total=len(loader)):
+            batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             control_ts, controls,
+             traj_ts, Xs, Xds, Rs, Omegas,
+             points) = batch
+
+            height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
+            height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
+
+            if train:
+                self.optimizer.zero_grad()
+
+            # terrain encoder forward pass
+            img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            points_input = points
+            out = self.terrain_encoder(img_inputs, points_input)
+            (height_pred_geom, height_pred_diff,
+             height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
+                                                    out['terrain'], out['friction'])
+
+            # geometrical height map loss
+            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else torch.tensor(0, device=self.device)
+            # rigid / terrain height map loss
+            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0, device=self.device)
+
+            # height difference loss
+            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else torch.tensor(0, device=self.device)
+
+            # physics loss: difference between predicted and ground truth states
+            loss_phys = self.physics_loss(heightmap=height_pred_terrain.squeeze(1), friction=friction_pred.squeeze(1),
+                                          control_ts=control_ts, controls=controls,
+                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0, device=self.device)
+
+            # check if loss is nan
+            if torch.isnan(loss_geom) or torch.isnan(loss_terrain) or torch.isnan(loss_hdiff) or torch.isnan(loss_phys):
+                print('NaN loss detected, skipping the batch...')
+                print('Losses:', loss_geom, loss_terrain, loss_hdiff, loss_phys)
+                continue
+
+            # total loss
+            loss = (self.geom_hm_weight * loss_geom +
+                    self.terrain_hm_weight * loss_terrain +
+                    self.hdiff_weight * loss_hdiff +
+                    self.phys_weight * loss_phys)
+
+            if train:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_norm=max_grad_norm)
+                self.optimizer.step()
+            else:
+                # decrease learning rate on validation if loss is not decreasing
+                self.lr_scheduler.step(loss)
+            epoch_loss += loss.item()
+
+            counter += 1
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_terrain", loss_terrain, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_phys", loss_phys, counter)
+            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
+
+        if len(loader) > 0:
+            epoch_loss /= len(loader)
+
+        return epoch_loss, counter
+
+    def train(self):
+        for e in range(self.nepochs):
+            # training epoch
+            train_loss, self.train_counter = self.epoch(train=True)
+            print('Epoch:', e, 'Train loss:', train_loss)
+            self.writer.add_scalar('train/epoch_loss', train_loss, e)
+
+            if train_loss < self.min_train_loss:
+                with torch.no_grad():
+                    self.min_train_loss = train_loss
+                    print('Saving train model...')
+                    self.terrain_encoder.eval()
+                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
+
+                    # visualize training predictions
+                    fig = self.vis_pred(self.train_loader)
+                    self.writer.add_figure('train/prediction', fig, e)
+
+            # validation epoch
+            with torch.no_grad():
+                val_loss, self.val_counter = self.epoch(train=False)
+                print('Epoch:', e, 'Validation loss:', val_loss)
+                self.writer.add_scalar('val/epoch_loss', val_loss, e)
+                if val_loss < self.min_loss:
+                    self.min_loss = val_loss
+                    print('Saving model...')
+                    self.terrain_encoder.eval()
+                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'lss.pt'))
+
+                    # visualize validation predictions
+                    fig = self.vis_pred(self.val_loader)
+                    self.writer.add_figure('val/prediction', fig, e)
+
+    def vis_pred(self, loader):
+        fig = plt.figure(figsize=(20, 12))
+        ax1 = fig.add_subplot(341)
+        ax2 = fig.add_subplot(342)
+        ax3 = fig.add_subplot(343)
+        ax4 = fig.add_subplot(344)
+        ax5 = fig.add_subplot(345)
+        ax6 = fig.add_subplot(346)
+        ax7 = fig.add_subplot(347)
+        ax8 = fig.add_subplot(348)
+        ax9 = fig.add_subplot(349)
+        ax10 = fig.add_subplot(3, 4, 10)
+        ax11 = fig.add_subplot(3, 4, 11)
+
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11]
+        for ax in axes:
+            ax.clear()
+
+        # visualize training predictions
+        with torch.no_grad():
+            # unpack batch
+            sample = loader.dataset[np.random.choice(len(loader.dataset))]
+            batch = [torch.as_tensor(b[None], device=self.device) for b in sample]
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             ts_controls, controls,
+             ts_traj, Xs, Xds, Rs, Omegas,
+             points) = batch
+
+            # predict height maps
+            img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            points_input = points
+            out = self.terrain_encoder(img_inputs, points_input)
+            (height_pred_geom, height_pred_diff,
+             height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
+                                                    out['terrain'], out['friction'])
+
+            # predict states
+            states_pred, _ = self.dphysics(z_grid=height_pred_terrain.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
+
+            batch_i = 0
+            height_pred_geom = height_pred_geom[batch_i, 0].cpu()
+            height_pred_terrain = height_pred_terrain[batch_i, 0].cpu()
+            height_pred_diff = height_pred_diff[batch_i, 0].cpu()
+            height_geom = hm_geom[batch_i, 0].cpu()
+            height_terrain = hm_terrain[batch_i, 0].cpu()
+            friction_pred = friction_pred[batch_i, 0].cpu()
+            xyz_pred = states_pred[0][batch_i].cpu().numpy()
+            xyz = Xs[batch_i].cpu().numpy()
+
+            # get height map points
+            z_grid = height_pred_terrain
+            x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+            y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+            x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+            hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+            hm_points = hm_points.view(-1, 3).T
+
+            # plot images with projected height map points
+            img_inputs = [i.cpu() for i in img_inputs]
+            imgs, rots, trans, intrins, post_rots, post_trans = img_inputs
+            for imgi in range(imgs.shape[1])[:4]:
+                ax = axes[imgi]
+                img = imgs[batch_i, imgi]
+                img = denormalize_img(img[:3])
+                cam_pts = ego_to_cam(hm_points, rots[batch_i, imgi], trans[batch_i, imgi], intrins[batch_i, imgi])
+                img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+                mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
+                plot_pts = post_rots[batch_i, imgi].matmul(cam_pts) + post_trans[batch_i, imgi].unsqueeze(1)
+                ax.imshow(img)
+                ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
+                           cmap='jet', vmin=-1.0, vmax=1.0)
+                ax.axis('off')
+
+            ax5.set_title('Prediction: Geom')
+            ax5.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax6.set_title('Label: Geom')
+            ax6.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax7.set_title('Prediction: Terrain')
+            ax7.imshow(height_pred_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax8.set_title('Label: Terrain')
+            ax8.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+            ax9.set_title('Prediction: HM Diff')
+            ax9.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+            ax10.set_title('Friction')
+            ax10.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+            ax11.set_title('Trajectories')
+            ax11.plot(xyz[:, 0], xyz[:, 1], 'kx', label='GT')
+            ax11.plot(xyz_pred[:, 0], xyz_pred[:, 1], 'r.', label='Pred')
+            ax11.grid()
+            ax11.axis('equal')
+            ax11.legend()
+
+            return fig
+
+
+def main():
+    args = arg_parser()
+    print(args)
+
+    # load configs: DPhys
+    dphys_cfg = DPhysConfig(robot=args.robot)
+    # load configs: LSS
+    lss_config_path = args.lss_cfg_path
+    assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
+    lss_cfg = read_yaml(lss_config_path)
+
+    # create trainer
+    trainer = Trainer(robot=args.robot,
+                      dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
+                      bsz=args.bsz, nepochs=args.nepochs,
+                      lr=args.lr, weight_decay=args.weight_decay,
+                      pretrained_model_path=args.pretrained_model_path,
+                      geom_hm_weight=args.geom_hm_weight,
+                      terrain_hm_weight=args.terrain_hm_weight,
+                      hdiff_weight=args.hdiff_weight,
+                      phys_weight=args.phys_weight,
+                      debug=args.debug)
+    trainer.train()
+
+
+if __name__ == '__main__':
+    main()
