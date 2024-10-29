@@ -911,8 +911,6 @@ def traversed_height_map():
     assert os.path.exists(path)
 
     dphys_cfg = DPhysConfig()
-    dphys_cfg.from_yaml(os.path.join(data_dir, '../config/dphys_cfg.yaml'))
-
     lss_cfg = read_yaml(os.path.join(data_dir, f'../config/lss_cfg_{robot}.yaml'))
 
     ds = ROUGH(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)

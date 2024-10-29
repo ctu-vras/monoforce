@@ -1,0 +1,41 @@
+import torch
+from torch.utils.data import DataLoader
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion
+from monoforce.utils import read_yaml
+from monoforce.datasets.rough import ROUGHPoints, rough_seq_paths
+
+
+def test_bevfusion():
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')
+    lss_config = read_yaml('../config/lss_cfg.yaml')
+    ds = ROUGHPoints(path=rough_seq_paths['marv'][0], lss_cfg=lss_config)
+    loader = DataLoader(ds, batch_size=1, shuffle=True)
+    # print(f'Dataset length: {len(ds)}')
+
+    bevfusion = BEVFusion(grid_conf=lss_config['grid_conf'], data_aug_conf=lss_config['data_aug_conf'])
+    bevfusion.to(device)
+    # print(f'Number of BEVFusion model parameters: {sum(p.numel() for p in bevfusion.parameters())}')
+
+    batch = next(iter(loader))
+    (imgs, rots, trans, intrins, post_rots, post_trans,
+     hm_geom, hm_terrain,
+     control_ts, controls,
+     traj_ts, Xs, Xds, Rs, Omegas,
+     points) = batch
+
+    img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+    img_inputs = [torch.tensor(i, device=device) for i in img_inputs]
+    cloud_input = torch.tensor(points, device=device)
+
+    with torch.no_grad():
+        x = bevfusion(img_inputs, cloud_input)
+        print(x.shape)
+
+
+def main():
+    test_bevfusion()
+
+
+if __name__ == '__main__':
+    main()

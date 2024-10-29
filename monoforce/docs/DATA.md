@@ -1,7 +1,7 @@
 ## Traversability Data Structure and Processing
 
 > [!IMPORTANT]
-> Please note that the dataset is under construction is being updated.
+> Please note that the dataset is under construction and is being updated.
 > More information is available at [ctu-vras/rough-dataset](https://github.com/ctu-vras/rough-dataset).
 > This page contains a description of the dataset preliminary version.
 
