@@ -49,7 +49,7 @@ Refer to the [monoforce/examples](./monoforce/examples) folder for implementatio
 Please run the following command to explore the MonoForce pipeline:
 ```commandline
 cd monoforce/
-python scripts/run --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
+python scripts/run.py --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
 
 For example if you want to test the model with the provided images from the ROUGH dataset:
