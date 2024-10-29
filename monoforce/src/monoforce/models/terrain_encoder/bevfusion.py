@@ -43,6 +43,9 @@ class LiDARToBEV(nn.Module):
         Returns:
             voxel_grid (torch.Tensor): A voxelized grid of shape (B, D, H, W).
         """
+        # Step 0: Remove nans saving dimensions
+        point_clouds[torch.isnan(point_clouds)] = 0
+
         # Step 1: Find the minimum point per batch in the point cloud
         min_bound = point_clouds.min(dim=2, keepdim=True)[0]  # Shape (B, 3, 1)
 
@@ -59,7 +62,7 @@ class LiDARToBEV(nn.Module):
 
         # Step 5: Create a batch of voxel grids and mark occupied voxels
         B = point_clouds.shape[0]
-        voxel_grid = torch.zeros((B, *self.grid_size), dtype=torch.float32)  # (B, D, H, W)
+        voxel_grid = torch.zeros((B, *self.grid_size), device=point_clouds.device, dtype=torch.float32)  # (B, D, H, W)
 
         for b in range(B):
             batch_indices = grid_indices[b]  # Get indices for the b-th batch
@@ -145,22 +148,52 @@ class BevEncode(nn.Module):
         return x
 
 
-class TerrainHead(nn.Module):
+class TerrainHeads(nn.Module):
     def __init__(self, inC, outC):
-        super(TerrainHead, self).__init__()
+        super(TerrainHeads, self).__init__()
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
+        self.head_geom = nn.Sequential(
+            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inC // 2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inC // 2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, outC, kernel_size=1, padding=0)
+            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0)
+        )
+        self.head_diff = nn.Sequential(
+            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inC // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inC // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0),
+            nn.ReLU(inplace=True),
+        )
+        self.head_frict = nn.Sequential(
+            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inC // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inC // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0),
+            nn.ReLU(inplace=True),
         )
 
     def forward(self, x):
-        return self.conv(x)
+        x_geom = self.head_geom(x)
+        x_diff = self.head_diff(x)
+        x_terrain = x_geom - x_diff
+        friction = self.head_frict(x)
+        out = {
+            'geom': x_geom,
+            'diff': x_diff,
+            'terrain': x_terrain,
+            'friction': friction
+        }
+        return out
 
 
 class BEVFusion(LiftSplatShoot):
@@ -170,7 +203,7 @@ class BEVFusion(LiftSplatShoot):
         voxel_size, grid_size = self.get_vox_dims()
         self.lidar_bev = LiDARToBEV(voxel_size=voxel_size, grid_size=grid_size)
         self.bevencode = BevEncode(inC=128, outC=128)
-        self.terrain_head = TerrainHead(inC=128, outC=outC)
+        self.terrain_heads = TerrainHeads(inC=128, outC=outC)
 
     def get_vox_dims(self):
         # Define voxel size and grid size
@@ -197,6 +230,6 @@ class BEVFusion(LiftSplatShoot):
         fused_bev_feat = self.bevencode(feat_bev)  # Shape (B, 2xD, H, W)
 
         # Terrain head
-        terrain = self.terrain_head(fused_bev_feat)  # Shape (B, 1, H, W)
+        out = self.terrain_heads(fused_bev_feat)  # Dict, values of shape (B, 1, H, W)
 
-        return terrain
+        return out

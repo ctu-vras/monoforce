@@ -44,7 +44,7 @@ docker run \
       -DCMAKE_BUILD_TYPE=Release; \
       catkin build; \
       source devel/setup.bash; \
-      roslaunch monoforce_demos monoforce_robingas.launch rviz:=false robot:=husky"
+      roslaunch monoforce_demos monoforce_rough.launch rviz:=false robot:=husky"
 
 wait $ROSCORE_PID
 wait $RVIZ_PID

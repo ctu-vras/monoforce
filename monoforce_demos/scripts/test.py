@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.append('../src')
+sys.path.append('../src/')
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib as mpl

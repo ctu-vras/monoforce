@@ -10,8 +10,8 @@ WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weight
 
 source $HOME/workspaces/traversability_ws/devel/setup.bash
 
-./train_friction --bsz $BSZ --nepochs 1000 --lr 1e-4 \
-                 --debug $DEBUG --vis $VIS \
-                 --dataset $DATASET \
-                 --robot $ROBOT \
-                 --pretrained_model_path ${WEIGHTS}
+./train_friction.py --bsz $BSZ --nepochs 1000 --lr 1e-4 \
+                    --debug $DEBUG --vis $VIS \
+                    --dataset $DATASET \
+                    --robot $ROBOT \
+                    --pretrained_model_path ${WEIGHTS}

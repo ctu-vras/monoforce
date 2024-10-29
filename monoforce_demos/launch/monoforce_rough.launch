@@ -16,7 +16,7 @@
         <rosparam subst_value="true">
             robot: $(arg robot)
 <!--             lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss.pt -->
-            lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss_robingas_$(arg robot).pt
+            lss_weights_path: $(find monoforce)/../monoforce/config/weights/lss/lss_rough_$(arg robot).pt
             traj_sim_time: 8.0
         </rosparam>
     </node>
