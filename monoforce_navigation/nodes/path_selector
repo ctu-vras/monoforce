@@ -145,12 +145,15 @@ class PathSelector:
         assert isinstance(path, Marker)
         assert isinstance(xyz, np.ndarray)
         assert xyz.shape == (3,)
-        # path_xyz = np.array([path.points[-1].x, path.points[-1].y, path.points[-1].z])
-        # path_dist_to_wp = np.linalg.norm(wp - path_xyz)
-        path_xyz = np.array([[point.x, point.y, point.z] for point in path.points])
-        path_dists = np.linalg.norm(path_xyz - xyz, axis=1)
-        path_dist = np.min(path_dists)
-        path_dist_id = np.argmin(path_dists)
+        path_dist_id = len(path.points) - 1
+        path_xyz = np.array([path.points[path_dist_id].x, path.points[path_dist_id].y, path.points[path_dist_id].z])
+        path_dist = np.linalg.norm(path_xyz - xyz)
+
+        # path_xyz = np.array([[point.x, point.y, point.z] for point in path.points])
+        # path_dists = np.linalg.norm(path_xyz - xyz, axis=1)
+        # path_dist = np.min(path_dists)
+        # path_dist_id = np.argmin(path_dists)
+
         return path_dist, path_dist_id
 
     def point_to_map_xyz(self, point, robot_pose):

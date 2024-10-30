@@ -112,12 +112,10 @@ class Trainer:
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
-        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=100, verbose=True)
         self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'lss_{dataset}_{robot}/{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
-
+                                    f'{dataset}_{robot}/lss_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
         write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
@@ -247,9 +245,7 @@ class Trainer:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_norm=max_grad_norm)
                 self.optimizer.step()
-            else:
-                # decrease learning rate on validation if loss is not decreasing
-                self.lr_scheduler.step(loss)
+
             epoch_loss += loss.item()
 
             counter += 1

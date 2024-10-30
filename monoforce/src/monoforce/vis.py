@@ -59,14 +59,14 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid):
     visu_Frs = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
                              F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
                              line_width=1.0, scale_factor=1.0, color=(0, 1, 0))
-    visu_terrain = mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
+    visu_terrain = mlab.mesh(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
     visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
                                scale_factor=0.03, color=(0, 0, 0))
     # mlab.view(azimuth=150, elevation=80, distance=16.0)
     return visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot
 
 
-def animate_trajectory(states, forces, z_grid, vis_cfg, step=1):
+def animate_trajectory(states, forces, z_grid, vis_cfg, step=1, friction=None):
     # unpack the states and forces
     xs, xds, rs, omegas, x_points = states
     assert xs.shape[1] == 3, 'States should be 3D'
@@ -78,7 +78,9 @@ def animate_trajectory(states, forces, z_grid, vis_cfg, step=1):
     # unpack the visualization configuration
     visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot = vis_cfg
 
-    visu_terrain.mlab_source.scalars = z_grid
+    visu_terrain.mlab_source.z = z_grid
+    if friction is not None:
+        visu_terrain.mlab_source.scalars = friction
     for t in range(len(xs)):
         visu_robot.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2])
         F_spring, F_friction = forces
