@@ -174,8 +174,7 @@ class Trainer:
         self.phys_weight = phys_weight
 
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug)
-        self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
-                                         data_aug_conf=self.lss_cfg['data_aug_conf']).to(self.device)
+        self.terrain_encoder = self.load_model(pretrained_model_path)
         self.terrain_encoder.train()
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
@@ -202,6 +201,20 @@ class Trainer:
         val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False)
 
         return train_loader, val_loader
+
+    def load_model(self, modelf):
+        model = BEVFusion(grid_conf=self.lss_cfg['grid_conf'], data_aug_conf=self.lss_cfg['data_aug_conf'])
+        # load pretrained model / update model with pretrained weights
+        if modelf is not None:
+            print('Loading pretrained model from', modelf)
+            # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
+            model_dict = model.state_dict()
+            pretrained_model = torch.load(modelf)
+            model_dict.update(pretrained_model)
+            model.load_state_dict(model_dict)
+        model.to(self.device)
+
+        return model
 
     def geom_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
