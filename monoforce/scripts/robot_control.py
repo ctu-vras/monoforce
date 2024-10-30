@@ -89,6 +89,7 @@ def motion():
         xs, xds, rs, omegas, x_points = [s[b].detach().cpu().numpy() for s in states]
         F_spring, F_friction = [f[b].detach().cpu().numpy() for f in forces]
         x_grid_np, y_grid_np, z_grid_np = [g[b].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
+        friction_np = friction[b].detach().cpu().numpy()
 
         # set up the visualization
         vis_cfg = setup_visualization(states=(xs, xds, rs, omegas, x_points),
@@ -99,6 +100,7 @@ def motion():
         animate_trajectory(states=(xs, xds, rs, omegas, x_points),
                            forces=(F_spring, F_friction),
                            z_grid=z_grid_np,
+                           friction=friction_np,
                            vis_cfg=vis_cfg, step=10)
 
 

@@ -96,7 +96,7 @@ class Trainer:
         self.optimizer = torch.optim.Adam(self.terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'lss_{dataset}_{robot}_friction/{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+                                    f'{dataset}_{robot}_friction/lss_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
 
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
