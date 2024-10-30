@@ -85,7 +85,7 @@ def compile_data(robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False):
     train_datasets = []
     val_datasets = []
 
-    data_paths = rough_seq_paths[robot][:3]
+    data_paths = rough_seq_paths[robot]
     print('Data paths:', data_paths)
     for path in data_paths:
         assert os.path.exists(path)

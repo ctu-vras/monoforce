@@ -219,17 +219,17 @@ class Trainer:
                                                     out['terrain'], out['friction'])
 
             # geometrical height map loss
-            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else 0
+            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else torch.tensor(0.0, device=self.device)
             # rigid / terrain height map loss
-            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else 0
+            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0.0, device=self.device)
 
             # height difference loss
-            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else 0
+            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else torch.tensor(0.0, device=self.device)
 
             # physics loss: difference between predicted and ground truth states
             loss_phys = self.physics_loss(heightmap=height_pred_terrain.squeeze(1), friction=friction_pred.squeeze(1),
                                           control_ts=control_ts, controls=controls,
-                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else 0
+                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
 
             # check if loss is nan
             if torch.isnan(loss_geom) or torch.isnan(loss_terrain) or torch.isnan(loss_hdiff) or torch.isnan(loss_phys):
