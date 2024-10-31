@@ -5,12 +5,14 @@ sys.path.append('../src')
 import os
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset, Subset
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion
+from monoforce.datasets.rough import ROUGH, rough_seq_paths
+from monoforce.transformations import transform_cloud
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
-from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
-from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
+from monoforce.utils import read_yaml, write_to_yaml, str2bool, position
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -21,21 +23,16 @@ import argparse
 np.random.seed(42)
 torch.manual_seed(42)
 
-
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
-    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
+    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
-    # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
-    parser.add_argument('--dataset', type=str, default='rough', help='Dataset name')
-    parser.add_argument('--robot', type=str, default='marv', help='Dataset name')
+    parser.add_argument('--robot', type=str, default='marv', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
-    parser.add_argument('--vis', type=str2bool, default=True, help='Visualize training samples')
-    parser.add_argument('--only_front_cam', type=str2bool, default=False, help='Use only front heightmap')
     parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
     parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--hdiff_weight', type=float, default=1e-4, help='Weight for height difference loss')
@@ -44,12 +41,90 @@ def arg_parser():
     return parser.parse_args()
 
 
+class Data(ROUGH):
+    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True):
+        super(Data, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
+
+    def get_cloud(self, i, points_source='lidar'):
+        cloud = self.get_raw_cloud(i)
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
+        return cloud
+
+    def get_sample(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        control_ts, controls = self.get_controls(i)
+        traj_ts, states = self.get_states_traj(i)
+        Xs, Xds, Rs, Omegas = states
+        hm_geom = self.get_geom_height_map(i)
+        hm_terrain = self.get_terrain_height_map(i)
+        points = torch.as_tensor(position(self.get_cloud(i))).T
+        return (imgs, rots, trans, intrins, post_rots, post_trans,
+                hm_geom, hm_terrain,
+                control_ts, controls,
+                traj_ts, Xs, Xds, Rs, Omegas,
+                points)
+
+
+def compile_data(robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False):
+    """
+    Compile datasets for LSS model training
+
+    :param dataset: str, dataset name
+    :param robot: str, robot name
+    :param lss_cfg: dict, LSS model configuration
+    :param dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
+    :param val_fraction: float, fraction of the dataset to use for validation
+    :param small_data: bool, debug mode: use small datasets
+    :param kwargs: additional arguments
+
+    :return: train_ds, val_ds
+    """
+    train_datasets = []
+    val_datasets = []
+
+    data_paths = rough_seq_paths[robot]
+    print('Data paths:', data_paths)
+    for path in data_paths:
+        assert os.path.exists(path)
+        train_ds = Data(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg)
+        val_ds = Data(path, is_train=False, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg)
+
+        # randomly select a subset of the dataset
+        val_ds_size = int(val_fraction * len(train_ds))
+        val_ids = np.random.choice(len(train_ds), val_ds_size, replace=False)
+        train_ids = np.setdiff1d(np.arange(len(train_ds)), val_ids)
+        assert len(train_ids) + len(val_ids) == len(train_ds)
+        # check that there is no overlap between train and val ids
+        assert len(np.intersect1d(train_ids, val_ids)) == 0
+
+        train_ds = train_ds[train_ids]
+        val_ds = val_ds[val_ids]
+        print(f'Train dataset from path {path} size is {len(train_ds)}')
+        print(f'Validation dataset from path {path} size is {len(val_ds)}')
+
+        train_datasets.append(train_ds)
+        val_datasets.append(val_ds)
+
+    # concatenate datasets
+    train_ds = ConcatDataset(train_datasets)
+    val_ds = ConcatDataset(val_datasets)
+    if small_data:
+        print('Debug mode: using small datasets')
+        train_ds = Subset(train_ds, np.random.choice(len(train_ds), min(32, len(train_ds)), replace=False))
+        val_ds = Subset(val_ds, np.random.choice(len(val_ds), min(8, len(val_ds)), replace=False))
+    print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
+
+    return train_ds, val_ds
+
+
 class Trainer:
     """
     Trainer for LSS terrain encoder model
 
     Args:
-    dataset: str, dataset name
     robot: str, robot name
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     lss_cfg: dict, LSS model configuration
@@ -60,15 +135,13 @@ class Trainer:
     pretrained_model_path: str, path to pretrained model
     log_dir: str, path to log directory
     debug: bool, debug mode: use small datasets
-    vis: bool, visualize training samples
     geom_hm_weight: float, weight for geometry heightmap loss
     terrain_hm_weight: float, weight for terrain heightmap loss
     hdiff_weight: float, weight for height difference loss
-    only_front_cam: bool, use only front heightmap part for training
+    phys_weight: float, weight for physics loss
     """
 
     def __init__(self,
-                 dataset,
                  robot,
                  dphys_cfg,
                  lss_cfg,
@@ -78,16 +151,12 @@ class Trainer:
                  nepochs=1000,
                  pretrained_model_path=None,
                  debug=False,
-                 vis=False,
                  geom_hm_weight=1.0,
                  terrain_hm_weight=10.0,
                  hdiff_weight=0.001,
-                 phys_weight=1.0,
-                 only_front_cam=False):
+                 phys_weight=1.0):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.dataset = dataset
-        assert dataset in ['rellis3d', 'rough'], 'Unknown dataset: %s' % dataset
         self.robot = robot
         assert robot in ['husky', 'tradr', 'tradr2', 'husky_oru', 'marv'], 'Unknown robot: %s' % robot
         self.dphys_cfg = dphys_cfg
@@ -104,10 +173,8 @@ class Trainer:
         self.hdiff_weight = hdiff_weight
         self.phys_weight = phys_weight
 
-        self.only_front_cam = only_front_cam
-
-        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis)
-        self.terrain_encoder = load_model(modelf=pretrained_model_path, lss_cfg=self.lss_cfg, device=self.device)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug)
+        self.terrain_encoder = self.load_model(pretrained_model_path)
         self.terrain_encoder.train()
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
@@ -115,24 +182,37 @@ class Trainer:
         self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'{dataset}_{robot}/lss_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+                                    f'rough_{robot}/bevfusion_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
         write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
         write_to_yaml(lss_cfg, os.path.join(self.log_dir, 'lss_cfg.yaml'))
 
-    def create_dataloaders(self, bsz=1, debug=False, vis=False):
+    def create_dataloaders(self, bsz=1, debug=False):
         # create dataset for LSS model training
-        train_ds, val_ds = compile_data(dataset=self.dataset, robot=self.robot,
+        train_ds, val_ds = compile_data(robot=self.robot,
                                         dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
-                                        small_data=debug, vis=vis,
-                                        only_front_cam=self.only_front_cam)
+                                        small_data=debug)
 
         # create dataloaders
         train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True)
         val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False)
 
         return train_loader, val_loader
+
+    def load_model(self, modelf):
+        model = BEVFusion(grid_conf=self.lss_cfg['grid_conf'], data_aug_conf=self.lss_cfg['data_aug_conf'])
+        # load pretrained model / update model with pretrained weights
+        if modelf is not None:
+            print('Loading pretrained model from', modelf)
+            # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
+            model_dict = model.state_dict()
+            pretrained_model = torch.load(modelf)
+            model_dict.update(pretrained_model)
+            model.load_state_dict(model_dict)
+        model.to(self.device)
+
+        return model
 
     def geom_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
@@ -201,7 +281,8 @@ class Trainer:
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              control_ts, controls,
-             traj_ts, Xs, Xds, Rs, Omegas) = batch
+             traj_ts, Xs, Xds, Rs, Omegas,
+             points) = batch
 
             height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
             height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
@@ -210,24 +291,25 @@ class Trainer:
                 self.optimizer.zero_grad()
 
             # terrain encoder forward pass
-            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            out = self.terrain_encoder(*inputs)
+            img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            points_input = points
+            out = self.terrain_encoder(img_inputs, points_input)
             (height_pred_geom, height_pred_diff,
              height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
                                                     out['terrain'], out['friction'])
 
             # geometrical height map loss
-            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else torch.tensor(0.0, device=self.device)
+            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else torch.tensor(0, device=self.device)
             # rigid / terrain height map loss
-            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0.0, device=self.device)
+            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0, device=self.device)
 
             # height difference loss
-            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else torch.tensor(0.0, device=self.device)
+            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else torch.tensor(0, device=self.device)
 
             # physics loss: difference between predicted and ground truth states
             loss_phys = self.physics_loss(heightmap=height_pred_terrain.squeeze(1), friction=friction_pred.squeeze(1),
                                           control_ts=control_ts, controls=controls,
-                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
+                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0, device=self.device)
 
             # check if loss is nan
             if torch.isnan(loss_geom) or torch.isnan(loss_terrain) or torch.isnan(loss_hdiff) or torch.isnan(loss_phys):
@@ -319,11 +401,13 @@ class Trainer:
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              ts_controls, controls,
-             ts_traj, Xs, Xds, Rs, Omegas) = batch
+             ts_traj, Xs, Xds, Rs, Omegas,
+             points) = batch
 
             # predict height maps
-            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            out = self.terrain_encoder(*inputs)
+            img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            points_input = points
+            out = self.terrain_encoder(img_inputs, points_input)
             (height_pred_geom, height_pred_diff,
              height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
                                                     out['terrain'], out['friction'])
@@ -350,8 +434,8 @@ class Trainer:
             hm_points = hm_points.view(-1, 3).T
 
             # plot images with projected height map points
-            inputs = [i.cpu() for i in inputs]
-            imgs, rots, trans, intrins, post_rots, post_trans = inputs
+            img_inputs = [i.cpu() for i in img_inputs]
+            imgs, rots, trans, intrins, post_rots, post_trans = img_inputs
             for imgi in range(imgs.shape[1])[:4]:
                 ax = axes[imgi]
                 img = imgs[batch_i, imgi]
@@ -405,7 +489,7 @@ def main():
     lss_cfg = read_yaml(lss_config_path)
 
     # create trainer
-    trainer = Trainer(dataset=args.dataset, robot=args.robot,
+    trainer = Trainer(robot=args.robot,
                       dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
                       bsz=args.bsz, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
@@ -414,8 +498,7 @@ def main():
                       terrain_hm_weight=args.terrain_hm_weight,
                       hdiff_weight=args.hdiff_weight,
                       phys_weight=args.phys_weight,
-                      debug=args.debug, vis=args.vis,
-                      only_front_cam=args.only_front_cam)
+                      debug=args.debug)
     trainer.train()
 
 
