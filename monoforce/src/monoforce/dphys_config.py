@@ -173,7 +173,7 @@ class DPhysConfig:
             mask_r = x_points[..., 1] < (cog[1] - s_y / 4.)
             # driving parts: left and right tracks
             driving_parts = [mask_l, mask_r]
-        elif robot in ['marv', 'husky']:
+        elif robot in ['marv', 'husky', 'husky_oru']:
             # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
             mask_fl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
                                         x_points[..., 1] > (cog[1] + s_y / 3.))

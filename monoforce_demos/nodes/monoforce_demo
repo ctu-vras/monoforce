@@ -44,6 +44,8 @@ class MonoForce:
 
         # load LSS config
         self.lss_config_path = lss_config_path
+        if robot in ['tradr', 'husky_oru']:
+            self.lss_config_path = self.lss_config_path.replace('lss_cfg.yaml', f'lss_cfg_{robot}.yaml')
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         rospy.loginfo('Loading LSS config from %s' % self.lss_config_path)
         self.lss_config = read_yaml(self.lss_config_path)
