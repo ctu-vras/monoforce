@@ -44,7 +44,7 @@ img_std:
 - 0.225
 
 # Semantic obstacle class for Segment Anything
-obstacle_classes:
+rigid_classes:
 - 'person'
 - 'bicycle'
 - 'wall'

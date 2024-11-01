@@ -348,7 +348,7 @@ class ROUGHBase(Dataset):
         :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'lidar')
+            dir_name = os.path.join(self.path, 'terrain', 'geom')
         file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
         if cached and os.path.exists(file_path):
             lidar_hm = np.load(file_path, allow_pickle=True).item()
@@ -741,18 +741,18 @@ class ROUGH(ROUGHBase):
         :param i: index of the sample
         :param cached: if True, load height map from file if it exists, otherwise estimate it
         :param dir_name: directory to save/load height map
-        :param obstacle_classes: classes of obstacles to include in the height map
+        :param rigid_classes: classes of obstacles to include in the height map
         :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'traj', 'footprint')
+            dir_name = os.path.join(self.path, 'terrain', 'rigid')
 
         file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
         if cached and os.path.exists(file_path):
             hm_rigid = np.load(file_path, allow_pickle=True).item()
         else:
             traj_points = self.get_footprint_traj_points(i)
-            seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['obstacle_classes'],
+            seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['rigid_classes'],
                                                     points_source=points_source, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             hm_rigid = self.estimate_heightmap(points, robot_radius=None)

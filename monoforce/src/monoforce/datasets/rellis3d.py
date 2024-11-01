@@ -422,15 +422,15 @@ class Rellis3D(Rellis3DBase):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_obstacles_points(self, id, obstacle_classes=None, vis=False):
+    def get_obstacles_points(self, id, rigid_classes=None, vis=False):
         rellis3d_classes = [cat['name'] for cat in RELLIS3D_CATEGORIES]
         rellis3d_labels = [cat['id'] for cat in RELLIS3D_CATEGORIES]
-        if obstacle_classes is None:
-            obstacle_classes = ['tree', 'pole', 'vehicle', 'building', 'log', 'person', 'fence', 'barrier']
+        if rigid_classes is None:
+            rigid_classes = ['tree', 'pole', 'vehicle', 'building', 'log', 'person', 'fence', 'barrier']
         lidar_points = position(self.get_cloud(id))
         lidar_label = self.cloud_label(id)
         assert len(lidar_points) == len(lidar_label), f'Number of points ({len(lidar_points)}) and labels ({len(lidar_label)}) must be the same'
-        obstacle_labels = [rellis3d_labels[rellis3d_classes.index(cls)] for cls in obstacle_classes]
+        obstacle_labels = [rellis3d_labels[rellis3d_classes.index(cls)] for cls in rigid_classes]
         mask = np.isin(lidar_label, obstacle_labels)
         points = lidar_points[mask]
 

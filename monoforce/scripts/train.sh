@@ -20,4 +20,3 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
            --robot $ROBOT \
            --only_front_cam ${ONLY_FRONT_CAM} \
            --pretrained_model_path ${WEIGHTS}
-

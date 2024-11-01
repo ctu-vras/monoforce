@@ -12,4 +12,3 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
            --geom_hm_weight 1.0 --terrain_hm_weight 100.0 --hdiff_weight 1e-6 --phys_weight 0.1 \
            --robot $ROBOT \
            --pretrained_model_path ${WEIGHTS}
-
