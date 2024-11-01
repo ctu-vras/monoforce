@@ -79,28 +79,24 @@ def interpolate_rotations(R_from, R_to, t_interval, normalize_time=True):
 
 def translation_difference(x1, x2, reduction='mean'):
     assert isinstance(x1, torch.Tensor) and isinstance(x2, torch.Tensor)
-    assert x1.ndim == x2.ndim == 3
-    N = x1.shape[0]
-    assert N > 0
-    assert x1.shape == x2.shape == (N, 3, 1)  # N x 3 x 1
+    assert x1.shape == x2.shape
+    assert x1.shape[-1] == 3
     if reduction == 'mean':
-        return torch.norm(x1 - x2, dim=1).mean()
+        return torch.norm(x1 - x2, dim=-1).mean()
     elif reduction == 'sum':
-        return torch.norm(x1 - x2, dim=1).sum()
+        return torch.norm(x1 - x2, dim=-1).sum()
     else:
-        return torch.norm(x1 - x2, dim=1)
+        return torch.norm(x1 - x2, dim=-1)
 
 
 def rotation_difference(R1, R2, reduction='mean'):
     # http://www.boris-belousov.net/2016/12/01/quat-dist/#:~:text=The%20difference%20rotation%20matrix%20that,matrix%20R%20%3D%20P%20Q%20%E2%88%97%20.
     assert isinstance(R1, torch.Tensor) and isinstance(R2, torch.Tensor)
-    assert R1.ndim == R2.ndim == 3  # N x 3 x 3
-    N = R1.shape[0]
-    assert N > 0
-    assert R1.shape == R2.shape == (N, 3, 3)
-    dR = R1 @ R2.transpose(dim0=1, dim1=2)
+    assert R1.shape == R2.shape # for example N x 3 x 3
+    assert R1.shape[-2:] == (3, 3)
+    dR = R1 @ R2.transpose(dim0=-2, dim1=-1)
     # trace
-    tr = dR.diagonal(dim1=1, dim2=2).sum(dim=1)
+    tr = dR.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
     cos = (tr - 1) / 2.
     cos = torch.clip(cos, min=-1, max=1.)
     theta = torch.arccos(cos)

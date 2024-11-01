@@ -10,6 +10,7 @@ from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, 
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
+from monoforce.losses import rotation_difference, translation_difference
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -34,7 +35,7 @@ def arg_parser():
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
-    parser.add_argument('--vis', type=str2bool, default=True, help='Visualize training samples')
+    parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--only_front_cam', type=str2bool, default=False, help='Use only front heightmap')
     parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
     parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
@@ -179,9 +180,21 @@ class Trainer:
         # find the closest timesteps in the trajectory to the ground truth timesteps
         ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
 
-        # compute the loss as the mean squared error between the predicted and ground truth poses
         batch_size = X.shape[0]
-        loss = torch.nn.functional.mse_loss(X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids], X)
+        X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
+        loss = torch.nn.functional.mse_loss(X_pred_gt_ts, X)
+
+        # # compute the loss as the mean squared error between the predicted and ground truth poses
+        # batch_size = X.shape[0]
+        # X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
+        # loss_xyz = translation_difference(X_pred_gt_ts, X)
+        #
+        # # compute the loss as the mean squared error between the predicted and ground truth rotations
+        # R_pred_gt_ts = R_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
+        # loss_rot = rotation_difference(R_pred_gt_ts, R)
+
+        # # total loss: sum of translation and rotation losses
+        # loss = loss_xyz + loss_rot
 
         return loss
 

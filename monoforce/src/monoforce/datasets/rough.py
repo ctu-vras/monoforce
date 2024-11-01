@@ -363,12 +363,6 @@ class ROUGHBase(Dataset):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def get_traj_dphysics_terrain(self, i):
-        ind = self.ids[i]
-        p = os.path.join(self.path, 'terrain', 'traj', 'dphysics', '%s.npy' % ind)
-        terrain = np.load(p)['height']
-        return terrain
-
     def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0)):
         # robot footprint points grid
         width, length = robot_size
