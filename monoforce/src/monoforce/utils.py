@@ -211,15 +211,14 @@ def explore_data(ds, sample_range='random', save=False):
 
     for sample_i in sample_range:
         sample = ds[sample_i]
-        sample = [s[np.newaxis] for s in sample]
-        # print('sample', sample_i, 'id', ds.ids[sample_i])
+        sample = [s[np.newaxis] if s is not None else s for s in sample]
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_lidar, hm_terrain,
          control_ts, controls,
          traj_ts, Xs, Xds, Rs, Omegas,
          pts) = sample
         height_geom, mask_geom = hm_lidar[:, 0], hm_lidar[:, 1]
-        height_rigid, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
+        height_terrain, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
 
         frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
@@ -256,6 +255,7 @@ def explore_data(ds, sample_range='random', save=False):
 
             plt.legend(loc='upper right')
             final_ax.set_aspect('equal')
+            plt.title('Frustum points')
             plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
             plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
 
@@ -263,11 +263,13 @@ def explore_data(ds, sample_range='random', save=False):
             ax = plt.subplot(gs[:, -3:-2])
             plt.imshow(height_geom[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             # plt.axis('off')
+            plt.title('Geom HM')
             plt.colorbar()
 
             ax = plt.subplot(gs[:, -2:-1])
-            plt.imshow(height_rigid[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            plt.imshow(height_terrain[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             # plt.axis('off')
+            plt.title('Terrain HM')
             plt.colorbar()
 
             if save:

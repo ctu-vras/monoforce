@@ -43,17 +43,8 @@ img_std:
 - 0.224
 - 0.225
 
-# Semantic obstacle class for Segment Anything
-rigid_classes:
-- 'person'
-- 'building'
-- 'car'
-- 'truck'
-- 'wall'
-- 'wall-brick'
-- 'bench'
-- 'house'
-- 'fence'
-- 'tree'
-- 'pavement'
-- 'dirt'
+# Traversable semantic classes Segment Anything from COCO labels
+soft_classes:
+- 'grass'
+- 'snow'
+- 'flower'

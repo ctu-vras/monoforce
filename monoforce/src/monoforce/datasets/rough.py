@@ -16,11 +16,12 @@ from ..utils import position, timing, read_yaml
 from ..cloudproc import filter_grid
 from ..imgproc import undistort_image
 from ..utils import normalize, load_calib
-from .coco import COCO_CATEGORIES
+from .coco import COCO_CATEGORIES, COCO_CLASSES
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
+import time
 
 try:
     mpl.use('TkAgg')
@@ -63,6 +64,11 @@ rough_seq_paths = {
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-12-29'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-22-10'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-28-15'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-16-42'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-26-47'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-35-05'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-52-07'),
+        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-56-33'),
     ],
     'tradr': [
         os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-14-30-57'),
@@ -501,23 +507,15 @@ class ROUGH(ROUGHBase):
         self.img_augs = self.get_img_augs()
 
     def get_img_augs(self):
-        if self.is_train:
-            return A.Compose([
-                    A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
-                    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-                    A.RandomGamma(gamma_limit=(80, 120), p=0.5),
-                    A.Blur(blur_limit=7, p=0.5),
-                    A.GaussNoise(var_limit=(10, 50), p=0.5),
-                    A.MotionBlur(blur_limit=7, p=0.5),
-                    A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200),
-                                 p=0.5),
-                    # A.RandomShadow(num_shadows_lower=1, num_shadows_upper=2, shadow_dimension=5, shadow_roi=(0, 0.5, 1, 1), p=0.5),
-                    A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
-                    # A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
-                    A.RandomToneCurve(scale=0.1, p=0.5),
-            ])
-        else:
-            return None
+        return A.Compose([
+                A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
+                A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+                A.MotionBlur(blur_limit=7, p=0.5),
+                A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200),
+                             p=0.5),
+                A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
+                A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
+        ])
 
     def get_raw_image(self, i, camera=None):
         if camera is None:
@@ -565,16 +563,7 @@ class ROUGH(ROUGHBase):
             K = np.asarray(K, dtype=np.float32).reshape((3, 3))
             return img, K
         img, K = self.get_image(i, camera)
-        # W, H = img.size
         img = resize_img(img)
-        # w, h = img.size
-        # # adjust intrinsic matrix
-        # sx, sy = w / W, h / H
-        # K[0, 0] *= sx
-        # K[1, 1] *= sy
-        # K[0, 2] *= sx
-        # K[1, 2] *= sy
-        # self.calib[camera]['camera_matrix']['data'] = K.flatten().tolist()
         img.save(cached_img_path)
         return img, K
 
@@ -591,6 +580,12 @@ class ROUGH(ROUGHBase):
                 img, K = self.get_image(i, cam, undistort=True)
             else:
                 img, K = self.get_cached_resized_img(i, cam)
+
+            # apply additional image augmentations like blur, brightness, contrast, fog, rain, snow, sun flare
+            if self.is_train:
+                img = np.array(img)
+                img = self.img_augs(image=img)['image']
+                img = Image.fromarray(img)
 
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
@@ -656,14 +651,13 @@ class ROUGH(ROUGHBase):
         return seg
     
     def get_semantic_cloud(self, i, classes=None, vis=False, points_source='lidar'):
-        coco_classes = [i['name'].replace('-merged', '').replace('-other', '') for i in COCO_CATEGORIES] + ['void']
         if classes is None:
-            classes = np.copy(coco_classes)
+            classes = np.copy(COCO_CLASSES)
         # ids of classes in COCO
         selected_labels = []
         for c in classes:
-            if c in coco_classes:
-                selected_labels.append(coco_classes.index(c))
+            if c in COCO_CLASSES:
+                selected_labels.append(COCO_CLASSES.index(c))
 
         lidar_points = position(self.get_cloud(i, points_source=points_source))
         points = []
@@ -746,7 +740,9 @@ class ROUGH(ROUGHBase):
             hm_rigid = np.load(file_path, allow_pickle=True).item()
         else:
             traj_points = self.get_footprint_traj_points(i)
-            seg_points, _ = self.get_semantic_cloud(i, classes=self.lss_cfg['rigid_classes'],
+            soft_classes = self.lss_cfg['soft_classes']
+            rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
+            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes,
                                                     points_source=points_source, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             hm_rigid = self.estimate_heightmap(points, robot_radius=None)
@@ -815,7 +811,7 @@ class ROUGHPoints(ROUGH):
         self.points_source = points_source
 
     def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i, undistort=True)
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
         Xs, Xds, Rs, Omegas = states

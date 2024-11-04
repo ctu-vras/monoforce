@@ -43,12 +43,8 @@ img_std:
 - 0.224
 - 0.225
 
-# Semantic obstacle class for Segment Anything
-rigid_classes:
-- 'person'
-- 'bicycle'
-- 'wall'
-- 'bench'
-- 'rock'
-- 'car'
-- 'truck'
+# Traversable semantic classes Segment Anything from COCO labels
+soft_classes:
+- 'grass'
+- 'snow'
+- 'flower'
