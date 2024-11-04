@@ -55,18 +55,14 @@ class LiDARToBEV(nn.Module):
         # Step 3: Floor the points to get voxel indices
         grid_indices = torch.floor(shifted_points).long()  # Shape (B, 3, N)
 
-        # Step 4: Clip indices to be within the voxel grid size
-        grid_indices = torch.clamp(grid_indices, 0, self.grid_size[0] - 1)  # Clip along D
-        grid_indices = torch.clamp(grid_indices, 0, self.grid_size[1] - 1)  # Clip along H
-        grid_indices = torch.clamp(grid_indices, 0, self.grid_size[2] - 1)  # Clip along W
-
-        # Step 5: Create a batch of voxel grids and mark occupied voxels
+        # Step 4: Create a batch of voxel grids and mark occupied voxels
         B = point_clouds.shape[0]
         voxel_grid = torch.zeros((B, *self.grid_size), device=point_clouds.device, dtype=torch.float32)  # (B, D, H, W)
-
         for b in range(B):
-            batch_indices = grid_indices[b]  # Get indices for the b-th batch
-            voxel_grid[b, batch_indices[0, :], batch_indices[1, :], batch_indices[2, :]] = 1.0
+            ids_x = torch.clamp(grid_indices, 0, self.grid_size[0] - 1)[b, 0, :]
+            ids_y = torch.clamp(grid_indices, 0, self.grid_size[1] - 1)[b, 1, :]
+            ids_z = torch.clamp(grid_indices, 0, self.grid_size[2] - 1)[b, 2, :]
+            voxel_grid[b, ids_x, ids_y, ids_z] = 1.0
 
         voxel_grid = voxel_grid.unsqueeze(1)  # Add channel dimension
 
