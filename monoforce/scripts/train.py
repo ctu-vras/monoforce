@@ -29,9 +29,7 @@ def arg_parser():
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
-    # parser.add_argument('--dataset', type=str, default='rellis3d', help='Dataset name')
-    parser.add_argument('--dataset', type=str, default='rough', help='Dataset name')
-    parser.add_argument('--robot', type=str, default='marv', help='Dataset name')
+    parser.add_argument('--robot', type=str, default='marv', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
@@ -50,7 +48,6 @@ class Trainer:
     Trainer for LSS terrain encoder model
 
     Args:
-    dataset: str, dataset name
     robot: str, robot name
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     lss_cfg: dict, LSS model configuration
@@ -69,7 +66,6 @@ class Trainer:
     """
 
     def __init__(self,
-                 dataset,
                  robot,
                  dphys_cfg,
                  lss_cfg,
@@ -87,8 +83,7 @@ class Trainer:
                  only_front_cam=False):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.dataset = dataset
-        assert dataset in ['rellis3d', 'rough'], 'Unknown dataset: %s' % dataset
+        self.dataset = 'rough'
         self.robot = robot
         assert robot in ['husky', 'tradr', 'tradr2', 'husky_oru', 'marv'], 'Unknown robot: %s' % robot
         self.dphys_cfg = dphys_cfg
@@ -116,7 +111,7 @@ class Trainer:
         self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
-                                    f'{dataset}_{robot}/lss_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+                                    f'{self.dataset}_{self.robot}/lss_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         self.writer = SummaryWriter(log_dir=self.log_dir)
         # save configs to log dir
         write_to_yaml(dphys_cfg.__dict__, os.path.join(self.log_dir, 'dphys_cfg.yaml'))
@@ -124,8 +119,7 @@ class Trainer:
 
     def create_dataloaders(self, bsz=1, debug=False, vis=False):
         # create dataset for LSS model training
-        train_ds, val_ds = compile_data(dataset=self.dataset, robot=self.robot,
-                                        dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
+        train_ds, val_ds = compile_data(dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
                                         small_data=debug, vis=vis,
                                         only_front_cam=self.only_front_cam)
 
@@ -399,6 +393,10 @@ class Trainer:
             ax11.set_title('Trajectories')
             ax11.plot(xyz[:, 0], xyz[:, 1], 'kx', label='GT')
             ax11.plot(xyz_pred[:, 0], xyz_pred[:, 1], 'r.', label='Pred')
+            ax11.set_xlabel('X [m]')
+            ax11.set_ylabel('Y [m]')
+            ax11.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+            ax11.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
             ax11.grid()
             ax11.axis('equal')
             ax11.legend()
@@ -418,7 +416,7 @@ def main():
     lss_cfg = read_yaml(lss_config_path)
 
     # create trainer
-    trainer = Trainer(dataset=args.dataset, robot=args.robot,
+    trainer = Trainer(robot=args.robot,
                       dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
                       bsz=args.bsz, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,

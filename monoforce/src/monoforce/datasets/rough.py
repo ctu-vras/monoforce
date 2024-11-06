@@ -1,57 +1,35 @@
 import copy
 import os
-import matplotlib as mpl
 import numpy as np
 import torch
 import torchvision
 from skimage.draw import polygon
 from torch.utils.data import Dataset
-from matplotlib import pyplot as plt
 from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
 from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..dphys_config import DPhysConfig
 from ..transformations import transform_cloud
-from ..cloudproc import estimate_heightmap, hm_to_cloud, filter_range
+from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, timing, read_yaml
 from ..cloudproc import filter_grid
-from ..imgproc import undistort_image
 from ..utils import normalize, load_calib
 from .coco import COCO_CATEGORIES, COCO_CLASSES
 import albumentations as A
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
-import time
-
-try:
-    mpl.use('TkAgg')
-except:
-    try:
-        mpl.use('QtAgg')
-    except:
-        print('Cannot set matplotlib backend')
-    pass
 
 
 __all__ = [
     'data_dir',
-    'ROUGHBase',
     'ROUGH',
-    'ROUGHPoints',
     'rough_seq_paths',
 ]
 
-data_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
+monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
-rough_seq_paths = {
-    'husky': [
-        os.path.join(data_dir, 'ROUGH/husky/husky_2022-10-27-15-33-57'),
-        os.path.join(data_dir, 'ROUGH/husky/husky_2022-09-27-10-33-15'),
-        os.path.join(data_dir, 'ROUGH/husky/husky_2022-09-27-15-01-44'),
-        os.path.join(data_dir, 'ROUGH/husky/husky_2022-09-23-12-38-31'),
-        os.path.join(data_dir, 'ROUGH/husky/husky_2022-06-30-15-58-37'),
-    ],
-    'marv': [
+rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv/24-08-14-monoforce-long_drive'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-54-43'),
@@ -69,13 +47,6 @@ rough_seq_paths = {
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-35-05'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-56-33'),
-    ],
-    'tradr': [
-        os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-14-30-57'),
-        os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-14-05-42'),
-        os.path.join(data_dir, 'ROUGH/tradr/ugv_2022-10-20-13-58-22'),
-    ],
-    'tradr2': [
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-02-31'),
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-12-12'),
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-13-54-18'),
@@ -87,70 +58,64 @@ rough_seq_paths = {
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-58-52'),
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-16-08-30'),
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-16-24-48'),
-    ],
-    'husky_oru': [
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-02-33_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-09-06_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-24-37_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-37-14_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-44-56_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2023-08-16-11-54-42_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2024-02-07-10-47-13_0'),  # no radar
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2024-04-27-15-02-12_0'),
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize__2024-05-24-13-21-28_0'),  # no radar
-        os.path.join(data_dir, 'ROUGH/husky_oru/radarize_2024-06-12-10-06-11_0'),  # high grass with radar
-    ],
-}
+]
 
 
-class ROUGHBase(Dataset):
+class ROUGH(Dataset):
     """
-    Class to wrap traversability data generated using lidar odometry.
-
-    The data is stored in the following structure:
-    - <path>
-        - clouds
-            - <id>.npz
-            - ...
-        - images
-            - <id>_<camera_name>.png
-            - ...
-        - trajectories
-            - <id>.csv
-            - ...
-        - calibration
-            - cameras
-                - <camera_name>.yaml
-                - ...
-            - transformations.yaml
-        - terrain
-            - <id>.npy
-            - ...
-        - poses
-            - lidar_poses.csv
-            - ...
-
-    A sample of the dataset contains:
-    - point cloud (N x 3), where N is the number of points
-    - height map (H x W)
-    - trajectory (T x 4 x 4), where the horizon T is the number of poses
+    A dataset for traversability estimation from camera and lidar data.
     """
 
-    def __init__(self, path, dphys_cfg=DPhysConfig()):
+    def __init__(self, path,
+                 lss_cfg=None,
+                 dphys_cfg=DPhysConfig(),
+                 is_train=False,
+                 only_front_cam=False):
         super(Dataset, self).__init__()
         self.path = path
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
-        self.radar_cloud_path = os.path.join(path, 'radar_clouds')
         self.traj_path = os.path.join(path, 'trajectories')
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
-        self.controls_path = os.path.join(path, 'controls', 'tracks_vel.csv')
+        self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
         self.dphys_cfg = dphys_cfg
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.ts, self.poses = self.get_poses(return_stamps=True)
         self.camera_names = self.get_camera_names()
+
+        self.is_train = is_train
+        self.only_front_cam = only_front_cam
+        self.camera_names = self.camera_names[:1] if only_front_cam else self.camera_names
+
+        # initialize image augmentations
+        if lss_cfg is None:
+            lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
+        self.lss_cfg = lss_cfg
+        self.img_augs = self.get_img_augs()
+
+    def __getitem__(self, i):
+        if isinstance(i, (int, np.int64)):
+            sample = self.get_sample(i)
+            return sample
+
+        ds = copy.deepcopy(self)
+        if isinstance(i, (list, tuple, np.ndarray)):
+            ds.ids = [self.ids[k] for k in i]
+            ds.poses = [self.poses[k] for k in i]
+        else:
+            assert isinstance(i, (slice, range))
+            ds.ids = self.ids[i]
+            ds.poses = self.poses[i]
+        return ds
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return len(self.ids)
 
     def get_ids(self):
         ids = [f[:-4] for f in os.listdir(self.cloud_path)]
@@ -203,18 +168,18 @@ class ROUGHBase(Dataset):
         timestamps = timestamps - timestamps[0]
         vels = all_vels[il:ir]
 
-        # velocities interpolation
-        interp_times = np.arange(0.0, time_right - time_left, dt)
-        interp_vels = np.zeros((len(interp_times), vels.shape[1]))
-        for i in range(vels.shape[1]):
-            interp_vels[:, i] = np.interp(interp_times, timestamps, vels[:, i])
+        # interpolate velocities to the trajectory time stamps
+        times_horizon = np.arange(0.0, T_horizon, dt)
+        vels_horizon = np.zeros((len(times_horizon), vels.shape[1]))
+        # find indices from timestamps to the trajectory time stamps
+        inds = np.searchsorted(times_horizon, timestamps)
+        inds = np.clip(inds, 0, len(times_horizon) - 1)
+        vels_horizon[inds] = vels
 
-        timestamps = interp_times
-        vels = interp_vels
-        assert len(timestamps) == len(vels), f'Velocity and time stamps have different lengths'
-        assert len(timestamps) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
+        assert len(times_horizon) == len(vels_horizon), f'Velocity and time stamps have different lengths'
+        assert len(times_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
 
-        return timestamps, np.asarray(vels, dtype=np.float32)
+        return times_horizon, np.asarray(vels_horizon, dtype=np.float32)
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -301,7 +266,7 @@ class ROUGHBase(Dataset):
             cloud = cloud.reshape((-1,))
         return cloud
 
-    def get_lidar_cloud(self, i):
+    def get_cloud(self, i):
         cloud = self.get_raw_cloud(i)
         # remove nans from structured array with fields x, y, z
         cloud = cloud[~np.isnan(cloud['x'])]
@@ -310,41 +275,8 @@ class ROUGHBase(Dataset):
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
         return cloud
-    
-    def get_raw_radar_cloud(self, i):
-        ind = self.ids[i]
-        cloud_path = os.path.join(self.radar_cloud_path, '%s.npz' % ind)
-        assert os.path.exists(cloud_path), f'Cloud path {cloud_path} does not exist'
-        cloud = np.load(cloud_path)['cloud']
-        if cloud.ndim == 2:
-            cloud = cloud.reshape((-1,))
-        return cloud
-    
-    def get_radar_cloud(self, i):
-        cloud = self.get_raw_radar_cloud(i)
-        # remove nans from structured array with fields x, y, z
-        cloud = cloud[~np.isnan(cloud['x'])]
-        # close by points contain noise
-        cloud = filter_range(cloud, 3.0, np.inf)
-        # move points to robot frame
-        Tr = self.calib['transformations']['T_base_link__hugin_radar']['data']
-        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
-        cloud = transform_cloud(cloud, Tr)
-        return cloud
 
-    def get_cloud(self, i, points_source='lidar'):
-        assert points_source in ['lidar', 'radar', 'lidar_radar']
-        if points_source == 'lidar':
-            return self.get_lidar_cloud(i)
-        elif points_source == 'radar':
-            return self.get_radar_cloud(i)
-        else:
-            lidar_points = self.get_lidar_cloud(i)
-            radar_points = self.get_radar_cloud(i)
-            cloud = np.concatenate((lidar_points[['x', 'y', 'z']], radar_points[['x', 'y', 'z']]))
-            return cloud
-
-    def get_geom_height_map(self, i, cached=True, dir_name=None, points_source='lidar', **kwargs):
+    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
         """
         Get height map from lidar point cloud.
         :param i: index of the sample
@@ -359,7 +291,7 @@ class ROUGHBase(Dataset):
         if cached and os.path.exists(file_path):
             lidar_hm = np.load(file_path, allow_pickle=True).item()
         else:
-            cloud = self.get_cloud(i, points_source=points_source)
+            cloud = self.get_cloud(i)
             points = position(cloud)
             lidar_hm = self.estimate_heightmap(points, **kwargs)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -446,66 +378,6 @@ class ROUGHBase(Dataset):
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
-    def get_sample(self, i):
-        cloud = self.get_cloud(i)
-        traj = self.get_traj(i)
-        height = self.estimate_heightmap(position(cloud), fill_value=0.)
-        return cloud, traj, height
-
-    def __getitem__(self, i):
-        if isinstance(i, (int, np.int64)):
-            sample = self.get_sample(i)
-            return sample
-
-        ds = copy.deepcopy(self)
-        if isinstance(i, (list, tuple, np.ndarray)):
-            ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
-        else:
-            assert isinstance(i, (slice, range))
-            ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
-        return ds
-
-    def __iter__(self):
-        for i in range(len(self)):
-            yield self[i]
-
-    def __len__(self):
-        return len(self.ids)
-
-
-class ROUGH(ROUGHBase):
-    """
-    A dataset for traversability estimation from camera and lidar data.
-
-    A sample of the dataset contains:
-    - image (3 x H x W)
-    - rotation matrix (3 x 3)
-    - translation vector (3)
-    - intrinsic matrix (3 x 3)
-    - post rotation matrix (3 x 3)
-    - post translation vector (3)
-    - lidar height map (2 x H x W)
-    - trajectory height map (2 x H x W)
-    - map pose (4 x 4)
-    """
-
-    def __init__(self,
-                 path,
-                 lss_cfg,
-                 dphys_cfg=DPhysConfig(),
-                 is_train=False,
-                 only_front_cam=False):
-        super(ROUGH, self).__init__(path, dphys_cfg)
-        self.is_train = is_train
-        self.only_front_cam = only_front_cam
-        self.camera_names = self.camera_names[:1] if only_front_cam else self.camera_names
-
-        # initialize image augmentations
-        self.lss_cfg = lss_cfg
-        self.img_augs = self.get_img_augs()
-
     def get_img_augs(self):
         return A.Compose([
                 A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
@@ -533,7 +405,7 @@ class ROUGH(ROUGHBase):
         img = np.asarray(img)
         return img.shape[0], img.shape[1]
 
-    def get_image(self, i, camera=None, undistort=False):
+    def get_image(self, i, camera=None):
         if camera is None:
             camera = self.camera_names[0]
         img = self.get_raw_image(i, camera)
@@ -544,12 +416,6 @@ class ROUGH(ROUGHBase):
         K = self.calib[camera]['camera_matrix']['data']
         r, c = self.calib[camera]['camera_matrix']['rows'], self.calib[camera]['camera_matrix']['cols']
         K = np.asarray(K, dtype=np.float32).reshape((r, c))
-        if undistort:
-            D = self.calib[camera]['distortion_coefficients']['data']
-            D = np.array(D)
-            img = np.asarray(img)
-            img, K = undistort_image(img, K, D)
-            img = Image.fromarray(img)
         return img, K
 
     def get_cached_resized_img(self, i, camera=None):
@@ -567,7 +433,7 @@ class ROUGH(ROUGHBase):
         img.save(cached_img_path)
         return img, K
 
-    def get_images_data(self, i, undistort=False):
+    def get_images_data(self, i):
         imgs = []
         rots = []
         trans = []
@@ -576,10 +442,7 @@ class ROUGH(ROUGHBase):
         intrins = []
 
         for cam in self.camera_names:
-            if undistort:
-                img, K = self.get_image(i, cam, undistort=True)
-            else:
-                img, K = self.get_cached_resized_img(i, cam)
+            img, K = self.get_cached_resized_img(i, cam)
 
             # apply additional image augmentations like blur, brightness, contrast, fog, rain, snow, sun flare
             if self.is_train:
@@ -650,7 +513,7 @@ class ROUGH(ROUGHBase):
         seg = transform(seg)
         return seg
     
-    def get_semantic_cloud(self, i, classes=None, vis=False, points_source='lidar'):
+    def get_semantic_cloud(self, i, classes=None, vis=False):
         if classes is None:
             classes = np.copy(COCO_CLASSES)
         # ids of classes in COCO
@@ -659,7 +522,7 @@ class ROUGH(ROUGHBase):
             if c in COCO_CLASSES:
                 selected_labels.append(COCO_CLASSES.index(c))
 
-        lidar_points = position(self.get_cloud(i, points_source=points_source))
+        lidar_points = position(self.get_cloud(i))
         points = []
         labels = []
         for cam in self.camera_names[::-1]:
@@ -723,7 +586,7 @@ class ROUGH(ROUGHBase):
             o3d.visualization.draw_geometries([hm_pcd])
         return global_hm_cloud
 
-    def get_terrain_height_map(self, i, cached=True, dir_name=None, points_source='lidar'):
+    def get_terrain_height_map(self, i, cached=True, dir_name=None):
         """
         Get height map from trajectory points.
         :param i: index of the sample
@@ -742,8 +605,7 @@ class ROUGH(ROUGHBase):
             traj_points = self.get_footprint_traj_points(i)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes,
-                                                    points_source=points_source, vis=False)
+            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             hm_rigid = self.estimate_heightmap(points, robot_radius=None)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -800,259 +662,3 @@ class ROUGH(ROUGHBase):
                 hm_geom, hm_terrain,
                 control_ts, controls,
                 traj_ts, Xs, Xds, Rs, Omegas)
-
-
-class ROUGHPoints(ROUGH):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True,
-                 only_front_cam=False, points_source='lidar'):
-        super(ROUGHPoints, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train,
-                                          only_front_cam=only_front_cam)
-        assert points_source in ['lidar', 'radar', 'lidar_radar']
-        self.points_source = points_source
-
-    def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        control_ts, controls = self.get_controls(i)
-        traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, Rs, Omegas = states
-        hm_geom = self.get_geom_height_map(i, points_source=self.points_source)
-        hm_terrain = self.get_terrain_height_map(i, points_source=self.points_source)
-        if self.only_front_cam:
-            mask = self.front_height_map_mask()
-            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
-            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
-        points = torch.as_tensor(position(self.get_cloud(i, points_source=self.points_source))).T
-        return (imgs, rots, trans, intrins, post_rots, post_trans,
-                hm_geom, hm_terrain,
-                control_ts, controls,
-                traj_ts, Xs, Xds, Rs, Omegas,
-                points)
-
-
-def heightmap_demo():
-    from ..vis import show_cloud_plt
-    from ..cloudproc import filter_grid, filter_range
-    import matplotlib.pyplot as plt
-
-    robot = 'husky_oru'
-    path = rough_seq_paths[robot][0]
-    assert os.path.exists(path)
-
-    cfg = DPhysConfig()
-    ds = ROUGHBase(path, dphys_cfg=cfg)
-
-    i = np.random.choice(range(len(ds)))
-    # i = 0
-    sample = ds[i]
-    cloud, traj, height = sample
-    xyz = position(cloud)
-    traj = traj['poses'].squeeze()
-
-    xyz = filter_range(xyz, cfg.d_min, cfg.d_max)
-    xyz = filter_grid(xyz, cfg.grid_res)
-
-    plt.figure(figsize=(12, 12))
-    show_cloud_plt(xyz, markersize=0.4)
-    plt.plot(traj[:, 0, 3], traj[:, 1, 3], traj[:, 2, 3], 'ro', markersize=4)
-    # visualize height map as a surface
-    ax = plt.gca()
-    ax.plot_surface(height['y'], height['x'], height['z'],
-                    rstride=1, cstride=1, cmap='viridis', edgecolor='none', alpha=0.7)
-    plt.show()
-
-
-def extrinsics_demo():
-    from mayavi import mlab
-    from ..vis import draw_coord_frames, draw_coord_frame
-
-    robot = 'husky_oru'
-    for path in rough_seq_paths[robot]:
-        assert os.path.exists(path)
-
-        cfg = DPhysConfig()
-        ds = ROUGHBase(path, dphys_cfg=cfg)
-
-        robot_pose = np.eye(4)
-        robot_frame = 'base_link'
-        lidar_frame = 'os_sensor'
-
-        Tr_robot_lidar = ds.calib['transformations'][f'T_{robot_frame}__{lidar_frame}']['data']
-        Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=float).reshape((4, 4))
-
-        cam_poses = []
-        for frame in ds.camera_names:
-            T_robot_cam = ds.calib['transformations'][f'T_{robot_frame}__{frame}']['data']
-            T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
-
-            cam_poses.append(T_robot_cam[np.newaxis])
-        cam_poses = np.concatenate(cam_poses, axis=0)
-
-        # draw coordinate frames
-        mlab.figure(size=(800, 800))
-        draw_coord_frame(robot_pose, scale=0.5)
-        draw_coord_frame(Tr_robot_lidar, scale=0.3)
-        draw_coord_frames(cam_poses, scale=0.1)
-        mlab.show()
-
-
-def traversed_height_map():
-    robot = 'husky_oru'
-    path = np.random.choice(rough_seq_paths[robot])
-    assert os.path.exists(path)
-
-    dphys_cfg = DPhysConfig()
-    lss_cfg = read_yaml(os.path.join(data_dir, f'../config/lss_cfg_{robot}.yaml'))
-
-    ds = ROUGH(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
-    i = np.random.choice(range(len(ds)))
-
-    # trajectory poses
-    poses = ds.get_traj(i)['poses']
-    # point cloud
-    cloud = ds.get_cloud(i)
-    points = position(cloud)
-
-    img = ds.get_raw_image(i)
-
-    # height map: estimated from point cloud
-    heightmap = ds.estimate_heightmap(points)
-    height_geom = heightmap['z']
-    x_grid, y_grid = heightmap['x'], heightmap['y']
-    # height map: optimized from robot-terrain interaction model
-    height_terrain = ds.get_terrain_height_map(i)[0]
-
-    plt.figure(figsize=(12, 12))
-    h, w = height_geom.shape
-    xy_grid = poses[:, :2, 3] / dphys_cfg.grid_res + np.array([w / 2, h / 2])
-    plt.subplot(131)
-    plt.imshow(height_geom.T, origin='lower', vmin=-1, vmax=1, cmap='jet')
-    plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
-    plt.subplot(132)
-    plt.imshow(height_terrain.T, origin='lower', vmin=-1, vmax=1, cmap='jet')
-    plt.plot(xy_grid[:, 0], xy_grid[:, 1], 'rx', markersize=4)
-    plt.subplot(133)
-    plt.imshow(img)
-    plt.show()
-
-
-def vis_hm_weights():
-    from ..vis import set_axes_equal
-
-    cfg = DPhysConfig()
-
-    # circle mask: all points within a circle of radius 1 m are valid
-    x_grid = np.arange(0, cfg.d_max, cfg.grid_res)
-    y_grid = np.arange(-cfg.d_max / 2., cfg.d_max / 2., cfg.grid_res)
-    x_grid, y_grid = np.meshgrid(x_grid, y_grid)
-    # distances from the center
-    radius = cfg.d_max / 2.
-    dist = np.sqrt(x_grid ** 2 + y_grid ** 2)
-    # gaussian mask
-    weights_est = np.exp(-dist ** 2 / (2. * radius ** 2))
-    # weights_est = np.zeros_like(dist)
-    # weights_est[dist <= radius] = 1
-
-    # visualize mask in 3D as a surface
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(x_grid, y_grid, weights_est, cmap='jet')
-    set_axes_equal(ax)
-    plt.show()
-
-
-def vis_estimated_height_map():
-    from ..vis import set_axes_equal
-
-    cfg = DPhysConfig()
-    cfg.grid_res = 0.1
-    cfg.d_max = 12.8
-    cfg.d_min = 1.
-    cfg.h_max_above_ground = 1.
-    # cfg.hm_interp_method = None
-    cfg.hm_interp_method = 'nearest'
-
-    # path = np.random.choice(rough_seq_paths['husky'])
-    path = np.random.choice(rough_seq_paths['tradr'])
-    ds = ROUGHBase(path=path, dphys_cfg=cfg)
-
-    i = np.random.choice(range(len(ds)))
-    # i = 0
-    cloud = ds.get_cloud(i)
-    points = position(cloud)
-
-    heightmap, points = ds.estimate_heightmap(points, return_filtered_points=True)
-    x_grid, y_grid, height = heightmap['x'], heightmap['y'], heightmap['z']
-
-    # visualize heightmap
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(x_grid, y_grid, height, cmap='jet', alpha=0.5)
-    step = 5
-    points_vis = points[::step, :]
-    ax.scatter(points_vis[:, 0], points_vis[:, 1], points_vis[:, 2], s=1, c='k')
-    set_axes_equal(ax)
-    plt.show()
-
-
-def global_cloud_demo():
-    robot = 'husky_oru'
-    assert robot in ['husky_oru', 'tradr', 'husky']
-    paths = rough_seq_paths[robot]
-    for path in paths:
-        ds = ROUGHBase(path=path)
-        ds.get_global_cloud(vis=True, cached=False, step=10)
-
-
-def trajectory_footprint_heightmap():
-    robot = 'husky_oru'
-    for path in rough_seq_paths[robot]:
-        assert os.path.exists(path)
-
-        cfg = DPhysConfig()
-        ds = ROUGHBase(path, dphys_cfg=cfg)
-
-        i = np.random.choice(range(len(ds)))
-        sample = ds[i]
-        cloud, traj, height = sample
-        points = position(cloud)
-
-        traj_points = ds.get_footprint_traj_points(i)
-        lidar_height = ds.estimate_heightmap(points)['z']
-
-        traj_hm = ds.estimate_heightmap(traj_points)
-        traj_height = traj_hm['z']
-        traj_mask = traj_hm['mask']
-
-        # plt.figure(figsize=(12, 6))
-        # plt.subplot(131)
-        # plt.imshow(lidar_height.T, cmap='jet', vmin=-1., vmax=1., origin='lower')
-        # plt.colorbar()
-        # plt.subplot(132)
-        # plt.imshow(traj_height.T, cmap='jet', vmin=-1., vmax=1., origin='lower')
-        # plt.colorbar()
-        # plt.subplot(133)
-        # plt.imshow(traj_mask.T, cmap='gray', origin='lower')
-        # plt.show()
-
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(points)
-
-        pcd2 = o3d.geometry.PointCloud()
-        pcd2.points = o3d.utility.Vector3dVector(traj_points)
-        pcd2.paint_uniform_color([1, 0, 0])
-
-        o3d.visualization.draw_geometries([pcd1, pcd2])
-
-
-def main():
-    heightmap_demo()
-    extrinsics_demo()
-    traversed_height_map()
-    vis_hm_weights()
-    vis_estimated_height_map()
-    global_cloud_demo()
-    trajectory_footprint_heightmap()
-
-
-if __name__ == '__main__':
-    main()

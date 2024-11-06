@@ -8,5 +8,5 @@ install(DIRECTORY launch
 install(
     PROGRAMS
         nodes/monoforce_demo
-    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}/nodes
 )

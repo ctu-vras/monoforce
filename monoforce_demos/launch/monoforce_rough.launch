@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="robot" default="husky"/>
+    <arg name="robot" default="marv"/>
     <arg name="rviz" default="true"/>
 
     <!-- Load robot description -->

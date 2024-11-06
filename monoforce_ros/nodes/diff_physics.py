@@ -5,7 +5,6 @@ import torch
 import warp as wp
 import numpy as np
 from scipy.spatial.transform import Rotation
-from threading import RLock
 import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
@@ -81,17 +80,13 @@ class DiffPhysBase:
 
     def init_controls(self):
         controls_front, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                                    robot_base=self.dphys_cfg.robot_size[1].item(),
                                                     v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
                                                     w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                                    time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt,
-                                                    n_tracks=len(self.dphys_cfg.driving_parts))
+                                                    time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
         controls_back, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                                   robot_base=self.dphys_cfg.robot_size[1].item(),
                                                    v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
                                                    w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                                   time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt,
-                                                   n_tracks=len(self.dphys_cfg.driving_parts))
+                                                   time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
         controls = torch.cat([controls_front, controls_back], dim=0)
         return controls
 

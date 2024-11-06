@@ -69,7 +69,6 @@ class MonoForce:
     def predict_states(self, z_grid):
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         controls, _ = generate_control_inputs(n_trajs=z_grid.shape[0],
-                                              robot_base=self.dphys_cfg.robot_size[1].item(),
                                               v_range=(self.dphys_cfg.vel_max / 2., self.dphys_cfg.vel_max),
                                               w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
                                               time_horizon=T, dt=dt)

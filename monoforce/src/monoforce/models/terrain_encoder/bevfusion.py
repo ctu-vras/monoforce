@@ -149,32 +149,32 @@ class TerrainHeads(nn.Module):
         super(TerrainHeads, self).__init__()
 
         self.head_geom = nn.Sequential(
-            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0)
+            nn.Conv2d(64, outC, kernel_size=1, padding=0)
         )
         self.head_diff = nn.Sequential(
-            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0),
+            nn.Conv2d(64, outC, kernel_size=1, padding=0),
             nn.ReLU(inplace=True),
         )
         self.head_frict = nn.Sequential(
-            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0),
+            nn.Conv2d(64, outC, kernel_size=1, padding=0),
             nn.ReLU(inplace=True),
         )
 

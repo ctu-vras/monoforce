@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
-from monoforce.datasets import ROUGHPoints, rough_seq_paths
+from monoforce.datasets import ROUGH, rough_seq_paths
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
@@ -33,11 +33,11 @@ class MonoForce:
         self.robot = robot
 
         self.lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
-        self.data_seq = np.random.choice(rough_seq_paths[self.robot])
+        self.data_seq = np.random.choice(rough_seq_paths)
         if not os.path.isdir(self.data_seq):
             rospy.loginfo('Data sequence for robot %s does not exist. Using sample data.' % self.robot)
             self.data_seq = os.path.join(self.lib_path, 'config/data_sample', self.robot)
-        self.dphys_cfg = DPhysConfig(robot=robot)
+        self.dphys_cfg = DPhysConfig(robot=self.robot)
         self.dphys_cfg.from_rosparams(node_name=name)
         # load dphysics model
         self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
@@ -164,7 +164,7 @@ class MonoForce:
         return states, forces
 
     def run(self):
-        ds = ROUGHPoints(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
+        ds = ROUGH(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
         rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
         sample_i = np.random.choice(range(len(ds)))
         rospy.loginfo('Using sample number %d that corresponds to timestamp %f' % (sample_i, ds.ts[sample_i]))
@@ -184,7 +184,7 @@ class MonoForce:
         imgs_raw = []
         Ks = []
         for cam in self.camera_frames:
-            img_raw, K = ds.get_image(sample_i, cam, undistort=False)
+            img_raw, K = ds.get_image(sample_i, cam)
             imgs_raw.append(img_raw)
             Ks.append(K)
 
@@ -227,11 +227,9 @@ class MonoForce:
                 if len(self.camera_frames) > 1 and np.random.random() > 0.5:
                     v_range = (-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2.)
                 controls, _ = generate_control_inputs(n_trajs=1,
-                                                      robot_base=self.dphys_cfg.robot_size[1].item(),
                                                       v_range=v_range,
                                                       w_range=w_range,
-                                                      time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt,
-                                                      n_tracks=len(self.dphys_cfg.driving_parts))
+                                                      time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
 
                 states, forces = self.predict_states(z_grid=height_terrain_pred.squeeze(1), controls=controls)
                 poses = self.poses_from_states(states)

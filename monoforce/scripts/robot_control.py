@@ -8,10 +8,12 @@ from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
-
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+# mpl.use('TkAgg')
 
 # simulation parameters
-robot = 'tradr2'
+robot = 'marv'
 dphys_cfg = DPhysConfig(robot=robot)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -25,21 +27,12 @@ def motion():
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
-    # control inputs: track vels in m/s
-    if dphys_cfg.robot in ['marv', 'husky']:
-        # fl, fr, rl, rr
-        controls = torch.stack([
-            torch.tensor([[0.5, 0.8, 0.5, 0.8]] * int(T / dt)),
-        ]).to(device)
-    elif dphys_cfg.robot in ['tradr', 'tradr2']:
-        # left, right
-        controls = torch.stack([
-            torch.tensor([[0.8, 0.5]] * int(T / dt)),
-        ]).to(device)
-    else:
-        raise ValueError(f'Unknown robot: {dphys_cfg.robot}')
-    B, N_ts = controls.shape[:2]
-    assert controls.shape == (B, N_ts, len(dphys_cfg.driving_parts))
+    # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
+    controls = torch.stack([
+        torch.tensor([[1.0, -1.0]] * int(T / dt)),  # v=1.0 m/s, w=0.0 rad/s for each time step
+    ]).to(device)
+    B, N_ts, _ = controls.shape
+    assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
 
     # initial state
     x = torch.tensor([[0.0, 0.0, 0.2]], device=device).repeat(B, 1)
@@ -61,8 +54,8 @@ def motion():
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
-    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    # z_grid = torch.zeros_like(x_grid)
+    # z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
+    z_grid = torch.zeros_like(x_grid)
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
     friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
@@ -105,10 +98,10 @@ def motion():
 
 
 def motion_dataset():
-    from monoforce.datasets import ROUGHBase, rough_seq_paths
+    from monoforce.datasets import ROUGH, rough_seq_paths
     from monoforce.vis import set_axes_equal
 
-    class Data(ROUGHBase):
+    class Data(ROUGH):
         def __init__(self, path, dphys_cfg=DPhysConfig()):
             super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
 
@@ -119,7 +112,7 @@ def motion_dataset():
             return controls, states, heightmap
 
     # load the dataset
-    path = np.random.choice(rough_seq_paths[robot])
+    path = rough_seq_paths[0]
     dphys_cfg = DPhysConfig(robot=robot)
     ds = Data(path, dphys_cfg=dphys_cfg)
 
@@ -206,11 +199,9 @@ def shoot_multiple():
 
     # control inputs in m/s and rad/s
     controls_front, _ = generate_control_inputs(n_trajs=num_trajs // 2,
-                                                robot_base=dphys_cfg.robot_size[1].item(),
                                                 v_range=(vel_max / 2, vel_max), w_range=(-omega_max, omega_max),
                                                 time_horizon=T, dt=dt)
     controls_back, _ = generate_control_inputs(n_trajs=num_trajs // 2,
-                                               robot_base=dphys_cfg.robot_size[1].item(),
                                                v_range=(-vel_max, -vel_max / 2), w_range=(-omega_max, omega_max),
                                                time_horizon=T, dt=dt)
     controls = torch.cat([controls_front, controls_back], dim=0)

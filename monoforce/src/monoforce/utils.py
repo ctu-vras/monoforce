@@ -121,15 +121,12 @@ def load_calib(calib_path):
     return calib
 
 
-def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=False, **kwargs):
+def compile_data(lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=False, **kwargs):
     from torch.utils.data import ConcatDataset, Subset
-    from monoforce.datasets import Rellis3D, Rellis3DPoints, rellis3d_seq_paths
-    from monoforce.datasets import ROUGH, ROUGHPoints, rough_seq_paths
+    from monoforce.datasets import ROUGH, rough_seq_paths
     """
     Compile datasets for LSS model training
 
-    :param dataset: str, dataset name
-    :param robot: str, robot name
     :param lss_cfg: dict, LSS model configuration
     :param dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     :param val_fraction: float, fraction of the dataset to use for validation
@@ -141,25 +138,13 @@ def compile_data(dataset, robot, lss_cfg, dphys_cfg, val_fraction=0.1, small_dat
     """
     train_datasets = []
     val_datasets = []
-    if dataset == 'rellis3d':
-        Data = Rellis3D
-        DataVis = Rellis3DPoints
-        data_paths = rellis3d_seq_paths
-    elif dataset == 'rough':
-        Data = ROUGH
-        DataVis = ROUGHPoints
-        data_paths = rough_seq_paths[robot]
-    else:
-        raise ValueError(f'Unknown dataset: {dataset}. Supported datasets are rellis3d and rough.')
-    print('Data paths:', data_paths)
-    for path in data_paths:
+    print('Data paths:', rough_seq_paths)
+    for path in rough_seq_paths:
         assert os.path.exists(path)
-        train_ds = Data(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
-        val_ds = Data(path, is_train=False, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
-
+        train_ds = ROUGH(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
+        val_ds = ROUGH(path, is_train=False, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
         if vis:
-            train_ds_vis = DataVis(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
-            explore_data(train_ds_vis)
+            explore_data(train_ds)
 
         # randomly select a subset of the dataset
         val_ds_size = int(val_fraction * len(train_ds))
@@ -211,16 +196,15 @@ def explore_data(ds, sample_range='random', save=False):
 
     for sample_i in sample_range:
         sample = ds[sample_i]
-        sample = [s[np.newaxis] if s is not None else s for s in sample]
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_lidar, hm_terrain,
          control_ts, controls,
-         traj_ts, Xs, Xds, Rs, Omegas,
-         pts) = sample
-        height_geom, mask_geom = hm_lidar[:, 0], hm_lidar[:, 1]
-        height_terrain, mask_rigid = hm_terrain[:, 0], hm_terrain[:, 1]
+         traj_ts, Xs, Xds, Rs, Omegas) = sample
+        pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
+        height_geom, mask_geom = hm_lidar[0], hm_lidar[1]
+        height_terrain, mask_rigid = hm_terrain[0], hm_terrain[1]
 
-        frustum_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+        frustum_pts = model.get_geometry(rots[None], trans[None], intrins[None], post_rots[None], post_trans[None]).squeeze(0)
 
         n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
         img_h, img_w = imgs.shape[-2], imgs.shape[-1]
@@ -229,56 +213,55 @@ def explore_data(ds, sample_range='random', save=False):
         gs = mpl.gridspec.GridSpec(n_rows, n_cols)
         gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-        for si in range(imgs.shape[0]):
-            plt.clf()
-            final_ax = plt.subplot(gs[:, -1:])
-            for imgi, img in enumerate(imgs[si]):
-                cam_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                mask = get_only_in_img_mask(cam_pts, H, W)
-                plot_pts = post_rots[si, imgi].matmul(cam_pts) + post_trans[si, imgi].unsqueeze(1)
+        plt.clf()
+        final_ax = plt.subplot(gs[:, -1:])
+        for imgi, img in enumerate(imgs):
+            cam_pts = ego_to_cam(pts, rots[imgi], trans[imgi], intrins[imgi])
+            mask = get_only_in_img_mask(cam_pts, H, W)
+            plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
 
-                ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
-                showimg = denormalize_img(img)
+            ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
+            showimg = denormalize_img(img)
 
-                plt.imshow(showimg)
-                plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[si, 2, mask],
-                            s=1, alpha=0.4, cmap='jet', vmin=-1., vmax=1.)
-                plt.axis('off')
-                # camera name as text on image
-                plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
-                         horizontalalignment='center', verticalalignment='top',
-                         transform=ax.transAxes, fontsize=10)
+            plt.imshow(showimg)
+            plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[2, mask],
+                        s=1, alpha=0.4, cmap='jet', vmin=-1., vmax=1.)
+            plt.axis('off')
+            # camera name as text on image
+            plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
+                     horizontalalignment='center', verticalalignment='top',
+                     transform=ax.transAxes, fontsize=10)
 
-                plt.sca(final_ax)
-                plt.plot(frustum_pts[si, imgi, :, :, :, 0].view(-1), frustum_pts[si, imgi, :, :, :, 1].view(-1),
-                         '.', label=cams[imgi].replace('_', ' '))
+            plt.sca(final_ax)
+            plt.plot(frustum_pts[imgi, :, :, :, 0].view(-1), frustum_pts[imgi, :, :, :, 1].view(-1),
+                     '.', label=cams[imgi].replace('_', ' '))
 
-            plt.legend(loc='upper right')
-            final_ax.set_aspect('equal')
-            plt.title('Frustum points')
-            plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
-            plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
+        plt.legend(loc='upper right')
+        final_ax.set_aspect('equal')
+        plt.title('Frustum points')
+        plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
+        plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
 
-            # plot height maps
-            ax = plt.subplot(gs[:, -3:-2])
-            plt.imshow(height_geom[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            # plt.axis('off')
-            plt.title('Geom HM')
-            plt.colorbar()
+        # plot height maps
+        ax = plt.subplot(gs[:, -3:-2])
+        plt.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        # plt.axis('off')
+        plt.title('Geom HM')
+        plt.colorbar()
 
-            ax = plt.subplot(gs[:, -2:-1])
-            plt.imshow(height_terrain[si].T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-            # plt.axis('off')
-            plt.title('Terrain HM')
-            plt.colorbar()
+        ax = plt.subplot(gs[:, -2:-1])
+        plt.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        # plt.axis('off')
+        plt.title('Terrain HM')
+        plt.colorbar()
 
-            if save:
-                save_dir = os.path.join(ds.path, 'visuals')
-                os.makedirs(save_dir, exist_ok=True)
-                imname = f'{ds.ids[sample_i]}.jpg'
-                imname = os.path.join(save_dir, imname)
-                # print('saving', imname)
-                plt.savefig(imname)
-                plt.close(fig)
-            else:
-                plt.show()
+        if save:
+            save_dir = os.path.join(ds.path, 'visuals')
+            os.makedirs(save_dir, exist_ok=True)
+            imname = f'{ds.ids[sample_i]}.jpg'
+            imname = os.path.join(save_dir, imname)
+            # print('saving', imname)
+            plt.savefig(imname)
+            plt.close(fig)
+        else:
+            plt.show()

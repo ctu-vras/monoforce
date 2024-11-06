@@ -5,7 +5,6 @@ import torch
 import numpy as np
 from scipy.spatial.transform import Rotation
 import rospy
-from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import CameraInfo, CompressedImage
 from visualization_msgs.msg import MarkerArray
 from nav_msgs.msg import Path
@@ -42,12 +41,10 @@ class MonoForce(TerrainEncoder):
 
     def init_controls(self):
         controls_front, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                                    robot_base=self.dphys_cfg.robot_size[1].item(),
                                                     v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
                                                     w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
                                                     time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
         controls_back, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                                   robot_base=self.dphys_cfg.robot_size[1].item(),
                                                    v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
                                                    w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
                                                    time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)

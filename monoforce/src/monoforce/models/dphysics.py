@@ -39,9 +39,7 @@ def skew_symmetric(v):
 
 def generate_control_inputs(n_trajs=10,
                             time_horizon=5.0, dt=0.01,
-                            robot_base=1.0,
-                            v_range=(-1.0, 1.0), w_range=(-1.0, 1.0),
-                            n_tracks=2):
+                            v_range=(-1.0, 1.0), w_range=(-1.0, 1.0)):
     """
     Generates control inputs for the robot trajectories.
 
@@ -49,41 +47,55 @@ def generate_control_inputs(n_trajs=10,
     - n_trajs: Number of trajectories.
     - time_horizon: Time horizon for each trajectory.
     - dt: Time step.
-    - robot_base: Distance between the tracks.
     - v_range: Range of the forward speed.
     - w_range: Range of the rotational speed.
-    - n_tracks: Number of tracks (2 or 4).
 
     Returns:
-    - Control inputs for the robot trajectories.
+    - Linear and angular velocities for the robot trajectories: (n_trajs, time_steps, 2).
     - Time stamps for the trajectories.
     """
-    # rewrite the above code using torch instead of numpy
-    time_steps = int(time_horizon / dt)
-    time_stamps = torch.linspace(0, time_horizon, time_steps)
-
-    # List to store control inputs (left and right wheel velocities)
-    control_inputs = torch.zeros((n_trajs, time_steps, n_tracks))
+    N = int(time_horizon / dt)
+    time_stamps = torch.linspace(0, time_horizon, N)
 
     v = torch.rand(n_trajs) * (v_range[1] - v_range[0]) + v_range[0]  # Forward speed
     w = torch.rand(n_trajs) * (w_range[1] - w_range[0]) + w_range[0]  # Rotational speed
 
+    # repeat the control inputs for each time step
+    v = v.unsqueeze(1).repeat(1, N)
+    w = w.unsqueeze(1).repeat(1, N)
+
+    # stack the control inputs
+    control_inputs = torch.stack([v, w], dim=-1)
+
+    return control_inputs, time_stamps
+
+
+def vw_to_track_vels(v, w, robot_base, n_tracks):
+    """
+    Converts the forward and rotational speeds to track velocities.
+
+    Parameters:
+    - v: Forward speed.
+    - w: Rotational speed.
+    - robot_base: Distance between the tracks.
+    - n_tracks: Number of tracks (2 or 4).
+
+    Returns:
+    - Track velocities.
+    """
+    v_L = v - (w * robot_base) / 2.0  # Left wheel velocity
+    v_R = v + (w * robot_base) / 2.0  # Right wheel velocity
     if n_tracks == 2:
-        v_L = v - (w * robot_base) / 2.0  # Left wheel velocity
-        v_R = v + (w * robot_base) / 2.0  # Right wheel velocity
-        control_inputs[:, :, 0] = v_L[:, None].repeat(1, time_steps)
-        control_inputs[:, :, 1] = v_R[:, None].repeat(1, time_steps)
+        # left, right
+        track_vels = torch.stack([v_L, v_R], dim=-1)
     elif n_tracks == 4:
-        v_L = v - (w * robot_base) / 2.0
-        v_R = v + (w * robot_base) / 2.0
-        control_inputs[:, :, 0] = v_L[:, None].repeat(1, time_steps)
-        control_inputs[:, :, 1] = v_R[:, None].repeat(1, time_steps)
-        control_inputs[:, :, 2] = v_L[:, None].repeat(1, time_steps)
-        control_inputs[:, :, 3] = v_R[:, None].repeat(1, time_steps)
+        # front left, front right, rear left, rear right
+        v_FL, v_FR, v_RL, v_RR = v_L, v_R, v_L, v_R
+        track_vels = torch.stack([v_FL, v_FR, v_RL, v_RR], dim=-1)
     else:
         raise ValueError('n_tracks must be 2 or 4')
 
-    return control_inputs, time_stamps
+    return track_vels
 
 
 class DPhysics(torch.nn.Module):
@@ -107,8 +119,8 @@ class DPhysics(torch.nn.Module):
         assert xd_points.dim() == 3 and xd_points.shape[-1] == 3  # (B, N, 3)
         for p in driving_parts:
             assert p.dim() == 1 and p.shape[0] == x_points.shape[1]  # (N,)
-        assert controls.dim() == 2 and controls.shape[0] == x.shape[0]  # (B, n_driving_parts)
-        assert controls.shape[1] == len(driving_parts)
+        assert controls.dim() == 2 and controls.shape[0] == x.shape[0]  # (B, 2)
+        assert controls.shape[1] == 2  # linear and angular velocities
         assert z_grid.dim() == 3  # (B, H, W)
         B, n_pts, D = x_points.shape
 
@@ -154,8 +166,11 @@ class DPhysics(torch.nn.Module):
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         F_friction = torch.zeros_like(F_spring)  # initialize friction forces
+        track_vels = vw_to_track_vels(v=controls[:, 0], w=controls[:, 1],
+                                      robot_base=self.dphys_cfg.robot_size[1], n_tracks=len(driving_parts))
+        assert track_vels.shape == (B, len(driving_parts))
         for i in range(len(driving_parts)):
-            u = controls[:, i].unsqueeze(1)  # control input
+            u = track_vels[:, i].unsqueeze(1)  # control input
             v_cmd = u * thrust_dir  # commanded velocity
             mask = driving_parts[i]
             # F_fr = -mu * N * tanh(v_cmd - xd_points)  # tracks friction forces
@@ -402,9 +417,9 @@ class DPhysics(torch.nn.Module):
         # initial state
         if state is None:
             x = torch.tensor([0.0, 0.0, 0.0]).to(device).repeat(batch_size, 1)
-            xd = torch.zeros_like(x)
+            xd = torch.zeros_like(x); xd[:, 0] = controls[:, 0, 0]  # initial forward speed
             R = torch.eye(3).to(device).repeat(batch_size, 1, 1)
-            omega = torch.zeros_like(x)
+            omega = torch.zeros_like(x); omega[:, 2] = controls[:, 0, 1]  # initial rotational speed
             x_points = torch.as_tensor(self.dphys_cfg.robot_points, device=device)
             x_points = x_points.repeat(batch_size, 1, 1)
             x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
@@ -418,7 +433,7 @@ class DPhysics(torch.nn.Module):
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
         # for each trajectory and time step driving parts are being controlled
-        assert controls.shape == (B, N_ts, len(self.dphys_cfg.driving_parts)), f'Its shape {controls.shape} != {(B, N_ts, len(self.dphys_cfg.driving_parts))}'
+        assert controls.shape == (B, N_ts, 2), f'Its shape {controls.shape} != {(B, N_ts, 2)}'
 
         # TODO: there is some bug, had to transpose grid map
         z_grid = z_grid.transpose(1, 2)  # (B, H, W) -> (B, W, H)
