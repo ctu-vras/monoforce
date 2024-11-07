@@ -30,6 +30,7 @@ monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '
 data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
 rough_seq_paths = [
+        # MARV robot
         os.path.join(data_dir, 'ROUGH/marv/24-08-14-monoforce-long_drive'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-54-43'),
@@ -47,6 +48,8 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-35-05'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-56-33'),
+
+        # TRADR robot
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-02-31'),
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-12-12'),
         os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-13-54-18'),
@@ -154,32 +157,37 @@ class ROUGH(Dataset):
             return None, None
 
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
-        all_stamps, all_vels = data[:, 0], data[:, 1:]
+        all_stamps, all_controls = data[:, 0], data[:, 1:]
         all_stamps -= all_stamps[0]  # start time from 0
         time_left = copy.copy(self.ts[i])
         T_horizon, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         time_right = time_left + T_horizon
+
+        # check if the trajectory is out of the control time stamps
+        if time_left > all_stamps[-1] or time_right < all_stamps[0]:
+            times_horizon = np.arange(0.0, T_horizon, dt)
+            controls = np.zeros((len(times_horizon), all_controls.shape[1]))
+            return times_horizon, controls
+
         # find the closest index to the left and right in all times
         il = np.argmin(np.abs(np.asarray(all_stamps) - time_left))
         ir = np.argmin(np.abs(np.asarray(all_stamps) - time_right))
         ir = max(il + 1, ir)
-        ir = np.clip(ir, 0, len(all_vels) - 1)
+        ir = np.clip(ir, 0, len(all_controls) - 1)
         timestamps = np.asarray(all_stamps[il:ir])
         timestamps = timestamps - timestamps[0]
-        vels = all_vels[il:ir]
+        controls = all_controls[il:ir]
 
-        # interpolate velocities to the trajectory time stamps
         times_horizon = np.arange(0.0, T_horizon, dt)
-        vels_horizon = np.zeros((len(times_horizon), vels.shape[1]))
-        # find indices from timestamps to the trajectory time stamps
-        inds = np.searchsorted(times_horizon, timestamps)
-        inds = np.clip(inds, 0, len(times_horizon) - 1)
-        vels_horizon[inds] = vels
+        controls_horizon = np.zeros((len(times_horizon), controls.shape[1]))
+        # interpolate controls to the trajectory time stamps
+        for j in range(controls.shape[1]):
+            controls_horizon[:, j] = np.interp(times_horizon, timestamps, controls[:, j])
 
-        assert len(times_horizon) == len(vels_horizon), f'Velocity and time stamps have different lengths'
+        assert len(times_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
         assert len(times_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
 
-        return times_horizon, np.asarray(vels_horizon, dtype=np.float32)
+        return times_horizon, np.asarray(controls_horizon, dtype=np.float32)
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -652,13 +660,11 @@ class ROUGH(Dataset):
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
         Xs, Xds, Rs, Omegas = states
-        hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
         if self.only_front_cam:
             mask = self.front_height_map_mask()
-            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
-                hm_geom, hm_terrain,
+                hm_terrain,
                 control_ts, controls,
                 traj_ts, Xs, Xds, Rs, Omegas)

@@ -70,27 +70,32 @@ def generate_control_inputs(n_trajs=10,
     return control_inputs, time_stamps
 
 
-def vw_to_track_vels(v, w, robot_base, n_tracks):
+def vw_to_track_vels(v, w, robot_size, n_tracks):
     """
     Converts the forward and rotational speeds to track velocities.
 
     Parameters:
     - v: Forward speed.
     - w: Rotational speed.
-    - robot_base: Distance between the tracks.
+    - robot_size: Size of the robot.
     - n_tracks: Number of tracks (2 or 4).
 
     Returns:
     - Track velocities.
     """
-    v_L = v - (w * robot_base) / 2.0  # Left wheel velocity
-    v_R = v + (w * robot_base) / 2.0  # Right wheel velocity
+    Lx, Ly = robot_size
     if n_tracks == 2:
+        v_L = v - w * (Ly / 2.0)  # Left wheel velocity
+        v_R = v + w * (Ly / 2.0)  # Right wheel velocity
         # left, right
         track_vels = torch.stack([v_L, v_R], dim=-1)
     elif n_tracks == 4:
+        # TODO: double check it
         # front left, front right, rear left, rear right
-        v_FL, v_FR, v_RL, v_RR = v_L, v_R, v_L, v_R
+        v_FL = v - w * (Lx + Ly) / 2.0
+        v_FR = v + w * (Lx + Ly) / 2.0
+        v_RL = v - w * (Lx + Ly) / 2.0
+        v_RR = v + w * (Lx + Ly) / 2.0
         track_vels = torch.stack([v_FL, v_FR, v_RL, v_RR], dim=-1)
     else:
         raise ValueError('n_tracks must be 2 or 4')
@@ -167,7 +172,7 @@ class DPhysics(torch.nn.Module):
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         F_friction = torch.zeros_like(F_spring)  # initialize friction forces
         track_vels = vw_to_track_vels(v=controls[:, 0], w=controls[:, 1],
-                                      robot_base=self.dphys_cfg.robot_size[1], n_tracks=len(driving_parts))
+                                      robot_size=self.dphys_cfg.robot_size, n_tracks=len(driving_parts))
         assert track_vels.shape == (B, len(driving_parts))
         for i in range(len(driving_parts)):
             u = track_vels[:, i].unsqueeze(1)  # control input

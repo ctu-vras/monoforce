@@ -100,20 +100,12 @@ class BevEncode(nn.Module):
         self.layer3 = trunk.layer3
 
         self.up1 = Up(64+256, 256, scale_factor=4)
-        self.up_geom = nn.Sequential(
+        self.up_terrain = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
-        )
-        self.up_diff = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0),
-            nn.ReLU(inplace=True),
         )
         self.up_friction = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
@@ -137,25 +129,12 @@ class BevEncode(nn.Module):
 
         return x
 
-    def geom_head(self, x):
-        x = self.up_geom(x)
-        return x
-
-    def diff_head(self, x):
-        x = self.up_diff(x)
-        return x
-
-    def friction_head(self, x):
-        x = self.up_friction(x)
-        return x
-
     def forward(self, x):
         hm_feat = self.backbone(x)
-        hm_geom = self.geom_head(hm_feat)
-        hm_diff = self.diff_head(hm_feat)
-        friction = self.friction_head(hm_feat)
+        hm_terrain = self.up_terrain(hm_feat)
+        friction = self.up_friction(hm_feat)
 
-        return hm_geom, hm_diff, friction
+        return hm_terrain, friction
 
 
 class LiftSplatShoot(nn.Module):
@@ -281,14 +260,11 @@ class LiftSplatShoot(nn.Module):
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
         x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans)
-        x_geom, x_diff, friction = self.bevencode(x)
-        assert x_geom.shape == x_diff.shape
-        assert x_diff.min() >= 0.
-        x_terrain = x_geom - x_diff
+        x_terrain, friction = self.bevencode(x)
+        assert x_terrain.shape == friction.shape
+        assert friction.min() >= 0.
 
         out = {
-            'geom': x_geom,
-            'diff': x_diff,
             'terrain': x_terrain,
             'friction': friction,
         }

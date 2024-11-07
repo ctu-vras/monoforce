@@ -10,7 +10,7 @@ from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, 
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
-from monoforce.losses import rotation_difference, translation_difference
+# from monoforce.losses import rotation_difference, translation_difference
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -35,9 +35,7 @@ def arg_parser():
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--only_front_cam', type=str2bool, default=False, help='Use only front heightmap')
-    parser.add_argument('--geom_hm_weight', type=float, default=1.0, help='Weight for geometry heightmap loss')
-    parser.add_argument('--terrain_hm_weight', type=float, default=100.0, help='Weight for terrain heightmap loss')
-    parser.add_argument('--hdiff_weight', type=float, default=1e-4, help='Weight for height difference loss')
+    parser.add_argument('--terrain_hm_weight', type=float, default=1.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--phys_weight', type=float, default=0.1, help='Weight for physics loss')
 
     return parser.parse_args()
@@ -45,7 +43,7 @@ def arg_parser():
 
 class Trainer:
     """
-    Trainer for LSS terrain encoder model
+    Trainer for terrain encoder model
 
     Args:
     robot: str, robot name
@@ -59,9 +57,7 @@ class Trainer:
     log_dir: str, path to log directory
     debug: bool, debug mode: use small datasets
     vis: bool, visualize training samples
-    geom_hm_weight: float, weight for geometry heightmap loss
     terrain_hm_weight: float, weight for terrain heightmap loss
-    hdiff_weight: float, weight for height difference loss
     only_front_cam: bool, use only front heightmap part for training
     """
 
@@ -76,9 +72,7 @@ class Trainer:
                  pretrained_model_path=None,
                  debug=False,
                  vis=False,
-                 geom_hm_weight=1.0,
                  terrain_hm_weight=10.0,
-                 hdiff_weight=0.001,
                  phys_weight=1.0,
                  only_front_cam=False):
 
@@ -95,9 +89,7 @@ class Trainer:
         self.train_counter = 0
         self.val_counter = 0
 
-        self.geom_hm_weight = geom_hm_weight
         self.terrain_hm_weight = terrain_hm_weight
-        self.hdiff_weight = hdiff_weight
         self.phys_weight = phys_weight
 
         self.only_front_cam = only_front_cam
@@ -128,23 +120,6 @@ class Trainer:
         val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False)
 
         return train_loader, val_loader
-
-    def geom_hm_loss(self, height_pred, height_gt, weights=None):
-        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
-        if weights is None:
-            weights = torch.ones_like(height_gt)
-        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
-
-        # handle imbalanced height distribution (increase weights for higher heights / obstacles)
-        h_mean = height_gt[weights.bool()].mean()
-        # the higher the difference from mean the higher the weight
-        weights_h = 1.0 + torch.abs(height_gt - h_mean)
-        # apply height difference weights
-        weights = weights * weights_h
-
-        # compute weighted loss
-        loss = (self.hm_loss_fn(height_pred * weights, height_gt * weights)).mean()
-        return loss
 
     def terrain_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
@@ -206,12 +181,11 @@ class Trainer:
         for batch in tqdm(loader, total=len(loader)):
             batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
             (imgs, rots, trans, intrins, post_rots, post_trans,
-             hm_geom, hm_terrain,
+             hm_terrain,
              control_ts, controls,
              traj_ts, Xs, Xds, Rs, Omegas) = batch
 
-            height_geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
-            height_terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
+            terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
 
             if train:
                 self.optimizer.zero_grad()
@@ -219,34 +193,23 @@ class Trainer:
             # terrain encoder forward pass
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             out = self.terrain_encoder(*inputs)
-            (height_pred_geom, height_pred_diff,
-             height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
-                                                    out['terrain'], out['friction'])
-
-            # geometrical height map loss
-            loss_geom = self.geom_hm_loss(height_pred_geom, height_geom, weights_geom) if self.geom_hm_weight > 0 else torch.tensor(0.0, device=self.device)
+            terrain_pred, friction_pred = out['terrain'], out['friction']
             # rigid / terrain height map loss
-            loss_terrain = self.terrain_hm_loss(height_pred_terrain, height_terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0.0, device=self.device)
-
-            # height difference loss
-            loss_hdiff = height_pred_diff.std() if self.hdiff_weight > 0 else torch.tensor(0.0, device=self.device)
+            loss_terrain = self.terrain_hm_loss(terrain_pred, terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0.0, device=self.device)
 
             # physics loss: difference between predicted and ground truth states
-            loss_phys = self.physics_loss(heightmap=height_pred_terrain.squeeze(1), friction=friction_pred.squeeze(1),
+            loss_phys = self.physics_loss(heightmap=terrain_pred.squeeze(1), friction=friction_pred.squeeze(1),
                                           control_ts=control_ts, controls=controls,
                                           traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
 
             # check if loss is nan
-            if torch.isnan(loss_geom) or torch.isnan(loss_terrain) or torch.isnan(loss_hdiff) or torch.isnan(loss_phys):
+            if torch.isnan(loss_terrain) or torch.isnan(loss_phys):
                 print('NaN loss detected, skipping the batch...')
-                print('Losses:', loss_geom, loss_terrain, loss_hdiff, loss_phys)
+                print('Losses:', loss_terrain, loss_phys)
                 continue
 
             # total loss
-            loss = (self.geom_hm_weight * loss_geom +
-                    self.terrain_hm_weight * loss_terrain +
-                    self.hdiff_weight * loss_hdiff +
-                    self.phys_weight * loss_phys)
+            loss = self.terrain_hm_weight * loss_terrain + self.phys_weight * loss_phys
 
             if train:
                 loss.backward()
@@ -256,9 +219,7 @@ class Trainer:
             epoch_loss += loss.item()
 
             counter += 1
-            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_terrain", loss_terrain, counter)
-            self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_hdiff", loss_hdiff, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_phys", loss_phys, counter)
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
@@ -301,7 +262,7 @@ class Trainer:
                     self.writer.add_figure('val/prediction', fig, e)
 
     def vis_pred(self, loader):
-        fig = plt.figure(figsize=(20, 12))
+        fig = plt.figure(figsize=(16, 8))
         ax1 = fig.add_subplot(341)
         ax2 = fig.add_subplot(342)
         ax3 = fig.add_subplot(343)
@@ -310,11 +271,8 @@ class Trainer:
         ax6 = fig.add_subplot(346)
         ax7 = fig.add_subplot(347)
         ax8 = fig.add_subplot(348)
-        ax9 = fig.add_subplot(349)
-        ax10 = fig.add_subplot(3, 4, 10)
-        ax11 = fig.add_subplot(3, 4, 11)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]
         for ax in axes:
             ax.clear()
 
@@ -324,32 +282,27 @@ class Trainer:
             sample = loader.dataset[np.random.choice(len(loader.dataset))]
             batch = [torch.as_tensor(b[None], device=self.device) for b in sample]
             (imgs, rots, trans, intrins, post_rots, post_trans,
-             hm_geom, hm_terrain,
+             hm_terrain,
              ts_controls, controls,
              ts_traj, Xs, Xds, Rs, Omegas) = batch
 
             # predict height maps
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             out = self.terrain_encoder(*inputs)
-            (height_pred_geom, height_pred_diff,
-             height_pred_terrain, friction_pred) = (out['geom'], out['diff'],
-                                                    out['terrain'], out['friction'])
+            terrain_pred, friction_pred = out['terrain'], out['friction']
 
             # predict states
-            states_pred, _ = self.dphysics(z_grid=height_pred_terrain.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
 
             batch_i = 0
-            height_pred_geom = height_pred_geom[batch_i, 0].cpu()
-            height_pred_terrain = height_pred_terrain[batch_i, 0].cpu()
-            height_pred_diff = height_pred_diff[batch_i, 0].cpu()
-            height_geom = hm_geom[batch_i, 0].cpu()
-            height_terrain = hm_terrain[batch_i, 0].cpu()
+            terrain_pred = terrain_pred[batch_i, 0].cpu()
+            terrain = hm_terrain[batch_i, 0].cpu()
             friction_pred = friction_pred[batch_i, 0].cpu()
             xyz_pred = states_pred[0][batch_i].cpu().numpy()
             xyz = Xs[batch_i].cpu().numpy()
 
             # get height map points
-            z_grid = height_pred_terrain
+            z_grid = terrain_pred
             x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
             y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
             x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
@@ -372,34 +325,25 @@ class Trainer:
                            cmap='jet', vmin=-1.0, vmax=1.0)
                 ax.axis('off')
 
-            ax5.set_title('Prediction: Geom')
-            ax5.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax5.set_title('Prediction: Terrain')
+            ax5.imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax6.set_title('Label: Geom')
-            ax6.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax6.set_title('Label: Terrain')
+            ax6.imshow(terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
 
-            ax7.set_title('Prediction: Terrain')
-            ax7.imshow(height_pred_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+            ax7.set_title('Friction')
+            ax7.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
 
-            ax8.set_title('Label: Terrain')
-            ax8.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-            ax9.set_title('Prediction: HM Diff')
-            ax9.imshow(height_pred_diff.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-
-            ax10.set_title('Friction')
-            ax10.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-
-            ax11.set_title('Trajectories')
-            ax11.plot(xyz[:, 0], xyz[:, 1], 'kx', label='GT')
-            ax11.plot(xyz_pred[:, 0], xyz_pred[:, 1], 'r.', label='Pred')
-            ax11.set_xlabel('X [m]')
-            ax11.set_ylabel('Y [m]')
-            ax11.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-            ax11.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-            ax11.grid()
-            ax11.axis('equal')
-            ax11.legend()
+            ax8.set_title('Trajectories')
+            ax8.plot(xyz[:, 0], xyz[:, 1], 'kx', label='GT')
+            ax8.plot(xyz_pred[:, 0], xyz_pred[:, 1], 'r.', label='Pred')
+            ax8.set_xlabel('X [m]')
+            ax8.set_ylabel('Y [m]')
+            ax8.grid()
+            ax8.legend()
+            # ax8.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+            # ax8.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+            ax8.axis('equal')
 
             return fig
 
@@ -421,9 +365,7 @@ def main():
                       bsz=args.bsz, nepochs=args.nepochs,
                       lr=args.lr, weight_decay=args.weight_decay,
                       pretrained_model_path=args.pretrained_model_path,
-                      geom_hm_weight=args.geom_hm_weight,
                       terrain_hm_weight=args.terrain_hm_weight,
-                      hdiff_weight=args.hdiff_weight,
                       phys_weight=args.phys_weight,
                       debug=args.debug, vis=args.vis,
                       only_front_cam=args.only_front_cam)

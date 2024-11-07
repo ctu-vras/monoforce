@@ -193,9 +193,7 @@ class MonoForce:
             inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
             inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
             out = self.terrain_encoder(*inputs)
-            height_geom_pred, height_terrain_pred, height_diff_pred, friction_pred = (out['geom'], out['terrain'],
-                                                                                      out['diff'], out['friction'])
-            # height_terrain_pred = self.model(*inputs)
+            terrain_pred, friction_pred = out['terrain'], out['friction']
             rospy.logdebug('Friction values range, min: %.3f, max: %.3f' % (friction_pred.min(), friction_pred.max()))
 
         rate = rospy.Rate(self.rate)
@@ -212,9 +210,7 @@ class MonoForce:
                 self.publish_cloud(points, stamp)
 
                 # grid map
-                self.publish_gridmap(height_geom_pred, stamp, topic='grid_map_geom_pred')
-                self.publish_gridmap(height_diff_pred, stamp, topic='grid_map_diff_pred')
-                self.publish_gridmap(height_terrain_pred, stamp, topic='grid_map_terrain_pred',
+                self.publish_gridmap(terrain_pred, stamp, topic='grid_map_terrain_pred',
                                      mask=friction_pred, mask_layer_name='friction')
 
                 # images
@@ -231,7 +227,7 @@ class MonoForce:
                                                       w_range=w_range,
                                                       time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
 
-                states, forces = self.predict_states(z_grid=height_terrain_pred.squeeze(1), controls=controls)
+                states, forces = self.predict_states(z_grid=terrain_pred.squeeze(1), controls=controls)
                 poses = self.poses_from_states(states)
                 poses[:, 2, 3] += 0.132  # add robot clearance
                 rospy.logdebug('Predicted poses shape: %s' % str(poses.shape))

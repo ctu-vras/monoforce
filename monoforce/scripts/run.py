@@ -22,8 +22,7 @@ def arg_parser():
     parser = argparse.ArgumentParser(description='Run MonoForce')
     parser.add_argument('--lss_cfg_path', type=str,
                         default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
-    parser.add_argument('--model_path', type=str,
-                        default=os.path.join(base_path, 'config/weights/lss/lss.pt'), help='Path to the LSS model')
+    parser.add_argument('--model_path', type=str, default=None, help='Path to the LSS model')
     parser.add_argument('--img-paths', type=str, required=True, nargs='+', help='Paths to the input RGB images')
     parser.add_argument('--calibration-path', type=str, required=True, help='Path to the calibration files')
     parser.add_argument('--cameras', type=str, nargs='+', default=None, help='Camera names')

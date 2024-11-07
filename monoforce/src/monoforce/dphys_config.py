@@ -10,7 +10,7 @@ class DPhysConfig:
         # robot parameters
         self.robot = robot
         self.vel_max = 1.0  # m/s
-        self.omega_max = 2.0  # rad/s
+        self.omega_max = 1.0  # rad/s
         if 'tradr' in robot:
             self.robot_mass = 40.  # kg
             self.joint_positions = {

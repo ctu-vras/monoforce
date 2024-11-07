@@ -8,12 +8,9 @@ from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-mpl.use('Qt5Agg')
-# mpl.use('TkAgg')
 
 # simulation parameters
-robot = 'marv'
+robot = 'tradr'
 dphys_cfg = DPhysConfig(robot=robot)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -29,13 +26,13 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, -1.0]] * int(T / dt)),  # v=1.0 m/s, w=0.0 rad/s for each time step
+        torch.tensor([[-0.1, 1.0]] * int(T / dt)),  # v=1.0 m/s, w=0.0 rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
 
     # initial state
-    x = torch.tensor([[0.0, 0.0, 0.2]], device=device).repeat(B, 1)
+    x = torch.tensor([[0.0, 0.0, 0.0]], device=device).repeat(B, 1)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
@@ -99,61 +96,62 @@ def motion():
 
 def motion_dataset():
     from monoforce.datasets import ROUGH, rough_seq_paths
-    from monoforce.vis import set_axes_equal
-
-    class Data(ROUGH):
-        def __init__(self, path, dphys_cfg=DPhysConfig()):
-            super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
-
-        def get_sample(self, i):
-            _, controls = self.get_controls(i)
-            _, states = self.get_states_traj(i)
-            heightmap = self.get_geom_height_map(i)[0]
-            return controls, states, heightmap
+    from monoforce.utils import explore_data
 
     # load the dataset
     path = rough_seq_paths[0]
     dphys_cfg = DPhysConfig(robot=robot)
-    ds = Data(path, dphys_cfg=dphys_cfg)
+    ds = ROUGH(path, dphys_cfg=dphys_cfg)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
-    # get a sample from the dataset
-    sample = ds[np.random.randint(len(ds))]
-    controls, states, z_grid = sample
-
-    # differentiable physics simulation
-    z_grid = torch.as_tensor(z_grid)[None].to(device)
-    controls = torch.as_tensor(controls)[None].to(device)
-    states_pred, _ = dphysics(z_grid=z_grid, controls=controls)
-    Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
-
     # helper quantities for visualization
-    Xs = torch.as_tensor(states[0])[None]
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
 
-    # visualize predicted and ground truth trajectories and the heightmap surface
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(x_grid.numpy(), y_grid.numpy(), z_grid[0].cpu().numpy(), alpha=0.6, cmap='terrain')
-    ax.plot(Xs[0, :, 0].cpu().numpy(),
-            Xs[0, :, 1].cpu().numpy(),
-            Xs[0, :, 2].cpu().numpy(),
-            c='b', label='GT trajectory')
-    ax.plot(Xs_pred[0, :, 0].cpu().numpy(),
-            Xs_pred[0, :, 1].cpu().numpy(),
-            Xs_pred[0, :, 2].cpu().numpy(),
-            c='r', label='Predicted trajectory')
-    ax.set_title('Ground truth and predicted trajectories')
-    ax.legend()
-    ax.set_xlabel('X [m]')
-    ax.set_ylabel('Y [m]')
-    ax.set_zlabel('Z [m]')
-    set_axes_equal(ax)
-    plt.show()
+    # sample_i = 395
+    sample_i = np.random.choice(len(ds))
+    print(f'Sample index: {sample_i}')
+    # get a sample from the dataset
+    sample = ds[sample_i]
+    (imgs, rots, trans, intrins, post_rots, post_trans,
+     terrain,
+     control_ts, controls,
+     traj_ts, Xs, Xds, Rs, Omegas) = sample
+    states = (Xs, Xds, Rs, Omegas)
+    z_grid = terrain[0]
+
+    # explore_data(ds, sample_range=[sample_i])
+    # # plot controls
+    # plt.figure()
+    # plt.plot(controls[:, 0], '.', label='v [m/s]')
+    # plt.plot(controls[:, 1], '.', label='w [rad/s]')
+    # plt.legend()
+    # plt.title('Controls')
+    # plt.show()
+
+    # differentiable physics simulation
+    states_pred, forces_pred = dphysics(z_grid=torch.as_tensor(z_grid)[None].to(device),
+                                        controls=torch.as_tensor(controls)[None].to(device))
+    Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
+
+    # get the states and forces for and move them to the cpu
+    states_pred_np = [s.squeeze(0).cpu().numpy() for s in states_pred]
+    forces_pred_np = [f.squeeze(0).cpu().numpy() for f in forces_pred]
+
+    # set up the visualization
+    vis_cfg = setup_visualization(states=states_pred_np,
+                                  states_gt=states,
+                                  forces=forces_pred_np,
+                                  x_grid=x_grid.cpu().numpy(), y_grid=y_grid.cpu().numpy(), z_grid=z_grid.cpu().numpy())
+
+    # visualize animated trajectory
+    animate_trajectory(states=states_pred_np,
+                       forces=forces_pred_np,
+                       z_grid=z_grid.cpu().numpy(),
+                       vis_cfg=vis_cfg, step=10)
 
 def shoot_multiple():
     from time import time
@@ -173,7 +171,7 @@ def shoot_multiple():
     x_points = torch.as_tensor(dphys_cfg.robot_points, device=device)
 
     # initial state
-    x = torch.tensor([[0.0, 0.0, 0.2]], device=device).repeat(num_trajs, 1)
+    x = torch.tensor([[0.0, 0.0, 0.0]], device=device).repeat(num_trajs, 1)
     xd = torch.zeros_like(x)
     R = torch.eye(3, device=device).repeat(x.shape[0], 1, 1)
     # R = torch.tensor(Rotation.from_euler('z', np.pi/6).as_matrix(), dtype=torch.float32, device=device).repeat(num_trajs, 1, 1)

@@ -197,16 +197,15 @@ def explore_data(ds, sample_range='random', save=False):
     for sample_i in sample_range:
         sample = ds[sample_i]
         (imgs, rots, trans, intrins, post_rots, post_trans,
-         hm_lidar, hm_terrain,
+         hm_terrain,
          control_ts, controls,
          traj_ts, Xs, Xds, Rs, Omegas) = sample
         pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
-        height_geom, mask_geom = hm_lidar[0], hm_lidar[1]
         height_terrain, mask_rigid = hm_terrain[0], hm_terrain[1]
 
         frustum_pts = model.get_geometry(rots[None], trans[None], intrins[None], post_rots[None], post_trans[None]).squeeze(0)
 
-        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
+        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 2)
         img_h, img_w = imgs.shape[-2], imgs.shape[-1]
         ratio = img_h / img_w
         fig = plt.figure(figsize=(n_cols * 4, n_rows * 4 * ratio))
@@ -243,12 +242,6 @@ def explore_data(ds, sample_range='random', save=False):
         plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
 
         # plot height maps
-        ax = plt.subplot(gs[:, -3:-2])
-        plt.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-        # plt.axis('off')
-        plt.title('Geom HM')
-        plt.colorbar()
-
         ax = plt.subplot(gs[:, -2:-1])
         plt.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
         # plt.axis('off')

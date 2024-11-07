@@ -4,7 +4,6 @@ import sys
 sys.path.append('../src/')
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 import os
 import numpy as np
 import torch
@@ -25,8 +24,7 @@ def arg_parser():
     parser.add_argument('--robot', type=str, default='tradr2', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str,
                         default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
-    parser.add_argument('--model_path', type=str,
-                        default=os.path.join(base_path, 'config/weights/lss/lss.pt'), help='Path to the LSS model')
+    parser.add_argument('--model_path', type=str, default=None, help='Path to the LSS model')
     parser.add_argument('--seq_i', type=int, default=0, help='Data sequence index')
     return parser.parse_args()
 
@@ -51,7 +49,7 @@ class Predictor:
         self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
 
         # load dataset
-        self.path = rough_seq_paths[robot][seq_i]
+        self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
 
     def poses_from_states(self, states):
@@ -83,7 +81,7 @@ class Predictor:
                 # get a sample from the dataset
                 sample = self.ds[i]
                 (imgs, rots, trans, intrins, post_rots, post_trans,
-                 hm_geom, hm_terrain,
+                 hm_terrain,
                  control_ts, controls,
                  traj_ts, Xs, Xds, Rs, Omegas) = sample
 
@@ -91,25 +89,15 @@ class Predictor:
                 inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
                 inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
                 out = self.terrain_encoder(*inputs)
-                (height_pred_geom, height_pred_terrain,
-                 height_pred_diff, friction_pred) = (out['geom'], out['terrain'],
-                                                     out['diff'], out['friction'])
-                # print(height_pred_terrain.shape, friction_pred.shape)
-
-                # # dynamics prediction: robot's trajectory and terrain interaction forces
-                # controls = torch.as_tensor(controls[None], device=self.device)
-                # states, forces = self.dphysics(height_pred_terrain.squeeze(1), controls=controls)
-                # print(states[0].shape, forces[0].shape)
-                # poses = self.poses_from_states(states)
+                terrain_pred, friction_pred = out['terrain'], out['friction']
 
                 # visualizations
                 batch_i = 0
-                height_pred_geom = height_pred_geom[batch_i, 0].cpu()
-                height_pred_terrain = height_pred_terrain[batch_i, 0].cpu()
+                terrain_pred = terrain_pred[batch_i, 0].cpu()
                 friction_pred = friction_pred[batch_i, 0].cpu()
 
                 # get height map points
-                z_grid = height_pred_terrain
+                z_grid = terrain_pred
                 hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
                 hm_points = hm_points.view(-1, 3).T
 
@@ -134,7 +122,7 @@ class Predictor:
                 # plot height maps
                 plt.subplot(gs[:, -2:-1])
                 plt.title('Terrain Height')
-                plt.imshow(height_pred_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+                plt.imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
                 plt.axis('off')
                 plt.colorbar()
 

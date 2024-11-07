@@ -133,7 +133,7 @@ def learn_terrain_properties():
 
     np.random.seed(0)
     torch.manual_seed(0)
-    vis = True
+    vis = False
     batch_size = 4
     device = torch.device('cuda')
 
@@ -149,7 +149,7 @@ def learn_terrain_properties():
             return control_ts, controls, ts, Xs, Xds, Rs, Omegas, heightmap
 
     dphys_cfg = DPhysConfig()
-    path = rough_seq_paths['tradr'][0]
+    path = rough_seq_paths[0]
 
     # load the dataset
     ds = Data(path, dphys_cfg=dphys_cfg)
