@@ -26,7 +26,7 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[-0.1, 1.0]] * int(T / dt)),  # v=1.0 m/s, w=0.0 rad/s for each time step
+        torch.tensor([[1.0, 0.5]] * int(T / dt)),  # v=1.0 m/s, w=0.0 rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
@@ -231,7 +231,8 @@ def shoot_multiple():
         ax.plot_surface(x_grid[0].cpu().numpy(), y_grid[0].cpu().numpy(), z_grid[0].cpu().numpy(), alpha=0.6, cmap='terrain')
         set_axes_equal(ax)
         for i in range(num_trajs):
-            ax.plot(Xs[i, :, 0].cpu(), Xs[i, :, 1].cpu(), Xs[i, :, 2].cpu(), c='b')
+            X = Xs[i].cpu().numpy()
+            ax.plot(X[:, 0], X[:, 1], X[:, 2], label=f'Traj {i}', c='g')
         ax.set_title(f'Simulation of {num_trajs} trajs (T={T} [sec] long) took {(t1-t0):.3f} [sec] on device: {device}')
         ax.set_xlabel('X [m]')
         ax.set_ylabel('Y [m]')

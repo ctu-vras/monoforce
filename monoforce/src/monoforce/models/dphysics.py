@@ -90,12 +90,11 @@ def vw_to_track_vels(v, w, robot_size, n_tracks):
         # left, right
         track_vels = torch.stack([v_L, v_R], dim=-1)
     elif n_tracks == 4:
-        # TODO: double check it
         # front left, front right, rear left, rear right
-        v_FL = v - w * (Lx + Ly) / 2.0
-        v_FR = v + w * (Lx + Ly) / 2.0
-        v_RL = v - w * (Lx + Ly) / 2.0
-        v_RR = v + w * (Lx + Ly) / 2.0
+        v_FL = v - w * Ly / 2.0
+        v_FR = v + w * Ly / 2.0
+        v_RL = v - w * Ly / 2.0
+        v_RR = v + w * Ly / 2.0
         track_vels = torch.stack([v_FL, v_FR, v_RL, v_RR], dim=-1)
     else:
         raise ValueError('n_tracks must be 2 or 4')
