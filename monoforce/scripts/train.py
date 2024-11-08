@@ -125,16 +125,15 @@ class Trainer:
             weights = torch.ones_like(height_gt)
         assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
 
-        # mask of valid labels
+        # remove nan values
         mask_valid = ~torch.isnan(height_gt)
-        # apply mask
         height_gt = height_gt[mask_valid]
         height_pred = height_pred[mask_valid]
         weights = weights[mask_valid]
 
         # compute weighted loss
-        loss = torch.nn.functional.mse_loss(height_pred, height_gt, reduction='none')
-        loss = torch.mean(loss * weights)
+        loss = torch.nn.functional.mse_loss(height_pred * weights, height_gt * weights, reduction='mean')
+        assert not torch.isnan(loss), 'Terrain Loss is nan'
 
         return loss
 
@@ -158,6 +157,7 @@ class Trainer:
         X_pred_gt_ts = X_pred_gt_ts[mask_valid]
         X = X[mask_valid]
         loss = torch.nn.functional.mse_loss(X_pred_gt_ts, X)
+        assert not torch.isnan(loss), 'Physics Loss is nan'
 
         return loss
 
@@ -171,7 +171,7 @@ class Trainer:
             self.terrain_encoder.eval()
 
         max_grad_norm = 5.0
-        epoch_loss = 0.0
+        epoch_losses = {'terrain': 0.0, 'phys': 0.0, 'total': 0.0}
         for batch in tqdm(loader, total=len(loader)):
             batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
             (imgs, rots, trans, intrins, post_rots, post_trans,
@@ -195,7 +195,6 @@ class Trainer:
             loss_phys = self.physics_loss(heightmap=terrain_pred.squeeze(1), friction=friction_pred.squeeze(1),
                                           control_ts=control_ts, controls=controls,
                                           traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
-
             # total loss
             loss = self.terrain_hm_weight * loss_terrain + self.phys_weight * loss_phys
 
@@ -204,7 +203,9 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.terrain_encoder.parameters(), max_norm=max_grad_norm)
                 self.optimizer.step()
 
-            epoch_loss += loss.item()
+            epoch_losses['terrain'] += loss_terrain.item()
+            epoch_losses['phys'] += loss_phys.item()
+            epoch_losses['total'] += loss.item()
 
             counter += 1
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_terrain", loss_terrain, counter)
@@ -212,20 +213,23 @@ class Trainer:
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss", loss, counter)
 
         if len(loader) > 0:
-            epoch_loss /= len(loader)
+            epoch_losses['terrain'] /= len(loader)
+            epoch_losses['phys'] /= len(loader)
+            epoch_losses['total'] /= len(loader)
 
-        return epoch_loss, counter
+        return epoch_losses, counter
 
     def train(self):
         for e in range(self.nepochs):
             # training epoch
-            train_loss, self.train_counter = self.epoch(train=True)
-            print('Epoch:', e, 'Train loss:', train_loss)
-            self.writer.add_scalar('train/epoch_loss', train_loss, e)
+            train_losses, self.train_counter = self.epoch(train=True)
+            for k, v in train_losses.items():
+                print('Epoch:', e, f'Train loss {k}:', v)
+                self.writer.add_scalar(f'train/epoch_loss_{k}', v, e)
 
-            if train_loss < self.min_train_loss:
+            if train_losses['total'] < self.min_train_loss:
                 with torch.no_grad():
-                    self.min_train_loss = train_loss
+                    self.min_train_loss = train_losses['total']
                     print('Saving train model...')
                     self.terrain_encoder.eval()
                     torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'train_lss.pt'))
@@ -236,11 +240,12 @@ class Trainer:
 
             # validation epoch
             with torch.no_grad():
-                val_loss, self.val_counter = self.epoch(train=False)
-                print('Epoch:', e, 'Validation loss:', val_loss)
-                self.writer.add_scalar('val/epoch_loss', val_loss, e)
-                if val_loss < self.min_loss:
-                    self.min_loss = val_loss
+                val_losses, self.train_counter = self.epoch(train=False)
+                for k, v in val_losses.items():
+                    print('Epoch:', e, f'Val loss {k}:', v)
+                    self.writer.add_scalar(f'val/epoch_loss_{k}', v, e)
+                if val_losses['total'] < self.min_loss:
+                    self.min_loss = val_losses['total']
                     print('Saving model...')
                     self.terrain_encoder.eval()
                     torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'lss.pt'))

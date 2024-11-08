@@ -447,7 +447,9 @@ class DPhysics(torch.nn.Module):
 
         # state: x, xd, R, omega, x_points
         x, xd, R, omega, x_points = state
-        xd_points = torch.zeros_like(x_points)
+        # xd_points = torch.zeros_like(x_points)
+        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
+        xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
 
         # dynamics of the rigid body
         Xs, Xds, Rs, Omegas, Omega_ds, X_points = [], [], [], [], [], []

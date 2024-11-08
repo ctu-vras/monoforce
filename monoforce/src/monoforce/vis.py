@@ -61,7 +61,7 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid, states_gt=None):
         visu_cfg.append(visu_traj_gt)
 
     # set view angle: top down from 10 units above
-    mlab.view(azimuth=0, elevation=0, distance=15)
+    # mlab.view(azimuth=0, elevation=0, distance=15)
 
     return visu_cfg
 
