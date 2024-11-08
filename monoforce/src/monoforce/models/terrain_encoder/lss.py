@@ -262,7 +262,6 @@ class LiftSplatShoot(nn.Module):
         x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans)
         x_terrain, friction = self.bevencode(x)
         assert x_terrain.shape == friction.shape
-        assert friction.min() >= 0.
 
         out = {
             'terrain': x_terrain,

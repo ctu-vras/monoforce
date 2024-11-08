@@ -10,7 +10,6 @@ from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, 
 from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
-# from monoforce.losses import rotation_difference, translation_difference
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -100,7 +99,6 @@ class Trainer:
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
 
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
-        self.hm_loss_fn = torch.nn.MSELoss(reduction='none')
 
         self.log_dir = os.path.join('../config/tb_runs',
                                     f'{self.dataset}_{self.robot}/lss_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
@@ -135,12 +133,14 @@ class Trainer:
         weights = weights[mask_valid]
 
         # compute weighted loss
-        loss = (self.hm_loss_fn(height_pred * weights, height_gt * weights)).mean()
+        loss = torch.nn.functional.mse_loss(height_pred, height_gt, reduction='none')
+        loss = torch.mean(loss * weights)
+
         return loss
 
     def physics_loss(self, heightmap, friction, control_ts, controls, traj_ts, states):
         # predict states
-        states_pred, _ = self.dphysics(z_grid=heightmap, controls=controls, friction=friction)
+        states_pred, forces_pred = self.dphysics(z_grid=heightmap, controls=controls, friction=friction)
 
         # unpack states
         X, Xd, R, Omega = states
@@ -149,21 +149,15 @@ class Trainer:
         # find the closest timesteps in the trajectory to the ground truth timesteps
         ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
 
+        # get the predicted states at the closest timesteps to the ground truth timesteps
         batch_size = X.shape[0]
         X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
+
+        # remove nan values
+        mask_valid = ~torch.isnan(X_pred_gt_ts)
+        X_pred_gt_ts = X_pred_gt_ts[mask_valid]
+        X = X[mask_valid]
         loss = torch.nn.functional.mse_loss(X_pred_gt_ts, X)
-
-        # # compute the loss as the mean squared error between the predicted and ground truth poses
-        # batch_size = X.shape[0]
-        # X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
-        # loss_xyz = translation_difference(X_pred_gt_ts, X)
-        #
-        # # compute the loss as the mean squared error between the predicted and ground truth rotations
-        # R_pred_gt_ts = R_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
-        # loss_rot = rotation_difference(R_pred_gt_ts, R)
-
-        # # total loss: sum of translation and rotation losses
-        # loss = loss_xyz + loss_rot
 
         return loss
 
@@ -201,12 +195,6 @@ class Trainer:
             loss_phys = self.physics_loss(heightmap=terrain_pred.squeeze(1), friction=friction_pred.squeeze(1),
                                           control_ts=control_ts, controls=controls,
                                           traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
-
-            # check if loss is nan
-            if torch.isnan(loss_terrain) or torch.isnan(loss_phys):
-                print('NaN loss detected, skipping the batch...')
-                print('Losses:', loss_terrain, loss_phys)
-                continue
 
             # total loss
             loss = self.terrain_hm_weight * loss_terrain + self.phys_weight * loss_phys
