@@ -28,8 +28,8 @@ class MonoForce(TerrainEncoder):
         self.allow_backward = rospy.get_param('~allow_backward', True)
         self.dphys_cfg = DPhysConfig(robot=self.robot)
         self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
-        self.track_vels = self.init_controls()
-        rospy.loginfo('Control inputs are set up. Shape: %s' % str(self.track_vels.shape))
+        self.controls = self.init_controls()
+        rospy.loginfo('Control inputs are set up. Shape: %s' % str(self.controls.shape))
         self.path_cost_min = np.inf
         self.path_cost_max = -np.inf
         self.pose_step = int(0.5 / self.dphys_cfg.dt)  # publish poses with 0.2 [sec] step
@@ -59,10 +59,9 @@ class MonoForce(TerrainEncoder):
         #     assert grid_map.shape[0] == grid_map.shape[1]
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
         assert grid_maps.shape[0] == self.dphys_cfg.n_sim_trajs
-        controls = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
-        n_tracks = len(self.dphys_cfg.driving_parts)
+        controls = torch.as_tensor(self.controls, dtype=torch.float32, device=self.device)
         n_sim_steps = int(self.dphys_cfg.traj_sim_time / self.dphys_cfg.dt)
-        assert controls.shape == (self.dphys_cfg.n_sim_trajs, n_sim_steps, n_tracks)
+        assert controls.shape == (self.dphys_cfg.n_sim_trajs, n_sim_steps, 2)
 
         # initial state
         x = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)

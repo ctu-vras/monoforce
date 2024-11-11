@@ -23,7 +23,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 class MonoForce:
     def __init__(self,
                  name='monoforce',
-                 robot='husky',
+                 robot='marv',
                  lss_config_path=None,
                  lss_weights_path=None,
                  map_frame='map',
@@ -44,8 +44,6 @@ class MonoForce:
 
         # load LSS config
         self.lss_config_path = lss_config_path
-        if robot in ['tradr', 'husky_oru']:
-            self.lss_config_path = self.lss_config_path.replace('lss_cfg.yaml', f'lss_cfg_{robot}.yaml')
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         rospy.loginfo('Loading LSS config from %s' % self.lss_config_path)
         self.lss_config = read_yaml(self.lss_config_path)
@@ -298,7 +296,7 @@ def main():
     
     lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
     rospy.loginfo('Library path: %s' % lib_path)
-    robot = rospy.get_param('~robot', 'husky')
+    robot = rospy.get_param('~robot', 'marv')
     lss_config_path = rospy.get_param('~lss_config_path', os.path.join(lib_path, f'config/lss_cfg.yaml'))
     lss_weights_path = rospy.get_param('~lss_weights_path', os.path.join(lib_path, f'config/weights/lss/lss.pt'))
     map_frame = rospy.get_param('~map_frame', 'map')

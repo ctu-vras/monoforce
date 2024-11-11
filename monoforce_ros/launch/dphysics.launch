@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="robot" default="husky" doc="Robot name"/>
+    <arg name="robot" default="marv" doc="Robot name"/>
     <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
     <arg name="gridmap_topic" default="grid_map/terrain" doc="Input height map topic"/>
     <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>

@@ -22,7 +22,7 @@ def arg_parser():
     base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     parser = argparse.ArgumentParser(description='Terrain encoder predictor input arguments')
-    parser.add_argument('--robot', type=str, default='tradr2', help='Robot name')
+    parser.add_argument('--robot', type=str, default='tradr', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str,
                         default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str, default=None, help='Path to the LSS model')

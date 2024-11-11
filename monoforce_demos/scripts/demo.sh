@@ -24,7 +24,7 @@ roscore &
 ROSCORE_PID=$!
 sleep 1
 
-rviz -d ../config/rviz/monoforce_husky.rviz &
+rviz -d ../config/rviz/monoforce.rviz &
 RVIZ_PID=$!
 
 MONOFORCE_DIR=$(abspath "../../")
@@ -44,7 +44,7 @@ docker run \
       -DCMAKE_BUILD_TYPE=Release; \
       catkin build; \
       source devel/setup.bash; \
-      roslaunch monoforce_demos monoforce_rough.launch rviz:=false robot:=husky"
+      roslaunch monoforce_demos monoforce_rough.launch rviz:=false robot:=marv"
 
 wait $ROSCORE_PID
 wait $RVIZ_PID

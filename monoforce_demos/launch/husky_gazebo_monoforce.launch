@@ -2,7 +2,7 @@
 <launch>
     <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
     <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
-    <arg name="robot" default="husky" doc="Robot name"/>
+    <arg name="robot" default="marv" doc="Robot name"/>
     <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
     <arg name="resize_imgs" default="false" doc="Resize images with img_proc or not"/>
 
@@ -19,21 +19,21 @@
     <include file="$(find monoforce)/launch/monoforce.launch">
         <arg name="robot" value="$(arg robot)"/>
         <arg if="$(arg resize_imgs)" name="img_topics" value="['/camera_front/resize/image/compressed',
-                                       '/camera_left/resize/image/compressed',
-                                       '/camera_rear/resize/image/compressed',
-                                       '/camera_right/resize/image/compressed',]"/>
+                                                               '/camera_left/resize/image/compressed',
+                                                               '/camera_rear/resize/image/compressed',
+                                                               '/camera_right/resize/image/compressed',]"/>
         <arg if="$(arg resize_imgs)" name="camera_info_topics" value="['/camera_front/resize/camera_info',
-                                               '/camera_left/resize/camera_info',
-                                               '/camera_rear/resize/camera_info',
-                                               '/camera_right/resize/camera_info']"/>
+                                                                       '/camera_left/resize/camera_info',
+                                                                       '/camera_rear/resize/camera_info',
+                                                                       '/camera_right/resize/camera_info']"/>
         <arg unless="$(arg resize_imgs)" name="img_topics" value="['/camera_front/image_raw/compressed',
-                                       '/camera_left/image_raw/compressed',
-                                       '/camera_rear/image_raw/compressed',
-                                       '/camera_right/image_raw/compressed',]"/>
+                                                                   '/camera_left/image_raw/compressed',
+                                                                   '/camera_rear/image_raw/compressed',
+                                                                   '/camera_right/image_raw/compressed',]"/>
         <arg unless="$(arg resize_imgs)" name="camera_info_topics" value="['/camera_front/camera_info',
-                                               '/camera_left/camera_info',
-                                               '/camera_rear/camera_info',
-                                               '/camera_right/camera_info']"/>
+                                                                           '/camera_left/camera_info',
+                                                                           '/camera_rear/camera_info',
+                                                                           '/camera_right/camera_info']"/>
     </include>
 
     <!-- SLAM -->
@@ -51,12 +51,14 @@
                                            [0, -5, 0, 0, 0, 0, 1],
                                            [0, 0, 0, 0, 0, 0, 1],
                                            ]"/>
+<!--        <arg name="map_frame" value="odom"/> -->
     </include>
 
     <!-- Path follower -->
     <include if="1" file="$(find monoforce_navigation)/launch/path_follower.launch">
         <arg name="path_to_follow" value="selected_path"/>
         <arg name="max_age" value="1.0"/>
+<!--         <arg name="map_frame" value="odom"/> -->
     </include>
 
     <!-- RViz -->

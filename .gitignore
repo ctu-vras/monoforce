@@ -62,6 +62,7 @@ db.sqlite3
 db.sqlite3-journal
 
 # Flask stuff:
+# Flask stuff:
 instance/
 .webassets-cache
 
@@ -164,5 +165,3 @@ gen*/
 *.pth
 *.pt
 *.bak
-
-

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="robot" default="tradr2" doc="Robot type: husky, tradr or marv"/>
+    <arg name="robot" default="marv" doc="Robot type: tradr or marv"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
     <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
@@ -21,7 +21,7 @@
             robot_frame: 'base_link'
             max_msgs_delay: 0.2
             max_age: 1.2
-            robot: tradr2
+            robot: $(arg robot)
         </rosparam>
         <remap from="height_map" to="height_map"/>
     </node>
