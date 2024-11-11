@@ -23,9 +23,9 @@ class LiDAREncoder(nn.Module):
         return self.encoder(x)
 
 
-class LiDARToBEV(nn.Module):
+class LiDARBEV(nn.Module):
     def __init__(self, voxel_size, grid_size, out_channels=64):
-        super(LiDARToBEV, self).__init__()
+        super(LiDARBEV, self).__init__()
         self.voxel_size = voxel_size
         self.grid_size = grid_size
         self.encoder = LiDAREncoder(in_channels=1, out_channels=out_channels)
@@ -149,32 +149,32 @@ class TerrainHeads(nn.Module):
         super(TerrainHeads, self).__init__()
 
         self.head_geom = nn.Sequential(
-            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0)
+            nn.Conv2d(64, outC, kernel_size=1, padding=0)
         )
         self.head_diff = nn.Sequential(
-            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0),
+            nn.Conv2d(64, outC, kernel_size=1, padding=0),
             nn.ReLU(inplace=True),
         )
         self.head_frict = nn.Sequential(
-            nn.Conv2d(inC, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, inC // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(inC // 2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(inC // 2, outC, kernel_size=1, padding=0),
+            nn.Conv2d(64, outC, kernel_size=1, padding=0),
             nn.ReLU(inplace=True),
         )
 
@@ -197,7 +197,7 @@ class BEVFusion(LiftSplatShoot):
         super().__init__(grid_conf, data_aug_conf)
 
         voxel_size, grid_size = self.get_vox_dims()
-        self.lidar_bev = LiDARToBEV(voxel_size=voxel_size, grid_size=grid_size)
+        self.lidar_bev = LiDARBEV(voxel_size=voxel_size, grid_size=grid_size)
         self.bevencode = BevEncode(inC=128, outC=128)
         self.terrain_heads = TerrainHeads(inC=128, outC=outC)
 
