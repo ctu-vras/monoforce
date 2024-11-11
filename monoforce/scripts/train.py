@@ -240,7 +240,7 @@ class Trainer:
 
             # validation epoch
             with torch.no_grad():
-                val_losses, self.train_counter = self.epoch(train=False)
+                val_losses, self.val_counter = self.epoch(train=False)
                 for k, v in val_losses.items():
                     print('Epoch:', e, f'Val loss {k}:', v)
                     self.writer.add_scalar(f'val/epoch_loss_{k}', v, e)

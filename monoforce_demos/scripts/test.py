@@ -15,6 +15,7 @@ from monoforce.models.terrain_encoder.lss import load_model
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml
+import matplotlib as mpl
 
 
 def arg_parser():
