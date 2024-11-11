@@ -137,16 +137,13 @@ class Trainer:
 
         return loss
 
-    def physics_loss(self, heightmap, friction, control_ts, controls, traj_ts, states):
-        # predict states
-        states_pred, forces_pred = self.dphysics(z_grid=heightmap, controls=controls, friction=friction)
-
+    def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts):
         # unpack states
-        X, Xd, R, Omega = states
+        X, Xd, R, Omega = states_gt
         X_pred, Xd_pred, R_pred, Omega_pred, _ = states_pred
 
         # find the closest timesteps in the trajectory to the ground truth timesteps
-        ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+        ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
 
         # get the predicted states at the closest timesteps to the ground truth timesteps
         batch_size = X.shape[0]
@@ -192,9 +189,10 @@ class Trainer:
             loss_terrain = self.terrain_hm_loss(terrain_pred, terrain, weights_terrain) if self.terrain_hm_weight > 0 else torch.tensor(0.0, device=self.device)
 
             # physics loss: difference between predicted and ground truth states
-            loss_phys = self.physics_loss(heightmap=terrain_pred.squeeze(1), friction=friction_pred.squeeze(1),
-                                          control_ts=control_ts, controls=controls,
-                                          traj_ts=traj_ts, states=[Xs, Xds, Rs, Omegas]) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
+            states_gt = [Xs, Xds, Rs, Omegas]
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
+            loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
+                                          pred_ts=control_ts, gt_ts=traj_ts) if self.phys_weight > 0 else torch.tensor(0.0, device=self.device)
             # total loss
             loss = self.terrain_hm_weight * loss_terrain + self.phys_weight * loss_phys
 

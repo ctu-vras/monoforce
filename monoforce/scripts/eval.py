@@ -51,11 +51,11 @@ class Evaluation:
 
         # load dataset
         self.path = rough_seq_paths[seq_i]
-        self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
+        self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
         self.loader = torch.utils.data.DataLoader(self.ds, batch_size=1, shuffle=False)
 
         # create output folder
-        self.output_folder = f'./gen_{os.path.basename(self.path)}_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self.output_folder = f'./gen_{os.path.basename(self.path)}/{datetime.now().strftime("%Y%m%d_%H%M%S")}'
         os.makedirs(self.output_folder, exist_ok=True)
         # write losses to output csv
         write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
