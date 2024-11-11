@@ -23,9 +23,9 @@ class LiDAREncoder(nn.Module):
         return self.encoder(x)
 
 
-class LiDARToBEV(nn.Module):
+class LiDARBEV(nn.Module):
     def __init__(self, voxel_size, grid_size, out_channels=64):
-        super(LiDARToBEV, self).__init__()
+        super(LiDARBEV, self).__init__()
         self.voxel_size = voxel_size
         self.grid_size = grid_size
         self.encoder = LiDAREncoder(in_channels=1, out_channels=out_channels)
@@ -148,7 +148,7 @@ class TerrainHeads(nn.Module):
     def __init__(self, inC, outC):
         super(TerrainHeads, self).__init__()
 
-        self.head_geom = nn.Sequential(
+        self.head_terrain = nn.Sequential(
             nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
@@ -156,16 +156,6 @@ class TerrainHeads(nn.Module):
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, outC, kernel_size=1, padding=0)
-        )
-        self.head_diff = nn.Sequential(
-            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, outC, kernel_size=1, padding=0),
-            nn.ReLU(inplace=True),
         )
         self.head_frict = nn.Sequential(
             nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
@@ -179,13 +169,9 @@ class TerrainHeads(nn.Module):
         )
 
     def forward(self, x):
-        x_geom = self.head_geom(x)
-        x_diff = self.head_diff(x)
-        x_terrain = x_geom - x_diff
+        x_terrain = self.head_terrain(x)
         friction = self.head_frict(x)
         out = {
-            'geom': x_geom,
-            'diff': x_diff,
             'terrain': x_terrain,
             'friction': friction
         }
@@ -197,7 +183,7 @@ class BEVFusion(LiftSplatShoot):
         super().__init__(grid_conf, data_aug_conf)
 
         voxel_size, grid_size = self.get_vox_dims()
-        self.lidar_bev = LiDARToBEV(voxel_size=voxel_size, grid_size=grid_size)
+        self.lidar_bev = LiDARBEV(voxel_size=voxel_size, grid_size=grid_size)
         self.bevencode = BevEncode(inC=128, outC=128)
         self.terrain_heads = TerrainHeads(inC=128, outC=outC)
 
