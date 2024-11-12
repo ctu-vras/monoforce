@@ -11,10 +11,7 @@ class LiDAREncoder(nn.Module):
             nn.Conv3d(in_channels, 32, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm3d(32),
             nn.ReLU(),
-            nn.Conv3d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm3d(64),
-            nn.ReLU(),
-            nn.Conv3d(64, out_channels, kernel_size=3, stride=1, padding=1),
+            nn.Conv3d(32, out_channels, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm3d(out_channels),
             nn.ReLU()
         )
