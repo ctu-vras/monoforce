@@ -145,7 +145,7 @@ def learn_terrain_properties():
             control_ts, controls = self.get_controls(i)
             ts, states = self.get_states_traj(i)
             Xs, Xds, Rs, Omegas = states
-            heightmap = self.get_geom_height_map(i)[0]
+            heightmap = self.get_terrain_height_map(i)[0]
             return control_ts, controls, ts, Xs, Xds, Rs, Omegas, heightmap
 
     dphys_cfg = DPhysConfig()

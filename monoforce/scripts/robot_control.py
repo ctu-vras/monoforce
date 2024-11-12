@@ -98,7 +98,7 @@ def motion_dataset():
     from monoforce.utils import explore_data
 
     # load the dataset
-    path = rough_seq_paths[0]
+    path = rough_seq_paths[1]
     dphys_cfg = DPhysConfig(robot=robot)
     ds = ROUGH(path, dphys_cfg=dphys_cfg)
 

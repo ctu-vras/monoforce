@@ -24,10 +24,14 @@ class LiDAREncoder(nn.Module):
 
 
 class LiDARBEV(nn.Module):
-    def __init__(self, voxel_size, grid_size, out_channels=64):
+    def __init__(self, grid_conf, out_channels=64):
         super(LiDARBEV, self).__init__()
-        self.voxel_size = voxel_size
-        self.grid_size = grid_size
+        assert grid_conf['xbound'][2] == grid_conf['ybound'][2], 'Voxel size must be the same in x and y dimensions'
+        self.grid_conf = grid_conf
+        self.voxel_size = grid_conf['xbound'][2]
+        self.grid_size = (int((grid_conf['xbound'][1] - grid_conf['xbound'][0]) / self.voxel_size),
+                          int((grid_conf['ybound'][1] - grid_conf['ybound'][0]) / self.voxel_size),
+                          int((grid_conf['zbound'][1] - grid_conf['zbound'][0]) / self.voxel_size))  # (D, H, W)
         self.encoder = LiDAREncoder(in_channels=1, out_channels=out_channels)
 
     def voxelize(self, point_clouds):
@@ -43,28 +47,38 @@ class LiDARBEV(nn.Module):
         Returns:
             voxel_grid (torch.Tensor): A voxelized grid of shape (B, D, H, W).
         """
-        # Step 0: Remove nans saving dimensions
+        # Remove nans saving dimensions
         point_clouds[torch.isnan(point_clouds)] = 0
 
-        # Step 1: Find the minimum point per batch in the point cloud
-        min_bound = point_clouds.min(dim=2, keepdim=True)[0]  # Shape (B, 3, 1)
+        # Find the minimum point per batch in the point cloud
+        min_bound = torch.tensor([self.grid_conf['xbound'][0],
+                                  self.grid_conf['ybound'][0],
+                                  self.grid_conf['zbound'][0]], device=point_clouds.device).unsqueeze(0).unsqueeze(2)  # Shape (1, 3, 1)
+        assert min_bound.shape == (1, 3, 1), f"min_bound shape is {min_bound.shape} != (1, 3, 1)"
 
-        # Step 2: Subtract the minimum point and scale by voxel size
+        # Subtract the minimum point and scale by voxel size
         shifted_points = (point_clouds - min_bound) / self.voxel_size  # Normalize and scale
 
-        # Step 3: Floor the points to get voxel indices
+        # Floor the points to get voxel indices
         grid_indices = torch.floor(shifted_points).long()  # Shape (B, 3, N)
 
-        # Step 4: Create a batch of voxel grids and mark occupied voxels
+        # Create a batch of voxel grids and mark occupied voxels
         B = point_clouds.shape[0]
-        voxel_grid = torch.zeros((B, *self.grid_size), device=point_clouds.device, dtype=torch.float32)  # (B, D, H, W)
+        voxel_grid = torch.zeros((B, *self.grid_size), device=point_clouds.device, dtype=torch.float32)  # (B, H, W, D)
+        # TODO: get rid of the for loop, use torch.scatter possibly
         for b in range(B):
-            ids_x = torch.clamp(grid_indices, 0, self.grid_size[0] - 1)[b, 0, :]
-            ids_y = torch.clamp(grid_indices, 0, self.grid_size[1] - 1)[b, 1, :]
-            ids_z = torch.clamp(grid_indices, 0, self.grid_size[2] - 1)[b, 2, :]
-            voxel_grid[b, ids_x, ids_y, ids_z] = 1.0
+            mask_x = (grid_indices[b, 0] >= 0) & (grid_indices[b, 0] < self.grid_size[0])
+            mask_y = (grid_indices[b, 1] >= 0) & (grid_indices[b, 1] < self.grid_size[1])
+            mask_z = (grid_indices[b, 2] >= 0) & (grid_indices[b, 2] < self.grid_size[2])
+            mask = mask_x & mask_y & mask_z
+            grid_indices_b = grid_indices[b, :, mask]
+            voxel_grid[b, grid_indices_b[0], grid_indices_b[1], grid_indices_b[2]] = 1
 
-        voxel_grid = voxel_grid.unsqueeze(1)  # Add channel dimension
+        # Permute the dimensions to (B, D, H, W)
+        voxel_grid = voxel_grid.permute(0, 3, 1, 2)
+
+        # Add channel dimension, (B, 1, D, H, W)
+        voxel_grid = voxel_grid.unsqueeze(1)
 
         return voxel_grid
 
@@ -182,21 +196,9 @@ class BEVFusion(LiftSplatShoot):
     def __init__(self, grid_conf, data_aug_conf, outC=1):
         super().__init__(grid_conf, data_aug_conf)
 
-        voxel_size, grid_size = self.get_vox_dims()
-        self.lidar_bev = LiDARBEV(voxel_size=voxel_size, grid_size=grid_size)
+        self.lidar_bev = LiDARBEV(grid_conf=grid_conf)
         self.bevencode = BevEncode(inC=128, outC=128)
         self.terrain_heads = TerrainHeads(inC=128, outC=outC)
-
-    def get_vox_dims(self):
-        # Define voxel size and grid size
-        x_bound = self.grid_conf['xbound']
-        y_bound = self.grid_conf['ybound']
-        z_bound = self.grid_conf['zbound']
-        voxel_size = x_bound[2]
-        D = int((z_bound[1] - z_bound[0]) / voxel_size)
-        H, W = int((x_bound[1] - x_bound[0]) / voxel_size), int((y_bound[1] - y_bound[0]) / voxel_size)
-        grid_size = (D, H, W)  # (D, H, W)
-        return voxel_size, grid_size
 
     def forward(self, img_inputs, cloud_input):
         # Get BEV features from camera inputs
