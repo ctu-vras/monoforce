@@ -10,7 +10,7 @@ from mayavi import mlab
 import argparse
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
-from monoforce.models.terrain_encoder.lss import load_model
+from monoforce.models.terrain_encoder.lss import load_lss_model
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
 from monoforce.vis import visualize_imgs
@@ -50,7 +50,7 @@ class MonoForce:
         self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
 
         self.model_path = model_path
-        self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
+        self.terrain_encoder = load_lss_model(self.model_path, self.lss_config, device=self.device)
 
         # load calibration
         self.calib = load_calib(calib_path=self.calib_path)

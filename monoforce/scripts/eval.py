@@ -11,7 +11,7 @@ import argparse
 from datetime import datetime
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
-from monoforce.models.terrain_encoder.lss import load_model
+from monoforce.models.terrain_encoder.lss import load_lss_model
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv
@@ -47,7 +47,7 @@ class Evaluation:
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
         self.model_path = model_path
-        self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
+        self.terrain_encoder = load_lss_model(self.model_path, self.lss_config, device=self.device)
 
         # load dataset
         self.path = rough_seq_paths[seq_i]

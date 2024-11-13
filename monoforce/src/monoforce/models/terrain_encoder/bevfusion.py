@@ -168,7 +168,7 @@ class TerrainHeads(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(64, outC, kernel_size=1, padding=0)
         )
-        self.head_frict = nn.Sequential(
+        self.head_friction = nn.Sequential(
             nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
@@ -181,7 +181,7 @@ class TerrainHeads(nn.Module):
 
     def forward(self, x):
         x_terrain = self.head_terrain(x)
-        friction = self.head_frict(x)
+        friction = self.head_friction(x)
         out = {
             'terrain': x_terrain,
             'friction': friction
@@ -214,3 +214,8 @@ class BEVFusion(LiftSplatShoot):
         out = self.terrain_heads(fused_bev_feat)  # Dict, values of shape (B, 1, H, W)
 
         return out
+
+
+def compile_model(grid_conf, data_aug_conf, outC=1):
+    model = BEVFusion(grid_conf, data_aug_conf, outC=outC)
+    return model
