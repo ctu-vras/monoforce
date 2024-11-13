@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.terrain_encoder.lss import load_lss_model
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion, LiDARBEV
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
@@ -27,8 +27,8 @@ torch.manual_seed(42)
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
-    parser.add_argument('--model', type=str, default='bevfusion', help='Model to train: lss, bevfusion')
-    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
+    parser.add_argument('--model', type=str, default='lss', help='Model to train: lss, bevfusion, lidarbev')
+    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
@@ -50,7 +50,7 @@ class TrainerCore:
     Args:
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     lss_cfg: dict, LSS model configuration
-    model: str, model to train: lss, bevfusion
+    model: str, model to train: lss, bevfusion, lidarbev
     bsz: int, batch size
     lr: float, learning rate
     weight_decay: float, weight decay
@@ -223,20 +223,21 @@ class TrainerCore:
                     self.writer.add_figure('train/prediction', fig, e)
 
             # validation epoch
-            with torch.no_grad():
-                val_losses, self.val_counter = self.epoch(train=False)
-                for k, v in val_losses.items():
-                    print('Epoch:', e, f'Val loss {k}:', v)
-                    self.writer.add_scalar(f'val/epoch_loss_{k}', v, e)
-                if val_losses['total'] < self.min_loss:
-                    self.min_loss = val_losses['total']
-                    print('Saving model...')
-                    self.terrain_encoder.eval()
-                    torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'val.pth'))
+            with torch.inference_mode():
+                with torch.no_grad():
+                    val_losses, self.val_counter = self.epoch(train=False)
+                    for k, v in val_losses.items():
+                        print('Epoch:', e, f'Val loss {k}:', v)
+                        self.writer.add_scalar(f'val/epoch_loss_{k}', v, e)
+                    if val_losses['total'] < self.min_loss:
+                        self.min_loss = val_losses['total']
+                        print('Saving model...')
+                        self.terrain_encoder.eval()
+                        torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'val.pth'))
 
-                    # visualize validation predictions
-                    fig = self.vis_pred(self.val_loader)
-                    self.writer.add_figure('val/prediction', fig, e)
+                        # visualize validation predictions
+                        fig = self.vis_pred(self.val_loader)
+                        self.writer.add_figure('val/prediction', fig, e)
 
     def vis_pred(self, loader):
         fig = plt.figure()
@@ -370,9 +371,9 @@ class TrainerLSS(TrainerCore):
         return fig
 
 
-class ROUGHPoints(ROUGH):
-    def __init__(self, path, lss_cfg, dphys_cfg=DPhysConfig(), is_train=True):
-        super(ROUGHPoints, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
+class Fusion(ROUGH):
+    def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
+        super(Fusion, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
 
     def get_cloud(self, i, points_source='lidar'):
         cloud = self.get_raw_cloud(i)
@@ -403,7 +404,7 @@ class TrainerBEVFusion(TrainerCore):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                          terrain_weight, phys_weight)
         # create dataloaders
-        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGHPoints)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Fusion)
 
         # load models: terrain encoder
         self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
@@ -529,13 +530,99 @@ class TrainerBEVFusion(TrainerCore):
         return fig
 
 
+class Points(ROUGH):
+    def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
+        super(Points, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
+
+    def get_cloud(self, i, points_source='lidar'):
+        cloud = self.get_raw_cloud(i)
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
+        return cloud
+
+    def get_sample(self, i):
+        points = torch.as_tensor(position(self.get_cloud(i))).T
+        control_ts, controls = self.get_controls(i)
+        traj_ts, states = self.get_states_traj(i)
+        Xs, Xds, Rs, Omegas = states
+        hm_terrain = self.get_terrain_height_map(i)
+        return (points, hm_terrain,
+                control_ts, controls,
+                traj_ts, Xs, Xds, Rs, Omegas)
+
+class TrainerLiDARBEV(TrainerCore):
+        def __init__(self, dphys_cfg, lss_cfg, model='lidarbev', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
+                    pretrained_model_path=None, debug=False, vis=False, terrain_weight=1.0, phys_weight=0.1):
+            super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
+                            terrain_weight, phys_weight)
+            # create dataloaders
+            self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
+
+            # load models: terrain encoder
+            self.terrain_encoder = LiDARBEV(grid_conf=self.lss_cfg['grid_conf'], out_channels=1).to(self.device)
+            self.terrain_encoder.train()
+
+            # define optimizer
+            self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+
+        def compute_losses(self, batch):
+            (points, hm_terrain,
+             control_ts, controls,
+             traj_ts, Xs, Xds, Rs, Omegas) = batch
+
+            terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
+
+            # terrain encoder forward pass
+            points_input = points
+            terrain_pred = self.terrain_encoder(points_input)
+
+            # rigid / terrain height map loss
+            if self.terrain_weight > 0:
+                loss_terrain = self.terrain_hm_loss(terrain_pred, terrain, weights_terrain)
+            else:
+                loss_terrain = torch.tensor(0.0, device=self.device)
+
+            # physics loss: difference between predicted and ground truth states
+            states_gt = [Xs, Xds, Rs, Omegas]
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls)
+            if self.phys_weight > 0:
+                loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
+                                              pred_ts=control_ts, gt_ts=traj_ts)
+            else:
+                loss_phys = torch.tensor(0.0, device=self.device)
+
+            return loss_terrain, loss_phys
+
+        def vis_pred(self, loader):
+            sample_i = np.random.choice(len(loader.dataset))
+            sample = loader.dataset[sample_i]
+            points, hm_terrain = sample[:2]
+            terrain, weights = hm_terrain[0], hm_terrain[1]
+            terrain_pred = self.terrain_encoder(points.unsqueeze(0).to(self.device))  # (B, outC, H, W)
+
+            # visualize the output
+            fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+            ax[0].imshow(terrain_pred.squeeze().cpu().numpy().T, cmap='jet', origin='lower', vmin=-1, vmax=1)
+            ax[0].set_title('Output')
+            ax[1].imshow(terrain.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
+            ax[1].set_title('Ground truth')
+            ax[2].imshow(weights.T, cmap='gray', origin='lower')
+            ax[2].set_title('Weights')
+
+            return fig
+
+
 def choose_trainer(model):
     if model == 'lss':
         return TrainerLSS
     elif model == 'bevfusion':
         return TrainerBEVFusion
+    elif model == 'lidarbev':
+        return TrainerLiDARBEV
     else:
-        raise ValueError(f'Invalid model: {model}. Supported models: lss, bevfusion')
+        raise ValueError(f'Invalid model: {model}. Supported models: lss, bevfusion, lidarbev')
 
 
 def main():

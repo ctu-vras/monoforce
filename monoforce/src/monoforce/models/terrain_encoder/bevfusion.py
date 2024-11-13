@@ -193,7 +193,7 @@ class BEVFusion(LiftSplatShoot):
     def __init__(self, grid_conf, data_aug_conf, outC=1):
         super().__init__(grid_conf, data_aug_conf)
 
-        self.lidar_bev = LiDARBEV(grid_conf=grid_conf)
+        self.lidar_bev = LiDARBEV(grid_conf=grid_conf, out_channels=64)
         self.bevencode = BevEncode(inC=128, outC=128)
         self.terrain_heads = TerrainHeads(inC=128, outC=outC)
 
