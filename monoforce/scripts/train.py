@@ -110,8 +110,12 @@ class TrainerCore:
         train_ds, val_ds = compile_data(dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
                                         small_data=debug, vis=vis, Data=Data)
         # create dataloaders
-        train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True)
-        val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False)
+        def collate_fn(batch):
+            batch = [torch.as_tensor(item) if isinstance(item, np.ndarray) else item for item in batch]
+            return torch.utils.data.default_collate(batch)
+
+        train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, collate_fn=collate_fn)
+        val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False, collate_fn=collate_fn)
 
         return train_loader, val_loader
 
