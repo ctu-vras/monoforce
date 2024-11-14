@@ -28,6 +28,7 @@ def arg_parser():
     parser.add_argument('--model_path', type=str, default=None, help='Path to the LSS model')
     parser.add_argument('--seq_i', type=int, default=0, help='Data sequence index')
     parser.add_argument('--vis', action='store_true', help='Visualize the results')
+    parser.add_argument('--save', action='store_true', help='Save the results')
     return parser.parse_args()
 
 
@@ -35,7 +36,7 @@ class Evaluation:
     def __init__(self,
                  robot='marv',
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg.yaml'),
-                 model_path=os.path.join('..', 'config/weights/lss/lss.pt'),
+                 model_path=None,
                  seq_i=0):
         self.device = 'cpu'  # for visualization purposes using CPU
 
@@ -54,12 +55,6 @@ class Evaluation:
         self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
         self.loader = torch.utils.data.DataLoader(self.ds, batch_size=1, shuffle=False)
-
-        # create output folder
-        self.output_folder = f'./gen_{os.path.basename(self.path)}'
-        os.makedirs(self.output_folder, exist_ok=True)
-        # write losses to output csv
-        write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
 
     def terrain_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
@@ -100,7 +95,14 @@ class Evaluation:
 
         return loss
 
-    def run(self, vis=False):
+    def run(self, vis=False, save=False):
+        if save:
+            # create output folder
+            self.output_folder = f'./gen_{os.path.basename(self.path)}'
+            os.makedirs(self.output_folder, exist_ok=True)
+            # write losses to output csv
+            write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
+
         with torch.no_grad():
             H, W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
             cams = self.ds.camera_names
@@ -192,9 +194,10 @@ class Evaluation:
                     plt.pause(0.01)
                     plt.draw()
 
-                plt.savefig(f'{self.output_folder}/{i:04d}.png')
-                append_to_csv(f'{self.output_folder}/losses.csv',
-                              f'{i:04d}.png, {terrain_loss.item():.4f},{physics_loss.item():.4f}\n')
+                if save:
+                    plt.savefig(f'{self.output_folder}/{i:04d}.png')
+                    append_to_csv(f'{self.output_folder}/losses.csv',
+                                  f'{i:04d}.png, {terrain_loss.item():.4f},{physics_loss.item():.4f}\n')
 
             plt.close(fig)
 
@@ -206,7 +209,7 @@ def main():
                            lss_cfg_path=args.lss_cfg_path,
                            model_path=args.model_path,
                            seq_i=args.seq_i)
-    monoforce.run(vis=args.vis)
+    monoforce.run(vis=args.vis, save=args.save)
 
 
 if __name__ == '__main__':

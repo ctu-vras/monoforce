@@ -330,9 +330,8 @@ class DiffPhysicsTorch(DiffPhysBase):
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
         assert grid_maps.shape[0] == self.n_sim_trajs
         controls = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
-        n_tracks = len(self.dphys_cfg.driving_parts)
-        assert controls.shape == (self.n_sim_trajs, self.n_sim_steps, n_tracks), \
-            f'controls shape: {controls.shape} != {(self.n_sim_trajs, self.n_sim_steps, n_tracks)}'
+        assert controls.shape == (self.n_sim_trajs, self.n_sim_steps, 2), \
+            f'controls shape: {controls.shape} != {(self.n_sim_trajs, self.n_sim_steps, 2)}'
 
         # initial state
         x = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)

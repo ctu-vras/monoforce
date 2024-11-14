@@ -37,7 +37,7 @@
     </include>
 
     <!-- SLAM -->
-    <include file="$(find monoforce_navigation)/launch/slam.launch">
+    <include if="0" file="$(find monoforce_navigation)/launch/slam.launch">
         <arg name="cloud" value="points"/>
     </include>
 
@@ -51,14 +51,16 @@
                                            [0, -5, 0, 0, 0, 0, 1],
                                            [0, 0, 0, 0, 0, 0, 1],
                                            ]"/>
-<!--        <arg name="map_frame" value="odom"/> -->
+<!--        <arg name="map_frame" value="map"/>      -->
+       <arg name="map_frame" value="odom"/>
     </include>
 
     <!-- Path follower -->
     <include if="1" file="$(find monoforce_navigation)/launch/path_follower.launch">
         <arg name="path_to_follow" value="selected_path"/>
         <arg name="max_age" value="1.0"/>
-<!--         <arg name="map_frame" value="odom"/> -->
+<!--         <arg name="map_frame" value="map"/> -->
+        <arg name="map_frame" value="odom"/>
     </include>
 
     <!-- RViz -->
