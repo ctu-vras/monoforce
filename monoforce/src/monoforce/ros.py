@@ -232,8 +232,8 @@ def xyz_to_point(xyz):
 
 def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
     # Extract metadata
-    W = grid_map_msg.info.length_x // grid_map_msg.info.resolution
-    H = grid_map_msg.info.length_y // grid_map_msg.info.resolution
+    W = int(grid_map_msg.info.length_x / grid_map_msg.info.resolution)
+    H = int(grid_map_msg.info.length_y / grid_map_msg.info.resolution)
     W = int(W)
     H = int(H)
 
