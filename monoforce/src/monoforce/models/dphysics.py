@@ -257,6 +257,7 @@ class DPhysics(torch.nn.Module):
         # Rodrigues' formula: R_new = R * (I + Omega_x * sin(theta * dt) + Omega_x^2 * (1 - cos(theta * dt)))
         I = torch.eye(3).to(R.device)
         R_new = R @ (I + Omega_x_norm * torch.sin(theta * dt) + Omega_x_norm @ Omega_x_norm * (1 - torch.cos(theta * dt)))
+        # R_new = R @ (I + torch.sin(theta * dt) * Omega_x / theta + (1 - torch.cos(theta * dt)) * (Omega_x @ Omega_x) / (theta ** 2))
 
         return R_new
 

@@ -11,7 +11,7 @@ import argparse
 from datetime import datetime
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
-from monoforce.models.terrain_encoder.lss import load_model
+from monoforce.models.terrain_encoder.lss import load_lss_model
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv
@@ -27,6 +27,8 @@ def arg_parser():
                         default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str, default=None, help='Path to the LSS model')
     parser.add_argument('--seq_i', type=int, default=0, help='Data sequence index')
+    parser.add_argument('--vis', action='store_true', help='Visualize the results')
+    parser.add_argument('--save', action='store_true', help='Save the results')
     return parser.parse_args()
 
 
@@ -34,7 +36,7 @@ class Evaluation:
     def __init__(self,
                  robot='marv',
                  lss_cfg_path=os.path.join('..', 'config/lss_cfg.yaml'),
-                 model_path=os.path.join('..', 'config/weights/lss/lss.pt'),
+                 model_path=None,
                  seq_i=0):
         self.device = 'cpu'  # for visualization purposes using CPU
 
@@ -47,18 +49,12 @@ class Evaluation:
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
         self.model_path = model_path
-        self.terrain_encoder = load_model(self.model_path, self.lss_config, device=self.device)
+        self.terrain_encoder = load_lss_model(self.model_path, self.lss_config, device=self.device)
 
         # load dataset
         self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
         self.loader = torch.utils.data.DataLoader(self.ds, batch_size=1, shuffle=False)
-
-        # create output folder
-        self.output_folder = f'./gen_{os.path.basename(self.path)}/{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        os.makedirs(self.output_folder, exist_ok=True)
-        # write losses to output csv
-        write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
 
     def terrain_hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
@@ -99,7 +95,14 @@ class Evaluation:
 
         return loss
 
-    def run(self):
+    def run(self, vis=False, save=False):
+        if save:
+            # create output folder
+            self.output_folder = f'./gen_{os.path.basename(self.path)}'
+            os.makedirs(self.output_folder, exist_ok=True)
+            # write losses to output csv
+            write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
+
         with torch.no_grad():
             H, W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
             cams = self.ds.camera_names
@@ -187,12 +190,14 @@ class Evaluation:
                 plt.ylabel('y [m]')
                 plt.legend()
 
-                plt.pause(0.01)
-                plt.draw()
+                if vis:
+                    plt.pause(0.01)
+                    plt.draw()
 
-                plt.savefig(f'{self.output_folder}/{i:04d}.png')
-                append_to_csv(f'{self.output_folder}/losses.csv',
-                              f'{i:04d}.png, {terrain_loss.item():.4f},{physics_loss.item():.4f}\n')
+                if save:
+                    plt.savefig(f'{self.output_folder}/{i:04d}.png')
+                    append_to_csv(f'{self.output_folder}/losses.csv',
+                                  f'{i:04d}.png, {terrain_loss.item():.4f},{physics_loss.item():.4f}\n')
 
             plt.close(fig)
 
@@ -204,7 +209,7 @@ def main():
                            lss_cfg_path=args.lss_cfg_path,
                            model_path=args.model_path,
                            seq_i=args.seq_i)
-    monoforce.run()
+    monoforce.run(vis=args.vis, save=args.save)
 
 
 if __name__ == '__main__':

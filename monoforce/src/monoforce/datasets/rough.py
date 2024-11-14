@@ -186,8 +186,10 @@ class ROUGH(Dataset):
 
         assert len(times_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
         assert len(times_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
+        times_horizon = torch.as_tensor(times_horizon, dtype=torch.float32)
+        controls_horizon = torch.as_tensor(controls_horizon, dtype=torch.float32)
 
-        return times_horizon, np.asarray(controls_horizon, dtype=np.float32)
+        return times_horizon, controls_horizon
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -232,6 +234,8 @@ class ROUGH(Dataset):
         return traj
 
     def get_states_traj(self, i):
+        # TODO: measure velocities and angular velocities with IMU
+        # estimating velocities and angular velocities from the trajectory positions for now
         traj = self.get_traj(i)
         poses = traj['poses']
         tstamps = traj['stamps']
@@ -258,10 +262,14 @@ class ROUGH(Dataset):
         omegas = np.zeros_like(xs)
         omegas[:-1, 2:3] = np.diff(theta, axis=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
 
-        states = (xs.reshape([n_states, 3]),
+        states = [xs.reshape([n_states, 3]),
                   xds.reshape([n_states, 3]),
                   Rs.reshape([n_states, 3, 3]),
-                  omegas.reshape([n_states, 3]))
+                  omegas.reshape([n_states, 3])]
+
+        # to torch tensors
+        ts = torch.as_tensor(ts)
+        states = [torch.as_tensor(s) for s in states]
 
         return ts, states
 

@@ -274,7 +274,7 @@ def compile_model(grid_conf, data_aug_conf, inpC=3, outC=1):
     return LiftSplatShoot(grid_conf, data_aug_conf, inpC, outC)
 
 
-def load_model(modelf, lss_cfg, device=None):
+def load_lss_model(modelf, lss_cfg, device=None):
     model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
 
     # load pretrained model / update model with pretrained weights

@@ -6,7 +6,7 @@
   <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
   <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
   <arg name="device" default="cuda" doc="Device to run the differentiable physics"/>
-  <arg name="robot" default="husky" doc="Robot name"/>
+  <arg name="robot" default="marv" doc="Robot name"/>
 
   <!-- Gazebo world and spawn Husky robot -->
   <include file="$(find monoforce_gazebo)/launch/husky_sim.launch">
@@ -22,7 +22,7 @@
   </include>
 
   <!-- SLAM -->
-  <include file="$(find monoforce_navigation)/launch/slam.launch">
+  <include if="0" file="$(find monoforce_navigation)/launch/slam.launch">
     <arg name="cloud" value="points"/>
   </include>
 
@@ -52,14 +52,16 @@
                                        ]"/>
     <arg name="waypoint_weight" default="1.0"/>
     <arg name="path_force_weight" default="1.0"/>
-    <arg name="map_frame" value="map"/>
+<!--     <arg name="map_frame" value="map"/> -->
+    <arg name="map_frame" value="odom"/>
   </include>
 
   <!-- Path follower -->
   <include if="1" file="$(find monoforce_navigation)/launch/path_follower.launch">
     <arg name="path_to_follow" value="selected_path"/>
     <arg name="max_age" value="10.0"/>
-    <arg name="map_frame" value="map"/>
+<!--     <arg name="map_frame" value="map"/> -->
+    <arg name="map_frame" value="odom"/>
     <arg name="keep_path" value="2.0"/>
   </include>
 

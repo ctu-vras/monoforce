@@ -1,5 +1,5 @@
 # Robot.
-map_frame_id:                               map
+map_frame_id:                               odom
 robot_base_frame_id:                        base_footprint
 robot_pose_with_covariance_topic:           /base_footprint_pose
 robot_pose_cache_size:                      200
