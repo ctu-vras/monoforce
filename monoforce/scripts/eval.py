@@ -27,6 +27,7 @@ def arg_parser():
                         default=os.path.join(base_path, 'config/lss_cfg.yaml'), help='Path to the LSS config file')
     parser.add_argument('--model_path', type=str, default=None, help='Path to the LSS model')
     parser.add_argument('--seq_i', type=int, default=0, help='Data sequence index')
+    parser.add_argument('--vis', action='store_true', help='Visualize the results')
     return parser.parse_args()
 
 
@@ -55,7 +56,7 @@ class Evaluation:
         self.loader = torch.utils.data.DataLoader(self.ds, batch_size=1, shuffle=False)
 
         # create output folder
-        self.output_folder = f'./gen_{os.path.basename(self.path)}/{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self.output_folder = f'./gen_{os.path.basename(self.path)}'
         os.makedirs(self.output_folder, exist_ok=True)
         # write losses to output csv
         write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
@@ -99,7 +100,7 @@ class Evaluation:
 
         return loss
 
-    def run(self):
+    def run(self, vis=False):
         with torch.no_grad():
             H, W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
             cams = self.ds.camera_names
@@ -187,8 +188,9 @@ class Evaluation:
                 plt.ylabel('y [m]')
                 plt.legend()
 
-                plt.pause(0.01)
-                plt.draw()
+                if vis:
+                    plt.pause(0.01)
+                    plt.draw()
 
                 plt.savefig(f'{self.output_folder}/{i:04d}.png')
                 append_to_csv(f'{self.output_folder}/losses.csv',
@@ -204,7 +206,7 @@ def main():
                            lss_cfg_path=args.lss_cfg_path,
                            model_path=args.model_path,
                            seq_i=args.seq_i)
-    monoforce.run()
+    monoforce.run(vis=args.vis)
 
 
 if __name__ == '__main__':
