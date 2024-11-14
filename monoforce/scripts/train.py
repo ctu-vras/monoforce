@@ -109,9 +109,18 @@ class TrainerCore:
         # create dataset for LSS model training
         train_ds, val_ds = compile_data(dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
                                         small_data=debug, vis=vis, Data=Data)
-        # create dataloaders
+        # create dataloaders: making sure all elemts in a batch are tensors
         def collate_fn(batch):
-            batch = [torch.as_tensor(item) if isinstance(item, np.ndarray) else item for item in batch]
+            def to_tensor(item):
+                if isinstance(item, np.ndarray):
+                    return torch.tensor(item)
+                elif isinstance(item, (list, tuple)):
+                    return [to_tensor(i) for i in item]
+                elif isinstance(item, dict):
+                    return {k: to_tensor(v) for k, v in item.items()}
+                return item  # Return as is if it's already a tensor or unsupported type
+
+            batch = [to_tensor(item) for item in batch]
             return torch.utils.data.default_collate(batch)
 
         train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, collate_fn=collate_fn)
