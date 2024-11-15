@@ -183,7 +183,7 @@ class DPhysics(torch.nn.Module):
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
-        torque = torch.sum(torch.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
+        torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
         omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
@@ -197,7 +197,7 @@ class DPhysics(torch.nn.Module):
 
         # motion of point composed of cog motion and rotation of the rigid body
         # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
-        xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
+        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
         assert xd_points.shape == (B, n_pts, 3)
 
         dstate = (xd, xdd, dR, omega_d, xd_points)
@@ -407,7 +407,7 @@ class DPhysics(torch.nn.Module):
         # state: x, xd, R, omega, x_points
         x, xd, R, omega, x_points = state
         # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
-        xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
+        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
 
         # dynamics of the rigid body
         Xs, Xds, Rs, Omegas, Omega_ds, X_points = [], [], [], [], [], []
