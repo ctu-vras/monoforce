@@ -26,7 +26,7 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 0.5]] * int(T / dt)),  # v=1.0 m/s, w=0.0 rad/s for each time step
+        torch.tensor([[1.0, 0.0]] * int(T / dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'

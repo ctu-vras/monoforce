@@ -129,8 +129,10 @@ class DPhysics(torch.nn.Module):
         B, n_pts, D = x_points.shape
 
         # compute the terrain properties at the robot points
-        z_points = self.interpolate_grid(z_grid, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        z_points, n = self.interpolate_grid(z_grid, x_points[..., 0], x_points[..., 1], return_normals=True)
+        z_points = z_points.unsqueeze(-1)
         assert z_points.shape == (B, n_pts, 1)
+        assert n.shape == (B, n_pts, 3)
         if not isinstance(stiffness, (int, float)):
             stiffness_points = self.interpolate_grid(stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
             assert stiffness_points.shape == (B, n_pts, 1)
@@ -153,10 +155,6 @@ class DPhysics(torch.nn.Module):
                     (x_points[..., 1:2] >= -self.dphys_cfg.d_max) & (x_points[..., 1:2] <= self.dphys_cfg.d_max)
         in_contact = ((dh_points <= 0.0) & on_grid).float()
         assert in_contact.shape == (B, n_pts, 1)
-
-        # compute surface normals at the contact points
-        n = self.surface_normals(z_grid, x_points[..., 0], x_points[..., 1])
-        assert n.shape == (B, n_pts, 3)
 
         # reaction at the contact points as spring-damper forces
         xd_points_n = (xd_points * n).sum(dim=-1, keepdims=True)  # normal velocity
@@ -290,60 +288,7 @@ class DPhysics(torch.nn.Module):
             raise ValueError(f'Unknown integration mode: {mode}')
         return x
 
-    def surface_normals(self, z_grid, x_query, y_query):
-        """
-        Computes the surface normals and tangents at the queried coordinates.
-
-        Parameters:
-        - z_grid: Tensor of z values (heights) corresponding to the x and y coordinates (3D array), (B, H, W).
-        - x_query: Tensor of desired x coordinates for interpolation (2D array), (B, N).
-        - y_query: Tensor of desired y coordinates for interpolation (2D array), (B, N).
-
-        Returns:
-        - Surface normals at the queried coordinates.
-        """
-        # unpack config
-        d_max = self.dphys_cfg.d_max
-        grid_res = self.dphys_cfg.grid_res
-
-        # Ensure inputs are tensors
-        z_grid = torch.as_tensor(z_grid)
-        x_query = torch.as_tensor(x_query)
-        y_query = torch.as_tensor(y_query)
-
-        # Get the grid dimensions
-        B, H, W = z_grid.shape
-
-        # Compute the indices of the grid points surrounding the query points
-        x_i = torch.clamp(((x_query + d_max) / grid_res).long(), 0, W - 2)
-        y_i = torch.clamp(((y_query + d_max) / grid_res).long(), 0, H - 2)
-
-        # Compute the fractional part of the indices
-        x_f = (x_query + d_max) / grid_res - x_i.float()
-        y_f = (y_query + d_max) / grid_res - y_i.float()
-
-        # Compute the indices of the grid points
-        idx00 = x_i + W * y_i
-        idx01 = x_i + W * (y_i + 1)
-        idx10 = (x_i + 1) + W * y_i
-        idx11 = (x_i + 1) + W * (y_i + 1)
-
-        # Interpolate the z values
-        z_grid_flat = z_grid.reshape(B, -1)
-        z00 = z_grid_flat.gather(1, idx00)
-        z01 = z_grid_flat.gather(1, idx01)
-        z10 = z_grid_flat.gather(1, idx10)
-        z11 = z_grid_flat.gather(1, idx11)
-
-        # Compute the surface normals
-        dz_dx = (z10 - z00) * (1 - y_f) + (z11 - z01) * y_f
-        dz_dy = (z01 - z00) * (1 - x_f) + (z11 - z10) * x_f
-        n = torch.stack([-dz_dx, -dz_dy, torch.ones_like(dz_dx)], dim=-1)  # n = [-dz/dx, -dz/dy, 1]
-        n = normalized(n)
-
-        return n
-
-    def interpolate_grid(self, grid, x_query, y_query):
+    def interpolate_grid(self, grid, x_query, y_query, return_normals=False):
         """
         Interpolates the height at the desired (x_query, y_query) coordinates.
 
@@ -351,9 +296,11 @@ class DPhysics(torch.nn.Module):
         - grid: Tensor of grid values corresponding to the x and y coordinates (3D array), (B, H, W).
         - x_query: Tensor of desired x coordinates for interpolation (2D array), (B, N).
         - y_query: Tensor of desired y coordinates for interpolation (2D array), (B, N).
+        - return_normals: Bool to return the surface normals at the queried coordinates or not.
 
         Returns:
-        - Interpolated grid values at the queried coordinates.
+        - Interpolated grid values at the queried coordinates, (B, N).
+        - Surface normals at the queried coordinates (if return_normals=True), (B, N, 3).
         """
         # unpack config
         d_max = self.dphys_cfg.d_max
@@ -375,24 +322,40 @@ class DPhysics(torch.nn.Module):
         y_query_flat = y_query.reshape(B, -1)
 
         # Compute the indices of the grid points surrounding the query points
-        x_i = torch.clamp(((x_query_flat + d_max) / grid_res).long(), 0, W - 2)
-        y_i = torch.clamp(((y_query_flat + d_max) / grid_res).long(), 0, H - 2)
+        x_i = ((x_query_flat + d_max) / grid_res).long()
+        y_i = ((y_query_flat + d_max) / grid_res).long()
 
         # Compute the fractional part of the indices
         x_f = (x_query_flat + d_max) / grid_res - x_i.float()
         y_f = (y_query_flat + d_max) / grid_res - y_i.float()
 
         # Compute the indices of the grid points
-        idx00 = x_i + W * y_i
-        idx01 = x_i + W * (y_i + 1)
-        idx10 = (x_i + 1) + W * y_i
-        idx11 = (x_i + 1) + W * (y_i + 1)
+        idx00 = y_i + H * x_i
+        idx01 = y_i + H * (x_i + 1)
+        idx10 = (y_i + 1) + H * x_i
+        idx11 = (y_i + 1) + H * (x_i + 1)
+        # Clamp the indices to avoid out-of-bound errors
+        idx00 = torch.clamp(idx00, 0, H * W - 1)
+        idx01 = torch.clamp(idx01, 0, H * W - 1)
+        idx10 = torch.clamp(idx10, 0, H * W - 1)
+        idx11 = torch.clamp(idx11, 0, H * W - 1)
 
         # Interpolate the z values (linear interpolation)
         z_query = (1 - x_f) * (1 - y_f) * z_grid_flat.gather(1, idx00) + \
                   (1 - x_f) * y_f * z_grid_flat.gather(1, idx01) + \
                   x_f * (1 - y_f) * z_grid_flat.gather(1, idx10) + \
                   x_f * y_f * z_grid_flat.gather(1, idx11)
+
+        if return_normals:
+            # Estimate normals
+            z00 = z_query
+            z10 = self.interpolate_grid(grid, x_query + grid_res, y_query)
+            z01 = self.interpolate_grid(grid, x_query, y_query + grid_res)
+            dz_dx = (z10 - z00) / grid_res
+            dz_dy = (z01 - z00) / grid_res
+            n = torch.stack([-dz_dx, -dz_dy, torch.ones_like(dz_dx)], dim=-1)
+            n = normalized(n)
+            return z_query, n
 
         return z_query
 
@@ -440,15 +403,8 @@ class DPhysics(torch.nn.Module):
         # for each trajectory and time step driving parts are being controlled
         assert controls.shape == (B, N_ts, 2), f'Its shape {controls.shape} != {(B, N_ts, 2)}'
 
-        # TODO: there is some bug, had to transpose grid map
-        z_grid = z_grid.transpose(1, 2)  # (B, H, W) -> (B, W, H)
-        stiffness = stiffness.transpose(1, 2) if not isinstance(stiffness, (int, float)) else stiffness
-        damping = damping.transpose(1, 2) if not isinstance(damping, (int, float)) else damping
-        friction = friction.transpose(1, 2) if not isinstance(friction, (int, float)) else friction
-
         # state: x, xd, R, omega, x_points
         x, xd, R, omega, x_points = state
-        # xd_points = torch.zeros_like(x_points)
         # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
         xd_points = xd.unsqueeze(1) + torch.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
 
