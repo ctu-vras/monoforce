@@ -38,7 +38,7 @@ def arg_parser():
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=True, help='Visualize training samples')
     parser.add_argument('--terrain_weight', type=float, default=1.0, help='Weight for terrain heightmap loss')
-    parser.add_argument('--phys_weight', type=float, default=0.0, help='Weight for physics loss')
+    parser.add_argument('--phys_weight', type=float, default=0.1, help='Weight for physics loss')
 
     return parser.parse_args()
 

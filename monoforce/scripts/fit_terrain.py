@@ -7,22 +7,23 @@ from monoforce.dphys_config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
 
 
-def visualize(states, forces, x_grid, y_grid, z_grid):
+def visualize(states, forces, x_grid, y_grid, z_grid, states_gt=None):
     with torch.no_grad():
         # visualize using mayavi
-        for b in range(len(states[0])):
+        for b in [0]:
             # get the states and forces for the b-th rigid body and move them to the cpu
-            xs, R, xds, omegas, x_points = [s[b].cpu().numpy() for s in states]
+            xs, xds, Rs, omegas, x_points = [s[b].cpu().numpy() for s in states]
             F_spring, F_friction = [f[b].cpu().numpy() for f in forces]
             x_grid_np, y_grid_np, z_grid_np = [g[b].cpu().numpy() for g in [x_grid, y_grid, z_grid]]
 
             # set up the visualization
-            vis_cfg = setup_visualization(states=(xs, R, xds, omegas, x_points),
+            vis_cfg = setup_visualization(states=(xs, xds, Rs, omegas, x_points),
+                                          states_gt=[s[b].cpu().numpy() for s in states_gt] if states_gt else None,
                                           forces=(F_spring, F_friction),
                                           x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
 
             # visualize animated trajectory
-            animate_trajectory(states=(xs, R, xds, omegas, x_points),
+            animate_trajectory(states=(xs, xds, Rs, omegas, x_points),
                                forces=(F_spring, F_friction),
                                z_grid=z_grid_np,
                                vis_cfg=vis_cfg, step=10)
@@ -178,16 +179,16 @@ def learn_terrain_properties():
     z_grid.requires_grad = True
     friction.requires_grad = True
     optimizer = torch.optim.Adam([{'params': z_grid, 'lr': 0.001},
-                                  {'params': friction, 'lr': 0.02}])
+                                  {'params': friction, 'lr': 0.001}])
 
     print('Optimizing terrain properties...')
     n_iters, vis_step = 100, 10
     for i in range(n_iters):
         optimizer.zero_grad()
-        states_pred, _ = dphysics(z_grid=z_grid, controls=controls, friction=friction)
+        states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)
 
         X, Xd, R, Omega = states
-        X_pred, Xd_pred, R_pred, Omega_pred, _ = states_pred
+        X_pred, Xd_pred, R_pred, Omega_pred, X_points_pred = states_pred
 
         # compute the loss as the mean squared error between the predicted and ground truth poses
         loss = torch.nn.functional.mse_loss(X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids], X)
@@ -197,33 +198,15 @@ def learn_terrain_properties():
 
         if vis and i % vis_step == 0:
             with torch.no_grad():
-                # for batch_i in range(batch_size):
-                for batch_i in [np.random.choice(batch_size)]:
-                    plt.figure(figsize=(20, 10))
-                    plt.subplot(121)
-                    plt.title(f'Trajectories loss: {loss.item()}')
-                    xyz_pred = states_pred[0].cpu().numpy()[batch_i]
-                    xyz = states[0].cpu().numpy()[batch_i]
-                    ids = ts_ids[batch_i].cpu().numpy()
-                    xyz_pred_grid = (xyz_pred + dphys_cfg.d_max) / dphys_cfg.grid_res
-                    xyz_grid = (xyz + dphys_cfg.d_max) / dphys_cfg.grid_res
-                    plt.plot(xyz_grid[:, 0], xyz_grid[:, 1], 'kx', label='Ground truth')
-                    plt.plot(xyz_pred_grid[ids, 0], xyz_pred_grid[ids, 1], 'rx', label='Predicted')
-                    # plt.imshow(z_grid[0].cpu().numpy().T, origin='lower')
-                    # plt.xlim([0, z_grid.shape[-1]])
-                    # plt.ylim([0, z_grid.shape[-2]])
-                    plt.axis('equal')
-                    plt.legend()
-                    plt.grid()
-
-                    plt.subplot(122)
-                    plt.title(f'Mean friction: {friction.mean().item()}')
-                    plt.plot(xyz_pred_grid[ids, 0], xyz_pred_grid[ids, 1], 'r.')
-                    plt.imshow(friction[0].cpu().numpy().T, origin='lower')
-                    plt.colorbar()
-                    plt.grid()
-
-                    plt.show()
+                x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
+                y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
+                x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+                x_grid = x_grid.repeat(batch_size, 1, 1)
+                y_grid = y_grid.repeat(batch_size, 1, 1)
+                visualize(states=states_pred,
+                          states_gt=states,
+                          forces=forces_pred,
+                          x_grid=x_grid, y_grid=y_grid, z_grid=z_grid)
 
 
 def main():

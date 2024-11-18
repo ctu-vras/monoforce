@@ -3,7 +3,6 @@
 import sys
 sys.path.append('../src')
 import torch
-import numpy as np
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
@@ -12,6 +11,7 @@ import matplotlib.pyplot as plt
 # simulation parameters
 robot = 'tradr'
 dphys_cfg = DPhysConfig(robot=robot)
+dphys_cfg.k_friction = 0.8
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -26,7 +26,7 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 0.0]] * int(T / dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[1.0, 1.0]] * int(T / dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
@@ -49,10 +49,10 @@ def motion():
     # heightmap defining the terrain
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
-    # z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    z_grid = torch.zeros_like(x_grid)
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
+    # z_grid = torch.zeros_like(x_grid)
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
     friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
@@ -94,12 +94,12 @@ def motion():
 
 
 def motion_dataset():
+    import numpy as np
     from monoforce.datasets import ROUGH, rough_seq_paths
     from monoforce.utils import explore_data
 
     # load the dataset
-    path = rough_seq_paths[1]
-    dphys_cfg = DPhysConfig(robot=robot)
+    path = rough_seq_paths[0]
     ds = ROUGH(path, dphys_cfg=dphys_cfg)
 
     # instantiate the simulator
@@ -108,10 +108,10 @@ def motion_dataset():
     # helper quantities for visualization
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
 
-    # sample_i = 395
-    sample_i = np.random.choice(len(ds))
+    sample_i = 12
+    # sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
     # get a sample from the dataset
     sample = ds[sample_i]
@@ -180,19 +180,15 @@ def shoot_multiple():
     # terrain properties
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
     z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
     # z_grid = torch.zeros_like(x_grid)
 
-    stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
-    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
     # repeat the heightmap for each rigid body
-    x_grid = x_grid.repeat(x.shape[0], 1, 1)
-    y_grid = y_grid.repeat(x.shape[0], 1, 1)
-    z_grid = z_grid.repeat(x.shape[0], 1, 1)
-    stiffness = stiffness.repeat(x.shape[0], 1, 1)
-    friction = friction.repeat(x.shape[0], 1, 1)
+    x_grid = x_grid.repeat(num_trajs, 1, 1)
+    y_grid = y_grid.repeat(num_trajs, 1, 1)
+    z_grid = z_grid.repeat(num_trajs, 1, 1)
 
     # control inputs in m/s and rad/s
     controls_front, _ = generate_control_inputs(n_trajs=num_trajs // 2,
@@ -202,7 +198,7 @@ def shoot_multiple():
                                                v_range=(-vel_max, -vel_max / 2), w_range=(-omega_max, omega_max),
                                                time_horizon=T, dt=dt)
     controls = torch.cat([controls_front, controls_back], dim=0)
-    assert num_trajs % 2 == 0, 'num_trajs must be even'
+    # controls = torch.ones_like(controls)
     controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
 
     # initial state

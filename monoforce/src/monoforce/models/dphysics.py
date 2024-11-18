@@ -167,19 +167,18 @@ class DPhysics(torch.nn.Module):
         thrust_dir = normalized(R[..., 0])  # direction of the thrust
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
-        F_friction = torch.zeros_like(F_spring)  # initialize friction forces
         track_vels = vw_to_track_vels(v=controls[:, 0], w=controls[:, 1],
                                       robot_size=self.dphys_cfg.robot_size, n_tracks=len(driving_parts))
         assert track_vels.shape == (B, len(driving_parts))
+        dvels = torch.zeros_like(xd_points)
         for i in range(len(driving_parts)):
-            u = track_vels[:, i].unsqueeze(1)  # control input
-            v_cmd = u * thrust_dir  # commanded velocity
             mask = driving_parts[i]
-            # F_fr = -mu * N * tanh(v_cmd - xd_points)  # tracks friction forces
-            dv = v_cmd.unsqueeze(1) - xd_points
-            dv_n = (dv * n).sum(dim=-1, keepdims=True)  # normal component of the relative velocity
-            dv_tau = dv - dv_n * n  # tangential component of the relative velocity
-            F_friction[:, mask] = (friction_points * N.unsqueeze(2) * torch.tanh(dv_tau))[:, mask]
+            u = track_vels[:, i].unsqueeze(1) * thrust_dir
+            dv = u.unsqueeze(1) - xd_points[:, mask]
+            dv_n = (dv * n[:, mask]).sum(dim=-1, keepdims=True)
+            dv_t = dv - dv_n * n[:, mask]
+            dvels[:, mask] = dv_t
+        F_friction = friction_points * N.unsqueeze(2) * normalized(dvels)  # F_f = - mu * N * v / |v|, v = u - xd
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
@@ -188,9 +187,12 @@ class DPhysics(torch.nn.Module):
         omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
+        assert omega_d.shape == (B, 3)
+        assert dR.shape == (B, 3, 3)
 
         # motion of the cog
         F_grav = torch.tensor([[0.0, 0.0, -m * g]], device=self.device)  # F_grav = [0, 0, -m * g]
+        # F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1) - in_contact.sum(dim=1) * normalized(xd)  # ma = sum(F_i)
         F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
@@ -441,19 +443,19 @@ class DPhysics(torch.nn.Module):
             F_frictions.append(F_friction)
 
         # to tensors
-        Xs = torch.stack(Xs).transpose(1, 0)
+        Xs = torch.stack(Xs).permute(1, 0, 2)
         assert Xs.shape == (B, N_ts, 3)
-        Xds = torch.stack(Xds).transpose(1, 0)
+        Xds = torch.stack(Xds).permute(1, 0, 2)
         assert Xds.shape == (B, N_ts, 3)
-        Rs = torch.stack(Rs).transpose(1, 0)
+        Rs = torch.stack(Rs).permute(1, 0, 2, 3)
         assert Rs.shape == (B, N_ts, 3, 3)
-        Omegas = torch.stack(Omegas).transpose(1, 0)
+        Omegas = torch.stack(Omegas).permute(1, 0, 2)
         assert Omegas.shape == (B, N_ts, 3)
-        X_points = torch.stack(X_points).transpose(1, 0)
+        X_points = torch.stack(X_points).permute(1, 0, 2, 3)
         assert X_points.shape == (B, N_ts, N_pts, 3)
-        F_springs = torch.stack(F_springs).transpose(1, 0)
+        F_springs = torch.stack(F_springs).permute(1, 0, 2, 3)
         assert F_springs.shape == (B, N_ts, N_pts, 3)
-        F_frictions = torch.stack(F_frictions).transpose(1, 0)
+        F_frictions = torch.stack(F_frictions).permute(1, 0, 2, 3)
         assert F_frictions.shape == (B, N_ts, N_pts, 3)
 
         States = Xs, Xds, Rs, Omegas, X_points
@@ -463,3 +465,53 @@ class DPhysics(torch.nn.Module):
 
     def forward(self, z_grid, controls, state=None, **kwargs):
         return self.dphysics(z_grid, controls, state, **kwargs)
+
+
+def debug():
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    robot = 'tradr'
+    dphys_cfg = DPhysConfig(robot=robot)
+    dphys_cfg.n_sim_trajs = 32
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    B = dphys_cfg.n_sim_trajs
+    T = dphys_cfg.traj_sim_time
+    dt = dphys_cfg.dt
+
+    # instantiate the simulator
+    dphysics = DPhysics(dphys_cfg, device=device)
+
+    # terrain properties
+    H, W = int(2 * dphys_cfg.d_max / dphys_cfg.grid_res), int(2 * dphys_cfg.d_max / dphys_cfg.grid_res)
+    z_grid = torch.rand(B, H, W, device=device)
+
+    controls = torch.stack([torch.tensor([[1.0, 0.0]] * int(T / dt))]).repeat(B, 1, 1)
+    controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
+
+    # put tensors to device
+    z_grid = z_grid.to(device)
+    controls = controls.to(device)
+
+    # simulate the rigid body dynamics
+    with torch.no_grad():
+        states, forces = dphysics(z_grid=z_grid, controls=controls)
+        print('xyz shape:', states[0].shape)
+
+    with torch.no_grad():
+        states1, forces1 = dphysics(z_grid=z_grid[:1], controls=controls[:1])
+        print('xyz1 shape:', states1[0].shape)
+
+        plt.figure()
+        xyz = states[0][:1].cpu().numpy()
+        xyz1 = states1[0].cpu().numpy()
+        plt.plot(xyz[0, ::8, 0], xyz[0, ::8, 1], 'r.')
+        plt.plot(xyz1[0, ::10, 0], xyz1[0, ::10, 1], 'b.')
+        plt.legend(['xyz', 'xyz1'])
+        plt.show()
+
+        assert torch.allclose(states[0][:1], states1[0], atol=1e-3), 'xyz1 != xyz'
+
+
+if __name__ == '__main__':
+    debug()

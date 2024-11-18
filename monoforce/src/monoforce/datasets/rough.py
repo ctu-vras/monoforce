@@ -182,7 +182,7 @@ class ROUGH(Dataset):
         controls_horizon = np.zeros((len(times_horizon), controls.shape[1]))
         # interpolate controls to the trajectory time stamps
         for j in range(controls.shape[1]):
-            controls_horizon[:, j] = np.interp(times_horizon, timestamps, controls[:, j])
+            controls_horizon[:, j] = np.interp(times_horizon, timestamps, controls[:, j], left=0.0, right=0.0)
 
         assert len(times_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
         assert len(times_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
