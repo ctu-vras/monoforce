@@ -170,15 +170,12 @@ class DPhysics(torch.nn.Module):
         track_vels = vw_to_track_vels(v=controls[:, 0], w=controls[:, 1],
                                       robot_size=self.dphys_cfg.robot_size, n_tracks=len(driving_parts))
         assert track_vels.shape == (B, len(driving_parts))
-        dvels = torch.zeros_like(xd_points)
+        cmd_vels = torch.zeros_like(xd_points)
         for i in range(len(driving_parts)):
             mask = driving_parts[i]
             u = track_vels[:, i].unsqueeze(1) * thrust_dir
-            dv = u.unsqueeze(1) - xd_points[:, mask]
-            dv_n = (dv * n[:, mask]).sum(dim=-1, keepdims=True)
-            dv_t = dv - dv_n * n[:, mask]
-            dvels[:, mask] = dv_t
-        F_friction = friction_points * N.unsqueeze(2) * normalized(dvels)  # F_f = - mu * N * v / |v|, v = u - xd
+            cmd_vels[:, mask] = u.unsqueeze(1)
+        F_friction = N.unsqueeze(2) * normalized(friction_points * cmd_vels - xd_points)
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
@@ -192,7 +189,6 @@ class DPhysics(torch.nn.Module):
 
         # motion of the cog
         F_grav = torch.tensor([[0.0, 0.0, -m * g]], device=self.device)  # F_grav = [0, 0, -m * g]
-        # F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1) - in_contact.sum(dim=1) * normalized(xd)  # ma = sum(F_i)
         F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)

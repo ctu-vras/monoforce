@@ -116,6 +116,22 @@ class BevEncode(nn.Module):
             nn.ReLU(inplace=True),
         )
 
+        self.up_geom = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0),
+        )
+        self.up_diff = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0),
+            nn.ReLU(inplace=True),
+        )
+
     def backbone(self, x):
         x = self.conv1(x)
         x = self.bn1(x)

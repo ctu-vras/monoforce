@@ -54,7 +54,7 @@ def optimize_heightmap():
     # heightmap defining the terrain
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
     z_grid_gt = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
@@ -195,12 +195,13 @@ def learn_terrain_properties():
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss: {loss.item()}')
+        print(f'Friction mean: {friction.mean().item()}')
 
         if vis and i % vis_step == 0:
             with torch.no_grad():
                 x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
                 y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-                x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+                x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
                 x_grid = x_grid.repeat(batch_size, 1, 1)
                 y_grid = y_grid.repeat(batch_size, 1, 1)
                 visualize(states=states_pred,

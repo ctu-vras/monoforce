@@ -74,7 +74,6 @@ def motion():
                               stiffness=stiffness, friction=friction)
 
     # visualize using mayavi
-    # get the states and forces for the b-th rigid body and move them to the cpu
     xs, xds, rs, omegas, x_points = [s[0].detach().cpu().numpy() for s in states]
     F_spring, F_friction = [f[0].detach().cpu().numpy() for f in forces]
     x_grid_np, y_grid_np, z_grid_np = [g[0].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
