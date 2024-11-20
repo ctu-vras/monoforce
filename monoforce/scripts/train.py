@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.terrain_encoder.lss import load_lss_model
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion, LiDARBEV
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion, LidarBEV
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
@@ -574,7 +574,7 @@ class TrainerLiDARBEV(TrainerCore):
             self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
 
             # load models: terrain encoder
-            self.terrain_encoder = LiDARBEV(grid_conf=self.lss_cfg['grid_conf'], out_channels=1).to(self.device)
+            self.terrain_encoder = LidarBEV(grid_conf=self.lss_cfg['grid_conf'], outC=1).to(self.device)
             self.terrain_encoder.train()
 
             # define optimizer
@@ -589,7 +589,9 @@ class TrainerLiDARBEV(TrainerCore):
 
             # terrain encoder forward pass
             points_input = points
-            terrain_pred = self.terrain_encoder(points_input)
+            out = self.terrain_encoder(points_input)
+            terrain_pred = out['terrain']
+            friction_pred = out['friction']
 
             # rigid / terrain height map loss
             if self.terrain_weight > 0:
@@ -599,7 +601,7 @@ class TrainerLiDARBEV(TrainerCore):
 
             # physics loss: difference between predicted and ground truth states
             states_gt = [Xs, Xds, Rs, Omegas]
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls)
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
             if self.phys_weight > 0:
                 loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                               pred_ts=control_ts, gt_ts=traj_ts)
@@ -611,18 +613,48 @@ class TrainerLiDARBEV(TrainerCore):
         def vis_pred(self, loader):
             sample_i = np.random.choice(len(loader.dataset))
             sample = loader.dataset[sample_i]
-            points, hm_terrain = sample[:2]
+            (points, hm_terrain,
+             control_ts, controls,
+             traj_ts, Xs, Xds, Rs, Omegas) = sample
             terrain, weights = hm_terrain[0], hm_terrain[1]
-            terrain_pred = self.terrain_encoder(points.unsqueeze(0).to(self.device))  # (B, outC, H, W)
+
+            # predict terrain and friction
+            out = self.terrain_encoder(points.unsqueeze(0).to(self.device))  # (B, outC, H, W)
+            terrain_pred = out['terrain']
+            friction_pred = out['friction']
+
+            # predict states
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1),
+                                           controls=controls.unsqueeze(0).to(self.device),
+                                           friction=friction_pred.squeeze(1))
+
+            terrain_pred = terrain_pred[0, 0].cpu()
+            friction_pred = friction_pred[0, 0].cpu()
+            Xs_pred = states_pred[0][0].cpu()
 
             # visualize the output
-            fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-            ax[0].imshow(terrain_pred.squeeze().cpu().numpy().T, cmap='jet', origin='lower', vmin=-1, vmax=1)
-            ax[0].set_title('Output')
+            fig, ax = plt.subplots(1, 5, figsize=(20, 4))
+
+            ax[0].imshow(terrain_pred.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
+            ax[0].set_title('Predicted Terrain')
+
             ax[1].imshow(terrain.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
             ax[1].set_title('Ground truth')
+
             ax[2].imshow(weights.T, cmap='gray', origin='lower')
             ax[2].set_title('Weights')
+
+            ax[3].imshow(friction_pred.T, cmap='jet', origin='lower', vmin=0, vmax=1)
+            ax[3].set_title('Friction')
+
+            ax[4].plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
+            ax[4].plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
+            ax[4].set_title('Trajectories')
+            ax[4].set_xlabel('X [m]')
+            ax[4].set_ylabel('Y [m]')
+            ax[4].legend()
+            ax[4].grid()
+            ax[4].axis('equal')
 
             return fig
 

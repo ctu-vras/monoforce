@@ -163,7 +163,7 @@ class DPhysics(torch.nn.Module):
         F_spring = torch.mul(F_spring, in_contact) / n_pts  # apply forces only at the contact points
         assert F_spring.shape == (B, n_pts, 3)
 
-        # friction forces: https://en.wikipedia.org/wiki/Friction
+        # static and dynamic friction forces: https://en.wikipedia.org/wiki/Friction
         thrust_dir = normalized(R[..., 0])  # direction of the thrust
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
@@ -175,7 +175,7 @@ class DPhysics(torch.nn.Module):
             mask = driving_parts[i]
             u = track_vels[:, i].unsqueeze(1) * thrust_dir
             cmd_vels[:, mask] = u.unsqueeze(1)
-        F_friction = N.unsqueeze(2) * normalized(friction_points * cmd_vels - xd_points)
+        F_friction = N.unsqueeze(2) * normalized(friction_points * cmd_vels - xd_points)  # F_f = mu * N * v / |v|
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)

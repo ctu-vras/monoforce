@@ -127,7 +127,6 @@ def optimize_heightmap():
 
 
 def learn_terrain_properties():
-    import matplotlib.pyplot as plt
     from monoforce.datasets import ROUGH, rough_seq_paths
     from torch.utils.data import DataLoader
     from time import time

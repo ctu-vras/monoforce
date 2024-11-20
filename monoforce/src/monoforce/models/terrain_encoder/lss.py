@@ -21,10 +21,10 @@ class Up(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.GELU()
         )
 
     def forward(self, x1, x2):
@@ -104,32 +104,32 @@ class BevEncode(nn.Module):
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
         self.up_friction = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
-            nn.ReLU(inplace=True),
+            nn.ReLU()
         )
 
         self.up_geom = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
         self.up_diff = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
-            nn.ReLU(inplace=True),
+            nn.ReLU()
         )
 
     def backbone(self, x):

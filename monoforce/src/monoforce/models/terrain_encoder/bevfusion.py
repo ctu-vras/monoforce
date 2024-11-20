@@ -4,32 +4,25 @@ from torchvision.models.resnet import resnet18
 from .lss import LiftSplatShoot
 
 
-class LiDAREncoder(nn.Module):
-    def __init__(self, in_channels=1, out_channels=64):
-        super(LiDAREncoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv3d(in_channels, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm3d(32),
-            nn.ReLU(),
-            nn.Conv3d(32, out_channels, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm3d(out_channels),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        return self.encoder(x)
-
-
-class LiDARBEV(nn.Module):
-    def __init__(self, grid_conf, out_channels=64):
-        super(LiDARBEV, self).__init__()
+class LidarNet(nn.Module):
+    def __init__(self, grid_conf, in_channels=1, out_channels=64):
+        super(LidarNet, self).__init__()
         assert grid_conf['xbound'][2] == grid_conf['ybound'][2], 'Voxel size must be the same in x and y dimensions'
         self.grid_conf = grid_conf
         self.voxel_size = grid_conf['xbound'][2]
         self.grid_size = (int((grid_conf['xbound'][1] - grid_conf['xbound'][0]) / self.voxel_size),
                           int((grid_conf['ybound'][1] - grid_conf['ybound'][0]) / self.voxel_size),
-                          int((grid_conf['zbound'][1] - grid_conf['zbound'][0]) / self.voxel_size))  # (D, H, W)
-        self.encoder = LiDAREncoder(in_channels=1, out_channels=out_channels)
+                          int((grid_conf['zbound'][1] - grid_conf['zbound'][0]) / self.voxel_size))  # (H, W, D)
+        self.encoder = nn.Sequential(
+            nn.Conv3d(in_channels, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm3d(32),
+            nn.GELU(),
+            nn.Conv3d(32, out_channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm3d(out_channels),
+            nn.GELU()
+        )
+        # D = self.grid_size[2]
+        # self.z_weights = nn.Parameter(torch.rand(D).softmax(dim=0), requires_grad=True)
 
     def voxelize(self, point_clouds):
         """
@@ -38,11 +31,16 @@ class LiDARBEV(nn.Module):
         Args:
             point_clouds (torch.Tensor): The input point clouds of shape (B, 3, N),
                                          where B is the batch size, N is the number of points.
-            voxel_size (float): The size of each voxel.
-            grid_size (tuple): The size of the voxel grid (D, H, W).
-
         Returns:
-            voxel_grid (torch.Tensor): A voxelized grid of shape (B, D, H, W).
+            voxel_grid (torch.Tensor): A voxelized grid of shape (B, 1, D, H, W).
+
+        Example:
+            Grid size: (H, W, D) = (64, 128, 128) means 64 height voxels, 128 width voxels, 128 depth voxels
+            Voxel is a cube with size 0.1m x 0.1m x 0.1m
+
+            >>> point_clouds = torch.rand(2, 3, 1000)  # 2 batches, 3D points, 1000 points
+            >>> voxel_grid = self.voxelize(point_clouds)
+            >>> voxel_grid.shape  # (2, 1, 64, 128, 128)
         """
         # Remove nans saving dimensions
         point_clouds[torch.isnan(point_clouds)] = 0
@@ -80,19 +78,23 @@ class LiDARBEV(nn.Module):
         return voxel_grid
 
     def bev_flatten(self, lidar_features):
-        # Max-pooling along the z-axis to create 2D BEV features
-        bev_features = torch.max(lidar_features, dim=2)[0]
+        # Pooling along the z-axis to create 2D BEV features
+        bev_features = lidar_features.mean(dim=2)
+
+        # Weighted sum along the z-axis to create 2D BEV features
+        # bev_features = torch.sum(lidar_features * self.z_weights.view(1, 1, -1, 1, 1), dim=2)
+
         return bev_features
 
     def forward(self, point_cloud):
         # Step 1: Voxelize the raw point cloud
-        voxel_grid = self.voxelize(point_cloud)
+        voxel_grid = self.voxelize(point_cloud)  # Shape (B, 1, D, H, W)
 
         # Step 2: Encode the voxelized point cloud using 3D CNN
-        lidar_features = self.encoder(voxel_grid)
+        lidar_features = self.encoder(voxel_grid)  # Shape (B, out_channels, D, H, W)
 
         # Step 3: Flatten along the z-axis to obtain BEV features
-        bev_features = self.bev_flatten(lidar_features)
+        bev_features = self.bev_flatten(lidar_features)  # Shape (B, out_channels, H, W)
 
         return bev_features
 
@@ -107,10 +109,10 @@ class Up(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.GELU()
         )
 
     def forward(self, x1, x2):
@@ -136,7 +138,7 @@ class BevEncode(nn.Module):
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
 
@@ -162,21 +164,21 @@ class TerrainHeads(nn.Module):
         self.head_terrain = nn.Sequential(
             nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(64, outC, kernel_size=1, padding=0)
         )
         self.head_friction = nn.Sequential(
             nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(64, outC, kernel_size=1, padding=0),
-            nn.ReLU(inplace=True),
+            nn.ReLU()
         )
 
     def forward(self, x):
@@ -189,11 +191,32 @@ class TerrainHeads(nn.Module):
         return out
 
 
+class LidarBEV(nn.Module):
+    def __init__(self, grid_conf, n_features=16, outC=1):
+        super().__init__()
+
+        self.lidar_net = LidarNet(grid_conf=grid_conf, out_channels=n_features)
+        self.bevencode = BevEncode(inC=n_features, outC=n_features)
+        self.terrain_heads = TerrainHeads(inC=n_features, outC=outC)
+
+    def forward(self, points):
+        # Get features from LiDAR inputs
+        x = self.lidar_net(points)  # Shape (B, D, H, W)
+
+        # Encode the BEV features
+        x = self.bevencode(x)  # Shape (B, D, H, W)
+
+        # Terrain head
+        out = self.terrain_heads(x)  # Dict, values of shape (B, 1, H, W)
+
+        return out
+
+
 class BEVFusion(LiftSplatShoot):
     def __init__(self, grid_conf, data_aug_conf, outC=1):
         super().__init__(grid_conf, data_aug_conf)
 
-        self.lidar_bev = LiDARBEV(grid_conf=grid_conf, out_channels=64)
+        self.lidar_net = LidarNet(grid_conf=grid_conf, out_channels=64)
         self.bevencode = BevEncode(inC=128, outC=128)
         self.terrain_heads = TerrainHeads(inC=128, outC=outC)
 
@@ -202,7 +225,7 @@ class BEVFusion(LiftSplatShoot):
         cam_feat_bev = self.get_voxels(*img_inputs)  # Shape (B, D, H, W)
 
         # Get BEV features from LiDAR inputs
-        lidar_feat_bev = self.lidar_bev(cloud_input)  # Shape (B, D, H, W)
+        lidar_feat_bev = self.lidar_net(cloud_input)  # Shape (B, D, H, W)
 
         # Concatenate the two BEV features
         feat_bev = torch.cat([cam_feat_bev, lidar_feat_bev], dim=1)  # Shape (B, 2xD, H, W)
