@@ -34,7 +34,7 @@ class Up(nn.Module):
 
 
 class CamEncode(nn.Module):
-    def __init__(self, D, C, in_channels):
+    def __init__(self, D, C, in_channels=3):
         super(CamEncode, self).__init__()
         self.D = D
         self.C = C
@@ -100,22 +100,6 @@ class BevEncode(nn.Module):
         self.layer3 = trunk.layer3
 
         self.up1 = Up(64+256, 256, scale_factor=4)
-        self.up_terrain = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.GELU(),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0),
-        )
-        self.up_friction = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.GELU(),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0),
-            nn.ReLU()
-        )
-
         self.up_geom = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
@@ -124,6 +108,14 @@ class BevEncode(nn.Module):
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
         self.up_diff = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0),
+            nn.ReLU()
+        )
+        self.up_friction = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
@@ -146,15 +138,21 @@ class BevEncode(nn.Module):
         return x
 
     def forward(self, x):
-        hm_feat = self.backbone(x)
-        hm_terrain = self.up_terrain(hm_feat)
-        friction = self.up_friction(hm_feat)
-
-        return hm_terrain, friction
-
+        x = self.backbone(x)
+        x_geom = self.up_geom(x)
+        x_diff = self.up_diff(x)
+        x_friction = self.up_friction(x)
+        x_terrain = x_geom - x_diff
+        out = {
+            'geom': x_geom,
+            'terrain': x_terrain,
+            'diff': x_diff,
+            'friction': x_friction
+        }
+        return out
 
 class LiftSplatShoot(nn.Module):
-    def __init__(self, grid_conf, data_aug_conf, inpC=3, outC=1):
+    def __init__(self, grid_conf, data_aug_conf, outC=1):
         super(LiftSplatShoot, self).__init__()
         self.grid_conf = grid_conf
         self.data_aug_conf = data_aug_conf
@@ -171,7 +169,7 @@ class LiftSplatShoot(nn.Module):
         self.camC = 64
         self.frustum = self.create_frustum()
         self.D, _, _, _ = self.frustum.shape
-        self.camencode = CamEncode(self.D, self.camC, in_channels=inpC)
+        self.camencode = CamEncode(self.D, self.camC)
         self.bevencode = BevEncode(inC=self.camC, outC=outC)
 
         # toggle using QuickCumsum vs. autograd
@@ -276,22 +274,16 @@ class LiftSplatShoot(nn.Module):
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
         x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans)
-        x_terrain, friction = self.bevencode(x)
-        assert x_terrain.shape == friction.shape
-
-        out = {
-            'terrain': x_terrain,
-            'friction': friction,
-        }
+        out = self.bevencode(x)
         return out
 
 
-def compile_model(grid_conf, data_aug_conf, inpC=3, outC=1):
-    return LiftSplatShoot(grid_conf, data_aug_conf, inpC, outC)
+def compile_model(grid_conf, data_aug_conf, outC=1):
+    return LiftSplatShoot(grid_conf, data_aug_conf, outC)
 
 
 def load_lss_model(modelf, lss_cfg, device=None):
-    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], inpC=3, outC=1)
+    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
 
     # load pretrained model / update model with pretrained weights
     if modelf is not None:

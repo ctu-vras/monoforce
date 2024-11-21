@@ -20,5 +20,5 @@
         </rosparam>
     </node>
 
-    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/monoforce_demo.rviz"/>
+    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/../config/rviz/monoforce_rough.rviz"/>
 </launch>

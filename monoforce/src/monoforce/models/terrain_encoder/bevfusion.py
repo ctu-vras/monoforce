@@ -119,109 +119,33 @@ class Up(nn.Module):
         x1 = torch.cat([x2, x1], dim=1)
         return self.conv(x1)
 
-class BevEncode(nn.Module):
-    def __init__(self, inC, outC):
-        super(BevEncode, self).__init__()
-
-        trunk = resnet18(zero_init_residual=True)
-        self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.bn1 = trunk.bn1
-        self.relu = trunk.relu
-
-        self.layer1 = trunk.layer1
-        self.layer2 = trunk.layer2
-        self.layer3 = trunk.layer3
-
-        self.up1 = Up(64+256, 256, scale_factor=4)
-        self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.GELU(),
-            nn.Conv2d(128, outC, kernel_size=1, padding=0),
-        )
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.layer1(x)
-        x = self.layer2(x1)
-        x = self.layer3(x)
-
-        x = self.up1(x, x1)
-        x = self.up2(x)
-
-        return x
-
-
-class TerrainHeads(nn.Module):
-    def __init__(self, inC, outC):
-        super(TerrainHeads, self).__init__()
-
-        self.head_terrain = nn.Sequential(
-            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.GELU(),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.GELU(),
-            nn.Conv2d(64, outC, kernel_size=1, padding=0)
-        )
-        self.head_friction = nn.Sequential(
-            nn.Conv2d(inC, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.GELU(),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.GELU(),
-            nn.Conv2d(64, outC, kernel_size=1, padding=0),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        x_terrain = self.head_terrain(x)
-        friction = self.head_friction(x)
-        out = {
-            'terrain': x_terrain,
-            'friction': friction
-        }
-        return out
-
-
 class LidarBEV(nn.Module):
     def __init__(self, grid_conf, n_features=16, outC=1):
         super().__init__()
 
         self.lidar_net = LidarNet(grid_conf=grid_conf, out_channels=n_features)
-        self.bevencode = BevEncode(inC=n_features, outC=n_features)
-        self.terrain_heads = TerrainHeads(inC=n_features, outC=outC)
+        self.bevencode = BevEncode(inC=n_features, outC=outC)
 
     def forward(self, points):
         # Get features from LiDAR inputs
-        x = self.lidar_net(points)  # Shape (B, D, H, W)
+        x = self.lidar_net(points)  # Shape (B, C, H, W)
 
         # Encode the BEV features
-        x = self.bevencode(x)  # Shape (B, D, H, W)
-
-        # Terrain head
-        out = self.terrain_heads(x)  # Dict, values of shape (B, 1, H, W)
+        out = self.bevencode(x)  # Shape (B, 1, H, W)
 
         return out
 
 
-class BEVFusion(LiftSplatShoot):
+class BEVFusion(nn.Module):
     def __init__(self, grid_conf, data_aug_conf, outC=1):
-        super().__init__(grid_conf, data_aug_conf)
-
+        super().__init__()
+        self.lss = LiftSplatShoot(grid_conf, data_aug_conf)
         self.lidar_net = LidarNet(grid_conf=grid_conf, out_channels=64)
-        self.bevencode = BevEncode(inC=128, outC=128)
-        self.terrain_heads = TerrainHeads(inC=128, outC=outC)
+        self.bevencode = BevEncode(inC=2*64, outC=outC)
 
     def forward(self, img_inputs, cloud_input):
         # Get BEV features from camera inputs
-        cam_feat_bev = self.get_voxels(*img_inputs)  # Shape (B, D, H, W)
+        cam_feat_bev = self.lss.get_voxels(*img_inputs)  # Shape (B, D, H, W)
 
         # Get BEV features from LiDAR inputs
         lidar_feat_bev = self.lidar_net(cloud_input)  # Shape (B, D, H, W)
@@ -230,14 +154,29 @@ class BEVFusion(LiftSplatShoot):
         feat_bev = torch.cat([cam_feat_bev, lidar_feat_bev], dim=1)  # Shape (B, 2xD, H, W)
 
         # Encode the concatenated BEV features
-        fused_bev_feat = self.bevencode(feat_bev)  # Shape (B, 2xD, H, W)
-
-        # Terrain head
-        out = self.terrain_heads(fused_bev_feat)  # Dict, values of shape (B, 1, H, W)
+        out = self.bevencode(feat_bev)  # Shape (B, 1, H, W)
 
         return out
 
 
 def compile_model(grid_conf, data_aug_conf, outC=1):
     model = BEVFusion(grid_conf, data_aug_conf, outC=outC)
+    return model
+
+
+def load_bevfusion_model(modelf, lss_cfg, device=None):
+    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
+
+    # load pretrained model / update model with pretrained weights
+    if modelf is not None:
+        print('Loading pretrained BEVFusion model from', modelf)
+        # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
+        model_dict = model.state_dict()
+        pretrained_model = torch.load(modelf)
+        model_dict.update(pretrained_model)
+        model.load_state_dict(model_dict)
+
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
     return model
