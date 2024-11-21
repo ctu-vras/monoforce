@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MODEL=lss  # lss, lidarbev, bevfusion
-ROBOT=tradr
+ROBOT=marv
 DEBUG=False
 VIS=False
 BSZ=32  # 32, 32, 8

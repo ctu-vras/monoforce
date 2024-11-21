@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
-from monoforce.models.terrain_encoder.lss import load_lss_model
+from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.bevfusion import BEVFusion
 from monoforce.models.terrain_encoder.lidarbev import LidarBEV
 from monoforce.models.dphysics import DPhysics
@@ -273,7 +273,9 @@ class TrainerLSS(TrainerCore):
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGH)
 
         # load models: terrain encoder
-        self.terrain_encoder = load_lss_model(modelf=pretrained_model_path, lss_cfg=self.lss_cfg, device=self.device)
+        self.terrain_encoder = LiftSplatShoot(self.lss_cfg['grid_conf'],
+                                              self.lss_cfg['data_aug_conf']).from_pretrained(pretrained_model_path)
+        self.terrain_encoder.to(self.device)
         self.terrain_encoder.train()
 
         # define optimizer
@@ -450,7 +452,8 @@ class TrainerBEVFusion(TrainerCore):
 
         # load models: terrain encoder
         self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
-                                         data_aug_conf=self.lss_cfg['data_aug_conf']).to(self.device)
+                                         data_aug_conf=self.lss_cfg['data_aug_conf']).from_pretrained(pretrained_model_path)
+        self.terrain_encoder.to(self.device)
         self.terrain_encoder.train()
 
         # define optimizer
@@ -625,7 +628,9 @@ class TrainerLiDARBEV(TrainerCore):
             self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
 
             # load models: terrain encoder
-            self.terrain_encoder = LidarBEV(grid_conf=self.lss_cfg['grid_conf'], outC=1).to(self.device)
+            self.terrain_encoder = LidarBEV(grid_conf=self.lss_cfg['grid_conf'],
+                                            outC=1).from_pretrained(pretrained_model_path)
+            self.terrain_encoder.to(self.device)
             self.terrain_encoder.train()
 
             # define optimizer

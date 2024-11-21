@@ -8,13 +8,6 @@ import numpy as np
 import torch
 import torchvision
 from PIL import Image
-import yaml
-
-
-def load_config(fname):
-    with open(fname, "r") as f:
-        config = yaml.safe_load(f)
-    return config
 
 
 def ego_to_cam(points, rot, trans, intrins):
@@ -186,5 +179,3 @@ class QuickCumsum(torch.autograd.Function):
         val = gradx[back]
 
         return val, None, None
-
-

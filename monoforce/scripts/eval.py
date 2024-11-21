@@ -10,8 +10,8 @@ import torch
 import argparse
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
-from monoforce.models.terrain_encoder.lss import load_lss_model
-from monoforce.models.terrain_encoder.bevfusion import load_bevfusion_model
+from monoforce.models.terrain_encoder.lss import LiftSplatShoot
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion
 from monoforce.transformations import transform_cloud, position
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
@@ -78,8 +78,11 @@ class Evaluation:
         assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
         self.lss_config = read_yaml(self.lss_config_path)
         self.model_path = model_path
-        self.terrain_encoder = load_lss_model(self.model_path, self.lss_config, device=self.device)
-        # self.terrain_encoder = load_bevfusion_model(self.model_path, self.lss_config, device=self.device)
+        self.terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
+                                              self.lss_config['data_aug_conf']).from_pretrained(self.model_path)
+        self.terrain_encoder.to(self.device)
+        # self.terrain_encoder = BEVFusion(self.lss_config['grid_conf'],
+        #                                  self.lss_config['data_aug_conf']).from_pretrained(self.model_path)
         # load dataset
         self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)

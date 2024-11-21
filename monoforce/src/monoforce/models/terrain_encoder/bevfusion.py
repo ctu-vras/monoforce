@@ -26,25 +26,11 @@ class BEVFusion(nn.Module):
 
         return out
 
-
-def compile_model(grid_conf, data_aug_conf, outC=1):
-    model = BEVFusion(grid_conf, data_aug_conf, outC=outC)
-    return model
-
-
-def load_bevfusion_model(modelf, lss_cfg, device=None):
-    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
-
-    # load pretrained model / update model with pretrained weights
-    if modelf is not None:
-        print('Loading pretrained BEVFusion model from', modelf)
+    def from_pretrained(self, modelf):
+        print(f'Loading pretrained {self.__class__.__name__} model from', modelf)
         # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
-        model_dict = model.state_dict()
+        model_dict = self.state_dict()
         pretrained_model = torch.load(modelf)
         model_dict.update(pretrained_model)
-        model.load_state_dict(model_dict)
-
-    if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
-    return model
+        self.load_state_dict(model_dict)
+        return self

@@ -10,7 +10,7 @@ from cv_bridge import CvBridge
 from grid_map_msgs.msg import GridMap
 from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.utils import read_yaml, timing, load_calib
-from monoforce.models.terrain_encoder.lss import load_lss_model
+from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import img_transform, normalize_img, sample_augmentation
 from sensor_msgs.msg import CompressedImage, CameraInfo
 from time import time
@@ -35,7 +35,9 @@ class TerrainEncoder:
         rospy.loginfo('Loading LSS model from %s' % weights)
         if not os.path.exists(weights):
             rospy.logerr('Model weights file %s does not exist. Using random weights.' % weights)
-        self.model = load_lss_model(modelf=weights, lss_cfg=self.lss_cfg, device=self.device)
+        self.model = LiftSplatShoot(self.lss_cfg['grid_conf'],
+                                    self.lss_cfg['data_aug_conf']).from_pretrained(weights)
+        self.model.to(self.device)
         self.model.eval()
 
         self.robot_frame = rospy.get_param('~robot_frame', 'base_link')

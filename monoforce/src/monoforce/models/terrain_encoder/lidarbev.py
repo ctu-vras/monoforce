@@ -108,3 +108,12 @@ class LidarBEV(nn.Module):
         out = self.bevencode(x)  # Shape (B, 1, X, Y)
 
         return out
+
+    def from_pretrained(self, modelf):
+        print(f'Loading pretrained {self.__class__.__name__} model from', modelf)
+        # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
+        model_dict = self.state_dict()
+        pretrained_model = torch.load(modelf)
+        model_dict.update(pretrained_model)
+        self.load_state_dict(model_dict)
+        return self

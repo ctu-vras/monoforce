@@ -9,7 +9,7 @@ from monoforce.datasets import ROUGH, rough_seq_paths
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
-from monoforce.models.terrain_encoder.lss import load_lss_model
+from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
 from grid_map_msgs.msg import GridMap
@@ -54,7 +54,9 @@ class MonoForce:
         self.robot_frame = robot_frame
         self.camera_frames = None  # will be set from the data sequence
         # load terrain encoder
-        self.terrain_encoder = load_lss_model(modelf=lss_weights_path, lss_cfg=self.lss_config, device=self.device)
+        self.terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
+                                              self.lss_config['data_aug_conf']).from_pretrained(lss_weights_path)
+        self.terrain_encoder.to(self.device)
         self.terrain_encoder.eval()
 
         # publishers

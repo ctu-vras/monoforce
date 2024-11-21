@@ -180,12 +180,12 @@ def compile_data(lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=Fal
 
 def explore_data(ds, sample_range='random', save=False):
     from tqdm import tqdm
-    from monoforce.models.terrain_encoder.lss import compile_model
+    from monoforce.models.terrain_encoder.lss import LiftSplatShoot
     from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 
     lss_cfg = ds.lss_cfg
     dphys_cfg = ds.dphys_cfg
-    model = compile_model(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
+    model = LiftSplatShoot(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
 
     H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
     cams = ds.camera_names
