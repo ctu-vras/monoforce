@@ -8,10 +8,11 @@ import os
 import numpy as np
 import torch
 import argparse
-from datetime import datetime
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import load_lss_model
+from monoforce.models.terrain_encoder.bevfusion import load_bevfusion_model
+from monoforce.transformations import transform_cloud, position
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv
@@ -32,6 +33,34 @@ def arg_parser():
     return parser.parse_args()
 
 
+class Fusion(ROUGH):
+    def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
+        super(Fusion, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
+
+    def get_cloud(self, i, points_source='lidar'):
+        cloud = self.get_raw_cloud(i)
+        # move points to robot frame
+        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
+        cloud = transform_cloud(cloud, Tr)
+        return cloud
+
+    def get_sample(self, i):
+        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
+        points = torch.as_tensor(position(self.get_cloud(i))).T
+        control_ts, controls = self.get_controls(i)
+        traj_ts, states = self.get_states_traj(i)
+        Xs, Xds, Rs, Omegas = states
+        hm_geom = self.get_terrain_height_map(i)
+        hm_terrain = self.get_geom_height_map(i)
+
+        return (imgs, rots, trans, intrins, post_rots, post_trans,
+                hm_geom, hm_terrain,
+                control_ts, controls,
+                traj_ts, Xs, Xds, Rs, Omegas,
+                points)
+
+
 class Evaluation:
     def __init__(self,
                  robot='marv',
@@ -50,13 +79,14 @@ class Evaluation:
         self.lss_config = read_yaml(self.lss_config_path)
         self.model_path = model_path
         self.terrain_encoder = load_lss_model(self.model_path, self.lss_config, device=self.device)
-
+        # self.terrain_encoder = load_bevfusion_model(self.model_path, self.lss_config, device=self.device)
         # load dataset
         self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
+        # self.ds = Fusion(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
         self.loader = torch.utils.data.DataLoader(self.ds, batch_size=1, shuffle=False)
 
-    def terrain_hm_loss(self, height_pred, height_gt, weights=None):
+    def hm_loss(self, height_pred, height_gt, weights=None):
         assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
         if weights is None:
             weights = torch.ones_like(height_gt)
@@ -122,29 +152,38 @@ class Evaluation:
                 batch = [t.to(self.device) for t in batch]
                 # get a sample from the dataset
                 (imgs, rots, trans, intrins, post_rots, post_trans,
-                 hm_terrain,
+                 hm_geom, hm_terrain,
                  control_ts, controls,
                  traj_ts, Xs, Xds, Rs, Omegas) = batch
+                # (imgs, rots, trans, intrins, post_rots, post_trans,
+                #  hm_geom, hm_terrain,
+                #  control_ts, controls,
+                #  traj_ts, Xs, Xds, Rs, Omegas,
+                #  points) = batch
 
                 # terrain prediction
-                inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-                out = self.terrain_encoder(*inputs)
+                img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                out = self.terrain_encoder(*img_inputs)
+                # out = self.terrain_encoder(img_inputs, points)
                 terrain_pred, friction_pred = out['terrain'], out['friction']
 
                 # evaluation losses
-                terrain_loss = self.terrain_hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0])
+                terrain_loss = self.hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0])
                 states_gt = [Xs, Xds, Rs, Omegas]
                 states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
                 physics_loss = self.physics_loss(states_pred, states_gt, pred_ts=control_ts, gt_ts=traj_ts)
 
                 # visualizations
                 terrain_pred = terrain_pred[0, 0].cpu()
+                # terrain_pred = hm_terrain[0, 0].cpu()
                 friction_pred = friction_pred[0, 0].cpu()
 
                 # get height map points
-                z_grid = terrain_pred
-                hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+                hm_points = torch.stack([x_grid, y_grid, terrain_pred], dim=-1)
                 hm_points = hm_points.view(-1, 3).T
+
+                # terrain_mask = hm_terrain[0, 1].cpu().bool().flatten()
+                # hm_points = hm_points[:, terrain_mask]
 
                 plt.clf()
                 plt.suptitle(f'Terrain Loss: {terrain_loss.item():.4f}, Physics Loss: {physics_loss.item():.4f}')
@@ -157,8 +196,10 @@ class Evaluation:
                     showimg = denormalize_img(img)
 
                     plt.imshow(showimg)
-                    plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=friction_pred.view(-1)[mask],
-                                s=2, alpha=0.8, cmap='jet', vmin=0., vmax=1.)
+                    plt.scatter(plot_pts[0, mask], plot_pts[1, mask],
+                                # c=friction_pred.view(-1)[terrain_mask][mask],
+                                c=hm_points[2, mask],
+                                s=2, alpha=0.8, cmap='jet', vmin=-1, vmax=1.)
                     plt.axis('off')
                     # camera name as text on image
                     plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),

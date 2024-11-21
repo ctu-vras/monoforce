@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models.resnet import resnet18
-from .lss import LiftSplatShoot
+from .lss import LiftSplatShoot, BevEncode
 
 
 class LidarNet(nn.Module):

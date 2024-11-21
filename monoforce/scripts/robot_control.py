@@ -115,7 +115,7 @@ def motion_dataset():
     # get a sample from the dataset
     sample = ds[sample_i]
     (imgs, rots, trans, intrins, post_rots, post_trans,
-     terrain,
+     geom, terrain,
      control_ts, controls,
      traj_ts, Xs, Xds, Rs, Omegas) = sample
     states = (Xs, Xds, Rs, Omegas)

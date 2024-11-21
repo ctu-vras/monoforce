@@ -668,11 +668,13 @@ class ROUGH(Dataset):
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
         Xs, Xds, Rs, Omegas = states
+        hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
         if self.only_front_cam:
             mask = self.front_height_map_mask()
+            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
             hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
-                hm_terrain,
+                hm_geom, hm_terrain,
                 control_ts, controls,
                 traj_ts, Xs, Xds, Rs, Omegas)
