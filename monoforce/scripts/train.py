@@ -8,7 +8,8 @@ import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.terrain_encoder.lss import load_lss_model
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion, LidarBEV
+from monoforce.models.terrain_encoder.bevfusion import BEVFusion
+from monoforce.models.terrain_encoder.lidarbev import LidarBEV
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
