@@ -9,6 +9,12 @@ Self-supervised traversability data generated using lidar SLAM.
 The data sequences are available at 
 [Google Drive](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
 
+The data sequences can be downloaded for example using [gdown](https://github.com/wkentaro/gdown):
+```bash
+pip install gdown
+gdown URL --folder --remaining-ok
+```
+
 The dataset (ROUGH) contains:
   - point clouds, 
   - camera images,
