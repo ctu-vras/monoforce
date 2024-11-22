@@ -109,24 +109,34 @@ class DPhysics(torch.nn.Module):
         self.device = device
         self.I = torch.as_tensor(self.dphys_cfg.robot_I, device=device)  # 3x3 inertia tensor, kg*m^2
         self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
+        self.x_points = torch.as_tensor(self.dphys_cfg.robot_points, device=device)  # robot body points
 
-    def forward_kinematics(self, state, xd_points,
+    def forward_kinematics(self, state,
                            z_grid, stiffness, damping, friction,
                            driving_parts,
                            controls):
         # unpack state
-        x, xd, R, omega, x_points = state
+        x, xd, R, omega = state
         assert x.dim() == 2 and x.shape[1] == 3  # (B, 3)
         assert xd.dim() == 2 and xd.shape[1] == 3  # (B, 3)
         assert R.dim() == 3 and R.shape[-2:] == (3, 3)  # (B, 3, 3)
+        assert omega.dim() == 2 and omega.shape[1] == 3  # (B, 3)
+
+        x_points = self.x_points @ R.transpose(1, 2) + x.unsqueeze(1)
         assert x_points.dim() == 3 and x_points.shape[-1] == 3  # (B, N, 3)
-        assert xd_points.dim() == 3 and xd_points.shape[-1] == 3  # (B, N, 3)
+        B, n_pts, D = x_points.shape
+
+        # motion of point composed of cog motion and rotation of the rigid body
+        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
+        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
+        assert xd_points.shape == (B, n_pts, 3)
+
         for p in driving_parts:
             assert p.dim() == 1 and p.shape[0] == x_points.shape[1]  # (N,)
+
         assert controls.dim() == 2 and controls.shape[0] == x.shape[0]  # (B, 2)
         assert controls.shape[1] == 2  # linear and angular velocities
         assert z_grid.dim() == 3  # (B, H, W)
-        B, n_pts, D = x_points.shape
 
         # compute the terrain properties at the robot points
         z_points, n = self.interpolate_grid(z_grid, x_points[..., 0], x_points[..., 1], return_normals=True)
@@ -193,12 +203,7 @@ class DPhysics(torch.nn.Module):
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
 
-        # motion of point composed of cog motion and rotation of the rigid body
-        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
-        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
-        assert xd_points.shape == (B, n_pts, 3)
-
-        dstate = (xd, xdd, dR, omega_d, xd_points)
+        dstate = (xd, xdd, dR, omega_d)
         forces = (F_spring, F_friction)
 
         return dstate, forces
@@ -207,17 +212,16 @@ class DPhysics(torch.nn.Module):
         """
         Integrates the states of the rigid body for the next time step.
         """
-        x, xd, R, omega, x_points = state
-        _, xdd, dR, omega_d, xd_points = dstate
+        x, xd, R, omega = state
+        _, xdd, dR, omega_d = dstate
 
         xd = self.integration_step(xd, xdd, dt, mode=self.dphys_cfg.integration_mode)
         x = self.integration_step(x, xd, dt, mode=self.dphys_cfg.integration_mode)
-        x_points = self.integration_step(x_points, xd_points, dt, mode=self.dphys_cfg.integration_mode)
         omega = self.integration_step(omega, omega_d, dt, mode=self.dphys_cfg.integration_mode)
         # R = self.integration_step(R, dR, dt, mode=self.dphys_cfg.integration_mode)
         R = self.integrate_rotation(R, omega, dt)
 
-        state = (x, xd, R, omega, x_points)
+        state = (x, xd, R, omega)
 
         return state
 
@@ -372,7 +376,7 @@ class DPhysics(torch.nn.Module):
 
         Returns:
         - Tuple of the robot states and forces:
-            - states: Tuple of the robot states (x, xd, R, omega, x_points).
+            - states: Tuple of the robot states (x, xd, R, omega).
             - forces: Tuple of the forces (F_springs, F_frictions, F_thrusts_left, F_thrusts_right).
         """
         # unpack config
@@ -387,10 +391,7 @@ class DPhysics(torch.nn.Module):
             xd = torch.zeros_like(x); xd[:, 0] = controls[:, 0, 0]  # initial forward speed
             R = torch.eye(3).to(device).repeat(batch_size, 1, 1)
             omega = torch.zeros_like(x); omega[:, 2] = controls[:, 0, 1]  # initial rotational speed
-            x_points = torch.as_tensor(self.dphys_cfg.robot_points, device=device)
-            x_points = x_points.repeat(batch_size, 1, 1)
-            x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
-            state = (x, xd, R, omega, x_points)
+            state = (x, xd, R, omega)
 
         # terrain properties
         stiffness = self.dphys_cfg.k_stiffness if stiffness is None else stiffness
@@ -402,19 +403,22 @@ class DPhysics(torch.nn.Module):
         # for each trajectory and time step driving parts are being controlled
         assert controls.shape == (B, N_ts, 2), f'Its shape {controls.shape} != {(B, N_ts, 2)}'
 
-        # state: x, xd, R, omega, x_points
-        x, xd, R, omega, x_points = state
-        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
-        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
+        # state: x, xd, R, omega
+        x, xd, R, omega = state
+
+        # initial robot body points
+        x_points = self.x_points
+        x_points = x_points.repeat(batch_size, 1, 1)  # (B, N, 3)
+        x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
 
         # dynamics of the rigid body
-        Xs, Xds, Rs, Omegas, Omega_ds, X_points = [], [], [], [], [], []
+        Xs, Xds, Rs, Omegas, Omega_ds = [], [], [], [], []
         F_springs, F_frictions = [], []
         ts = range(N_ts)
         B, N_ts, N_pts = x.shape[0], len(ts), x_points.shape[1]
         for t in ts:
             # forward kinematics
-            dstate, forces = self.forward_kinematics(state=state, xd_points=xd_points,
+            dstate, forces = self.forward_kinematics(state=state,
                                                      z_grid=z_grid,
                                                      stiffness=stiffness, damping=damping, friction=friction,
                                                      driving_parts=self.dphys_cfg.driving_parts,
@@ -423,8 +427,8 @@ class DPhysics(torch.nn.Module):
             state = self.update_state(state, dstate, dt)
 
             # unpack state, its differential, and forces
-            x, xd, R, omega, x_points = state
-            _, xdd, dR, omega_d, xd_points = dstate
+            x, xd, R, omega = state
+            _, xdd, dR, omega_d = dstate
             F_spring, F_friction = forces
 
             # save states
@@ -432,7 +436,6 @@ class DPhysics(torch.nn.Module):
             Xds.append(xd)
             Rs.append(R)
             Omegas.append(omega)
-            X_points.append(x_points)
 
             # save forces
             F_springs.append(F_spring)
@@ -447,14 +450,12 @@ class DPhysics(torch.nn.Module):
         assert Rs.shape == (B, N_ts, 3, 3)
         Omegas = torch.stack(Omegas).permute(1, 0, 2)
         assert Omegas.shape == (B, N_ts, 3)
-        X_points = torch.stack(X_points).permute(1, 0, 2, 3)
-        assert X_points.shape == (B, N_ts, N_pts, 3)
         F_springs = torch.stack(F_springs).permute(1, 0, 2, 3)
         assert F_springs.shape == (B, N_ts, N_pts, 3)
         F_frictions = torch.stack(F_frictions).permute(1, 0, 2, 3)
         assert F_frictions.shape == (B, N_ts, N_pts, 3)
 
-        States = Xs, Xds, Rs, Omegas, X_points
+        States = Xs, Xds, Rs, Omegas
         Forces = F_springs, F_frictions
 
         return States, Forces
@@ -506,7 +507,11 @@ def debug():
         plt.legend(['xyz', 'xyz1'])
         plt.show()
 
-        assert torch.allclose(states[0][:1], states1[0], atol=1e-3), 'xyz1 != xyz'
+        if torch.allclose(states[0][:1], states1[0], atol=1e-3):
+            print('Success!')
+        else:
+            print('xyz1 != xyz')
+            raise
 
 
 if __name__ == '__main__':

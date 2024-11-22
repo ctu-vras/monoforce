@@ -153,7 +153,7 @@ class TrainerCore:
     def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts):
         # unpack states
         X, Xd, R, Omega = states_gt
-        X_pred, Xd_pred, R_pred, Omega_pred, _ = states_pred
+        X_pred, Xd_pred, R_pred, Omega_pred = states_pred
 
         # find the closest timesteps in the trajectory to the ground truth timesteps
         ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
@@ -619,7 +619,7 @@ class Points(ROUGH):
                 control_ts, controls,
                 traj_ts, Xs, Xds, Rs, Omegas)
 
-class TrainerLiDARBEV(TrainerCore):
+class TrainerLidarBEV(TrainerCore):
         def __init__(self, dphys_cfg, lss_cfg, model='lidarbev', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
                     pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=0.1):
             super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
@@ -738,7 +738,7 @@ def choose_trainer(model):
     elif model == 'bevfusion':
         return TrainerBEVFusion
     elif model == 'lidarbev':
-        return TrainerLiDARBEV
+        return TrainerLidarBEV
     else:
         raise ValueError(f'Invalid model: {model}. Supported models: lss, bevfusion, lidarbev')
 

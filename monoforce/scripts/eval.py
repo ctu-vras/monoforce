@@ -109,8 +109,8 @@ class Evaluation:
 
     def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts):
         # unpack the states
-        X, Xd, R, Omega = states_gt[:4]
-        X_pred, Xd_pred, R_pred, Omega_pred = states_pred[:4]
+        X, Xd, R, Omega = states_gt
+        X_pred, Xd_pred, R_pred, Omega_pred = states_pred
 
         # find the closest timesteps in the trajectory to the ground truth timesteps
         ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
@@ -173,7 +173,9 @@ class Evaluation:
                 # evaluation losses
                 terrain_loss = self.hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0])
                 states_gt = [Xs, Xds, Rs, Omegas]
-                states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
+                state0 = [s[:, 0] for s in states_gt]
+                states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
+                                               controls=controls, friction=friction_pred.squeeze(1))
                 physics_loss = self.physics_loss(states_pred, states_gt, pred_ts=control_ts, gt_ts=traj_ts)
 
                 # visualizations

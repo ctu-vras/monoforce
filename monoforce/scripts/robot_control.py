@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # simulation parameters
 robot = 'tradr'
 dphys_cfg = DPhysConfig(robot=robot)
-dphys_cfg.k_friction = 0.8
+dphys_cfg.k_friction = 0.5
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -40,11 +40,7 @@ def motion():
     assert rs.shape == (B, 3, 3)
     omega = torch.zeros_like(x)
     assert omega.shape == (B, 3)
-    x_points = torch.as_tensor(dphys_cfg.robot_points, device=device).repeat(x.shape[0], 1, 1)
-    assert x_points.shape == (B, len(dphys_cfg.robot_points), 3)
-    x_points = x_points @ rs.transpose(1, 2) + x.unsqueeze(1)
-    assert x_points.shape == (B, len(dphys_cfg.robot_points), 3)
-    state0 = (x, xd, rs, omega, x_points)
+    state0 = (x, xd, rs, omega)
 
     # heightmap defining the terrain
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
@@ -74,18 +70,21 @@ def motion():
                               stiffness=stiffness, friction=friction)
 
     # visualize using mayavi
-    xs, xds, rs, omegas, x_points = [s[0].detach().cpu().numpy() for s in states]
+    xs, xds, rs, omegas = [s[0].detach().cpu().numpy() for s in states]
     F_spring, F_friction = [f[0].detach().cpu().numpy() for f in forces]
     x_grid_np, y_grid_np, z_grid_np = [g[0].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
     friction_np = friction[0].detach().cpu().numpy()
+    x_points = dphys_cfg.robot_points.cpu().numpy()
 
     # set up the visualization
-    vis_cfg = setup_visualization(states=(xs, xds, rs, omegas, x_points),
+    vis_cfg = setup_visualization(states=(xs, xds, rs, omegas),
+                                  x_points=x_points,
                                   forces=(F_spring, F_friction),
                                   x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
 
     # visualize animated trajectory
-    animate_trajectory(states=(xs, xds, rs, omegas, x_points),
+    animate_trajectory(states=(xs, xds, rs, omegas),
+                       x_points=x_points,
                        forces=(F_spring, F_friction),
                        z_grid=z_grid_np,
                        friction=friction_np,
@@ -133,20 +132,23 @@ def motion_dataset():
     # differentiable physics simulation
     states_pred, forces_pred = dphysics(z_grid=torch.as_tensor(z_grid)[None].to(device),
                                         controls=torch.as_tensor(controls)[None].to(device))
-    Xs_pred, Xds_pred, Rs_pred, Omegas_pred, _ = states_pred
+    Xs_pred, Xds_pred, Rs_pred, Omegas_pred = states_pred
 
     # get the states and forces for and move them to the cpu
     states_pred_np = [s.squeeze(0).cpu().numpy() for s in states_pred]
     forces_pred_np = [f.squeeze(0).cpu().numpy() for f in forces_pred]
+    x_points = dphys_cfg.robot_points.cpu().numpy()
 
     # set up the visualization
     vis_cfg = setup_visualization(states=states_pred_np,
+                                  x_points=x_points,
                                   states_gt=states,
                                   forces=forces_pred_np,
                                   x_grid=x_grid.cpu().numpy(), y_grid=y_grid.cpu().numpy(), z_grid=z_grid.cpu().numpy())
 
     # visualize animated trajectory
     animate_trajectory(states=states_pred_np,
+                       x_points=x_points,
                        forces=forces_pred_np,
                        z_grid=z_grid.cpu().numpy(),
                        vis_cfg=vis_cfg, step=10)
@@ -165,16 +167,12 @@ def shoot_multiple():
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
-    # rigid body parameters
-    x_points = torch.as_tensor(dphys_cfg.robot_points, device=device)
-
     # initial state
     x = torch.tensor([[0.0, 0.0, 0.0]], device=device).repeat(num_trajs, 1)
     xd = torch.zeros_like(x)
     R = torch.eye(3, device=device).repeat(x.shape[0], 1, 1)
     # R = torch.tensor(Rotation.from_euler('z', np.pi/6).as_matrix(), dtype=torch.float32, device=device).repeat(num_trajs, 1, 1)
     omega = torch.zeros_like(x)
-    x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
 
     # terrain properties
     x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
@@ -201,7 +199,7 @@ def shoot_multiple():
     controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
 
     # initial state
-    state0 = (x, xd, R, omega, x_points)
+    state0 = (x, xd, R, omega)
 
     # put tensors to device
     state0 = tuple([s.to(device) for s in state0])
@@ -213,8 +211,7 @@ def shoot_multiple():
         t0 = time()
         states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
         t1 = time()
-        Xs, Xds, Rs, Omegas, X_points = states
-        print(f'Robot body points shape: {X_points.shape}')
+        Xs, Xds, Rs, Omegas = states
         print(f'Simulation took {(t1-t0):.3f} [sec] on device: {device}')
 
     # visualize

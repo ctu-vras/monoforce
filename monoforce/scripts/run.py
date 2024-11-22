@@ -175,9 +175,9 @@ class MonoForce:
                                         u=F_springs[i, :, 0], v=F_springs[i, :, 1], w=F_springs[i, :, 2])
             mlab.view(azimuth=i/10, elevation=60, distance=20)
             # mlab pause
-            if i % 5 == 0:
+            if i % 10 == 0:
                 os.makedirs('./gen', exist_ok=True)
-                mlab.savefig(f'./gen/{i//5:04d}.png')
+                mlab.savefig(f'./gen/{i//10:04d}.png')
         mlab.show()
 
 

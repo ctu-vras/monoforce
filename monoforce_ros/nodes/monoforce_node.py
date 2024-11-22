@@ -69,13 +69,11 @@ class MonoForce(TerrainEncoder):
         R = torch.as_tensor(Rotation.from_quat(xyz_qs_init[:, 3:]).as_matrix(), dtype=torch.float32, device=self.device)
         R.repeat(x.shape[0], 1, 1)
         omega = torch.zeros_like(x)
-        x_points = torch.as_tensor(self.dphys_cfg.robot_points, dtype=torch.float32, device=self.device).repeat(x.shape[0], 1, 1)
-        x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
-        state0 = (x, xd, R, omega, x_points)
+        state0 = (x, xd, R, omega)
 
         # simulate trajectories
         states, forces = self.dphysics(grid_maps, controls=controls, state=state0, friction=frictions)
-        Xs, Xds, Rs, Omegas, X_points = states
+        Xs, Xds, Rs, Omegas = states
         assert Xs.shape == (self.dphys_cfg.n_sim_trajs, n_sim_steps, 3)
         assert Rs.shape == (self.dphys_cfg.n_sim_trajs, n_sim_steps, 3, 3)
 
