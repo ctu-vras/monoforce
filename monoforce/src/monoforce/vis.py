@@ -29,34 +29,34 @@ def visualize_imgs(images, names=None):
     plt.show()
 
 
-def setup_visualization(states, forces, x_grid, y_grid, z_grid, states_gt=None):
+def setup_visualization(states, x_points, forces, x_grid, y_grid, z_grid, states_gt=None):
     # unpack the states and forces
-    xs, x_points = states[0], states[4]
+    xs = states[0]
     F_spring, F_friction = forces
     assert xs.shape[1] == 3, 'States should be 3D'
-    assert x_points.shape[2] == 3, 'Points should be 3D'
-    assert F_spring.shape == F_friction.shape == x_points.shape, 'Forces should have the same shape as points'
+    assert x_points.shape[1] == 3, 'Points should be 3D'
+    assert F_spring.shape == F_friction.shape, 'Forces should have the same shape'
 
     # set up the visualization
     mlab.figure(size=(1280, 720))
     mlab.clf()
     visu_traj = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=2.0)
-    # visu_Ns = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
+    # visu_Ns = mlab.quiver3d(x_points[:, 0].mean(), x_points[:, 1].mean(), x_points[:, 2].mean(),
     #                         F_spring[0, :, 0].mean(), F_spring[0, :, 1].mean(), F_spring[0, :, 2].mean(),
     #                         line_width=1.0, scale_factor=0.1, color=(0, 0, 1))
-    # visu_Frs = mlab.quiver3d(x_points[0, :, 0].mean(), x_points[0, :, 1].mean(), x_points[0, :, 2].mean(),
+    # visu_Frs = mlab.quiver3d(x_points[:, 0].mean(), x_points[:, 1].mean(), x_points[:, 2].mean(),
     #                          F_friction[0, :, 0].mean(), F_friction[0, :, 1].mean(), F_friction[0, :, 2].mean(),
     #                          line_width=1.0, scale_factor=1.0, color=(0, 1, 0))
-    # visu_Ns = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+    # visu_Ns = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
     #                         F_spring[0, :, 0], F_spring[0, :, 1], F_spring[0, :, 2],
     #                         line_width=1.0, scale_factor=0.1, color=(0, 0, 1))
     visu_Ns = None
-    # visu_Frs = mlab.quiver3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+    # visu_Frs = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
     #                          F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
     #                          line_width=1.0, scale_factor=1.0, color=(0, 1, 0))
     visu_Frs = None
     visu_terrain = mlab.mesh(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
-    visu_robot = mlab.points3d(x_points[0, :, 0], x_points[0, :, 1], x_points[0, :, 2],
+    visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
                                scale_factor=0.03, color=(0, 0, 0))
 
     visu_cfg = [visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot]
@@ -73,16 +73,16 @@ def setup_visualization(states, forces, x_grid, y_grid, z_grid, states_gt=None):
     return visu_cfg
 
 
-def animate_trajectory(states, forces, z_grid, vis_cfg, step=1, friction=None):
+def animate_trajectory(states, x_points, forces, z_grid, vis_cfg, step=1, friction=None):
     # unpack the states and forces
-    xs, xds, rs, omegas, x_points = states
+    xs, xds, rs, omegas = states
     F_spring, F_friction = forces
     assert xs.shape[1] == 3, 'States should be 3D'
     assert xds.shape[1] == 3, 'Velocities should be 3D'
     assert rs.shape[-2:] == (3, 3), 'Rotations should be 3x3'
     assert omegas.shape[1] == 3, 'Angular velocities should be 3D'
-    assert x_points.shape[2] == 3, 'Points should be 3D'
-    assert F_spring.shape == F_friction.shape == x_points.shape, 'Forces should have the same shape as points'
+    assert x_points.shape[1] == 3, 'Points should be 3D'
+    assert F_spring.shape == F_friction.shape, 'Forces should have the same shape'
 
     # unpack the visualization configuration
     visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot = vis_cfg[:5]
@@ -97,14 +97,15 @@ def animate_trajectory(states, forces, z_grid, vis_cfg, step=1, friction=None):
 
     # animate robot's motion and forces
     for t in range(len(xs)):
-        visu_robot.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2])
-        # visu_Ns.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
+        x_points_t = x_points @ rs[t].T + xs[t][np.newaxis]
+        visu_robot.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2])
+        # visu_Ns.mlab_source.set(x=x_points_t[:, 0].mean(), y=x_points_t[:, 1].mean(), z=x_points_t[:, 2].mean(),
         #                         u=F_spring[t, :, 0].mean(), v=F_spring[t, :, 1].mean(), w=F_spring[t, :, 2].mean())
-        # visu_Frs.mlab_source.set(x=x_points[t, :, 0].mean(), y=x_points[t, :, 1].mean(), z=x_points[t, :, 2].mean(),
+        # visu_Frs.mlab_source.set(x=x_points_t[:, 0].mean(), y=x_points_t[:, 1].mean(), z=x_points_t[:, 2].mean(),
         #                          u=F_friction[t, :, 0].mean(), v=F_friction[t, :, 1].mean(), w=F_friction[t, :, 2].mean())
-        # visu_Ns.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2],
+        # visu_Ns.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2],
         #                         u=F_spring[t, :, 0], v=F_spring[t, :, 1], w=F_spring[t, :, 2])
-        # visu_Frs.mlab_source.set(x=x_points[t, :, 0], y=x_points[t, :, 1], z=x_points[t, :, 2],
+        # visu_Frs.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2],
         #                          u=F_friction[t, :, 0], v=F_friction[t, :, 1], w=F_friction[t, :, 2])
         if t % step == 0:
             path = os.path.join(os.path.dirname(__file__), '../gen/robot_control')

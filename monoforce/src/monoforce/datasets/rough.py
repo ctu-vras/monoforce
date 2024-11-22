@@ -3,18 +3,16 @@ import os
 import numpy as np
 import torch
 import torchvision
-from skimage.draw import polygon
 from torch.utils.data import Dataset
 from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
 from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..dphys_config import DPhysConfig
 from ..transformations import transform_cloud
 from ..cloudproc import estimate_heightmap, hm_to_cloud
-from ..utils import position, timing, read_yaml
+from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
 from ..utils import normalize, load_calib
 from .coco import COCO_CATEGORIES, COCO_CLASSES
-import albumentations as A
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
@@ -72,8 +70,7 @@ class ROUGH(Dataset):
     def __init__(self, path,
                  lss_cfg=None,
                  dphys_cfg=DPhysConfig(),
-                 is_train=False,
-                 only_front_cam=False):
+                 is_train=False):
         super(Dataset, self).__init__()
         self.path = path
         self.name = os.path.basename(os.path.normpath(path))
@@ -89,14 +86,11 @@ class ROUGH(Dataset):
         self.camera_names = self.get_camera_names()
 
         self.is_train = is_train
-        self.only_front_cam = only_front_cam
-        self.camera_names = self.camera_names[:1] if only_front_cam else self.camera_names
 
         # initialize image augmentations
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
-        self.img_augs = self.get_img_augs()
 
     def __getitem__(self, i):
         if isinstance(i, (int, np.int64)):
@@ -394,17 +388,6 @@ class ROUGH(Dataset):
                                     hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
         return height
 
-    def get_img_augs(self):
-        return A.Compose([
-                A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, always_apply=False, p=0.5),
-                A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-                A.MotionBlur(blur_limit=7, p=0.5),
-                A.RandomRain(slant_lower=-10, slant_upper=10, drop_length=20, drop_width=1, drop_color=(200, 200, 200),
-                             p=0.5),
-                A.RandomSunFlare(src_radius=100, num_flare_circles_lower=1, num_flare_circles_upper=2, p=0.5),
-                A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, brightness_coeff=2.5, p=0.5),
-        ])
-
     def get_raw_image(self, i, camera=None):
         if camera is None:
             camera = self.camera_names[0]
@@ -459,12 +442,6 @@ class ROUGH(Dataset):
 
         for cam in self.camera_names:
             img, K = self.get_cached_resized_img(i, cam)
-
-            # apply additional image augmentations like blur, brightness, contrast, fog, rain, snow, sun flare
-            if self.is_train:
-                img = np.array(img)
-                img = self.img_augs(image=img)['image']
-                img = Image.fromarray(img)
 
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
@@ -632,37 +609,6 @@ class ROUGH(Dataset):
         heightmap = torch.from_numpy(np.stack([height, mask]))
         return heightmap
 
-    def front_height_map_mask(self):
-        camera = self.camera_names[0]
-        K = self.calib[camera]['camera_matrix']['data']
-        r, c = self.calib[camera]['camera_matrix']['rows'], self.calib[camera]['camera_matrix']['cols']
-        K = np.asarray(K, dtype=np.float32).reshape((r, c))
-
-        # get fov from camera intrinsics
-        img_h, img_w = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
-        fx, fy = K[0, 0], K[1, 1]
-
-        fov_x = 2 * np.arctan2(img_h, 2 * fx)
-        fov_y = 2 * np.arctan2(img_w, 2 * fy)
-
-        # camera frustum mask
-        d = self.dphys_cfg.d_max
-        res = self.dphys_cfg.grid_res
-        h, w = 2 * d / res, 2 * d / res
-        h, w = int(h), int(w)
-        mask = np.zeros((h, w), dtype=np.float32)
-
-        to_grid = lambda x: np.array([x[1], x[0]]) / res + np.array([h // 2, w // 2])
-        A = to_grid([0, 0])
-        B = to_grid([d * np.tan(fov_y / 2), d])
-        C = to_grid([-d * np.tan(fov_y / 2), d])
-
-        # select triangle
-        rr, cc = polygon([A[0], B[0], C[0]], [A[1], B[1], C[1]], mask.shape)
-        mask[rr, cc] = 1.
-
-        return mask
-
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         control_ts, controls = self.get_controls(i)
@@ -670,10 +616,6 @@ class ROUGH(Dataset):
         Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
-        if self.only_front_cam:
-            mask = self.front_height_map_mask()
-            hm_geom[1] = hm_geom[1] * torch.from_numpy(mask)
-            hm_terrain[1] = hm_terrain[1] * torch.from_numpy(mask)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
                 hm_geom, hm_terrain,
                 control_ts, controls,
