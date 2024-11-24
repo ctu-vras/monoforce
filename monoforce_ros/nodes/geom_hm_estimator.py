@@ -86,15 +86,13 @@ class HeightMapEstimator:
         rospy.logdebug('Points shape: %s' % str(points.shape))
 
         # estimate height map
-        hm = estimate_heightmap(points, d_min=self.cfg.d_min, d_max=self.cfg.d_max,
+        hm = estimate_heightmap(points, r_min=self.cfg.d_min, d_max=self.cfg.d_max,
                                 grid_res=self.cfg.grid_res,
-                                h_max_above_ground=self.cfg.h_max_above_ground,
-                                robot_clearance=self.robot_clearance,
-                                hm_interp_method=self.cfg.hm_interp_method)
+                                h_max=self.cfg.h_max_above_ground)
         if hm is None:
             rospy.logwarn('Could not estimate height map')
             return
-        height = hm['z']
+        height = hm[0]
         rospy.logdebug('Estimated height map shape: %s' % str(height.shape))
         rospy.logdebug('HM estimation time: %.3f' % (time() - t0))
 

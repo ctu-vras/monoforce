@@ -299,16 +299,16 @@ class ROUGH(Dataset):
             dir_name = os.path.join(self.path, 'terrain', 'geom')
         file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
         if cached and os.path.exists(file_path):
-            lidar_hm = np.load(file_path, allow_pickle=True).item()
+            lidar_hm = np.load(file_path)
         else:
-            cloud = self.get_cloud(i)
-            points = position(cloud)
-            lidar_hm = self.estimate_heightmap(points, **kwargs)
+            points = torch.as_tensor(position(self.get_cloud(i)))
+            lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+                                          grid_res=self.dphys_cfg.grid_res,
+                                          h_max=self.dphys_cfg.h_max_above_ground,
+                                          r_min=self.dphys_cfg.d_min)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, lidar_hm)
-        height = lidar_hm['z']
-        mask = lidar_hm['mask']
-        heightmap = torch.from_numpy(np.stack([height, mask]))
+            np.save(file_path, lidar_hm.cpu().numpy())
+        heightmap = torch.as_tensor(lidar_hm)
         return heightmap
 
     def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0)):
@@ -319,9 +319,10 @@ class ROUGH(Dataset):
         x, y = np.meshgrid(x, y)
         z = np.zeros_like(x)
         footprint0 = np.stack([x, y, z], axis=-1).reshape((-1, 3))
+        footprint0 = np.asarray(footprint0, dtype=np.float32)
 
         Tr_base_link__base_footprint = np.asarray(self.calib['transformations']['T_base_link__base_footprint']['data'],
-                                                  dtype=float).reshape((4, 4))
+                                                  dtype=np.float32).reshape((4, 4))
         traj = self.get_traj(i)
         poses = traj['poses']
         poses_footprint = poses @ Tr_base_link__base_footprint
@@ -378,15 +379,6 @@ class ROUGH(Dataset):
             # o3d.visualization.draw_geometries([pcd_poses])
             o3d.visualization.draw_geometries([pcd, pcd_poses])
         return global_cloud
-
-    def estimate_heightmap(self, points, **kwargs):
-        # estimate heightmap from point cloud
-        height = estimate_heightmap(points, d_min=self.dphys_cfg.d_min, d_max=self.dphys_cfg.d_max,
-                                    grid_res=self.dphys_cfg.grid_res,
-                                    h_max_above_ground=self.dphys_cfg.h_max_above_ground,
-                                    robot_clearance=self.calib['clearance'],
-                                    hm_interp_method=self.dphys_cfg.hm_interp_method, **kwargs)
-        return height
 
     def get_raw_image(self, i, camera=None):
         if camera is None:
@@ -593,20 +585,20 @@ class ROUGH(Dataset):
 
         file_path = os.path.join(dir_name, f'{self.ids[i]}.npy')
         if cached and os.path.exists(file_path):
-            hm_rigid = np.load(file_path, allow_pickle=True).item()
+            hm_rigid = np.load(file_path)
         else:
             traj_points = self.get_footprint_traj_points(i)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
             seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
-            hm_rigid = self.estimate_heightmap(points, robot_radius=None)
+            points = torch.as_tensor(points)
+            hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+                                          grid_res=self.dphys_cfg.grid_res,
+                                          h_max=self.dphys_cfg.h_max_above_ground)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, hm_rigid)
-        height = hm_rigid['z']
-        mask = hm_rigid['mask']
-
-        heightmap = torch.from_numpy(np.stack([height, mask]))
+            np.save(file_path, hm_rigid.cpu().numpy())
+        heightmap = torch.as_tensor(hm_rigid)
         return heightmap
 
     def get_sample(self, i):

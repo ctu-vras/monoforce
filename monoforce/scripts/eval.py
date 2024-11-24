@@ -170,6 +170,10 @@ class Evaluation:
                 # out = self.terrain_encoder(img_inputs, points)
                 terrain_pred, friction_pred = out['terrain'], out['friction']
 
+                # # grount-truth terrain
+                # terrain_pred = hm_terrain[:, 0:1]
+                # friction_pred = torch.ones_like(terrain_pred)
+
                 # evaluation losses
                 terrain_loss = self.hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0])
                 states_gt = [Xs, Xds, Rs, Omegas]
@@ -180,7 +184,6 @@ class Evaluation:
 
                 # visualizations
                 terrain_pred = terrain_pred[0, 0].cpu()
-                # terrain_pred = hm_terrain[0, 0].cpu()
                 friction_pred = friction_pred[0, 0].cpu()
 
                 # get height map points

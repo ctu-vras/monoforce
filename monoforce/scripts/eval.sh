@@ -8,6 +8,6 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
 for SEQ_I in {0..27};
 do
     echo "Evaluating sequence ${SEQ_I}"
-    ./eval.py --model_path ${WEIGHTS} --robot ${ROBOT} --seq_i ${SEQ_I} --vis --save
+    ./eval.py --model_path ${WEIGHTS} --robot ${ROBOT} --seq_i ${SEQ_I} --vis #--save
 done
 echo "Done evaluating sequences."
