@@ -61,6 +61,7 @@ class DPhysConfig:
         self.robot_I = self.inertia_tensor(self.robot_mass, self.robot_points)
 
         self.gravity = 9.81  # acceleration due to gravity, m/s^2
+        self.gravity_direction = torch.tensor([0., 0., -1.])  # gravity direction in the world frame
 
         # height map parameters
         self.grid_res = 0.1

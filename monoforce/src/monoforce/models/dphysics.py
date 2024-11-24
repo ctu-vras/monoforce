@@ -198,7 +198,7 @@ class DPhysics(torch.nn.Module):
         assert dR.shape == (B, 3, 3)
 
         # motion of the cog
-        F_grav = torch.tensor([[0.0, 0.0, -m * g]], device=self.device)  # F_grav = [0, 0, -m * g]
+        F_grav = m * g * torch.as_tensor(self.dphys_cfg.gravity_direction, device=self.device).unsqueeze(0)  # F_grav = [0, 0, -m * g]
         F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)

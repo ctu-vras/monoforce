@@ -11,28 +11,25 @@ import matplotlib.pyplot as plt
 # simulation parameters
 robot = 'tradr'
 dphys_cfg = DPhysConfig(robot=robot)
-dphys_cfg.k_friction = 0.5
+dphys_cfg.k_friction = 1.0
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def motion():
     from scipy.spatial.transform import Rotation
-    # simulation parameters
-    dt = dphys_cfg.dt
-    T = dphys_cfg.traj_sim_time
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 1.0]] * int(T / dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[0.0, 0.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
 
     # initial state
-    x = torch.tensor([[0.0, 0.0, 0.0]], device=device).repeat(B, 1)
+    x = torch.tensor([[0.5, 0.0, 1.0]], device=device).repeat(B, 1)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
@@ -108,7 +105,7 @@ def motion_dataset():
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
 
-    sample_i = 12
+    sample_i = 294
     # sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
     # get a sample from the dataset
