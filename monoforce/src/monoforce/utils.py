@@ -233,8 +233,8 @@ def explore_data(ds, sample_range='random', save=False):
                      transform=ax.transAxes, fontsize=10)
 
             plt.sca(final_ax)
-            plt.plot(frustum_pts[imgi, :, :, :, 0].view(-1), frustum_pts[imgi, :, :, :, 1].view(-1),
-                     '.', label=cams[imgi].replace('_', ' '))
+            plt.scatter(frustum_pts[imgi, :, :, :, 0].view(-1), frustum_pts[imgi, :, :, :, 1].view(-1),
+                        label=cams[imgi].replace('_', ' '), s=0.2, alpha=0.5)
 
         plt.legend(loc='upper right')
         final_ax.set_aspect('equal')

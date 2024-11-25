@@ -3,11 +3,12 @@ import os
 import numpy as np
 import torch
 import torchvision
+from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset
 from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
 from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
 from ..dphys_config import DPhysConfig
-from ..transformations import transform_cloud
+from ..transformations import transform_cloud, position
 from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
@@ -145,6 +146,14 @@ class ROUGH(Dataset):
     def get_pose(self, i):
         return self.poses[i]
 
+    def get_gravity_aligned_pose(self, i):
+        map_pose = self.get_pose(i)
+        roll, pitch, yaw = Rotation.from_matrix(map_pose[:3, :3]).as_euler('xyz')
+        R = Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix()
+        pose_gravity_aligned = np.eye(4)
+        pose_gravity_aligned[:3, :3] = R
+        return pose_gravity_aligned
+
     def get_controls(self, i):
         if not os.path.exists(self.controls_path):
             print(f'Controls file {self.controls_path} does not exist')
@@ -278,12 +287,13 @@ class ROUGH(Dataset):
 
     def get_cloud(self, i):
         cloud = self.get_raw_cloud(i)
-        # remove nans from structured array with fields x, y, z
-        cloud = cloud[~np.isnan(cloud['x'])]
         # move points to robot frame
         Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
+        # gravity-alignment
+        pose_gravity_aligned = self.get_gravity_aligned_pose(i)
+        cloud = transform_cloud(cloud, pose_gravity_aligned)
         return cloud
 
     def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
@@ -302,10 +312,12 @@ class ROUGH(Dataset):
             lidar_hm = np.load(file_path)
         else:
             points = torch.as_tensor(position(self.get_cloud(i)))
+            map_pose = torch.from_numpy(self.get_pose(i))
             lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
                                           grid_res=self.dphys_cfg.grid_res,
                                           h_max=self.dphys_cfg.h_max_above_ground,
-                                          r_min=self.dphys_cfg.d_min)
+                                          r_min=self.dphys_cfg.d_min,
+                                          map_pose=map_pose)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, lidar_hm.cpu().numpy())
         heightmap = torch.as_tensor(lidar_hm)
@@ -432,6 +444,9 @@ class ROUGH(Dataset):
         post_trans = []
         intrins = []
 
+        pose_grav_aligned = self.get_gravity_aligned_pose(i)
+        R = pose_grav_aligned[:3, :3]
+
         for cam in self.camera_names:
             img, K = self.get_cached_resized_img(i, cam)
 
@@ -460,6 +475,8 @@ class ROUGH(Dataset):
             # extrinsics
             T_robot_cam = self.calib['transformations'][f'T_base_link__{cam}']['data']
             T_robot_cam = np.asarray(T_robot_cam, dtype=np.float32).reshape((4, 4))
+            # gravity-aligned pose
+            T_robot_cam[:3, :3] = R @ T_robot_cam[:3, :3]
             rot = torch.as_tensor(T_robot_cam[:3, :3])
             tran = torch.as_tensor(T_robot_cam[:3, 3])
 
@@ -593,9 +610,11 @@ class ROUGH(Dataset):
             seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points)
+            map_pose = torch.from_numpy(self.get_pose(i))
             hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
                                           grid_res=self.dphys_cfg.grid_res,
-                                          h_max=self.dphys_cfg.h_max_above_ground)
+                                          h_max=self.dphys_cfg.h_max_above_ground,
+                                          map_pose=map_pose)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, hm_rigid.cpu().numpy())
         heightmap = torch.as_tensor(hm_rigid)

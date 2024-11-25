@@ -37,14 +37,6 @@ class Fusion(ROUGH):
     def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
         super(Fusion, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
 
-    def get_cloud(self, i, points_source='lidar'):
-        cloud = self.get_raw_cloud(i)
-        # move points to robot frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
-        cloud = transform_cloud(cloud, Tr)
-        return cloud
-
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         points = torch.as_tensor(position(self.get_cloud(i))).T
@@ -59,7 +51,6 @@ class Fusion(ROUGH):
                 control_ts, controls,
                 traj_ts, Xs, Xds, Rs, Omegas,
                 points)
-
 
 class Evaluation:
     def __init__(self,

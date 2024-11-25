@@ -34,10 +34,10 @@ class DPhysConfig:
                 'rr': [-0.250, -0.272, 0.019]
             }
             self.joint_angles = {
-                'fl': -1.0,
-                'fr': -1.0,
-                'rl': 1.0,
-                'rr': 1.0
+                'fl': 0.0,
+                'fr': 0.0,
+                'rl': 0.0,
+                'rr': 0.0
             }
         elif 'husky' in robot:
             self.robot_mass = 50.

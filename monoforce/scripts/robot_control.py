@@ -92,6 +92,7 @@ def motion_dataset():
     import numpy as np
     from monoforce.datasets import ROUGH, rough_seq_paths
     from monoforce.utils import explore_data
+    from scipy.spatial.transform import Rotation
 
     # load the dataset
     path = rough_seq_paths[0]
@@ -109,15 +110,26 @@ def motion_dataset():
     # sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
     # get a sample from the dataset
-    sample = ds[sample_i]
-    (imgs, rots, trans, intrins, post_rots, post_trans,
-     geom, terrain,
-     control_ts, controls,
-     traj_ts, Xs, Xds, Rs, Omegas) = sample
-    states = (Xs, Xds, Rs, Omegas)
-    z_grid = terrain[0]
+    traj_ts, states = ds.get_states_traj(sample_i)
+    z_grid = ds.get_terrain_height_map(sample_i)[0]
+    control_ts, controls = ds.get_controls(sample_i)
+    map_pose = ds.get_pose(sample_i)
 
-    # explore_data(ds, sample_range=[sample_i])
+    # initial state
+    B = 1
+    x = torch.zeros((B, 3), device=device)
+    assert x.shape == (B, 3)
+    xd = torch.zeros_like(x)
+    assert xd.shape == (B, 3)
+    roll, pitch, yaw = Rotation.from_matrix(map_pose[:3, :3]).as_euler('xyz')
+    R = torch.tensor(Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix(), dtype=torch.float32, device=device)
+    rs = R.repeat(B, 1, 1)
+    assert rs.shape == (B, 3, 3)
+    omega = torch.zeros_like(x)
+    assert omega.shape == (B, 3)
+    state0 = (x, xd, rs, omega)
+
+    explore_data(ds, sample_range=[sample_i])
     # # plot controls
     # plt.figure()
     # plt.plot(controls[:, 0], '.', label='v [m/s]')
@@ -128,8 +140,8 @@ def motion_dataset():
 
     # differentiable physics simulation
     states_pred, forces_pred = dphysics(z_grid=torch.as_tensor(z_grid)[None].to(device),
+                                        state=state0,
                                         controls=torch.as_tensor(controls)[None].to(device))
-    Xs_pred, Xds_pred, Rs_pred, Omegas_pred = states_pred
 
     # get the states and forces for and move them to the cpu
     states_pred_np = [s.squeeze(0).cpu().numpy() for s in states_pred]

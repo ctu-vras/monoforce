@@ -95,6 +95,12 @@ def animate_trajectory(states, x_points, forces, z_grid, vis_cfg, step=1, fricti
     # plot the trajectory
     visu_traj.mlab_source.set(x=xs[:, 0], y=xs[:, 1], z=xs[:, 2])
 
+    # plot initial pose
+    pose = np.eye(4)
+    pose[:3, :3] = rs[0]
+    pose[:3, 3] = xs[0]
+    draw_coord_frame(pose)
+
     # animate robot's motion and forces
     for t in range(len(xs)):
         x_points_t = x_points @ rs[t].T + xs[t][np.newaxis]
