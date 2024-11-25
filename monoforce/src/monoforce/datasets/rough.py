@@ -146,7 +146,7 @@ class ROUGH(Dataset):
     def get_pose(self, i):
         return self.poses[i]
 
-    def get_gravity_aligned_pose(self, i):
+    def get_initial_pose_on_heightmap(self, i):
         map_pose = self.get_pose(i)
         roll, pitch, yaw = Rotation.from_matrix(map_pose[:3, :3]).as_euler('xyz')
         R = Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix()
@@ -215,7 +215,7 @@ class ROUGH(Dataset):
         stamps = np.asarray(all_ts[il:ir])
 
         # make sure the trajectory has the fixed length
-        n_frames = np.ceil(T_horizon)
+        n_frames = int(np.ceil(T_horizon))
         if len(poses) < n_frames:
             # repeat the last pose to fill the trajectory
             poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
@@ -232,7 +232,7 @@ class ROUGH(Dataset):
         stamps = stamps - stamps[0]
 
         # gravity-aligned poses
-        pose_grav_aligned = self.get_gravity_aligned_pose(i)
+        pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
         pose_grav_aligned = np.asarray(pose_grav_aligned, dtype=poses.dtype)
         poses = pose_grav_aligned @ poses
 
@@ -296,7 +296,7 @@ class ROUGH(Dataset):
         cloud = transform_cloud(cloud, Tr)
         if gravity_aligned:
             # gravity-alignment
-            pose_gravity_aligned = self.get_gravity_aligned_pose(i)
+            pose_gravity_aligned = self.get_initial_pose_on_heightmap(i)
             cloud = transform_cloud(cloud, pose_gravity_aligned)
         return cloud
 
@@ -447,7 +447,7 @@ class ROUGH(Dataset):
         post_trans = []
         intrins = []
 
-        pose_grav_aligned = self.get_gravity_aligned_pose(i)
+        pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
         R = pose_grav_aligned[:3, :3]
 
         for cam in self.camera_names:
@@ -630,7 +630,9 @@ class ROUGH(Dataset):
         Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
+        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
                 hm_geom, hm_terrain,
                 control_ts, controls,
+                pose0,
                 traj_ts, Xs, Xds, Rs, Omegas)

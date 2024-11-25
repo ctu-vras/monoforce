@@ -107,28 +107,26 @@ def motion_dataset():
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
 
-    sample_i = 294
+    sample_i = 120
     # sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
     # get a sample from the dataset
     traj_ts, states = ds.get_states_traj(sample_i)
-    z_grid = ds.get_terrain_height_map(sample_i)[0]
+    hm = ds.get_terrain_height_map(sample_i)
     control_ts, controls = ds.get_controls(sample_i)
-    map_pose = ds.get_pose(sample_i)
+    z_grid, grid_mask = hm[0], hm[1]
+
+    # interpolate the heightmap with minimum measured height
+    z_grid[~grid_mask.bool()] = z_grid[grid_mask.bool()].min()
 
     # initial state
-    B = 1
-    x = torch.zeros((B, 3), device=device)
-    assert x.shape == (B, 3)
+    pose0 = torch.as_tensor(ds.get_initial_pose_on_heightmap(sample_i), dtype=torch.float32)
+    x = pose0[:3, 3]
     xd = torch.zeros_like(x)
-    assert xd.shape == (B, 3)
-    roll, pitch, yaw = Rotation.from_matrix(map_pose[:3, :3]).as_euler('xyz')
-    R = torch.tensor(Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix(), dtype=torch.float32, device=device)
-    rs = R.repeat(B, 1, 1)
-    assert rs.shape == (B, 3, 3)
+    R = pose0[:3, :3]
     omega = torch.zeros_like(x)
-    assert omega.shape == (B, 3)
-    state0 = (x, xd, rs, omega)
+    state0 = (x, xd, R, omega)
+    state0 = tuple([s.to(device)[None] for s in state0])
 
     explore_data(ds, sample_range=[sample_i])
     # # plot controls

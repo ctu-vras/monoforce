@@ -285,6 +285,7 @@ class TrainerLSS(TrainerCore):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          control_ts, controls,
+         pose0,
          traj_ts, Xs, Xds, Rs, Omegas) = batch
 
         geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
@@ -309,8 +310,13 @@ class TrainerLSS(TrainerCore):
 
         # physics loss: difference between predicted and ground truth states
         states_gt = [Xs, Xds, Rs, Omegas]
-        states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls,
-                                       friction=friction_pred.squeeze(1))
+        x0 = pose0[:, :3, 3]
+        xd0 = torch.zeros_like(x0)
+        R0 = pose0[:, :3, :3]
+        omega0 = torch.zeros_like(xd0)
+        state0 = (x0, xd0, R0, omega0)
+        states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
+                                       controls=controls, friction=friction_pred.squeeze(1))
         if self.phys_weight > 0:
             loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                           pred_ts=control_ts, gt_ts=traj_ts)
@@ -345,6 +351,7 @@ class TrainerLSS(TrainerCore):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          controls_ts, controls,
+         pose0,
          traj_ts, Xs, Xds, Rs, Omegas) = sample
         with torch.no_grad():
             # predict height maps
@@ -354,7 +361,12 @@ class TrainerLSS(TrainerCore):
             geom_pred, terrain_pred, friction_pred, diff_pred = out['geom'], out['terrain'], out['friction'], out['diff']
 
             # predict states
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1),
+            x0 = pose0[:3, 3].to(self.device)
+            xd0 = torch.zeros_like(x0)
+            R0 = pose0[:3, :3].to(self.device)
+            omega0 = torch.zeros_like(xd0)
+            state0 = (x0[None], xd0[None], R0[None], omega0[None])
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1),  state=state0,
                                            controls=controls.unsqueeze(0).to(self.device),
                                            friction=friction_pred.squeeze(1))
         geom_pred = geom_pred[0, 0].cpu()
@@ -435,10 +447,11 @@ class Fusion(ROUGH):
         Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
-
+        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
                 hm_geom, hm_terrain,
                 control_ts, controls,
+                pose0,
                 traj_ts, Xs, Xds, Rs, Omegas,
                 points)
 
@@ -464,6 +477,7 @@ class TrainerBEVFusion(TrainerCore):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          control_ts, controls,
+         pose0,
          traj_ts, Xs, Xds, Rs, Omegas,
          points) = batch
 
@@ -490,8 +504,13 @@ class TrainerBEVFusion(TrainerCore):
 
         # physics loss: difference between predicted and ground truth states
         states_gt = [Xs, Xds, Rs, Omegas]
-        states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls,
-                                       friction=friction_pred.squeeze(1))
+        x0 = pose0[:, :3, 3]
+        xd0 = torch.zeros_like(x0)
+        R0 = pose0[:, :3, :3]
+        omega0 = torch.zeros_like(xd0)
+        state0 = (x0, xd0, R0, omega0)
+        states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
+                                       controls=controls, friction=friction_pred.squeeze(1))
         if self.phys_weight > 0:
             loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                           pred_ts=control_ts, gt_ts=traj_ts)
@@ -526,6 +545,7 @@ class TrainerBEVFusion(TrainerCore):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          controls_ts, controls,
+         pose0,
          traj_ts, Xs, Xds, Rs, Omegas,
          points) = sample
         with torch.no_grad():
@@ -537,7 +557,12 @@ class TrainerBEVFusion(TrainerCore):
             geom_pred, terrain_pred, friction_pred, diff_pred = out['geom'], out['terrain'], out['friction'], out['diff']
 
             # predict states
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1),
+            x0 = pose0[:3, 3].to(self.device)
+            xd0 = torch.zeros_like(x0)
+            R0 = pose0[:3, :3].to(self.device)
+            omega0 = torch.zeros_like(xd0)
+            state0 = (x0[None], xd0[None], R0[None], omega0[None])
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
                                            controls=controls.unsqueeze(0).to(self.device),
                                            friction=friction_pred.squeeze(1))
         geom_pred = geom_pred[0, 0].cpu()
@@ -617,8 +642,10 @@ class Points(ROUGH):
         Xs, Xds, Rs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
+        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
         return (points, hm_geom, hm_terrain,
                 control_ts, controls,
+                pose0,
                 traj_ts, Xs, Xds, Rs, Omegas)
 
 class TrainerLidarBEV(TrainerCore):
@@ -641,6 +668,7 @@ class TrainerLidarBEV(TrainerCore):
         def compute_losses(self, batch):
             (points, hm_geom, hm_terrain,
              control_ts, controls,
+             pose0,
              traj_ts, Xs, Xds, Rs, Omegas) = batch
 
             geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
@@ -665,7 +693,13 @@ class TrainerLidarBEV(TrainerCore):
 
             # physics loss: difference between predicted and ground truth states
             states_gt = [Xs, Xds, Rs, Omegas]
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
+            x0 = pose0[:, :3, 3]
+            xd0 = torch.zeros_like(x0)
+            R0 = pose0[:, :3, :3]
+            omega0 = torch.zeros_like(xd0)
+            state0 = (x0, xd0, R0, omega0)
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
+                                           controls=controls, friction=friction_pred.squeeze(1))
             if self.phys_weight > 0:
                 loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                               pred_ts=control_ts, gt_ts=traj_ts)
@@ -679,6 +713,7 @@ class TrainerLidarBEV(TrainerCore):
             sample = loader.dataset[sample_i]
             (points, hm_geom, hm_terrain,
              control_ts, controls,
+             pose0,
              traj_ts, Xs, Xds, Rs, Omegas) = sample
 
             geom, weights_geom = hm_geom[0], hm_geom[1]
@@ -689,7 +724,12 @@ class TrainerLidarBEV(TrainerCore):
             geom_pred, terrain_pred, friction_pred, diff_pred = out['geom'], out['terrain'], out['friction'], out['diff']
 
             # predict states
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1),
+            x0 = pose0[:3, 3].to(self.device)
+            xd0 = torch.zeros_like(x0)
+            R0 = pose0[:3, :3].to(self.device)
+            omega0 = torch.zeros_like(xd0)
+            state0 = (x0[None], xd0[None], R0[None], omega0[None])
+            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
                                            controls=controls.unsqueeze(0).to(self.device),
                                            friction=friction_pred.squeeze(1))
 
