@@ -201,7 +201,7 @@ class ROUGH(Dataset):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_traj(self, i, n_frames=10):
+    def get_traj(self, i):
         # n_frames equals to the number of future poses (trajectory length)
         T_horizon = self.dphys_cfg.traj_sim_time
 
@@ -215,6 +215,7 @@ class ROUGH(Dataset):
         stamps = np.asarray(all_ts[il:ir])
 
         # make sure the trajectory has the fixed length
+        n_frames = np.ceil(T_horizon)
         if len(poses) < n_frames:
             # repeat the last pose to fill the trajectory
             poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
@@ -230,6 +231,11 @@ class ROUGH(Dataset):
         poses = np.linalg.inv(poses[0]) @ poses
         stamps = stamps - stamps[0]
 
+        # gravity-aligned poses
+        pose_grav_aligned = self.get_gravity_aligned_pose(i)
+        pose_grav_aligned = np.asarray(pose_grav_aligned, dtype=poses.dtype)
+        poses = pose_grav_aligned @ poses
+
         traj = {
             'stamps': stamps, 'poses': poses,
         }
@@ -243,9 +249,6 @@ class ROUGH(Dataset):
         poses = traj['poses']
         tstamps = traj['stamps']
 
-        # transform poses to the same coordinate frame as the height map
-        Tr = np.linalg.inv(poses[0])
-        poses = np.asarray([np.matmul(Tr, p) for p in poses])
         # count time from 0
         tstamps = tstamps - tstamps[0]
 
@@ -285,24 +288,24 @@ class ROUGH(Dataset):
             cloud = cloud.reshape((-1,))
         return cloud
 
-    def get_cloud(self, i):
+    def get_cloud(self, i, gravity_aligned=True):
         cloud = self.get_raw_cloud(i)
         # move points to robot frame
         Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
-        # gravity-alignment
-        pose_gravity_aligned = self.get_gravity_aligned_pose(i)
-        cloud = transform_cloud(cloud, pose_gravity_aligned)
+        if gravity_aligned:
+            # gravity-alignment
+            pose_gravity_aligned = self.get_gravity_aligned_pose(i)
+            cloud = transform_cloud(cloud, pose_gravity_aligned)
         return cloud
 
-    def get_geom_height_map(self, i, cached=True, dir_name=None, **kwargs):
+    def get_geom_height_map(self, i, cached=True, dir_name=None):
         """
         Get height map from lidar point cloud.
         :param i: index of the sample
         :param cached: if True, load height map from file if it exists, otherwise estimate it
         :param dir_name: directory to save/load height map
-        :param kwargs: additional arguments for height map estimation
         :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
@@ -524,7 +527,7 @@ class ROUGH(Dataset):
             if c in COCO_CLASSES:
                 selected_labels.append(COCO_CLASSES.index(c))
 
-        lidar_points = position(self.get_cloud(i))
+        lidar_points = position(self.get_cloud(i, gravity_aligned=False))
         points = []
         labels = []
         for cam in self.camera_names[::-1]:

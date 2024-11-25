@@ -332,8 +332,9 @@ class TrainerLSS(TrainerCore):
         ax9 = fig.add_subplot(349)
         ax10 = fig.add_subplot(3, 4, 10)
         ax11 = fig.add_subplot(3, 4, 11)
+        ax12 = fig.add_subplot(3, 4, 12)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
         for ax in axes:
             ax.clear()
 
@@ -393,7 +394,7 @@ class TrainerLSS(TrainerCore):
         ax7.set_title('Friction')
         ax7.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
 
-        ax8.set_title('Trajectories')
+        ax8.set_title('Trajectories XY')
         ax8.plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
         ax8.plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
         ax8.set_xlabel('X [m]')
@@ -411,20 +412,20 @@ class TrainerLSS(TrainerCore):
         ax11.set_title('Height diff')
         ax11.imshow(diff_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
 
+        ax12.set_title('Trajectories Z')
+        ax12.plot(traj_ts, Xs[:, 2], 'kx', label='GT')
+        ax12.plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
+        ax12.set_xlabel('Time [s]')
+        ax12.set_ylabel('Z [m]')
+        ax12.grid()
+        ax12.legend()
+
         return fig
 
 
 class Fusion(ROUGH):
     def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
         super(Fusion, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
-
-    def get_cloud(self, i, points_source='lidar'):
-        cloud = self.get_raw_cloud(i)
-        # move points to robot frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
-        cloud = transform_cloud(cloud, Tr)
-        return cloud
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
@@ -512,8 +513,9 @@ class TrainerBEVFusion(TrainerCore):
         ax9 = fig.add_subplot(349)
         ax10 = fig.add_subplot(3, 4, 10)
         ax11 = fig.add_subplot(3, 4, 11)
+        ax12 = fig.add_subplot(3, 4, 12)
 
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11]
+        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
         for ax in axes:
             ax.clear()
 
@@ -593,20 +595,20 @@ class TrainerBEVFusion(TrainerCore):
         ax11.set_title('Height diff')
         ax11.imshow(diff_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
 
+        ax12.set_title('Trajectories Z')
+        ax12.plot(traj_ts, Xs[:, 2], 'kx', label='GT')
+        ax12.plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
+        ax12.set_xlabel('Time [s]')
+        ax12.set_ylabel('Z [m]')
+        ax12.grid()
+        ax12.legend()
+
         return fig
 
 
 class Points(ROUGH):
     def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
         super(Points, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
-
-    def get_cloud(self, i, points_source='lidar'):
-        cloud = self.get_raw_cloud(i)
-        # move points to robot frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
-        Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
-        cloud = transform_cloud(cloud, Tr)
-        return cloud
 
     def get_sample(self, i):
         points = torch.as_tensor(position(self.get_cloud(i))).T
@@ -727,7 +729,13 @@ class TrainerLidarBEV(TrainerCore):
             ax[1, 2].imshow(diff_pred.T, cmap='jet', origin='lower', vmin=0, vmax=1)
             ax[1, 2].set_title('Height Diff')
 
-            ax[1, 3].axis('off')
+            ax[1, 3].set_title('Trajectories Z')
+            ax[1, 3].plot(traj_ts, Xs[:, 2], 'kx', label='GT')
+            ax[1, 3].plot(control_ts, Xs_pred[:, 2], 'r.', label='Pred')
+            ax[1, 3].set_xlabel('Time [s]')
+            ax[1, 3].set_ylabel('Z [m]')
+            ax[1, 3].grid()
+            ax[1, 3].legend()
 
             return fig
 

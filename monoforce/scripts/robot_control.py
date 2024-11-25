@@ -96,6 +96,7 @@ def motion_dataset():
 
     # load the dataset
     path = rough_seq_paths[0]
+    # path = np.random.choice(rough_seq_paths)
     ds = ROUGH(path, dphys_cfg=dphys_cfg)
 
     # instantiate the simulator
