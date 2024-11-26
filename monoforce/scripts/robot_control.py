@@ -23,7 +23,7 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[0.0, 0.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
@@ -116,8 +116,8 @@ def motion_dataset():
     control_ts, controls = ds.get_controls(sample_i)
     z_grid, grid_mask = hm[0], hm[1]
 
-    # interpolate the heightmap with minimum measured height
-    z_grid[~grid_mask.bool()] = z_grid[grid_mask.bool()].min()
+    # interpolate the heightmap
+    z_grid[~grid_mask.bool()] = 0.0
 
     # initial state
     pose0 = torch.as_tensor(ds.get_initial_pose_on_heightmap(sample_i), dtype=torch.float32)

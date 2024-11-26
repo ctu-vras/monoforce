@@ -40,8 +40,8 @@ def optimize_heightmap():
     dphys_cfg.dt = dt
     dphys_cfg.traj_sim_time = T
     n_iters = 100
-    lr = 0.01
-    vis = True
+    lr = 0.02
+    vis = False
 
     # initial state
     x = torch.tensor([[-1.0, 0.0, 0.1]])
@@ -64,12 +64,13 @@ def optimize_heightmap():
 
     # initial state
     state0 = (x, xd, R, omega)
+    x_points = dphys_cfg.robot_points.cpu().numpy()
 
     # simulate the rigid body dynamics
     dphysics = DPhysics(dphys_cfg)
     states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0)
     if vis:
-        visualize(states_gt, forces_gt, x_grid, y_grid, z_grid_gt)
+        visualize(states_gt, x_points, forces_gt, x_grid, y_grid, z_grid_gt, states_gt)
 
     # initial guess for the heightmap
     z_grid = torch.zeros_like(z_grid_gt, requires_grad=True)
@@ -82,7 +83,7 @@ def optimize_heightmap():
     state_dT = None
     for i in range(n_iters):
         optimizer.zero_grad()
-        loss = torch.tensor(0.0)
+        loss = torch.tensor(0.0, requires_grad=True)
         for t in range(0, int(T / dt), int(dT / dt)):
             # simulate the rigid body dynamics for dT time period
             dphys_cfg.traj_sim_time = dT
@@ -97,7 +98,7 @@ def optimize_heightmap():
 
             # compute the loss
             loss_dT = torch.nn.functional.mse_loss(Xs, Xs_gt[:, t:t + int(dT / dt)])
-            loss += loss_dT
+            loss = loss + loss_dT
 
         loss.backward()
         optimizer.step()
@@ -116,13 +117,12 @@ def optimize_heightmap():
         if vis and i % 20 == 0:
             dphys_cfg.traj_sim_time = T
             states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
-            visualize(states, forces, x_grid, y_grid, z_grid)
+            visualize(states, x_points, forces, x_grid, y_grid, z_grid, states_gt)
 
     # visualize the best heightmap
     dphys_cfg.traj_sim_time = T
-    x_points = dphys_cfg.robot_points.cpu().numpy()
     states, forces = dphysics(z_grid=z_grid_best, controls=controls, state=state0)
-    visualize(states, x_points, forces, x_grid, y_grid, z_grid_best)
+    visualize(states, x_points, forces, x_grid, y_grid, z_grid_best, states_gt)
 
 
 def learn_terrain_properties():
