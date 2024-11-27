@@ -376,7 +376,7 @@ class DPhysics(torch.nn.Module):
         x, xd, R, omega, F_spring, F_friction = state_extended
         state = (x, xd, R, omega)
         dstate, forces = self.forward_kinematics(t, state)
-        dstate = dstate + (F_spring, F_friction)
+        dstate = dstate + forces
         return dstate
 
     def dynamics(self, state):

@@ -146,7 +146,6 @@ class TrainerCore:
 
         # compute weighted loss
         loss = torch.nn.functional.mse_loss(height_pred * weights, height_gt * weights, reduction='mean')
-        assert not torch.isnan(loss), 'Terrain Loss is nan'
 
         return loss
 
@@ -167,7 +166,6 @@ class TrainerCore:
         X_pred_gt_ts = X_pred_gt_ts[mask_valid]
         X = X[mask_valid]
         loss = torch.nn.functional.mse_loss(X_pred_gt_ts, X)
-        assert not torch.isnan(loss), 'Physics Loss is nan'
 
         return loss
 
@@ -195,6 +193,10 @@ class TrainerCore:
             batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
             loss_geom, loss_terrain, loss_phys = self.compute_losses(batch)
             loss = self.geom_weight * loss_geom + self.terrain_weight * loss_terrain + self.phys_weight * loss_phys
+
+            if torch.isnan(loss).item():
+                torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'train.pth'))
+                raise ValueError('Loss is NaN')
 
             if train:
                 loss.backward()
