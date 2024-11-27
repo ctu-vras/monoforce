@@ -104,7 +104,7 @@ def vw_to_track_vels(v, w, robot_size, n_tracks):
 
 
 class DPhysics(torch.nn.Module):
-    def __init__(self, dphys_cfg=DPhysConfig(), device='cpu'):
+    def __init__(self, dphys_cfg=DPhysConfig(), device='cpu', use_odeint=True):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
         self.device = device
@@ -119,6 +119,8 @@ class DPhysics(torch.nn.Module):
         self.controls = None
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         self.ts = torch.linspace(0, T, int(T / dt)).to(device)
+
+        self.integrator = self.dynamics_odeint if use_odeint else self.dynamics
 
     def forward_kinematics(self, t, state):
         # unpack state
@@ -271,7 +273,7 @@ class DPhysics(torch.nn.Module):
         return R_new
 
     @staticmethod
-    def integration_step(x, xd, dt, mode='rk4'):
+    def integration_step(x, xd, dt, mode='euler'):
         """
         Performs an integration step using the Euler method.
 
@@ -285,10 +287,6 @@ class DPhysics(torch.nn.Module):
         """
         if mode == 'euler':
             x = x + xd * dt
-        elif mode == 'rk2':
-            k1 = dt * xd
-            k2 = dt * (xd + k1)
-            x = x + k2 / 2
         elif mode == 'rk4':
             k1 = dt * xd
             k2 = dt * (xd + k1 / 2)
@@ -362,15 +360,7 @@ class DPhysics(torch.nn.Module):
                   x_f * y_f * z_front_left
 
         if return_normals:
-            # Estimate normals
-            # i_b = y_i + H * (x_i - 1)
-            # i_r = (y_i - 1) + H * x_i
-            # i_b = torch.clamp(i_b, 0, H * W - 1)
-            # i_r = torch.clamp(i_r, 0, H * W - 1)
-            # z_back = z_grid_flat.gather(1, i_b)
-            # z_right = z_grid_flat.gather(1, i_r)
-            # dz_dx = (z_front - z_back) / (2 * grid_res)
-            # dz_dy = (z_left - z_right) / (2 * grid_res)
+            # Estimate normals using the height map
             dz_dx = (z_front - z_center) / grid_res
             dz_dy = (z_left - z_center) / grid_res
             n = torch.stack([-dz_dx, -dz_dy, torch.ones_like(dz_dx)], dim=-1)
@@ -388,6 +378,69 @@ class DPhysics(torch.nn.Module):
         dstate, forces = self.forward_kinematics(t, state)
         dstate = dstate + (F_spring, F_friction)
         return dstate
+
+    def dynamics(self, state):
+        Xs, Xds, Rs, Omegas, F_springs, F_frictions = [], [], [], [], [], []
+        for t in self.ts:
+            # forward kinematics
+            dstate, forces = self.forward_kinematics(t=t, state=state)
+            # update state: integration steps
+            state = self.update_state(state, dstate, self.dphys_cfg.dt)
+
+            # unpack state, its differential, and forces
+            x, xd, R, omega = state
+            F_spring, F_friction = forces
+
+            # save states
+            Xs.append(x)
+            Xds.append(xd)
+            Rs.append(R)
+            Omegas.append(omega)
+
+            # save forces
+            F_springs.append(F_spring)
+            F_frictions.append(F_friction)
+
+        # stack the states and forces
+        Xs = torch.stack(Xs, dim=1)
+        Xds = torch.stack(Xds, dim=1)
+        Rs = torch.stack(Rs, dim=1)
+        Omegas = torch.stack(Omegas, dim=1)
+        F_springs = torch.stack(F_springs, dim=1)
+        F_frictions = torch.stack(F_frictions, dim=1)
+
+        return Xs, Xds, Rs, Omegas, F_springs, F_frictions
+
+    def dynamics_odeint(self, state):
+        """
+        Simulates the dynamics of the robot using ODE solver.
+        """
+        B = state[0].shape[0]
+        N_pts = len(self.x_points)
+        N_ts = len(self.ts)
+        f_spring = torch.zeros(B, N_pts, 3, device=self.device)
+        f_friction = torch.zeros(B, N_pts, 3, device=self.device)
+        forces = (f_spring, f_friction)
+        state_extended = state + forces
+        state_extended = odeint(self.forward_kinematics_extended_state, state_extended, self.ts,
+                                method=self.dphys_cfg.integration_mode)
+        Xs, Xds, Rs, Omegas, F_springs, F_frictions = state_extended
+
+        # transpose the states and forces to (B, N, D)
+        Xs = Xs.permute(1, 0, 2)
+        assert Xs.shape == (B, N_ts, 3)
+        Xds = Xds.permute(1, 0, 2)
+        assert Xds.shape == (B, N_ts, 3)
+        Rs = Rs.permute(1, 0, 2, 3)
+        assert Rs.shape == (B, N_ts, 3, 3)
+        Omegas = Omegas.permute(1, 0, 2)
+        assert Omegas.shape == (B, N_ts, 3)
+        F_springs = F_springs.permute(1, 0, 2, 3)
+        assert F_springs.shape == (B, N_ts, N_pts, 3)
+        F_frictions = F_frictions.permute(1, 0, 2, 3)
+        assert F_frictions.shape == (B, N_ts, N_pts, 3)
+
+        return Xs, Xds, Rs, Omegas, F_springs, F_frictions
 
     def dphysics(self, z_grid, controls, state=None, stiffness=None, damping=None, friction=None):
         """
@@ -432,52 +485,10 @@ class DPhysics(torch.nn.Module):
         B = state[0].shape[0]
         assert controls.shape == (B, N_ts, 2), f'Its shape {controls.shape} != {(B, N_ts, 2)}'  # (B, N, 2), v, w
         self.controls = controls
+        self.ts = self.ts[:N_ts]
 
         # dynamics of the rigid body
-        Xs, Xds, Rs, Omegas, Omega_ds = [], [], [], [], []
-        F_springs, F_frictions = [], []
-        N_pts = len(self.x_points)
-        forces = (torch.zeros(B, N_pts, 3, device=self.device), torch.zeros(B, N_pts, 3, device=self.device))
-        for t in self.ts[:N_ts]:
-            # forward kinematics
-            # dstate, forces = self.forward_kinematics(t=t, state=state)
-            # # update state: integration steps
-            # state = self.update_state(state, dstate, dt)
-
-            # use odeint to integrate the states
-            state_extended = state + forces
-            state_extended = odeint(self.forward_kinematics_extended_state, state_extended,
-                                    torch.tensor([t, t+dt], device=self.device), method='rk4')
-            state = tuple([s[-1] for s in state_extended[:4]])
-            forces = tuple([f[-1] for f in state_extended[4:]])
-
-            # unpack state, its differential, and forces
-            x, xd, R, omega = state
-            F_spring, F_friction = forces
-
-            # save states
-            Xs.append(x)
-            Xds.append(xd)
-            Rs.append(R)
-            Omegas.append(omega)
-
-            # save forces
-            F_springs.append(F_spring)
-            F_frictions.append(F_friction)
-
-        # to tensors
-        Xs = torch.stack(Xs).permute(1, 0, 2)
-        assert Xs.shape == (B, N_ts, 3)
-        Xds = torch.stack(Xds).permute(1, 0, 2)
-        assert Xds.shape == (B, N_ts, 3)
-        Rs = torch.stack(Rs).permute(1, 0, 2, 3)
-        assert Rs.shape == (B, N_ts, 3, 3)
-        Omegas = torch.stack(Omegas).permute(1, 0, 2)
-        assert Omegas.shape == (B, N_ts, 3)
-        F_springs = torch.stack(F_springs).permute(1, 0, 2, 3)
-        assert F_springs.shape == (B, N_ts, N_pts, 3)
-        F_frictions = torch.stack(F_frictions).permute(1, 0, 2, 3)
-        assert F_frictions.shape == (B, N_ts, N_pts, 3)
+        Xs, Xds, Rs, Omegas, F_springs, F_frictions = self.integrator(state)
 
         States = Xs, Xds, Rs, Omegas
         Forces = F_springs, F_frictions
@@ -535,7 +546,7 @@ def debug():
             print('Success!')
         else:
             print('xyz1 != xyz')
-            raise
+            raise ValueError('xyz1 != xyz')
 
 
 if __name__ == '__main__':
