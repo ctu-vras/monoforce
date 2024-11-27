@@ -413,9 +413,10 @@ class TrainerLSS(TrainerCore):
         ax8.plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
         ax8.set_xlabel('X [m]')
         ax8.set_ylabel('Y [m]')
+        ax8.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+        ax8.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
         ax8.grid()
         ax8.legend()
-        ax8.axis('equal')
 
         ax9.set_title('Prediction: Geom')
         ax9.imshow(geom_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
@@ -431,6 +432,7 @@ class TrainerLSS(TrainerCore):
         ax12.plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
         ax12.set_xlabel('Time [s]')
         ax12.set_ylabel('Z [m]')
+        ax12.set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
         ax12.grid()
         ax12.legend()
 
@@ -609,9 +611,10 @@ class TrainerBEVFusion(TrainerCore):
         ax8.plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
         ax8.set_xlabel('X [m]')
         ax8.set_ylabel('Y [m]')
+        ax8.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+        ax8.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
         ax8.grid()
         ax8.legend()
-        ax8.axis('equal')
 
         ax9.set_title('Prediction: Geom')
         ax9.imshow(geom_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
@@ -627,6 +630,7 @@ class TrainerBEVFusion(TrainerCore):
         ax12.plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
         ax12.set_xlabel('Time [s]')
         ax12.set_ylabel('Z [m]')
+        ax12.set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
         ax12.grid()
         ax12.legend()
 
@@ -758,9 +762,10 @@ class TrainerLidarBEV(TrainerCore):
             ax[0, 3].set_title('Trajectories')
             ax[0, 3].set_xlabel('X [m]')
             ax[0, 3].set_ylabel('Y [m]')
+            ax[0, 3].set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+            ax[0, 3].set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
             ax[0, 3].legend()
             ax[0, 3].grid()
-            ax[0, 3].axis('equal')
 
             ax[1, 0].imshow(geom_pred.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
             ax[1, 0].set_title('Predicted Geom')
@@ -776,6 +781,7 @@ class TrainerLidarBEV(TrainerCore):
             ax[1, 3].plot(control_ts, Xs_pred[:, 2], 'r.', label='Pred')
             ax[1, 3].set_xlabel('Time [s]')
             ax[1, 3].set_ylabel('Z [m]')
+            ax[1, 3].set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
             ax[1, 3].grid()
             ax[1, 3].legend()
 

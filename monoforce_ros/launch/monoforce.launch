@@ -2,7 +2,7 @@
 <launch>
     <arg name="robot" default="marv" doc="Robot type: tradr or marv"/>
     <arg name="lss_config_path" default="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
-    <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/lss.pt"/>
+    <arg name="weights" default="$(dirname)/../../monoforce/config/weights/lss/val.pth"/>
     <arg name="img_topics" default="['/camera_front/image_color/compressed',
                                      '/camera_left/image_color/compressed',
                                      '/camera_rear/image_color/compressed',
