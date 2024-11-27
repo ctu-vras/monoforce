@@ -187,18 +187,10 @@ def filter_box(cloud, box_size, box_pose=None, only_mask=False):
     return filtered
 
 
-def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None, map_pose=None):
+def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None):
     # remove nans from the point cloud if any
     mask = ~torch.isnan(points).any(dim=1)
     points = points[mask]
-
-    if map_pose is not None:
-        # move to gravity-aligned frame
-        assert map_pose.shape == (4, 4)
-        roll, pitch, yaw = Rotation.from_matrix(map_pose[:3, :3]).as_euler('xyz')
-        R = Rotation.from_euler('xyz', [roll, pitch, 0.]).as_matrix()
-        R = torch.as_tensor(R, dtype=torch.float32)
-        points = points @ R.T
 
     if r_min is not None:
         # remove points in a r_min radius

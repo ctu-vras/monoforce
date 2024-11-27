@@ -131,10 +131,10 @@ class Evaluation:
             H, W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
             cams = self.ds.camera_names
 
-            n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
+            n_rows, n_cols = 2, int(np.ceil(len(cams) / 2)) + 4
             img_h, img_w = self.lss_config['data_aug_conf']['final_dim']
             ratio = img_h / img_w
-            fig = plt.figure(figsize=(n_cols * 5, n_rows * 4 * ratio))
+            fig = plt.figure(figsize=(n_cols * 5, n_rows * ratio * 4))
             gs = mpl.gridspec.GridSpec(n_rows, n_cols)
             gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
@@ -148,15 +148,17 @@ class Evaluation:
                 (imgs, rots, trans, intrins, post_rots, post_trans,
                  hm_geom, hm_terrain,
                  control_ts, controls,
+                 pose0,
                  traj_ts, Xs, Xds, Rs, Omegas) = batch
                 # (imgs, rots, trans, intrins, post_rots, post_trans,
                 #  hm_geom, hm_terrain,
                 #  control_ts, controls,
+                #  pose0,
                 #  traj_ts, Xs, Xds, Rs, Omegas,
                 #  points) = batch
 
                 # terrain prediction
-                img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+                img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
                 out = self.terrain_encoder(*img_inputs)
                 # out = self.terrain_encoder(img_inputs, points)
                 terrain_pred, friction_pred = out['terrain'], out['friction']
@@ -168,7 +170,7 @@ class Evaluation:
                 # evaluation losses
                 terrain_loss = self.hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0])
                 states_gt = [Xs, Xds, Rs, Omegas]
-                state0 = [s[:, 0] for s in states_gt]
+                state0 = tuple([s[:, 0] for s in states_gt])
                 states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
                                                controls=controls, friction=friction_pred.squeeze(1))
                 physics_loss = self.physics_loss(states_pred, states_gt, pred_ts=control_ts, gt_ts=traj_ts)
@@ -206,21 +208,21 @@ class Evaluation:
                              transform=ax.transAxes, fontsize=10)
 
                 # plot terrain heightmap
-                plt.subplot(gs[:, -3:-2])
+                plt.subplot(gs[:, 2])
                 plt.title('Terrain Height')
                 plt.imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
                 plt.axis('off')
                 plt.colorbar()
 
                 # plot friction map
-                plt.subplot(gs[:, -2:-1])
+                plt.subplot(gs[:, 3])
                 plt.title('Friction')
                 plt.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=1.)
                 plt.axis('off')
                 plt.colorbar()
 
-                # plot trajectories
-                plt.subplot(gs[:, -1:])
+                # plot trajectories: XY
+                plt.subplot(gs[:, 4])
                 plt.plot(states_pred[0].squeeze()[:, 0], states_pred[0].squeeze()[:, 1], 'r.', label='Pred Traj')
                 plt.plot(states_gt[0].squeeze()[:, 0], states_gt[0].squeeze()[:, 1], 'kx', label='GT Traj')
                 plt.xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
@@ -228,6 +230,18 @@ class Evaluation:
                 plt.grid()
                 plt.xlabel('x [m]')
                 plt.ylabel('y [m]')
+                plt.xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+                plt.ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+                plt.legend()
+
+                # plot trajectories: Z
+                plt.subplot(gs[:, 5])
+                plt.plot(control_ts.squeeze(), states_pred[0].squeeze()[:, 2], 'r.', label='Pred Traj')
+                plt.plot(traj_ts.squeeze(), states_gt[0].squeeze()[:, 2], 'kx', label='GT Traj')
+                plt.grid()
+                plt.xlabel('Time [s]')
+                plt.ylabel('z [m]')
+                plt.ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
                 plt.legend()
 
                 if vis:

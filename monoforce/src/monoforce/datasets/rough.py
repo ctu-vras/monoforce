@@ -305,8 +305,8 @@ class ROUGH(Dataset):
         Get height map from lidar point cloud.
         :param i: index of the sample
         :param cached: if True, load height map from file if it exists, otherwise estimate it
-        :param dir_name: directory to save/load height map
-        :return: height map (2 x H x W), where 2 is the number of channels (z and mask)
+        :param dir_name: directory to save/load heightmap
+        :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
             dir_name = os.path.join(self.path, 'terrain', 'geom')
@@ -315,12 +315,10 @@ class ROUGH(Dataset):
             lidar_hm = np.load(file_path)
         else:
             points = torch.as_tensor(position(self.get_cloud(i)))
-            map_pose = torch.from_numpy(self.get_pose(i))
             lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
                                           grid_res=self.dphys_cfg.grid_res,
-                                          h_max=self.dphys_cfg.h_max_above_ground,
-                                          r_min=self.dphys_cfg.d_min,
-                                          map_pose=map_pose)
+                                          h_max=self.dphys_cfg.h_max,
+                                          r_min=self.dphys_cfg.r_min)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, lidar_hm.cpu().numpy())
         heightmap = torch.as_tensor(lidar_hm)
@@ -340,7 +338,8 @@ class ROUGH(Dataset):
                                                   dtype=np.float32).reshape((4, 4))
         traj = self.get_traj(i)
         poses = traj['poses']
-        poses_footprint = poses @ Tr_base_link__base_footprint
+        poses_footprint = poses
+        poses_footprint[:, 2, 3] -= abs(Tr_base_link__base_footprint[2, 3])  # subtract robot's clearance
 
         trajectory_points = []
         for Tr in poses_footprint:
@@ -564,6 +563,10 @@ class ROUGH(Dataset):
         points = points[mask]
         colors = colors[mask]
 
+        # gravity-aligned cloud
+        pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
+        points = transform_cloud(points, pose_grav_aligned)
+
         if vis:
             colors = normalize(colors)
             pcd = o3d.geometry.PointCloud()
@@ -612,12 +615,10 @@ class ROUGH(Dataset):
             rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
             seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
-            points = torch.as_tensor(points)
-            map_pose = torch.from_numpy(self.get_pose(i))
+            points = torch.as_tensor(points, dtype=torch.float32)
             hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
                                           grid_res=self.dphys_cfg.grid_res,
-                                          h_max=self.dphys_cfg.h_max_above_ground,
-                                          map_pose=map_pose)
+                                          h_max=self.dphys_cfg.h_max)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, hm_rigid.cpu().numpy())
         heightmap = torch.as_tensor(hm_rigid)

@@ -64,10 +64,10 @@ class DPhysConfig:
         self.gravity_direction = torch.tensor([0., 0., -1.])  # gravity direction in the world frame
 
         # height map parameters
-        self.grid_res = 0.1
-        self.d_min = 1.0
-        self.d_max = 6.4
-        self.h_max_above_ground = 1.5  # above ground frame (base_footprint)
+        self.grid_res = 0.1  # grid resolution of the heightmap, [m]
+        self.r_min = 1.0  # minimum distance of the terrain from the robot, [m]
+        self.d_max = 6.4  # half-size of the terrain, heightmap range: [-d_max, d_max]
+        self.h_max = 1.0  # maximum height of the terrain, heightmap range: [-h_max, h_max]
         self.k_stiffness = 10_000.
         self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
         self.k_friction = 1.0

@@ -421,9 +421,9 @@ class DPhysics(torch.nn.Module):
         f_spring = torch.zeros(B, N_pts, 3, device=self.device)
         f_friction = torch.zeros(B, N_pts, 3, device=self.device)
         forces = (f_spring, f_friction)
-        state_extended = state + forces
+        state_extended = tuple(state) + tuple(forces)
         state_extended = odeint(self.forward_kinematics_extended_state, state_extended, self.ts,
-                                method=self.dphys_cfg.integration_mode)
+                                method=self.dphys_cfg.integration_mode, rtol=1e-3, atol=1e-3)
         Xs, Xds, Rs, Omegas, F_springs, F_frictions = state_extended
 
         # transpose the states and forces to (B, N, D)

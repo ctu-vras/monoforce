@@ -18,6 +18,7 @@ from message_filters import ApproximateTimeSynchronizer, Subscriber
 import tf2_ros
 from PIL import Image as PILImage
 from ros_numpy import numpify
+from scipy.spatial.transform import Rotation
 
 torch.set_default_dtype(torch.float32)
 lib_path = os.path.join(__file__, '..', '..', '..')
@@ -41,6 +42,7 @@ class TerrainEncoder:
         self.model.eval()
 
         self.robot_frame = rospy.get_param('~robot_frame', 'base_link')
+        self.fixed_frame = rospy.get_param('~fixed_frame', 'odom')
 
         img_topics = rospy.get_param('~img_topics', [])
         n_cams = rospy.get_param('~n_cams', None)
@@ -130,6 +132,17 @@ class TerrainEncoder:
 
         return E, K, D
 
+    def get_transform(self, from_frame, to_frame):
+        time = rospy.Time(0)
+        timeout = rospy.Duration.from_sec(1.0)
+        try:
+            tf = self.tf_buffer.lookup_transform(to_frame, from_frame, time, timeout)
+        except Exception as ex:
+            rospy.logerr('Could not transform from %s to %s: %s.', from_frame, to_frame, ex)
+            raise ex
+
+        return np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+
     def get_cam_calib_from_info_msg(self, msg):
         """
         Get camera calibration parameters from CameraInfo message.
@@ -140,16 +153,8 @@ class TerrainEncoder:
         """
         assert isinstance(msg, CameraInfo)
 
-        time = rospy.Time(0)
-        timeout = rospy.Duration.from_sec(1.0)
-        try:
-            tf = self.tf_buffer.lookup_transform(self.robot_frame, msg.header.frame_id, time, timeout)
-        except Exception as ex:
-            rospy.logerr('Could not transform from camera %s to robot %s: %s.',
-                         msg.header.frame_id, self.robot_frame, ex)
-            raise ex
-
-        E = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        # get camera extrinsics
+        E = self.get_transform(from_frame=msg.header.frame_id, to_frame=self.robot_frame)
         K = np.array(msg.K, dtype=np.float32).reshape((3, 3))
         D = np.array(msg.D, dtype=np.float32)
 
@@ -160,6 +165,10 @@ class TerrainEncoder:
         Get inputs for LSS model from image and camera info messages.
         """
         assert len(img_msgs) == len(info_msgs)
+
+        robot_pose = self.get_transform(from_frame=self.robot_frame, to_frame=self.fixed_frame)
+        roll, pitch, yaw = Rotation.from_matrix(robot_pose[:3, :3]).as_euler('xyz')
+        R = Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix()
 
         imgs = []
         post_rots = []
@@ -181,6 +190,9 @@ class TerrainEncoder:
             else:
                 rospy.logdebug('Using calibration from CameraInfo message')
                 E, K, D = self.get_cam_calib_from_info_msg(info_msg)
+
+            # extrinsics relative to gravity-aligned frame
+            E[:3, :3] = R @ E[:3, :3]
 
             img, post_rot, post_tran = self.preprocess_img(img)
             imgs.append(img)

@@ -86,9 +86,9 @@ class HeightMapEstimator:
         rospy.logdebug('Points shape: %s' % str(points.shape))
 
         # estimate height map
-        hm = estimate_heightmap(points, r_min=self.cfg.d_min, d_max=self.cfg.d_max,
+        hm = estimate_heightmap(points, r_min=self.cfg.r_min, d_max=self.cfg.d_max,
                                 grid_res=self.cfg.grid_res,
-                                h_max=self.cfg.h_max_above_ground)
+                                h_max=self.cfg.h_max)
         if hm is None:
             rospy.logwarn('Could not estimate height map')
             return
@@ -114,7 +114,7 @@ class HeightMapEstimator:
             points = position(cloud)
 
             # apply range filter
-            points = filter_range(points, min=self.cfg.d_min, max=np.sqrt(2) * self.cfg.d_max)
+            points = filter_range(points, min=self.cfg.r_min, max=np.sqrt(2) * self.cfg.d_max)
 
             # apply grid filter
             points = filter_grid(points, self.cfg.grid_res)
