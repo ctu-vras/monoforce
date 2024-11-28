@@ -135,7 +135,10 @@ class DPhysConfig:
         Returns:
         - Point cloud as vertices of the robot mesh.
         """
-        # TODO: add MARV mesh, using the same mesh as TRADR for now
+        if 'tradr' in robot:
+            robot = 'tradr'
+        elif 'marv' in robot:
+            robot = 'marv'
         mesh_path = os.path.join(os.path.dirname(__file__), f'../../config/meshes/{robot}.obj')
         assert os.path.exists(mesh_path), f'Mesh file {mesh_path} does not exist.'
         mesh = o3d.io.read_triangle_mesh(mesh_path)

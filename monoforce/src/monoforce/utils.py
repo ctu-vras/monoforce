@@ -8,6 +8,7 @@ import torch
 import yaml
 from random import random
 from time import sleep
+from tqdm import tqdm
 
 
 __all__ = [
@@ -122,7 +123,7 @@ def load_calib(calib_path):
     return calib
 
 
-def compile_data(lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=False, Data=None, **kwargs):
+def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None):
     from torch.utils.data import ConcatDataset, Subset
     from monoforce.datasets import ROUGH, rough_seq_paths
     """
@@ -144,8 +145,8 @@ def compile_data(lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=Fal
         Data = ROUGH
     for path in rough_seq_paths:
         assert os.path.exists(path)
-        train_ds = Data(path, is_train=True, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
-        val_ds = Data(path, is_train=False, lss_cfg=lss_cfg, dphys_cfg=dphys_cfg, **kwargs)
+        train_ds = Data(path, is_train=True)
+        val_ds = Data(path, is_train=False)
         if vis:
             explore_data(train_ds)
             vis = False  # visualize only the first dataset sample
@@ -169,10 +170,17 @@ def compile_data(lss_cfg, dphys_cfg, val_fraction=0.1, small_data=False, vis=Fal
     # concatenate datasets
     train_ds = ConcatDataset(train_datasets)
     val_ds = ConcatDataset(val_datasets)
+
     if small_data:
+        train_datasets = [Data(path, is_train=True) for path in rough_seq_paths]
+        val_datasets = [Data(path, is_train=False) for path in rough_seq_paths]
         print('Debug mode: using small datasets')
-        train_ds = Subset(train_ds, np.random.choice(len(train_ds), min(8, len(train_ds)), replace=False))
-        val_ds = Subset(val_ds, np.random.choice(len(val_ds), min(4, len(val_ds)), replace=False))
+        # concatenate datasets
+        train_ds = ConcatDataset(train_datasets)
+        val_ds = ConcatDataset(val_datasets)
+        ids = [120, 294, 532, 573, 926, 2620]
+        train_ds = Subset(train_ds, ids)
+        val_ds = Subset(val_ds, ids)
     print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
 
     return train_ds, val_ds
@@ -198,7 +206,7 @@ def explore_data(ds, sample_range='random', save=False):
     else:
         assert isinstance(sample_range, list) or isinstance(sample_range, np.ndarray) or isinstance(sample_range, range)
 
-    for sample_i in sample_range:
+    for sample_i in tqdm(sample_range):
         imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
         hm_terrain = ds.get_terrain_height_map(sample_i)
         pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T

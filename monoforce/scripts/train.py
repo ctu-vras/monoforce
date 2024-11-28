@@ -14,7 +14,6 @@ from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data, position
-from monoforce.transformations import transform_cloud
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -31,16 +30,16 @@ def arg_parser():
     parser.add_argument('--model', type=str, default='lss', help='Model to train: lss, bevfusion, lidarbev')
     parser.add_argument('--bsz', type=int, default=4, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--robot', type=str, default='marv', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
-    parser.add_argument('--vis', type=str2bool, default=True, help='Visualize training samples')
+    parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--geom_weight', type=float, default=1.0, help='Weight for geometry loss')
     parser.add_argument('--terrain_weight', type=float, default=2.0, help='Weight for terrain heightmap loss')
-    parser.add_argument('--phys_weight', type=float, default=0.1, help='Weight for physics loss')
+    parser.add_argument('--phys_weight', type=float, default=0.0, help='Weight for physics loss')
 
     return parser.parse_args()
 
@@ -83,6 +82,7 @@ class TrainerCore:
         self.model = model
         self.dphys_cfg = dphys_cfg
         self.lss_cfg = lss_cfg
+        self.debug = debug
 
         self.nepochs = nepochs
         self.min_loss = np.inf
@@ -111,8 +111,7 @@ class TrainerCore:
 
     def create_dataloaders(self, bsz=1, debug=False, vis=False, Data=ROUGH):
         # create dataset for LSS model training
-        train_ds, val_ds = compile_data(dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg,
-                                        small_data=debug, vis=vis, Data=Data)
+        train_ds, val_ds = compile_data(small_data=debug, vis=vis, Data=Data)
         # create dataloaders: making sure all elemts in a batch are tensors
         def collate_fn(batch):
             def to_tensor(item):
@@ -232,7 +231,7 @@ class TrainerCore:
                 print('Epoch:', e, f'Train loss {k}:', v)
                 self.writer.add_scalar(f'train/epoch_loss_{k}', v, e)
 
-            if train_losses['total'] < self.min_train_loss:
+            if train_losses['total'] < self.min_train_loss or self.debug:
                 with torch.no_grad():
                     self.min_train_loss = train_losses['total']
                     print('Saving train model...')
@@ -251,7 +250,7 @@ class TrainerCore:
                         print('Epoch:', e, f'Val loss {k}:', v)
                         self.writer.add_scalar(f'val/epoch_loss_{k}', v, e)
 
-                    if val_losses['total'] < self.min_loss:
+                    if val_losses['total'] < self.min_loss or self.debug:
                         self.min_loss = val_losses['total']
                         print('Saving model...')
                         self.terrain_encoder.eval()

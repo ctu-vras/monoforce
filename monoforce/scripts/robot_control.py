@@ -7,6 +7,8 @@ from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.use('Qt5Agg')
 
 # simulation parameters
 robot = 'tradr'
@@ -91,13 +93,14 @@ def motion():
 def motion_dataset():
     import numpy as np
     from monoforce.datasets import ROUGH, rough_seq_paths
-    from monoforce.utils import explore_data
+    from monoforce.utils import explore_data, compile_data
     from scipy.spatial.transform import Rotation
 
     # load the dataset
-    path = rough_seq_paths[0]
+    path = rough_seq_paths[2]
     # path = np.random.choice(rough_seq_paths)
-    ds = ROUGH(path, dphys_cfg=dphys_cfg)
+    # ds = ROUGH(path, dphys_cfg=dphys_cfg)
+    ds, _ = compile_data(val_fraction=0.0)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
@@ -107,28 +110,33 @@ def motion_dataset():
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
 
-    sample_i = 120
+    sample_i = 532 + 335 + 59
+    # sample_i = 59
     # sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
+    # explore_data(ds, sample_range=[sample_i])
+
     # get a sample from the dataset
-    traj_ts, states = ds.get_states_traj(sample_i)
-    hm = ds.get_terrain_height_map(sample_i)
-    control_ts, controls = ds.get_controls(sample_i)
-    z_grid, grid_mask = hm[0], hm[1]
+    (imgs, rots, trans, intrins, post_rots, post_trans,
+     hm_geom, hm_terrain,
+     control_ts, controls,
+     pose0,
+     traj_ts, Xs, Xds, Rs, Omegas) = ds[sample_i]
+    z_grid, grid_mask = hm_terrain[0], hm_terrain[1]
 
     # interpolate the heightmap
     z_grid[~grid_mask.bool()] = 0.0
 
     # initial state
-    pose0 = torch.as_tensor(ds.get_initial_pose_on_heightmap(sample_i), dtype=torch.float32)
+    pose0 = torch.as_tensor(pose0, dtype=torch.float32)
     x = pose0[:3, 3]
     xd = torch.zeros_like(x)
-    R = pose0[:3, :3]
+    # R = pose0[:3, :3]
+    R = torch.tensor(Rotation.from_euler('z', 0).as_matrix(), dtype=torch.float32, device=device)
     omega = torch.zeros_like(x)
     state0 = (x, xd, R, omega)
     state0 = tuple([s.to(device)[None] for s in state0])
 
-    explore_data(ds, sample_range=[sample_i])
     # # plot controls
     # plt.figure()
     # plt.plot(controls[:, 0], '.', label='v [m/s]')
@@ -143,6 +151,7 @@ def motion_dataset():
                                         controls=torch.as_tensor(controls)[None].to(device))
 
     # get the states and forces for and move them to the cpu
+    states_np = [s.cpu().numpy() for s in [Xs, Xds, Rs, Omegas]]
     states_pred_np = [s.squeeze(0).cpu().numpy() for s in states_pred]
     forces_pred_np = [f.squeeze(0).cpu().numpy() for f in forces_pred]
     x_points = dphys_cfg.robot_points.cpu().numpy()
@@ -150,7 +159,7 @@ def motion_dataset():
     # set up the visualization
     vis_cfg = setup_visualization(states=states_pred_np,
                                   x_points=x_points,
-                                  states_gt=states,
+                                  states_gt=states_np,
                                   forces=forces_pred_np,
                                   x_grid=x_grid.cpu().numpy(), y_grid=y_grid.cpu().numpy(), z_grid=z_grid.cpu().numpy())
 
