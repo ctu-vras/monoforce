@@ -99,8 +99,8 @@ def motion_dataset():
     # load the dataset
     path = rough_seq_paths[2]
     # path = np.random.choice(rough_seq_paths)
-    # ds = ROUGH(path, dphys_cfg=dphys_cfg)
-    ds, _ = compile_data(val_fraction=0.0)
+    ds = ROUGH(path, dphys_cfg=dphys_cfg)
+    # ds, _ = compile_data(val_fraction=0.0)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
@@ -110,11 +110,11 @@ def motion_dataset():
     y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
     x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
 
-    sample_i = 532 + 335 + 59
+    # sample_i = 532 + 335 + 59
     # sample_i = 59
-    # sample_i = np.random.choice(len(ds))
+    sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
-    # explore_data(ds, sample_range=[sample_i])
+    explore_data(ds, sample_range=[sample_i])
 
     # get a sample from the dataset
     (imgs, rots, trans, intrins, post_rots, post_trans,
@@ -137,13 +137,13 @@ def motion_dataset():
     state0 = (x, xd, R, omega)
     state0 = tuple([s.to(device)[None] for s in state0])
 
-    # # plot controls
-    # plt.figure()
-    # plt.plot(controls[:, 0], '.', label='v [m/s]')
-    # plt.plot(controls[:, 1], '.', label='w [rad/s]')
-    # plt.legend()
-    # plt.title('Controls')
-    # plt.show()
+    # plot controls
+    plt.figure()
+    plt.plot(controls[:, 0], '.', label='v [m/s]')
+    plt.plot(controls[:, 1], '.', label='w [rad/s]')
+    plt.legend()
+    plt.title('Controls')
+    plt.show()
 
     # differentiable physics simulation
     states_pred, forces_pred = dphysics(z_grid=torch.as_tensor(z_grid)[None].to(device),

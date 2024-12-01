@@ -167,7 +167,7 @@ class MonoForce:
         ds = ROUGH(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
         rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
         sample_i = np.random.choice(range(len(ds)))
-        rospy.loginfo('Using sample number %d that corresponds to timestamp %f' % (sample_i, ds.ts[sample_i]))
+        rospy.loginfo('Using sample number %d that corresponds to timestamp %f' % (sample_i, ds.poses_ts[sample_i]))
 
         self.camera_frames = ds.camera_names
         self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]

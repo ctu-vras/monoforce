@@ -28,7 +28,7 @@ torch.manual_seed(42)
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
     parser.add_argument('--model', type=str, default='lss', help='Model to train: lss, bevfusion, lidarbev')
-    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
+    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')

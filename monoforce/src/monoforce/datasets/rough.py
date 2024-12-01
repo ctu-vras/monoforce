@@ -30,36 +30,36 @@ data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
 rough_seq_paths = [
         # MARV robot
-        os.path.join(data_dir, 'ROUGH/marv/24-08-14-monoforce-long_drive'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-46-51'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-09-26-13-54-43'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-12-34-53'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-01-40'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-17-08'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-29-39'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-43-21'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-13-57-57'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-12-29'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-22-10'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-05-14-28-15'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-16-42'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-26-47'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-35-05'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-52-07'),
-        os.path.join(data_dir, 'ROUGH/marv/marv_2024-10-31-15-56-33'),
+        os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-long_drive'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-46-51'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-54-43'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-12-34-53'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-13-01-40'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-13-17-08'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-13-29-39'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-13-43-21'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-13-57-57'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-14-12-29'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-14-22-10'),
+        # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-14-28-15'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-16-42'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-26-47'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-35-05'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
 
         # TRADR robot
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-02-31'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-10-17-12-12'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-13-54-18'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-13-58-46'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-14-03-57'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-09-26-14-14-42'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-40-41'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-48-31'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-15-58-52'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-16-08-30'),
-        os.path.join(data_dir, 'ROUGH/tradr2/ugv_2024-10-05-16-24-48'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-12-12'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-54-18'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-08-30'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-24-48'),
 ]
 
 
@@ -77,18 +77,17 @@ class ROUGH(Dataset):
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
         self.traj_path = os.path.join(path, 'trajectories')
-        self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
+        self.poses_path = os.path.join(path, 'poses', 'lidar_poses_all.csv')
         self.calib_path = os.path.join(path, 'calibration')
         self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
         self.dphys_cfg = dphys_cfg
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
-        self.ts, self.poses = self.get_poses(return_stamps=True)
+        self.poses_ts, self.poses = self.get_poses(return_stamps=True)
         self.camera_names = self.get_camera_names()
 
         self.is_train = is_train
 
-        # initialize image augmentations
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
@@ -101,11 +100,9 @@ class ROUGH(Dataset):
         ds = copy.deepcopy(self)
         if isinstance(i, (list, tuple, np.ndarray)):
             ds.ids = [self.ids[k] for k in i]
-            ds.poses = [self.poses[k] for k in i]
         else:
             assert isinstance(i, (slice, range))
             ds.ids = self.ids[i]
-            ds.poses = self.poses[i]
         return ds
 
     def __iter__(self):
@@ -132,7 +129,6 @@ class ROUGH(Dataset):
             return None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
         stamps, Ts = data[:, 0], data[:, 1:13]
-        stamps -= stamps[0]  # start time from 0
         lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
         Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
@@ -143,8 +139,17 @@ class ROUGH(Dataset):
             return stamps, poses
         return poses
 
+    def ind_to_stamp(self, i):
+        ind = self.ids[i]
+        sec, nsec = ind.split('_')
+        stamp = float(sec) + float(nsec) / 1e9
+        return stamp
+
     def get_pose(self, i):
-        return self.poses[i]
+        stamp = self.ind_to_stamp(i)
+        pose_i = np.argmin(np.abs(self.poses_ts - stamp))
+        pose = self.poses[pose_i]
+        return pose
 
     def get_initial_pose_on_heightmap(self, i):
         map_pose = self.get_pose(i)
@@ -160,39 +165,41 @@ class ROUGH(Dataset):
             return None, None
 
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
-        all_stamps, all_controls = data[:, 0], data[:, 1:]
-        all_stamps -= all_stamps[0]  # start time from 0
-        time_left = copy.copy(self.ts[i])
+        all_control_stamps, all_controls = data[:, 0], data[:, 1:]
+        time_left = self.ind_to_stamp(i)
+        # start time from 0
+        time_left -= all_control_stamps[0]
+        all_control_stamps -= all_control_stamps[0]
         T_horizon, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         time_right = time_left + T_horizon
 
         # check if the trajectory is out of the control time stamps
-        if time_left > all_stamps[-1] or time_right < all_stamps[0]:
-            times_horizon = np.arange(0.0, T_horizon, dt)
-            controls = np.zeros((len(times_horizon), all_controls.shape[1]))
-            return times_horizon, controls
+        if time_left > all_control_stamps[-1] or time_right < all_control_stamps[0]:
+            # print(f'Trajectory is out of the recorded control time stamps. Using zero controls.')
+            control_stamps_horizon = torch.arange(0.0, T_horizon, dt, dtype=torch.float32)
+            controls = torch.zeros((len(control_stamps_horizon), all_controls.shape[1]), dtype=torch.float32)
+            return control_stamps_horizon, controls
 
         # find the closest index to the left and right in all times
-        il = np.argmin(np.abs(np.asarray(all_stamps) - time_left))
-        ir = np.argmin(np.abs(np.asarray(all_stamps) - time_right))
-        ir = max(il + 1, ir)
-        ir = np.clip(ir, 0, len(all_controls) - 1)
-        timestamps = np.asarray(all_stamps[il:ir])
-        timestamps = timestamps - timestamps[0]
+        il = np.argmin(np.abs(np.asarray(all_control_stamps) - time_left))
+        ir = np.argmin(np.abs(np.asarray(all_control_stamps) - time_right))
+        ir = min(max(il + 1, ir), len(all_control_stamps))
+        control_stamps = np.asarray(all_control_stamps[il:ir])
+        control_stamps = control_stamps - control_stamps[0]
         controls = all_controls[il:ir]
 
-        times_horizon = np.arange(0.0, T_horizon, dt)
-        controls_horizon = np.zeros((len(times_horizon), controls.shape[1]))
+        control_stamps_horizon = np.arange(0.0, T_horizon, dt)
+        controls_horizon = np.zeros((len(control_stamps_horizon), controls.shape[1]))
         # interpolate controls to the trajectory time stamps
         for j in range(controls.shape[1]):
-            controls_horizon[:, j] = np.interp(times_horizon, timestamps, controls[:, j], left=0.0, right=0.0)
+            controls_horizon[:, j] = np.interp(control_stamps_horizon, control_stamps, controls[:, j], left=0.0, right=0.0)
 
-        assert len(times_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
-        assert len(times_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
-        times_horizon = torch.as_tensor(times_horizon, dtype=torch.float32)
+        assert len(control_stamps_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
+        assert len(control_stamps_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
+        control_stamps_horizon = torch.as_tensor(control_stamps_horizon, dtype=torch.float32)
         controls_horizon = torch.as_tensor(controls_horizon, dtype=torch.float32)
 
-        return times_horizon, controls_horizon
+        return control_stamps_horizon, controls_horizon
 
     def get_camera_names(self):
         cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
@@ -204,22 +211,23 @@ class ROUGH(Dataset):
     def get_traj(self, i):
         # n_frames equals to the number of future poses (trajectory length)
         T_horizon = self.dphys_cfg.traj_sim_time
+        dt = 0.1  # lidar frequency is 10 Hz
 
         # get trajectory as sequence of `n_frames` future poses
-        all_poses = self.get_poses(return_stamps=False)
-        all_ts = copy.copy(self.ts)
-        il = i
-        ir = np.argmin(np.abs(all_ts - (self.ts[i] + T_horizon)))
+        all_poses = copy.copy(self.poses)
+        all_ts = copy.copy(self.poses_ts)
+        time_left = self.ind_to_stamp(i)
+        il = np.argmin(np.abs(self.poses_ts - time_left))
+        ir = np.argmin(np.abs(all_ts - (self.poses_ts[il] + T_horizon)))
         ir = min(max(ir, il+1), len(all_ts))
         poses = all_poses[il:ir]
         stamps = np.asarray(all_ts[il:ir])
 
         # make sure the trajectory has the fixed length
-        n_frames = int(np.ceil(T_horizon))
+        n_frames = int(np.ceil(T_horizon / dt))
         if len(poses) < n_frames:
             # repeat the last pose to fill the trajectory
             poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
-            dt = np.mean(np.diff(stamps))
             stamps = np.concatenate([stamps, stamps[-1] + np.arange(1, n_frames - len(stamps) + 1) * dt], axis=0)
         # truncate the trajectory
         poses = poses[:n_frames]
