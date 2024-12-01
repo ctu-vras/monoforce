@@ -1,10 +1,18 @@
 import sys
+
+from IPython.core.pylabtools import figsize
+
 sys.path.append('../src')
 import numpy as np
 import torch
 from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
+from monoforce.datasets import ROUGH, rough_seq_paths
+from time import time
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.use('Qt5Agg')
 
 
 def visualize(states, x_points, forces, x_grid, y_grid, z_grid, states_gt=None):
@@ -126,14 +134,7 @@ def optimize_heightmap():
 
 
 def learn_terrain_properties():
-    from monoforce.datasets import ROUGH, rough_seq_paths
-    from torch.utils.data import DataLoader
-    from time import time
-
-    np.random.seed(0)
-    torch.manual_seed(0)
     vis = True
-    batch_size = 64
     device = torch.device('cuda')
 
     class Data(ROUGH):
@@ -144,7 +145,7 @@ def learn_terrain_properties():
             control_ts, controls = self.get_controls(i)
             ts, states = self.get_states_traj(i)
             Xs, Xds, Rs, Omegas = states
-            heightmap = self.get_terrain_height_map(i)[0]
+            heightmap = self.get_geom_height_map(i)[0]
             return control_ts, controls, ts, Xs, Xds, Rs, Omegas, heightmap
 
     dphys_cfg = DPhysConfig()
@@ -152,21 +153,25 @@ def learn_terrain_properties():
 
     # load the dataset
     ds = Data(path, dphys_cfg=dphys_cfg)
-    loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # get a sample from the dataset
-    control_ts, controls, traj_ts, Xs, Xds, Rs, Omegas, z_grid = next(iter(loader))
-    states = [Xs, Xds, Rs, Omegas]
-    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
+    # sample_i = np.random.choice(len(ds))
+    sample_i = 79
+    print('Sample index:', sample_i)
+    sample = ds[sample_i]
+    batch = [s[None].to(device) for s in sample]
+    control_ts, controls, traj_ts, X, Xd, R, Omega, z_grid = batch
+    batch_size = X.shape[0]
 
-    # put the data on the device
-    control_ts, controls, traj_ts = [t.to(device) for t in [control_ts, controls, traj_ts]]
-    states = [s.to(device) for s in states]
-    z_grid = z_grid.to(device)
-    friction = friction.to(device)
+    z_grid = torch.zeros_like(z_grid)
+    friction = 0.0 * torch.ones_like(z_grid)
+
+    # make gt traj sparser
+    traj_ts = traj_ts[:, ::10]
+    X = X[:, ::10]
 
     # find the closest timesteps in the trajectory to the ground truth timesteps
     t0 = time()
@@ -176,16 +181,15 @@ def learn_terrain_properties():
     # optimize the heightmap and friction
     z_grid.requires_grad = True
     friction.requires_grad = True
-    optimizer = torch.optim.Adam([{'params': z_grid, 'lr': 0.001},
-                                  {'params': friction, 'lr': 0.001}])
+    optimizer = torch.optim.Adam([{'params': z_grid, 'lr': 0.0},
+                                  {'params': friction, 'lr': 0.05}])
 
     print('Optimizing terrain properties...')
     n_iters, vis_step = 100, 10
+    plt.figure(figsize(10, 5))
     for i in range(n_iters):
         optimizer.zero_grad()
         states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)
-
-        X, Xd, R, Omega = states
         X_pred, Xd_pred, R_pred, Omega_pred = states_pred
 
         # compute the loss as the mean squared error between the predicted and ground truth poses
@@ -193,21 +197,51 @@ def learn_terrain_properties():
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss: {loss.item()}')
-        print(f'Friction mean: {friction.mean().item()}')
+        # print(f'Friction mean: {friction.mean().item()}')
 
         if vis and i % vis_step == 0:
             with torch.no_grad():
-                x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-                y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-                x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
-                x_grid = x_grid.repeat(batch_size, 1, 1)
-                y_grid = y_grid.repeat(batch_size, 1, 1)
-                x_points = dphys_cfg.robot_points.cpu().numpy()
-                visualize(states=states_pred,
-                          x_points=x_points,
-                          states_gt=states,
-                          forces=forces_pred,
-                          x_grid=x_grid, y_grid=y_grid, z_grid=z_grid)
+                plt.clf()
+
+                plt.subplot(121)
+                plt.title('Trajectory Z(t)')
+                plt.plot(traj_ts[0].cpu().numpy(), X[0, :, 2].cpu().numpy(), '.b')
+                plt.plot(control_ts[0].cpu().numpy(), X_pred[0, :, 2].cpu().numpy(), '.r')
+                plt.xlabel('Time [s]')
+                plt.ylabel('Z [m]')
+                plt.grid()
+                plt.ylim(-1, 1)
+                plt.xlim(-0.1, 5.1)
+
+                plt.subplot(122)
+                plt.title('Trajectory Y(X)')
+                plt.plot(X[0, :, 0].cpu().numpy(), X[0, :, 1].cpu().numpy(), '.b')
+                plt.plot(X_pred[0, :, 0].cpu().numpy(), X_pred[0, :, 1].cpu().numpy(), '.r')
+                # plot lines between corresponding points from the ground truth and predicted trajectories (use ts_ids)
+                for j in range(X.shape[1]):
+                    plt.plot([X[0, j, 0].cpu().numpy(), X_pred[0, ts_ids[0, j], 0].cpu().numpy()],
+                             [X[0, j, 1].cpu().numpy(), X_pred[0, ts_ids[0, j], 1].cpu().numpy()], 'g')
+                plt.xlabel('X [m]')
+                plt.ylabel('Y [m]')
+                plt.grid()
+                plt.ylim(-6.4, 6.4)
+                plt.xlim(-6.4, 6.4)
+
+                plt.pause(0.1)
+                plt.draw()
+
+                # x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
+                # y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
+                # x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+                # x_grid = x_grid.repeat(batch_size, 1, 1)
+                # y_grid = y_grid.repeat(batch_size, 1, 1)
+                # x_points = dphys_cfg.robot_points.cpu().numpy()
+                # states = tuple(batch[3:7])
+                # visualize(states=states_pred,
+                #           x_points=x_points,
+                #           states_gt=states,
+                #           forces=forces_pred,
+                #           x_grid=x_grid, y_grid=y_grid, z_grid=z_grid)
 
 
 def main():
