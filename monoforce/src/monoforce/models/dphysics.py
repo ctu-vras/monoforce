@@ -3,7 +3,7 @@ from torchdiffeq import odeint, odeint_adjoint
 from ..dphys_config import DPhysConfig
 
 
-def normalized(x, eps=1e-6):
+def normalized(x, eps=1e-6, dim=-1):
     """
     Normalizes the input tensor.
 
@@ -14,7 +14,7 @@ def normalized(x, eps=1e-6):
     Returns:
     - Normalized tensor.
     """
-    norm = torch.norm(x, dim=-1, keepdim=True)
+    norm = torch.norm(x, dim=dim, keepdim=True)
     return x / torch.clamp(norm, min=eps)
 
 
@@ -172,9 +172,8 @@ class DPhysics(torch.nn.Module):
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
-        on_grid = (x_points[..., 0:1] >= -self.dphys_cfg.d_max) & (x_points[..., 0:1] <= self.dphys_cfg.d_max) & \
-                    (x_points[..., 1:2] >= -self.dphys_cfg.d_max) & (x_points[..., 1:2] <= self.dphys_cfg.d_max)
-        in_contact = ((dh_points <= 0.0) & on_grid).float()
+        # soft contact model
+        in_contact = torch.sigmoid(-dh_points)
         assert in_contact.shape == (B, n_pts, 1)
 
         # reaction at the contact points as spring-damper forces
