@@ -5,9 +5,10 @@
 > More information is available at [ctu-vras/rough-dataset](https://github.com/ctu-vras/rough-dataset).
 > This page contains a description of the dataset preliminary version.
 
-Self-supervised traversability data generated using lidar SLAM.
-The data sequences are available at 
-[Google Drive](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
+Self-supervised traversability data generated using [lidar SLAM](https://github.com/norlab-ulaval/norlab_icp_mapper).
+The data sequences are available at Google Drive:
+- [ROUGH](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
+- [RobInGas](https://drive.google.com/drive/folders/1UoNd5R6R75pBE1n8ztzUzOGsG3FBBHFU?usp=drive_link)
 
 The data sequences can be downloaded for example using [gdown](https://github.com/wkentaro/gdown):
 ```bash
@@ -15,7 +16,7 @@ pip install gdown
 gdown URL --folder --remaining-ok
 ```
 
-The dataset (ROUGH) contains:
+The dataset contains:
   - point clouds, 
   - camera images,
   - calibration data: camera-lidar extrinsics, camera intrinsics, and distortion parameters,
