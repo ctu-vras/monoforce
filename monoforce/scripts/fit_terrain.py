@@ -1,7 +1,4 @@
 import sys
-
-from IPython.core.pylabtools import figsize
-
 sys.path.append('../src')
 import numpy as np
 import torch
@@ -153,25 +150,24 @@ def learn_terrain_properties():
 
     # load the dataset
     ds = Data(path, dphys_cfg=dphys_cfg)
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # get a sample from the dataset
-    # sample_i = np.random.choice(len(ds))
-    sample_i = 79
-    print('Sample index:', sample_i)
-    sample = ds[sample_i]
-    batch = [s[None].to(device) for s in sample]
+    # # sample_i = np.random.choice(len(ds))
+    # sample_i = 79
+    # print('Sample index:', sample_i)
+    # sample = ds[sample_i]
+    # batch = [s[None].to(device) for s in sample]
+    batch = next(iter(loader))
+    batch = [b.to(device) for b in batch]
     control_ts, controls, traj_ts, X, Xd, R, Omega, z_grid = batch
     batch_size = X.shape[0]
 
     z_grid = torch.zeros_like(z_grid)
     friction = 0.0 * torch.ones_like(z_grid)
-
-    # make gt traj sparser
-    traj_ts = traj_ts[:, ::10]
-    X = X[:, ::10]
 
     # find the closest timesteps in the trajectory to the ground truth timesteps
     t0 = time()
@@ -186,7 +182,7 @@ def learn_terrain_properties():
 
     print('Optimizing terrain properties...')
     n_iters, vis_step = 100, 10
-    plt.figure(figsize(10, 5))
+    plt.figure(figsize=(10, 5))
     for i in range(n_iters):
         optimizer.zero_grad()
         states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)

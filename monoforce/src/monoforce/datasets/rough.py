@@ -77,7 +77,7 @@ class ROUGH(Dataset):
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
         self.traj_path = os.path.join(path, 'trajectories')
-        self.poses_path = os.path.join(path, 'poses', 'lidar_poses_all.csv')
+        self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
         self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
         self.dphys_cfg = dphys_cfg
