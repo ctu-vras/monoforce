@@ -44,7 +44,7 @@ rough_seq_paths = [
         # os.path.join(data_dir, 'ROUGH/marv_2024-10-05-14-28-15'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-16-42'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-26-47'),
-        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-35-05'),
+        os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-35-05'),  # some problem with numpy arrays instead of torch tensors
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
 

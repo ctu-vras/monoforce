@@ -148,7 +148,7 @@ class TrainerCore:
 
         return loss
 
-    def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts):
+    def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts, only_2d=False):
         # unpack states
         X, Xd, R, Omega = states_gt
         X_pred, Xd_pred, R_pred, Omega_pred = states_pred
@@ -160,11 +160,12 @@ class TrainerCore:
         batch_size = X.shape[0]
         X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
 
-        # remove nan values
-        mask_valid = ~torch.isnan(X_pred_gt_ts)
-        X_pred_gt_ts = X_pred_gt_ts[mask_valid]
-        X = X[mask_valid]
-        loss = torch.nn.functional.mse_loss(X_pred_gt_ts, X)
+        # trajectory loss
+        loss_fn = torch.nn.functional.mse_loss
+        if only_2d:
+            loss = loss_fn(X_pred_gt_ts[..., :2], X[..., :2])
+        else:
+            loss = loss_fn(X_pred_gt_ts, X)
 
         return loss
 
@@ -260,8 +261,119 @@ class TrainerCore:
                         fig = self.vis_pred(self.val_loader)
                         self.writer.add_figure('val/prediction', fig, e)
 
+    def pred(self, sample):
+        raise NotImplementedError
+
+    def predicts_states(self, terrain, pose0, controls):
+        x0 = pose0[:, :3, 3].to(self.device)
+        xd0 = torch.zeros_like(x0)
+        R0 = pose0[:, :3, :3].to(self.device)
+        omega0 = torch.zeros_like(xd0)
+        state0 = (x0, xd0, R0, omega0)
+        states_pred, _ = self.dphysics(z_grid=terrain['terrain'].squeeze(1), state=state0,
+                                       controls=controls.to(self.device),
+                                       friction=terrain['friction'].squeeze(1))
+        return states_pred
+
     def vis_pred(self, loader):
-        fig = plt.figure()
+        fig, axes = plt.subplots(3, 4, figsize=(20, 15))
+
+        # visualize training predictions
+        sample_i = np.random.choice(len(loader.dataset))
+        sample = loader.dataset[sample_i]
+
+        if self.model == 'lss':
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             controls_ts, controls,
+             pose0,
+             traj_ts, Xs, Xds, Rs, Omegas) = sample
+        elif self.model == 'bevfusion':
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             controls_ts, controls,
+             pose0,
+             traj_ts, Xs, Xds, Rs, Omegas,
+             points) = sample
+        elif self.model == 'lidarbev':
+            (points, hm_geom, hm_terrain,
+             controls_ts, controls,
+             pose0,
+             traj_ts, Xs, Xds, Rs, Omegas) = sample
+        else:
+            raise ValueError('Model not supported')
+
+        # predict height maps and states
+        with torch.no_grad():
+            batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device).unsqueeze(0) for b in sample]
+            terrain, states_pred = self.pred(batch)
+
+        geom_pred = terrain['geom'][0, 0].cpu()
+        diff_pred = terrain['diff'][0, 0].cpu()
+        terrain_pred = terrain['terrain'][0, 0].cpu()
+        friction_pred = terrain['friction'][0, 0].cpu()
+        Xs_pred = states_pred[0][0].cpu()
+
+        # get height map points
+        z_grid = terrain_pred
+        x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+        y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+        x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+        hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+        hm_points = hm_points.view(-1, 3).T
+
+        if self.model in ['lss', 'bevfusion']:
+            # plot images with projected height map points
+            for imgi in range(imgs.shape[0])[:4]:
+                ax = axes[0, imgi]
+                img = imgs[imgi]
+                img = denormalize_img(img[:3])
+                cam_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
+                img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+                mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
+                plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
+                ax.imshow(img)
+                ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
+                           cmap='jet', vmin=-1.0, vmax=1.0)
+                ax.axis('off')
+
+        axes[1, 0].set_title('Prediction: Terrain')
+        axes[1, 0].imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+        axes[1, 1].set_title('Label: Terrain')
+        axes[1, 1].imshow(hm_terrain[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+        axes[1, 2].set_title('Friction')
+        axes[1, 2].imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+        axes[1, 3].set_title('Trajectories XY')
+        axes[1, 3].plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
+        axes[1, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
+        axes[1, 3].set_xlabel('X [m]')
+        axes[1, 3].set_ylabel('Y [m]')
+        axes[1, 3].set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+        axes[1, 3].set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
+        axes[1, 3].grid()
+        axes[1, 3].legend()
+
+        axes[2, 0].set_title('Prediction: Geom')
+        axes[2, 0].imshow(geom_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+        axes[2, 1].set_title('Label: Geom')
+        axes[2, 1].imshow(hm_geom[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+
+        axes[2, 2].set_title('Height diff')
+        axes[2, 2].imshow(diff_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+
+        axes[2, 3].set_title('Trajectories Z')
+        axes[2, 3].plot(traj_ts, Xs[:, 2], 'kx', label='GT')
+        axes[2, 3].plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
+        axes[2, 3].set_xlabel('Time [s]')
+        axes[2, 3].set_ylabel('Z [m]')
+        axes[2, 3].set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
+        axes[2, 3].grid()
+        axes[2, 3].legend()
+
         return fig
 
 
@@ -288,36 +400,26 @@ class TrainerLSS(TrainerCore):
          control_ts, controls,
          pose0,
          traj_ts, Xs, Xds, Rs, Omegas) = batch
-
-        geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
-        terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
-
         # terrain encoder forward pass
         inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-        out = self.terrain_encoder(*inputs)
-        geom_pred, terrain_pred, friction_pred = out['geom'], out['terrain'], out['friction']
+        terrain = self.terrain_encoder(*inputs)
 
         # geometry loss: difference between predicted and ground truth height maps
         if self.geom_weight > 0:
-            loss_geom = self.hm_loss(geom_pred, geom, weights_geom)
+            loss_geom = self.hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
         else:
             loss_geom = torch.tensor(0.0, device=self.device)
 
         # rigid / terrain height map loss
         if self.terrain_weight > 0:
-            loss_terrain = self.hm_loss(terrain_pred, terrain, weights_terrain)
+            loss_terrain = self.hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
         else:
             loss_terrain = torch.tensor(0.0, device=self.device)
 
         # physics loss: difference between predicted and ground truth states
         states_gt = [Xs, Xds, Rs, Omegas]
-        x0 = pose0[:, :3, 3]
-        xd0 = torch.zeros_like(x0)
-        R0 = pose0[:, :3, :3]
-        omega0 = torch.zeros_like(xd0)
-        state0 = (x0, xd0, R0, omega0)
-        states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
-                                       controls=controls, friction=friction_pred.squeeze(1))
+        states_pred = self.predicts_states(terrain, pose0, controls)
+
         if self.phys_weight > 0:
             loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                           pred_ts=control_ts, gt_ts=traj_ts)
@@ -326,116 +428,20 @@ class TrainerLSS(TrainerCore):
 
         return loss_geom, loss_terrain, loss_phys
 
-    def vis_pred(self, loader):
-        fig = plt.figure(figsize=(20, 12))
-        ax1 = fig.add_subplot(341)
-        ax2 = fig.add_subplot(342)
-        ax3 = fig.add_subplot(343)
-        ax4 = fig.add_subplot(344)
-        ax5 = fig.add_subplot(345)
-        ax6 = fig.add_subplot(346)
-        ax7 = fig.add_subplot(347)
-        ax8 = fig.add_subplot(348)
-        ax9 = fig.add_subplot(349)
-        ax10 = fig.add_subplot(3, 4, 10)
-        ax11 = fig.add_subplot(3, 4, 11)
-        ax12 = fig.add_subplot(3, 4, 12)
-
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
-        for ax in axes:
-            ax.clear()
-
-        # visualize training predictions
-        sample_i = np.random.choice(len(loader.dataset))
-        sample = loader.dataset[sample_i]
-
+    def pred(self, batch):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          controls_ts, controls,
          pose0,
-         traj_ts, Xs, Xds, Rs, Omegas) = sample
-        with torch.no_grad():
-            # predict height maps
-            img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            img_inputs = [i.unsqueeze(0).to(self.device) for i in img_inputs]  # add batch dimension and move to device
-            out = self.terrain_encoder(*img_inputs)
-            geom_pred, terrain_pred, friction_pred, diff_pred = out['geom'], out['terrain'], out['friction'], out['diff']
+         traj_ts, Xs, Xds, Rs, Omegas) = batch
+        # predict height maps
+        img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        terrain = self.terrain_encoder(*img_inputs)
 
-            # predict states
-            x0 = pose0[:3, 3].to(self.device)
-            xd0 = torch.zeros_like(x0)
-            R0 = pose0[:3, :3].to(self.device)
-            omega0 = torch.zeros_like(xd0)
-            state0 = (x0[None], xd0[None], R0[None], omega0[None])
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1),  state=state0,
-                                           controls=controls.unsqueeze(0).to(self.device),
-                                           friction=friction_pred.squeeze(1))
-        geom_pred = geom_pred[0, 0].cpu()
-        diff_pred = diff_pred[0, 0].cpu()
-        terrain_pred = terrain_pred[0, 0].cpu()
-        friction_pred = friction_pred[0, 0].cpu()
-        Xs_pred = states_pred[0][0].cpu()
+        # predict states
+        states_pred = self.predicts_states(terrain, pose0, controls)
 
-        # get height map points
-        z_grid = terrain_pred
-        x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
-        y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
-        x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-        hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
-        hm_points = hm_points.view(-1, 3).T
-
-        # plot images with projected height map points
-        for imgi in range(imgs.shape[0])[:4]:
-            ax = axes[imgi]
-            img = imgs[imgi]
-            img = denormalize_img(img[:3])
-            cam_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
-            img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
-            mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
-            plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
-            ax.imshow(img)
-            ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
-                       cmap='jet', vmin=-1.0, vmax=1.0)
-            ax.axis('off')
-
-        ax5.set_title('Prediction: Terrain')
-        ax5.imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax6.set_title('Label: Terrain')
-        ax6.imshow(hm_terrain[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax7.set_title('Friction')
-        ax7.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-
-        ax8.set_title('Trajectories XY')
-        ax8.plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
-        ax8.plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
-        ax8.set_xlabel('X [m]')
-        ax8.set_ylabel('Y [m]')
-        ax8.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-        ax8.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-        ax8.grid()
-        ax8.legend()
-
-        ax9.set_title('Prediction: Geom')
-        ax9.imshow(geom_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax10.set_title('Label: Geom')
-        ax10.imshow(hm_geom[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax11.set_title('Height diff')
-        ax11.imshow(diff_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-
-        ax12.set_title('Trajectories Z')
-        ax12.plot(traj_ts, Xs[:, 2], 'kx', label='GT')
-        ax12.plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
-        ax12.set_xlabel('Time [s]')
-        ax12.set_ylabel('Z [m]')
-        ax12.set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
-        ax12.grid()
-        ax12.legend()
-
-        return fig
+        return terrain, states_pred
 
 
 class Fusion(ROUGH):
@@ -483,37 +489,27 @@ class TrainerBEVFusion(TrainerCore):
          pose0,
          traj_ts, Xs, Xds, Rs, Omegas,
          points) = batch
-
-        geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
-        terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
-
         # terrain encoder forward pass
         img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
         points_input = points
-        out = self.terrain_encoder(img_inputs, points_input)
-        geom_pred, terrain_pred, friction_pred = out['geom'], out['terrain'], out['friction']
+        terrain = self.terrain_encoder(img_inputs, points_input)
 
         # geometry loss: difference between predicted and ground truth height maps
         if self.geom_weight > 0:
-            loss_geom = self.hm_loss(geom_pred, geom, weights_geom)
+            loss_geom = self.hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
         else:
             loss_geom = torch.tensor(0.0, device=self.device)
 
         # rigid / terrain height map loss
         if self.terrain_weight > 0:
-            loss_terrain = self.hm_loss(terrain_pred, terrain, weights_terrain)
+            loss_terrain = self.hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
         else:
             loss_terrain = torch.tensor(0.0, device=self.device)
 
         # physics loss: difference between predicted and ground truth states
         states_gt = [Xs, Xds, Rs, Omegas]
-        x0 = pose0[:, :3, 3]
-        xd0 = torch.zeros_like(x0)
-        R0 = pose0[:, :3, :3]
-        omega0 = torch.zeros_like(xd0)
-        state0 = (x0, xd0, R0, omega0)
-        states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
-                                       controls=controls, friction=friction_pred.squeeze(1))
+        states_pred = self.predicts_states(terrain, pose0, controls)
+
         if self.phys_weight > 0:
             loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                           pred_ts=control_ts, gt_ts=traj_ts)
@@ -522,118 +518,22 @@ class TrainerBEVFusion(TrainerCore):
 
         return loss_geom, loss_terrain, loss_phys
 
-    def vis_pred(self, loader):
-        fig = plt.figure(figsize=(20, 12))
-        ax1 = fig.add_subplot(341)
-        ax2 = fig.add_subplot(342)
-        ax3 = fig.add_subplot(343)
-        ax4 = fig.add_subplot(344)
-        ax5 = fig.add_subplot(345)
-        ax6 = fig.add_subplot(346)
-        ax7 = fig.add_subplot(347)
-        ax8 = fig.add_subplot(348)
-        ax9 = fig.add_subplot(349)
-        ax10 = fig.add_subplot(3, 4, 10)
-        ax11 = fig.add_subplot(3, 4, 11)
-        ax12 = fig.add_subplot(3, 4, 12)
-
-        axes = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]
-        for ax in axes:
-            ax.clear()
-
-        # visualize training predictions
-        sample_i = np.random.choice(len(loader.dataset))
-        sample = loader.dataset[sample_i]
-
+    def pred(self, batch):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          controls_ts, controls,
          pose0,
          traj_ts, Xs, Xds, Rs, Omegas,
-         points) = sample
-        with torch.no_grad():
-            # predict height maps
-            img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-            img_inputs = [i.unsqueeze(0).to(self.device) for i in img_inputs]  # add batch dimension and move to device
-            points_input = points.unsqueeze(0).to(self.device)
-            out = self.terrain_encoder(img_inputs, points_input)
-            geom_pred, terrain_pred, friction_pred, diff_pred = out['geom'], out['terrain'], out['friction'], out['diff']
+         points) = batch
 
-            # predict states
-            x0 = pose0[:3, 3].to(self.device)
-            xd0 = torch.zeros_like(x0)
-            R0 = pose0[:3, :3].to(self.device)
-            omega0 = torch.zeros_like(xd0)
-            state0 = (x0[None], xd0[None], R0[None], omega0[None])
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
-                                           controls=controls.unsqueeze(0).to(self.device),
-                                           friction=friction_pred.squeeze(1))
-        geom_pred = geom_pred[0, 0].cpu()
-        diff_pred = diff_pred[0, 0].cpu()
-        terrain_pred = terrain_pred[0, 0].cpu()
-        friction_pred = friction_pred[0, 0].cpu()
-        Xs_pred = states_pred[0][0].cpu()
+        # predict height maps
+        img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        terrain = self.terrain_encoder(img_inputs, points)
 
-        # get height map points
-        z_grid = terrain_pred
-        x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
-        y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
-        x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
-        hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
-        hm_points = hm_points.view(-1, 3).T
+        # predict states
+        states_pred = self.predicts_states(terrain, pose0, controls)
 
-        # plot images with projected height map points
-        for imgi in range(imgs.shape[0])[:4]:
-            ax = axes[imgi]
-            img = imgs[imgi]
-            img = denormalize_img(img[:3])
-            cam_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
-            img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
-            mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
-            plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
-            ax.imshow(img)
-            ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
-                       cmap='jet', vmin=-1.0, vmax=1.0)
-            ax.axis('off')
-
-        ax5.set_title('Prediction: Terrain')
-        ax5.imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax6.set_title('Label: Terrain')
-        ax6.imshow(hm_terrain[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax7.set_title('Friction')
-        ax7.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-
-        ax8.set_title('Trajectories')
-        ax8.plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
-        ax8.plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
-        ax8.set_xlabel('X [m]')
-        ax8.set_ylabel('Y [m]')
-        ax8.set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-        ax8.set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-        ax8.grid()
-        ax8.legend()
-
-        ax9.set_title('Prediction: Geom')
-        ax9.imshow(geom_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax10.set_title('Label: Geom')
-        ax10.imshow(hm_geom[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-
-        ax11.set_title('Height diff')
-        ax11.imshow(diff_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-
-        ax12.set_title('Trajectories Z')
-        ax12.plot(traj_ts, Xs[:, 2], 'kx', label='GT')
-        ax12.plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
-        ax12.set_xlabel('Time [s]')
-        ax12.set_ylabel('Z [m]')
-        ax12.set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
-        ax12.grid()
-        ax12.legend()
-
-        return fig
+        return terrain, states_pred
 
 
 class Points(ROUGH):
@@ -675,36 +575,26 @@ class TrainerLidarBEV(TrainerCore):
              control_ts, controls,
              pose0,
              traj_ts, Xs, Xds, Rs, Omegas) = batch
-
-            geom, weights_geom = hm_geom[:, 0:1], hm_geom[:, 1:2]
-            terrain, weights_terrain = hm_terrain[:, 0:1], hm_terrain[:, 1:2]
-
             # terrain encoder forward pass
             points_input = points
-            out = self.terrain_encoder(points_input)
-            geom_pred, terrain_pred, friction_pred = out['geom'], out['terrain'], out['friction']
+            terrain = self.terrain_encoder(points_input)
 
             # geometry loss: difference between predicted and ground truth height maps
             if self.geom_weight > 0:
-                loss_geom = self.hm_loss(geom_pred, geom, weights_geom)
+                loss_geom = self.hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
             else:
                 loss_geom = torch.tensor(0.0, device=self.device)
 
             # rigid / terrain height map loss
             if self.terrain_weight > 0:
-                loss_terrain = self.hm_loss(terrain_pred, terrain, weights_terrain)
+                loss_terrain = self.hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
             else:
                 loss_terrain = torch.tensor(0.0, device=self.device)
 
             # physics loss: difference between predicted and ground truth states
             states_gt = [Xs, Xds, Rs, Omegas]
-            x0 = pose0[:, :3, 3]
-            xd0 = torch.zeros_like(x0)
-            R0 = pose0[:, :3, :3]
-            omega0 = torch.zeros_like(xd0)
-            state0 = (x0, xd0, R0, omega0)
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
-                                           controls=controls, friction=friction_pred.squeeze(1))
+            states_pred = self.predicts_states(terrain, pose0, controls)
+
             if self.phys_weight > 0:
                 loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
                                               pred_ts=control_ts, gt_ts=traj_ts)
@@ -713,79 +603,19 @@ class TrainerLidarBEV(TrainerCore):
 
             return loss_geom, loss_terrain, loss_phys
 
-        def vis_pred(self, loader):
-            sample_i = np.random.choice(len(loader.dataset))
-            sample = loader.dataset[sample_i]
+        def pred(self, batch):
             (points, hm_geom, hm_terrain,
              control_ts, controls,
              pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = sample
+             traj_ts, Xs, Xds, Rs, Omegas) = batch
 
-            geom, weights_geom = hm_geom[0], hm_geom[1]
-            terrain, terrain_weights = hm_terrain[0], hm_terrain[1]
-
-            # predict terrain and friction
-            out = self.terrain_encoder(points.unsqueeze(0).to(self.device))  # (B, outC, H, W)
-            geom_pred, terrain_pred, friction_pred, diff_pred = out['geom'], out['terrain'], out['friction'], out['diff']
+            # predict terrain
+            terrain = self.terrain_encoder(points)
 
             # predict states
-            x0 = pose0[:3, 3].to(self.device)
-            xd0 = torch.zeros_like(x0)
-            R0 = pose0[:3, :3].to(self.device)
-            omega0 = torch.zeros_like(xd0)
-            state0 = (x0[None], xd0[None], R0[None], omega0[None])
-            states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
-                                           controls=controls.unsqueeze(0).to(self.device),
-                                           friction=friction_pred.squeeze(1))
+            states_pred = self.predicts_states(terrain, pose0, controls)
 
-            geom_pred = geom_pred[0, 0].cpu()
-            diff_pred = diff_pred[0, 0].cpu()
-            terrain_pred = terrain_pred[0, 0].cpu()
-            friction_pred = friction_pred[0, 0].cpu()
-            Xs_pred = states_pred[0][0].cpu()
-
-            # visualize the output
-            fig, ax = plt.subplots(2, 4, figsize=(20, 10))
-
-            ax[0, 0].imshow(terrain_pred.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
-            ax[0, 0].set_title('Predicted Terrain')
-
-            ax[0, 1].imshow(terrain.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
-            ax[0, 1].set_title('GT Terrain')
-
-            ax[0, 2].imshow(friction_pred.T, cmap='jet', origin='lower', vmin=0, vmax=1)
-            ax[0, 2].set_title('Friction')
-
-            ax[0, 3].plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
-            ax[0, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
-            ax[0, 3].set_title('Trajectories')
-            ax[0, 3].set_xlabel('X [m]')
-            ax[0, 3].set_ylabel('Y [m]')
-            ax[0, 3].set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-            ax[0, 3].set_ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
-            ax[0, 3].legend()
-            ax[0, 3].grid()
-
-            ax[1, 0].imshow(geom_pred.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
-            ax[1, 0].set_title('Predicted Geom')
-
-            ax[1, 1].imshow(geom.T, cmap='jet', origin='lower', vmin=-1, vmax=1)
-            ax[1, 1].set_title('GT Geom')
-
-            ax[1, 2].imshow(diff_pred.T, cmap='jet', origin='lower', vmin=0, vmax=1)
-            ax[1, 2].set_title('Height Diff')
-
-            ax[1, 3].set_title('Trajectories Z')
-            ax[1, 3].plot(traj_ts, Xs[:, 2], 'kx', label='GT')
-            ax[1, 3].plot(control_ts, Xs_pred[:, 2], 'r.', label='Pred')
-            ax[1, 3].set_xlabel('Time [s]')
-            ax[1, 3].set_ylabel('Z [m]')
-            ax[1, 3].set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
-            ax[1, 3].grid()
-            ax[1, 3].legend()
-
-            return fig
-
+            return terrain, states_pred
 
 def choose_trainer(model):
     if model == 'lss':
