@@ -14,6 +14,7 @@ from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data, position
+from monoforce.losses import hm_loss, physics_loss
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -39,9 +40,32 @@ def arg_parser():
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--geom_weight', type=float, default=1.0, help='Weight for geometry loss')
     parser.add_argument('--terrain_weight', type=float, default=2.0, help='Weight for terrain heightmap loss')
-    parser.add_argument('--phys_weight', type=float, default=0.1, help='Weight for physics loss')
+    parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
 
     return parser.parse_args()
+
+
+def create_dataloaders(bsz=1, debug=False, vis=False, Data=ROUGH):
+    # create dataset for LSS model training
+    train_ds, val_ds = compile_data(small_data=debug, vis=vis, Data=Data)
+    # create dataloaders: making sure all elemts in a batch are tensors
+    def collate_fn(batch):
+        def to_tensor(item):
+            if isinstance(item, np.ndarray):
+                return torch.tensor(item)
+            elif isinstance(item, (list, tuple)):
+                return [to_tensor(i) for i in item]
+            elif isinstance(item, dict):
+                return {k: to_tensor(v) for k, v in item.items()}
+            return item  # Return as is if it's already a tensor or unsupported type
+
+        batch = [to_tensor(item) for item in batch]
+        return torch.utils.data.default_collate(batch)
+
+    train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False, collate_fn=collate_fn)
+
+    return train_loader, val_loader
 
 
 class TrainerCore:
@@ -108,66 +132,6 @@ class TrainerCore:
         self.log_dir = os.path.join('../config/tb_runs/',
                                     f'{self.dataset}/{self.model}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         self.writer = SummaryWriter(log_dir=self.log_dir)
-
-    def create_dataloaders(self, bsz=1, debug=False, vis=False, Data=ROUGH):
-        # create dataset for LSS model training
-        train_ds, val_ds = compile_data(small_data=debug, vis=vis, Data=Data)
-        # create dataloaders: making sure all elemts in a batch are tensors
-        def collate_fn(batch):
-            def to_tensor(item):
-                if isinstance(item, np.ndarray):
-                    return torch.tensor(item)
-                elif isinstance(item, (list, tuple)):
-                    return [to_tensor(i) for i in item]
-                elif isinstance(item, dict):
-                    return {k: to_tensor(v) for k, v in item.items()}
-                return item  # Return as is if it's already a tensor or unsupported type
-
-            batch = [to_tensor(item) for item in batch]
-            return torch.utils.data.default_collate(batch)
-
-        train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, collate_fn=collate_fn)
-        val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False, collate_fn=collate_fn)
-
-        return train_loader, val_loader
-
-    def hm_loss(self, height_pred, height_gt, weights=None):
-        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
-        if weights is None:
-            weights = torch.ones_like(height_gt)
-        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
-
-        # remove nan values
-        mask_valid = ~torch.isnan(height_gt)
-        height_gt = height_gt[mask_valid]
-        height_pred = height_pred[mask_valid]
-        weights = weights[mask_valid]
-
-        # compute weighted loss
-        loss = torch.nn.functional.mse_loss(height_pred * weights, height_gt * weights, reduction='mean')
-
-        return loss
-
-    def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts, only_2d=False):
-        # unpack states
-        X, Xd, R, Omega = states_gt
-        X_pred, Xd_pred, R_pred, Omega_pred = states_pred
-
-        # find the closest timesteps in the trajectory to the ground truth timesteps
-        ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
-
-        # get the predicted states at the closest timesteps to the ground truth timesteps
-        batch_size = X.shape[0]
-        X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
-
-        # trajectory loss
-        loss_fn = torch.nn.functional.mse_loss
-        if only_2d:
-            loss = loss_fn(X_pred_gt_ts[..., :2], X[..., :2])
-        else:
-            loss = loss_fn(X_pred_gt_ts, X)
-
-        return loss
 
     def compute_losses(self, batch):
         loss_geom = torch.tensor(0.0, device=self.device)
@@ -383,7 +347,7 @@ class TrainerLSS(TrainerCore):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight, phys_weight)
         # create dataloaders
-        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGH)
+        self.train_loader, self.val_loader = create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGH)
 
         # load models: terrain encoder
         self.terrain_encoder = LiftSplatShoot(self.lss_cfg['grid_conf'],
@@ -406,13 +370,13 @@ class TrainerLSS(TrainerCore):
 
         # geometry loss: difference between predicted and ground truth height maps
         if self.geom_weight > 0:
-            loss_geom = self.hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
+            loss_geom = hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
         else:
             loss_geom = torch.tensor(0.0, device=self.device)
 
         # rigid / terrain height map loss
         if self.terrain_weight > 0:
-            loss_terrain = self.hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
+            loss_terrain = hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
         else:
             loss_terrain = torch.tensor(0.0, device=self.device)
 
@@ -421,7 +385,7 @@ class TrainerLSS(TrainerCore):
         states_pred = self.predicts_states(terrain, pose0, controls)
 
         if self.phys_weight > 0:
-            loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
+            loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
                                           pred_ts=control_ts, gt_ts=traj_ts)
         else:
             loss_phys = torch.tensor(0.0, device=self.device)
@@ -471,7 +435,7 @@ class TrainerBEVFusion(TrainerCore):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight, phys_weight)
         # create dataloaders
-        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Fusion)
+        self.train_loader, self.val_loader = create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Fusion)
 
         # load models: terrain encoder
         self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
@@ -496,13 +460,13 @@ class TrainerBEVFusion(TrainerCore):
 
         # geometry loss: difference between predicted and ground truth height maps
         if self.geom_weight > 0:
-            loss_geom = self.hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
+            loss_geom = hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
         else:
             loss_geom = torch.tensor(0.0, device=self.device)
 
         # rigid / terrain height map loss
         if self.terrain_weight > 0:
-            loss_terrain = self.hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
+            loss_terrain = hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
         else:
             loss_terrain = torch.tensor(0.0, device=self.device)
 
@@ -511,7 +475,7 @@ class TrainerBEVFusion(TrainerCore):
         states_pred = self.predicts_states(terrain, pose0, controls)
 
         if self.phys_weight > 0:
-            loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
+            loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
                                           pred_ts=control_ts, gt_ts=traj_ts)
         else:
             loss_phys = torch.tensor(0.0, device=self.device)
@@ -559,7 +523,7 @@ class TrainerLidarBEV(TrainerCore):
             super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                              geom_weight, terrain_weight, phys_weight)
             # create dataloaders
-            self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
+            self.train_loader, self.val_loader = create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
 
             # load models: terrain encoder
             self.terrain_encoder = LidarBEV(grid_conf=self.lss_cfg['grid_conf'],
@@ -581,13 +545,13 @@ class TrainerLidarBEV(TrainerCore):
 
             # geometry loss: difference between predicted and ground truth height maps
             if self.geom_weight > 0:
-                loss_geom = self.hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
+                loss_geom = hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
             else:
                 loss_geom = torch.tensor(0.0, device=self.device)
 
             # rigid / terrain height map loss
             if self.terrain_weight > 0:
-                loss_terrain = self.hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
+                loss_terrain = hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
             else:
                 loss_terrain = torch.tensor(0.0, device=self.device)
 
@@ -596,7 +560,7 @@ class TrainerLidarBEV(TrainerCore):
             states_pred = self.predicts_states(terrain, pose0, controls)
 
             if self.phys_weight > 0:
-                loss_phys = self.physics_loss(states_pred=states_pred, states_gt=states_gt,
+                loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
                                               pred_ts=control_ts, gt_ts=traj_ts)
             else:
                 loss_phys = torch.tensor(0.0, device=self.device)

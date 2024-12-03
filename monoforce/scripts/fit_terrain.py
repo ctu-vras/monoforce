@@ -6,6 +6,7 @@ from monoforce.models.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
 from monoforce.datasets import ROUGH, rough_seq_paths
+from monoforce.losses import physics_loss, hm_loss
 from time import time
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -156,18 +157,18 @@ def learn_terrain_properties():
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # get a sample from the dataset
-    # # sample_i = np.random.choice(len(ds))
-    # sample_i = 79
-    # print('Sample index:', sample_i)
-    # sample = ds[sample_i]
-    # batch = [s[None].to(device) for s in sample]
-    batch = next(iter(loader))
+    # sample_i = np.random.choice(len(ds))
+    sample_i = 79
+    print('Sample index:', sample_i)
+    batch = [s[None] for s in ds[sample_i]]
+    # batch = next(iter(loader))
+
     batch = [b.to(device) for b in batch]
     control_ts, controls, traj_ts, X, Xd, R, Omega, z_grid = batch
     batch_size = X.shape[0]
 
     z_grid = torch.zeros_like(z_grid)
-    friction = 0.0 * torch.ones_like(z_grid)
+    friction = 0.1 * torch.ones_like(z_grid)
 
     # find the closest timesteps in the trajectory to the ground truth timesteps
     t0 = time()
@@ -181,64 +182,78 @@ def learn_terrain_properties():
                                   {'params': friction, 'lr': 0.05}])
 
     print('Optimizing terrain properties...')
-    n_iters, vis_step = 100, 10
-    plt.figure(figsize=(10, 5))
+    n_iters, vis_step = 100, 5
+    losses = []
+    fig, ax = plt.subplots(2, 3, figsize=(15, 10))
     for i in range(n_iters):
         optimizer.zero_grad()
         states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)
         X_pred, Xd_pred, R_pred, Omega_pred = states_pred
 
         # compute the loss as the mean squared error between the predicted and ground truth poses
-        loss = torch.nn.functional.mse_loss(X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids], X)
+        loss = physics_loss(states_pred=[X_pred], states_gt=[X], pred_ts=control_ts, gt_ts=traj_ts)
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss: {loss.item()}')
         # print(f'Friction mean: {friction.mean().item()}')
+        losses.append(loss.item())
 
         if vis and i % vis_step == 0:
             with torch.no_grad():
-                plt.clf()
+                for axis in ax.flatten():
+                    axis.clear()
 
-                plt.subplot(121)
-                plt.title('Trajectory Z(t)')
-                plt.plot(traj_ts[0].cpu().numpy(), X[0, :, 2].cpu().numpy(), '.b')
-                plt.plot(control_ts[0].cpu().numpy(), X_pred[0, :, 2].cpu().numpy(), '.r')
-                plt.xlabel('Time [s]')
-                plt.ylabel('Z [m]')
-                plt.grid()
-                plt.ylim(-1, 1)
-                plt.xlim(-0.1, 5.1)
+                ax[0, 0].set_title('Trajectory Z(t)')
+                ax[0, 0].plot(traj_ts[0].cpu().numpy(), X[0, :, 2].cpu().numpy(), '.b')
+                ax[0, 0].plot(control_ts[0].cpu().numpy(), X_pred[0, :, 2].cpu().numpy(), '.r')
+                ax[0, 0].set_xlabel('Time [s]')
+                ax[0, 0].set_ylabel('Z [m]')
+                ax[0, 0].grid()
+                ax[0, 0].set_ylim(-1, 1)
+                ax[0, 0].set_xlim(-0.1, 5.1)
 
-                plt.subplot(122)
-                plt.title('Trajectory Y(X)')
-                plt.plot(X[0, :, 0].cpu().numpy(), X[0, :, 1].cpu().numpy(), '.b')
-                plt.plot(X_pred[0, :, 0].cpu().numpy(), X_pred[0, :, 1].cpu().numpy(), '.r')
-                # plot lines between corresponding points from the ground truth and predicted trajectories (use ts_ids)
+                ax[0, 1].set_title('Trajectory Y(X)')
+                ax[0, 1].plot(X[0, :, 0].cpu().numpy(), X[0, :, 1].cpu().numpy(), '.b')
+                ax[0, 1].plot(X_pred[0, :, 0].cpu().numpy(), X_pred[0, :, 1].cpu().numpy(), '.r')
                 for j in range(X.shape[1]):
-                    plt.plot([X[0, j, 0].cpu().numpy(), X_pred[0, ts_ids[0, j], 0].cpu().numpy()],
-                             [X[0, j, 1].cpu().numpy(), X_pred[0, ts_ids[0, j], 1].cpu().numpy()], 'g')
-                plt.xlabel('X [m]')
-                plt.ylabel('Y [m]')
-                plt.grid()
-                plt.ylim(-6.4, 6.4)
-                plt.xlim(-6.4, 6.4)
+                    ax[0, 1].plot([X[0, j, 0].cpu().numpy(), X_pred[0, ts_ids[0, j], 0].cpu().numpy()],
+                                  [X[0, j, 1].cpu().numpy(), X_pred[0, ts_ids[0, j], 1].cpu().numpy()], 'g')
+                ax[0, 1].set_xlabel('X [m]')
+                ax[0, 1].set_ylabel('Y [m]')
+                ax[0, 1].grid()
+                ax[0, 1].axis('equal')
+
+                ax[0, 2].set_title('Control inputs: V(t) and W(t)')
+                ax[0, 2].plot(control_ts[0].cpu().numpy(), controls[0, :, 0].cpu().numpy(), '.b', label='V')
+                ax[0, 2].plot(control_ts[0].cpu().numpy(), controls[0, :, 1].cpu().numpy(), '.r', label='W')
+                ax[0, 2].set_xlabel('Time [s]')
+                ax[0, 2].set_ylabel('Control inputs')
+                ax[0, 2].grid()
+                ax[0, 2].legend()
+
+                ax[1, 0].set_title('Heightmap')
+                ax[1, 0].imshow(z_grid[0].cpu().numpy().T, cmap='jet', origin='lower', vmin=-1, vmax=1)
+                ax[1, 0].set_xlabel('X')
+                ax[1, 0].set_ylabel('Y')
+                ax[1, 0].grid()
+
+                ax[1, 1].set_title('Friction')
+                ax[1, 1].imshow(friction[0].cpu().numpy().T, cmap='jet', origin='lower', vmin=0, vmax=1)
+                ax[1, 1].set_xlabel('X')
+                ax[1, 1].set_ylabel('Y')
+                ax[1, 1].grid()
+
+                ax[1, 2].set_title('Loss')
+                ax[1, 2].plot(losses)
+                ax[1, 2].set_xlabel('Iteration')
+                ax[1, 2].set_ylabel('Loss')
+                ax[1, 2].grid()
 
                 plt.pause(0.1)
                 plt.draw()
 
-                # x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-                # y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-                # x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
-                # x_grid = x_grid.repeat(batch_size, 1, 1)
-                # y_grid = y_grid.repeat(batch_size, 1, 1)
-                # x_points = dphys_cfg.robot_points.cpu().numpy()
-                # states = tuple(batch[3:7])
-                # visualize(states=states_pred,
-                #           x_points=x_points,
-                #           states_gt=states,
-                #           forces=forces_pred,
-                #           x_grid=x_grid, y_grid=y_grid, z_grid=z_grid)
-
+    if vis:
+        plt.show()
 
 def main():
     # optimize_heightmap()
