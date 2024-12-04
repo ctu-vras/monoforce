@@ -7,7 +7,7 @@
 
 Self-supervised traversability data generated using [lidar SLAM](https://github.com/norlab-ulaval/norlab_icp_mapper).
 The data sequences are available at Google Drive:
-- [ROUGH](https://drive.google.com/drive/folders/1TdEUQ5m5la3Q8DCrRzxeDJKlrYyCMkb9?usp=sharing).
+- [ROUGH](https://drive.google.com/drive/folders/1nli-4YExqcBhl0mPNRUjSiNecX4yIcme?usp=sharing).
 - [RobInGas](https://drive.google.com/drive/folders/1UoNd5R6R75pBE1n8ztzUzOGsG3FBBHFU?usp=drive_link)
 
 The data sequences can be downloaded for example using [gdown](https://github.com/wkentaro/gdown):
