@@ -7,6 +7,8 @@ import open3d as o3d
 
 class DPhysConfig:
     def __init__(self, robot='tradr'):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         # robot parameters
         self.robot = robot
         self.vel_max = 1.0  # m/s
@@ -204,10 +206,10 @@ class DPhysConfig:
         # rotate driving parts according to joint angles
         for i, (angle, xyz) in enumerate(zip(self.joint_angles.values(), self.joint_positions.values())):
             # rotate around y-axis of the joint position
-            xyz = torch.tensor(xyz)
+            xyz = torch.tensor(xyz, device=self.device)
             R = torch.tensor([[np.cos(angle), 0, np.sin(angle)],
                               [0, 1, 0],
-                              [-np.sin(angle), 0, np.cos(angle)]]).float()
+                              [-np.sin(angle), 0, np.cos(angle)]]).float().to(self.device)
             mask = self.driving_parts[i]
             points = self.robot_points[mask]
             points -= xyz

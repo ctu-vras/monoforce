@@ -355,8 +355,16 @@ class TrainerLSS(TrainerCore):
         self.terrain_encoder.to(self.device)
         self.terrain_encoder.train()
 
-        # define optimizer
-        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+        # # define optimizer
+        # self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+        # Training: Friction Head
+        # https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
+        for p in self.terrain_encoder.parameters():
+            p.requires_grad = False
+        for p in self.terrain_encoder.bevencode.up_friction.parameters():
+            p.requires_grad = True
+        self.optimizer = torch.optim.Adam(self.terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
+
 
     def compute_losses(self, batch):
         (imgs, rots, trans, intrins, post_rots, post_trans,

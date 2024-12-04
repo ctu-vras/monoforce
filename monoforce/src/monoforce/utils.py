@@ -178,7 +178,7 @@ def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None):
         # concatenate datasets
         train_ds = ConcatDataset(train_datasets)
         val_ds = ConcatDataset(val_datasets)
-        ids = [120, 294, 532, 573, 926, 2620]
+        ids = [120]
         train_ds = Subset(train_ds, ids)
         val_ds = Subset(val_ds, ids)
     print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
