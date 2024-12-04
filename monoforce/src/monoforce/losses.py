@@ -84,26 +84,42 @@ def physics_loss(states_pred, states_gt, pred_ts, gt_ts):
     batch_size = X.shape[0]
     X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
 
-    # trajectory loss
+    # compute time weights: farthest timesteps have the least weight, w = 1 / (1 + t)
     time_weight = 1. / (1. + gt_ts.unsqueeze(2))
-    loss = ((X_pred_gt_ts * time_weight - X * time_weight) ** 2).mean()
+    pred = X_pred_gt_ts * time_weight
+    gt = X * time_weight
+
+    # remove nan values if any
+    mask_valid = ~(torch.isnan(pred) | torch.isnan(gt))
+    pred = pred[mask_valid]
+    gt = gt[mask_valid]
+
+    # trajectory loss
+    loss = ((pred - gt) ** 2).mean()
 
     return loss
 
 
-def hm_loss(height_pred, height_gt, weights=None):
+def hm_loss(height_pred, height_gt, weights=None, h_max=None):
     assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
     if weights is None:
         weights = torch.ones_like(height_gt)
     assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
 
-    # remove nan values
-    mask_valid = ~torch.isnan(height_gt)
+    if h_max is not None:
+        # limit heightmap values to the physical limits: [-h_max, h_max]
+        limit_fn = lambda x: h_max * torch.tanh(x)
+        height_pred = limit_fn(height_pred)
+
+    # remove nan values if any
+    mask_valid = ~(torch.isnan(height_pred) | torch.isnan(height_gt))
     height_gt = height_gt[mask_valid]
     height_pred = height_pred[mask_valid]
     weights = weights[mask_valid]
 
     # compute weighted loss
-    loss = torch.nn.functional.mse_loss(height_pred * weights, height_gt * weights, reduction='mean')
+    pred = height_pred * weights
+    gt = height_gt * weights
+    loss = ((pred - gt) ** 2).mean()
 
     return loss

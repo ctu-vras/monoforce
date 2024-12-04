@@ -381,12 +381,13 @@ class TrainerLSS(TrainerCore):
             loss_terrain = torch.tensor(0.0, device=self.device)
 
         # physics loss: difference between predicted and ground truth states
-        states_gt = [Xs, Xds, Rs, Omegas]
-        states_pred = self.predicts_states(terrain, pose0, controls)
-
         if self.phys_weight > 0:
+            # predict trajectory
+            states_gt = [Xs, Xds, Rs, Omegas]
+            states_pred = self.predicts_states(terrain, pose0, controls)
+            # compute physics loss
             loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
-                                          pred_ts=control_ts, gt_ts=traj_ts)
+                                     pred_ts=control_ts, gt_ts=traj_ts)
         else:
             loss_phys = torch.tensor(0.0, device=self.device)
 

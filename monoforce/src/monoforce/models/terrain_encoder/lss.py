@@ -106,6 +106,7 @@ class BevEncode(nn.Module):
             nn.BatchNorm2d(128),
             nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
+            nn.Tanh()
         )
         self.up_diff = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),

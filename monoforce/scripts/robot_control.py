@@ -13,7 +13,6 @@ mpl.use('Qt5Agg')
 # simulation parameters
 robot = 'tradr'
 dphys_cfg = DPhysConfig(robot=robot)
-dphys_cfg.k_friction = 1.0
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -31,7 +30,7 @@ def motion():
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
 
     # initial state
-    x = torch.tensor([[0.5, 0.0, 1.0]], device=device).repeat(B, 1)
+    x = torch.tensor([[0.5, 0.0, 0.2]], device=device).repeat(B, 1)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
@@ -42,15 +41,13 @@ def motion():
     state0 = (x, xd, rs, omega)
 
     # heightmap defining the terrain
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
     z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # z_grid = torch.zeros_like(x_grid)
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
-    stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
-    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
+    stiffness = dphys_cfg.stiffness
+    friction = dphys_cfg.friction
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
@@ -97,24 +94,22 @@ def motion_dataset():
     from scipy.spatial.transform import Rotation
 
     # load the dataset
-    path = rough_seq_paths[2]
+    # path = rough_seq_paths[2]
     # path = np.random.choice(rough_seq_paths)
-    ds = ROUGH(path, dphys_cfg=dphys_cfg)
-    # ds, _ = compile_data(val_fraction=0.0)
+    # ds = ROUGH(path, dphys_cfg=dphys_cfg)
+    ds, _ = compile_data(val_fraction=0.0)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # helper quantities for visualization
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
 
     # sample_i = 532 + 335 + 59
     # sample_i = 59
     sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
-    explore_data(ds, sample_range=[sample_i])
+    # explore_data(ds, sample_range=[sample_i])
 
     # get a sample from the dataset
     (imgs, rots, trans, intrins, post_rots, post_trans,
@@ -192,9 +187,7 @@ def shoot_multiple():
     omega = torch.zeros_like(x)
 
     # terrain properties
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
     z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
     # z_grid = torch.zeros_like(x_grid)

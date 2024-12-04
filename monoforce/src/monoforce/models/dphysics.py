@@ -104,13 +104,13 @@ def vw_to_track_vels(v, w, robot_size, n_tracks):
 
 
 class DPhysics(torch.nn.Module):
-    def __init__(self, dphys_cfg=DPhysConfig(), device='cpu', use_odeint=True):
+    def __init__(self, dphys_cfg=DPhysConfig(), device=None):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
-        self.device = device
-        self.I = torch.as_tensor(self.dphys_cfg.robot_I, device=device)  # 3x3 inertia tensor, kg*m^2
+        self.device = dphys_cfg.device if device is None else device
+        self.I = self.dphys_cfg.robot_I.to(self.device)  # 3x3 inertia tensor, kg*m^2
         self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
-        self.x_points = torch.as_tensor(self.dphys_cfg.robot_points, device=device)  # robot body points
+        self.x_points = self.dphys_cfg.robot_points.to(self.device)  # robot body points
         
         self.z_grid = None
         self.friction = None
@@ -118,9 +118,9 @@ class DPhysics(torch.nn.Module):
         self.damping = None
         self.controls = None
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-        self.ts = torch.linspace(0, T, int(T / dt)).to(device)
+        self.ts = torch.linspace(0, T, int(T / dt)).to(self.device)
 
-        self.integrator = self.dynamics_odeint if use_odeint else self.dynamics
+        self.integrator = self.dynamics_odeint if self.dphys_cfg.use_odeint else self.dynamics
 
     def forward_kinematics(self, t, state):
         # unpack state
@@ -154,21 +154,13 @@ class DPhysics(torch.nn.Module):
         z_points = z_points.unsqueeze(-1)
         assert z_points.shape == (B, n_pts, 1)
         assert n.shape == (B, n_pts, 3)
-        if not isinstance(self.stiffness, (int, float)):
-            stiffness_points = self.interpolate_grid(self.stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-            assert stiffness_points.shape == (B, n_pts, 1)
-        else:
-            stiffness_points = self.stiffness
-        if not isinstance(self.damping, (int, float)):
-            damping_points = self.interpolate_grid(self.damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-            assert damping_points.shape == (B, n_pts, 1)
-        else:
-            damping_points = self.damping
-        if not isinstance(self.friction, (int, float)):
-            friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-            assert friction_points.shape == (B, n_pts, 1)
-        else:
-            friction_points = self.friction
+
+        stiffness_points = self.interpolate_grid(self.stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert stiffness_points.shape == (B, n_pts, 1)
+        damping_points = self.interpolate_grid(self.damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert damping_points.shape == (B, n_pts, 1)
+        friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert friction_points.shape == (B, n_pts, 1)
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
@@ -472,13 +464,13 @@ class DPhysics(torch.nn.Module):
             state = (x, xd, R, omega)
 
         # terrain properties
-        stiffness = self.dphys_cfg.k_stiffness if stiffness is None else stiffness
-        damping = self.dphys_cfg.k_damping if damping is None else damping
-        friction = self.dphys_cfg.k_friction if friction is None else friction
-        self.z_grid = z_grid
-        self.stiffness = stiffness
-        self.damping = damping
-        self.friction = friction
+        stiffness = self.dphys_cfg.stiffness.repeat(batch_size, 1, 1) if stiffness is None else stiffness
+        damping = self.dphys_cfg.damping.repeat(batch_size, 1, 1) if damping is None else damping
+        friction = self.dphys_cfg.friction.repeat(batch_size, 1, 1) if friction is None else friction
+        self.z_grid = z_grid.to(self.device)
+        self.stiffness = stiffness.to(self.device)
+        self.damping = damping.to(self.device)
+        self.friction = friction.to(self.device)
 
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]

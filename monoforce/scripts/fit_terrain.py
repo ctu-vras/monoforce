@@ -47,7 +47,7 @@ def optimize_heightmap():
     dphys_cfg.traj_sim_time = T
     n_iters = 100
     lr = 0.02
-    vis = False
+    vis = True
 
     # initial state
     x = torch.tensor([[-1.0, 0.0, 0.1]])
@@ -56,9 +56,7 @@ def optimize_heightmap():
     omega = torch.tensor([[0.0, 0.0, 0.0]])
 
     # heightmap defining the terrain
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
     z_grid_gt = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
@@ -92,7 +90,7 @@ def optimize_heightmap():
         loss = torch.tensor(0.0, requires_grad=True)
         for t in range(0, int(T / dt), int(dT / dt)):
             # simulate the rigid body dynamics for dT time period
-            dphys_cfg.traj_sim_time = dT
+            dphysics.ts = torch.arange(t * dt, (t + int(dT / dt)) * dt, dt)
             # state_gt = (Xs_gt[:, t], Xds_gt[:, t], Rs_gt[:, t], Omegas_gt[:, t])
             state_dT = state0 if state_dT is None else [s[:, -1] for s in states_dT]
             controls_dT = controls[:, t: t + int(dT / dt)]
@@ -114,19 +112,19 @@ def optimize_heightmap():
             loss_min = loss.item()
             z_grid_best = z_grid.clone()
 
-        # heightmap difference
-        with torch.no_grad():
-            z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
-            print(f'Heightmap difference: {z_diff.item()}')
+        # # heightmap difference
+        # with torch.no_grad():
+        #     z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
+        #     print(f'Heightmap difference: {z_diff.item()}')
 
         # visualize the optimized heightmap
         if vis and i % 20 == 0:
-            dphys_cfg.traj_sim_time = T
+            dphysics.ts = torch.arange(0, T, dt)
             states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
             visualize(states, x_points, forces, x_grid, y_grid, z_grid, states_gt)
 
     # visualize the best heightmap
-    dphys_cfg.traj_sim_time = T
+    dphysics.dphys_cfg.traj_sim_time = T
     states, forces = dphysics(z_grid=z_grid_best, controls=controls, state=state0)
     visualize(states, x_points, forces, x_grid, y_grid, z_grid_best, states_gt)
 
@@ -202,10 +200,10 @@ def learn_terrain_properties():
             with torch.no_grad():
                 for axis in ax.flatten():
                     axis.clear()
-
+                batch_i = np.random.choice(X.shape[0])
                 ax[0, 0].set_title('Trajectory Z(t)')
-                ax[0, 0].plot(traj_ts[0].cpu().numpy(), X[0, :, 2].cpu().numpy(), '.b')
-                ax[0, 0].plot(control_ts[0].cpu().numpy(), X_pred[0, :, 2].cpu().numpy(), '.r')
+                ax[0, 0].plot(traj_ts[batch_i].cpu().numpy(), X[batch_i, :, 2].cpu().numpy(), '.b')
+                ax[0, 0].plot(control_ts[batch_i].cpu().numpy(), X_pred[batch_i, :, 2].cpu().numpy(), '.r')
                 ax[0, 0].set_xlabel('Time [s]')
                 ax[0, 0].set_ylabel('Z [m]')
                 ax[0, 0].grid()
@@ -213,32 +211,32 @@ def learn_terrain_properties():
                 ax[0, 0].set_xlim(-0.1, 5.1)
 
                 ax[0, 1].set_title('Trajectory Y(X)')
-                ax[0, 1].plot(X[0, :, 0].cpu().numpy(), X[0, :, 1].cpu().numpy(), '.b')
-                ax[0, 1].plot(X_pred[0, :, 0].cpu().numpy(), X_pred[0, :, 1].cpu().numpy(), '.r')
+                ax[0, 1].plot(X[batch_i, :, 0].cpu().numpy(), X[batch_i, :, 1].cpu().numpy(), '.b')
+                ax[0, 1].plot(X_pred[batch_i, :, 0].cpu().numpy(), X_pred[batch_i, :, 1].cpu().numpy(), '.r')
                 for j in range(X.shape[1]):
-                    ax[0, 1].plot([X[0, j, 0].cpu().numpy(), X_pred[0, ts_ids[0, j], 0].cpu().numpy()],
-                                  [X[0, j, 1].cpu().numpy(), X_pred[0, ts_ids[0, j], 1].cpu().numpy()], 'g')
+                    ax[0, 1].plot([X[batch_i, j, 0].cpu().numpy(), X_pred[batch_i, ts_ids[batch_i, j], 0].cpu().numpy()],
+                                  [X[batch_i, j, 1].cpu().numpy(), X_pred[batch_i, ts_ids[batch_i, j], 1].cpu().numpy()], 'g')
                 ax[0, 1].set_xlabel('X [m]')
                 ax[0, 1].set_ylabel('Y [m]')
                 ax[0, 1].grid()
                 ax[0, 1].axis('equal')
 
                 ax[0, 2].set_title('Control inputs: V(t) and W(t)')
-                ax[0, 2].plot(control_ts[0].cpu().numpy(), controls[0, :, 0].cpu().numpy(), '.b', label='V')
-                ax[0, 2].plot(control_ts[0].cpu().numpy(), controls[0, :, 1].cpu().numpy(), '.r', label='W')
+                ax[0, 2].plot(control_ts[batch_i].cpu().numpy(), controls[batch_i, :, 0].cpu().numpy(), '.b', label='V')
+                ax[0, 2].plot(control_ts[batch_i].cpu().numpy(), controls[batch_i, :, 1].cpu().numpy(), '.r', label='W')
                 ax[0, 2].set_xlabel('Time [s]')
                 ax[0, 2].set_ylabel('Control inputs')
                 ax[0, 2].grid()
                 ax[0, 2].legend()
 
                 ax[1, 0].set_title('Heightmap')
-                ax[1, 0].imshow(z_grid[0].cpu().numpy().T, cmap='jet', origin='lower', vmin=-1, vmax=1)
+                ax[1, 0].imshow(z_grid[batch_i].cpu().numpy().T, cmap='jet', origin='lower', vmin=-1, vmax=1)
                 ax[1, 0].set_xlabel('X')
                 ax[1, 0].set_ylabel('Y')
                 ax[1, 0].grid()
 
                 ax[1, 1].set_title('Friction')
-                ax[1, 1].imshow(friction[0].cpu().numpy().T, cmap='jet', origin='lower', vmin=0, vmax=1)
+                ax[1, 1].imshow(friction[batch_i].cpu().numpy().T, cmap='jet', origin='lower', vmin=0, vmax=1)
                 ax[1, 1].set_xlabel('X')
                 ax[1, 1].set_ylabel('Y')
                 ax[1, 1].grid()
