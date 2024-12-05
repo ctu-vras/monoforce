@@ -6,7 +6,7 @@ import open3d as o3d
 
 
 class DPhysConfig:
-    def __init__(self, robot='tradr'):
+    def __init__(self, robot='marv'):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # robot parameters
@@ -258,8 +258,8 @@ def show_robot():
 
     robot = 'marv'
     dphys_cfg = DPhysConfig(robot=robot)
-    points = dphys_cfg.robot_points
-    points_driving = [points[mask] for mask in dphys_cfg.driving_parts]
+    points = dphys_cfg.robot_points.cpu()
+    points_driving = [points[mask.cpu()] for mask in dphys_cfg.driving_parts]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
@@ -283,9 +283,9 @@ def show_robot():
     base_link_sphere.paint_uniform_color([0.0, 0.0, 1.0])
 
     # visualize
-    o3d.visualization.draw_geometries([mesh, pcd_driving, base_link_sphere] + joint_poses)
+    # o3d.visualization.draw_geometries([mesh, pcd_driving, base_link_sphere] + joint_poses)
     # o3d.visualization.draw_geometries([pcd, pcd_driving] + joint_poses)
-    # o3d.visualization.draw_geometries([pcd, pcd_driving])
+    o3d.visualization.draw_geometries([pcd, pcd_driving])
     # o3d.visualization.draw_geometries([mesh, pcd, pcd_driving])
 
 

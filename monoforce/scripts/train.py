@@ -144,9 +144,9 @@ class TrainerCore:
         counter = self.train_counter if train else self.val_counter
 
         if train:
-            self.terrain_encoder.train()
+            self.terrain_encoder.bevencode.up_friction.train()
         else:
-            self.terrain_encoder.eval()
+            self.terrain_encoder.bevencode.up_friction.eval()
 
         max_grad_norm = 5.0
         epoch_losses = {'geom': 0.0, 'terrain': 0.0, 'phys': 0.0, 'total': 0.0}
@@ -353,16 +353,17 @@ class TrainerLSS(TrainerCore):
         self.terrain_encoder = LiftSplatShoot(self.lss_cfg['grid_conf'],
                                               self.lss_cfg['data_aug_conf']).from_pretrained(pretrained_model_path)
         self.terrain_encoder.to(self.device)
-        self.terrain_encoder.train()
 
         # # define optimizer
         # self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
-        # Training: Friction Head
-        # https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
+
+        # Training: Friction Head: https://discuss.pytorch.org/t/how-to-train-a-part-of-a-network/8923/2
+        self.terrain_encoder.eval()
         for p in self.terrain_encoder.parameters():
             p.requires_grad = False
         for p in self.terrain_encoder.bevencode.up_friction.parameters():
             p.requires_grad = True
+        self.terrain_encoder.bevencode.up_friction.train()
         self.optimizer = torch.optim.Adam(self.terrain_encoder.bevencode.up_friction.parameters(), lr=lr)
 
 

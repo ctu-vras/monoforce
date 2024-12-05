@@ -11,7 +11,7 @@ import matplotlib as mpl
 mpl.use('Qt5Agg')
 
 # simulation parameters
-robot = 'tradr'
+robot = 'marv'
 dphys_cfg = DPhysConfig(robot=robot)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

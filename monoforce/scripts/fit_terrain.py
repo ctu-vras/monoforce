@@ -130,61 +130,72 @@ def optimize_heightmap():
 
 
 def learn_terrain_properties():
+    from monoforce.models.terrain_encoder.lss import LiftSplatShoot
+    from monoforce.utils import read_yaml
+
     vis = True
     device = torch.device('cuda')
-
-    class Data(ROUGH):
-        def __init__(self, path, dphys_cfg=DPhysConfig()):
-            super(Data, self).__init__(path, dphys_cfg=dphys_cfg)
-
-        def get_sample(self, i):
-            control_ts, controls = self.get_controls(i)
-            ts, states = self.get_states_traj(i)
-            Xs, Xds, Rs, Omegas = states
-            heightmap = self.get_geom_height_map(i)[0]
-            return control_ts, controls, ts, Xs, Xds, Rs, Omegas, heightmap
+    torch.manual_seed(42)
+    np.random.seed(42)
 
     dphys_cfg = DPhysConfig()
+    dphys_cfg.traj_sim_time = 2.0
     path = rough_seq_paths[0]
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
 
     # load the dataset
-    ds = Data(path, dphys_cfg=dphys_cfg)
-    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
+    ds = ROUGH(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
+
+    lss = LiftSplatShoot(grid_conf=lss_cfg['grid_conf'], data_aug_conf=lss_cfg['data_aug_conf'])
+    lss.to(device)
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # get a sample from the dataset
-    # sample_i = np.random.choice(len(ds))
-    sample_i = 79
-    print('Sample index:', sample_i)
-    batch = [s[None] for s in ds[sample_i]]
-    # batch = next(iter(loader))
+    # sample_i = 79
+    # batch = [s[None] for s in ds[sample_i]]
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
+    batch = next(iter(loader))
 
     batch = [b.to(device) for b in batch]
-    control_ts, controls, traj_ts, X, Xd, R, Omega, z_grid = batch
-    batch_size = X.shape[0]
+    (imgs, rots, trans, intrins, post_rots, post_trans,
+     hm_geom, hm_terrain,
+     control_ts, controls,
+     pose0,
+     traj_ts, X, Xd, R, Omega) = batch
 
-    z_grid = torch.zeros_like(z_grid)
-    friction = 0.1 * torch.ones_like(z_grid)
+    # Freeze all layers
+    for param in lss.parameters():
+        param.requires_grad = False
+    # Unfreeze the up_friction layer
+    for param in lss.bevencode.up_friction.parameters():
+        param.requires_grad = True
 
-    # find the closest timesteps in the trajectory to the ground truth timesteps
-    t0 = time()
-    ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
-    print(f'Finding closest timesteps took: {time() - t0} [sec]')
+    # optimize the model parameters
+    lss.eval()
+    lss.bevencode.up_friction.train()
+    optimizer = torch.optim.Adam(lss.bevencode.up_friction.parameters(), lr=1e-3)
+    # lss.train()
+    # optimizer = torch.optim.Adam(lss.parameters(), lr=1e-4)
 
-    # optimize the heightmap and friction
-    z_grid.requires_grad = True
-    friction.requires_grad = True
-    optimizer = torch.optim.Adam([{'params': z_grid, 'lr': 0.0},
-                                  {'params': friction, 'lr': 0.05}])
+    for name, param in lss.named_parameters():
+        if param.requires_grad:
+            print(name)
 
-    print('Optimizing terrain properties...')
     n_iters, vis_step = 100, 5
     losses = []
+
+    img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
     fig, ax = plt.subplots(2, 3, figsize=(15, 10))
     for i in range(n_iters):
         optimizer.zero_grad()
+
+        terrain = lss(*img_inputs)
+        z_grid = terrain['geom'].squeeze(1)
+        # print(f'Heightmap mean: {z_grid.mean().item()}')
+        friction = terrain['friction'].squeeze(1)
+        # print(f'Friction mean: {friction.mean().item()}')
         states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)
         X_pred, Xd_pred, R_pred, Omega_pred = states_pred
 
@@ -193,7 +204,6 @@ def learn_terrain_properties():
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss: {loss.item()}')
-        # print(f'Friction mean: {friction.mean().item()}')
         losses.append(loss.item())
 
         if vis and i % vis_step == 0:
@@ -213,9 +223,10 @@ def learn_terrain_properties():
                 ax[0, 1].set_title('Trajectory Y(X)')
                 ax[0, 1].plot(X[batch_i, :, 0].cpu().numpy(), X[batch_i, :, 1].cpu().numpy(), '.b')
                 ax[0, 1].plot(X_pred[batch_i, :, 0].cpu().numpy(), X_pred[batch_i, :, 1].cpu().numpy(), '.r')
-                for j in range(X.shape[1]):
-                    ax[0, 1].plot([X[batch_i, j, 0].cpu().numpy(), X_pred[batch_i, ts_ids[batch_i, j], 0].cpu().numpy()],
-                                  [X[batch_i, j, 1].cpu().numpy(), X_pred[batch_i, ts_ids[batch_i, j], 1].cpu().numpy()], 'g')
+                # ts_ids = torch.argmin(torch.abs(control_ts.unsqueeze(1) - traj_ts.unsqueeze(2)), dim=2)
+                # for j in range(X.shape[1]):
+                #     ax[0, 1].plot([X[batch_i, j, 0].cpu().numpy(), X_pred[batch_i, ts_ids[batch_i, j], 0].cpu().numpy()],
+                #                   [X[batch_i, j, 1].cpu().numpy(), X_pred[batch_i, ts_ids[batch_i, j], 1].cpu().numpy()], 'g')
                 ax[0, 1].set_xlabel('X [m]')
                 ax[0, 1].set_ylabel('Y [m]')
                 ax[0, 1].grid()

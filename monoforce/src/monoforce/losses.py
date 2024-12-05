@@ -72,33 +72,6 @@ def total_variation(heightmap):
     tv /= h * w
     return tv
 
-def physics_loss(states_pred, states_gt, pred_ts, gt_ts):
-    # unpack states
-    X = states_gt[0]
-    X_pred = states_pred[0]
-
-    # find the closest timesteps in the trajectory to the ground truth timesteps
-    ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
-
-    # get the predicted states at the closest timesteps to the ground truth timesteps
-    batch_size = X.shape[0]
-    X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
-
-    # compute time weights: farthest timesteps have the least weight, w = 1 / (1 + t)
-    time_weight = 1. / (1. + gt_ts.unsqueeze(2))
-    pred = X_pred_gt_ts * time_weight
-    gt = X * time_weight
-
-    # remove nan values if any
-    mask_valid = ~(torch.isnan(pred) | torch.isnan(gt))
-    pred = pred[mask_valid]
-    gt = gt[mask_valid]
-
-    # trajectory loss
-    loss = ((pred - gt) ** 2).mean()
-
-    return loss
-
 
 def hm_loss(height_pred, height_gt, weights=None, h_max=None):
     assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
@@ -120,6 +93,41 @@ def hm_loss(height_pred, height_gt, weights=None, h_max=None):
     # compute weighted loss
     pred = height_pred * weights
     gt = height_gt * weights
+    loss = ((pred - gt) ** 2).mean()
+
+    return loss
+
+
+def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=1.):
+    """
+    Compute the physics loss between predicted and ground truth states.
+    :param states_pred: predicted states [N x T1 x 3]
+    :param states_gt: ground truth states [N x T2 x 3]
+    :param pred_ts: predicted timestamps N x T1
+    :param gt_ts: ground truth timestamps N x T2
+    :param gamma: time weight discount factor, w = 1 / (1 + gamma * t).
+    """
+    # unpack states
+    X = states_gt[0]
+    X_pred = states_pred[0]
+
+    # find the closest timesteps in the trajectory to the ground truth timesteps
+    ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
+
+    # get the predicted states at the closest timesteps to the ground truth timesteps
+    X_pred_gt_ts = X_pred[torch.arange(X.shape[0]).unsqueeze(1), ts_ids]
+
+    # compute time weights: farthest timesteps have the least weight, w = 1 / (1 + t)
+    time_weights = 1. / (1. + gamma * gt_ts.unsqueeze(2))
+    pred = X_pred_gt_ts * time_weights
+    gt = X * time_weights
+
+    # remove nan values if any
+    mask_valid = ~(torch.isnan(pred) | torch.isnan(gt))
+    pred = pred[mask_valid]
+    gt = gt[mask_valid]
+
+    # trajectory loss
     loss = ((pred - gt) ** 2).mean()
 
     return loss
