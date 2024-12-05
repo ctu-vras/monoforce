@@ -37,17 +37,15 @@ def visualize(states, x_points, forces, x_grid, y_grid, z_grid, states_gt=None):
                                vis_cfg=vis_cfg, step=10)
 
 
-def optimize_heightmap():
+def optimize_terrain():
     dphys_cfg = DPhysConfig()
 
     # simulation parameters
-    T, dt = 3.0, 0.01
-    dT = 0.2  # time period to cut the trajectory into samples
+    T, dt = 2.0, 0.01
     dphys_cfg.dt = dt
     dphys_cfg.traj_sim_time = T
     n_iters = 100
-    lr = 0.02
-    vis = True
+    vis = False
 
     # initial state
     x = torch.tensor([[-1.0, 0.0, 0.1]])
@@ -62,6 +60,7 @@ def optimize_heightmap():
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
     z_grid_gt = z_grid_gt.repeat(x.shape[0], 1, 1)
+    friction_gt = dphys_cfg.friction.repeat(x.shape[0], 1, 1)
 
     # control inputs in m/s
     controls = torch.tensor([[[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)])
@@ -72,64 +71,60 @@ def optimize_heightmap():
 
     # simulate the rigid body dynamics
     dphysics = DPhysics(dphys_cfg)
-    states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0)
+    states_gt, forces_gt = dphysics(z_grid=z_grid_gt, controls=controls, state=state0, friction=friction_gt)
     if vis:
         visualize(states_gt, x_points, forces_gt, x_grid, y_grid, z_grid_gt, states_gt)
 
     # initial guess for the heightmap
     z_grid = torch.zeros_like(z_grid_gt, requires_grad=True)
+    friction = 0.1 * torch.ones_like(friction_gt)
+    friction.requires_grad = True
 
     # optimization: height and friction with different learning rates
-    optimizer = torch.optim.Adam([z_grid], lr=lr)
-    Xs_gt, Xds_gt, Rs_gt, Omegas_gt = states_gt
+    optimizer = torch.optim.Adam([{'params': z_grid, 'lr': 0.02}, {'params': friction, 'lr': 0.02}])
+
     loss_min = np.Inf
     z_grid_best = z_grid.clone()
-    state_dT = None
+    friction_best = friction.clone()
+    losses_history = []
     for i in range(n_iters):
         optimizer.zero_grad()
-        loss = torch.tensor(0.0, requires_grad=True)
-        for t in range(0, int(T / dt), int(dT / dt)):
-            # simulate the rigid body dynamics for dT time period
-            dphysics.ts = torch.arange(t * dt, (t + int(dT / dt)) * dt, dt)
-            # state_gt = (Xs_gt[:, t], Xds_gt[:, t], Rs_gt[:, t], Omegas_gt[:, t])
-            state_dT = state0 if state_dT is None else [s[:, -1] for s in states_dT]
-            controls_dT = controls[:, t: t + int(dT / dt)]
-            states_dT, forces_dT = dphysics(z_grid=z_grid, controls=controls_dT,
-                                            # state=state0 if t == 0 else state_gt,
-                                            state=state0 if t == 0 else state_dT)
-            # unpack the states
-            Xs, Xds, Rs, Omegas = states_dT
 
-            # compute the loss
-            loss_dT = torch.nn.functional.mse_loss(Xs, Xs_gt[:, t:t + int(dT / dt)])
-            loss = loss + loss_dT
+        states, _ = dphysics(z_grid=z_grid, controls=controls, state=state0, friction=friction)
+        ts = torch.arange(0, T, dt)[None]
+        loss = physics_loss(states_pred=states, states_gt=states_gt, pred_ts=ts, gt_ts=ts)
 
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss_x: {loss.item()}')
+        # print(f'Friction mean: {friction.mean().item()}')
+        # print(f'Heightmap mean: {z_grid.mean().item()}')
 
         if loss.item() < loss_min:
             loss_min = loss.item()
             z_grid_best = z_grid.clone()
-
-        # # heightmap difference
-        # with torch.no_grad():
-        #     z_diff = torch.nn.functional.mse_loss(z_grid, z_grid_gt)
-        #     print(f'Heightmap difference: {z_diff.item()}')
+            friction_best = friction.clone()
 
         # visualize the optimized heightmap
         if vis and i % 20 == 0:
-            dphysics.ts = torch.arange(0, T, dt)
-            states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
+            states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0, friction=friction)
             visualize(states, x_points, forces, x_grid, y_grid, z_grid, states_gt)
 
+        losses_history.append(loss.item())
+
+    plt.figure()
+    plt.plot(losses_history)
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.grid()
+    plt.show()
+
     # visualize the best heightmap
-    dphysics.dphys_cfg.traj_sim_time = T
-    states, forces = dphysics(z_grid=z_grid_best, controls=controls, state=state0)
+    states, forces = dphysics(z_grid=z_grid_best, controls=controls, state=state0, friction=friction_best)
     visualize(states, x_points, forces, x_grid, y_grid, z_grid_best, states_gt)
 
 
-def learn_terrain_properties():
+def optimize_friction_head():
     from monoforce.models.terrain_encoder.lss import LiftSplatShoot
     from monoforce.utils import read_yaml
 
@@ -264,9 +259,90 @@ def learn_terrain_properties():
     if vis:
         plt.show()
 
+
+def optimize_model():
+    from monoforce.models.terrain_encoder.lss import LiftSplatShoot
+    from monoforce.utils import read_yaml
+
+    vis = True
+    device = torch.device('cuda')
+    torch.manual_seed(42)
+    np.random.seed(42)
+
+    dphys_cfg = DPhysConfig()
+    dphys_cfg.traj_sim_time = 1.0
+    path = rough_seq_paths[0]
+    lss_cfg = read_yaml('../config/lss_cfg.yaml')
+
+    # load the dataset
+    ds = ROUGH(path, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
+
+    # instantiate the model
+    lss = LiftSplatShoot(grid_conf=lss_cfg['grid_conf'], data_aug_conf=lss_cfg['data_aug_conf'])
+    lss.to(device)
+
+    # instantiate the simulator
+    dphysics = DPhysics(dphys_cfg, device=device)
+
+    # get a sample from the dataset
+    sample_i = 79
+    batch = [s[None] for s in ds[sample_i]]
+    # loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
+    # batch = next(iter(loader))
+
+    # put the batch on the device
+    batch = [b.to(device) for b in batch]
+    (imgs, rots, trans, intrins, post_rots, post_trans,
+     hm_geom, hm_terrain,
+     control_ts, controls,
+     pose0,
+     traj_ts, X, Xd, R, Omega) = batch
+
+    # optimize the model parameters
+    lss.train()
+    optimizer = torch.optim.Adam(lss.parameters(), lr=1e-3)
+
+    n_iters = 100
+    losses = []
+
+    img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+    for i in range(n_iters):
+        optimizer.zero_grad()
+
+        # forward pass
+        terrain = lss(*img_inputs)
+        z_grid = terrain['geom'].squeeze(1)
+        friction = terrain['friction'].squeeze(1)
+        states, forces = dphysics(z_grid=z_grid, controls=controls, friction=friction)
+
+        # compute the loss as the mean squared error between the predicted and ground truth poses
+        X_pred = states[0]
+        loss = physics_loss(states_pred=[X_pred], states_gt=[X], pred_ts=control_ts, gt_ts=traj_ts)
+
+        # backward pass
+        loss.backward()
+        optimizer.step()
+
+        print(f'Iteration {i}, Loss: {loss.item()}')
+        losses.append(loss.item())
+
+    plt.figure()
+    plt.plot(losses)
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.grid()
+    plt.show()
+
+    if vis:
+        visualize(states=states, x_points=dphysics.x_points.cpu().numpy(), forces=forces,
+                  x_grid=dphys_cfg.x_grid[None],
+                  y_grid=dphys_cfg.y_grid[None], z_grid=z_grid, states_gt=[X])
+
+
 def main():
-    # optimize_heightmap()
-    learn_terrain_properties()
+    # optimize_terrain()
+    # optimize_friction_head()
+    optimize_model()
 
 
 if __name__ == '__main__':

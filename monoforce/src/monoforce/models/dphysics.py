@@ -104,10 +104,10 @@ def vw_to_track_vels(v, w, robot_size, n_tracks):
 
 
 class DPhysics(torch.nn.Module):
-    def __init__(self, dphys_cfg=DPhysConfig(), device=None):
+    def __init__(self, dphys_cfg=DPhysConfig(), device='cpu'):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
-        self.device = dphys_cfg.device if device is None else device
+        self.device = device
         self.I = self.dphys_cfg.robot_I.to(self.device)  # 3x3 inertia tensor, kg*m^2
         self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
         self.x_points = self.dphys_cfg.robot_points.to(self.device)  # robot body points

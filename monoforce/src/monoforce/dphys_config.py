@@ -7,8 +7,6 @@ import open3d as o3d
 
 class DPhysConfig:
     def __init__(self, robot='marv'):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         # robot parameters
         self.robot = robot
         self.vel_max = 1.0  # m/s
@@ -63,15 +61,15 @@ class DPhysConfig:
         self.robot_I = self.inertia_tensor(self.robot_mass, self.robot_points)
 
         self.gravity = 9.81  # acceleration due to gravity, m/s^2
-        self.gravity_direction = torch.tensor([0., 0., -1.], device=self.device)  # gravity direction in the world frame
+        self.gravity_direction = torch.tensor([0., 0., -1.])  # gravity direction in the world frame
 
         # height map parameters
         self.grid_res = 0.1  # grid resolution of the heightmap, [m]
         self.r_min = 1.0  # minimum distance of the terrain from the robot, [m]
         self.d_max = 6.4  # half-size of the terrain, heightmap range: [-d_max, d_max]
         self.h_max = 1.0  # maximum height of the terrain, heightmap range: [-h_max, h_max]
-        x_grid = torch.arange(-self.d_max, self.d_max, self.grid_res).to(self.device)
-        y_grid = torch.arange(-self.d_max, self.d_max, self.grid_res).to(self.device)
+        x_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
+        y_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
         self.x_grid, self.y_grid = torch.meshgrid(x_grid, y_grid)
         self.z_grid = torch.zeros_like(self.x_grid)
         self.stiffness = 10_000. * torch.ones_like(self.z_grid)  # stiffness of the terrain, [N/m]
@@ -129,7 +127,7 @@ class DPhysConfig:
             [Ixz, Iyz, Izz]
         ])
 
-        return I.to(self.device)
+        return I
 
     def get_points_from_robot_mesh(self, robot, voxel_size=0.1, return_mesh=False):
         """
@@ -193,8 +191,8 @@ class DPhysConfig:
         robot_size = (s_x, s_y)
 
         # put tensors on the device
-        x_points = x_points.to(self.device)
-        driving_parts = [p.to(self.device) for p in driving_parts]
+        x_points = x_points
+        driving_parts = [p for p in driving_parts]
 
         return x_points, driving_parts, robot_size
 
@@ -206,10 +204,10 @@ class DPhysConfig:
         # rotate driving parts according to joint angles
         for i, (angle, xyz) in enumerate(zip(self.joint_angles.values(), self.joint_positions.values())):
             # rotate around y-axis of the joint position
-            xyz = torch.tensor(xyz, device=self.device)
+            xyz = torch.tensor(xyz)
             R = torch.tensor([[np.cos(angle), 0, np.sin(angle)],
                               [0, 1, 0],
-                              [-np.sin(angle), 0, np.cos(angle)]]).float().to(self.device)
+                              [-np.sin(angle), 0, np.cos(angle)]]).float()
             mask = self.driving_parts[i]
             points = self.robot_points[mask]
             points -= xyz
