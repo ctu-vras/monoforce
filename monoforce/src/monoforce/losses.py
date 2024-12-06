@@ -66,10 +66,10 @@ def rotation_difference(R1, R2, reduction='mean'):
 
 def total_variation(heightmap):
     h, w = heightmap.shape[-2:]
-    # Compute the total variation of the image
+    # Compute the total variation of a heightmap
     tv = torch.sum(torch.abs(heightmap[..., :, :-1] - heightmap[..., :, 1:])) + \
          torch.sum(torch.abs(heightmap[..., :-1, :] - heightmap[..., 1:, :]))
-    tv /= h * w
+    tv = tv / (h * w)
     return tv
 
 
@@ -121,11 +121,6 @@ def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=1.):
     time_weights = 1. / (1. + gamma * gt_ts.unsqueeze(2))
     pred = X_pred_gt_ts * time_weights
     gt = X * time_weights
-
-    # remove nan values if any
-    mask_valid = ~(torch.isnan(pred) | torch.isnan(gt))
-    pred = pred[mask_valid]
-    gt = gt[mask_valid]
 
     # trajectory loss
     loss = ((pred - gt) ** 2).mean()
