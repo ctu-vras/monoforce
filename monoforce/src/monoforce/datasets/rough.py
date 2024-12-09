@@ -208,9 +208,10 @@ class ROUGH(Dataset):
             cams.remove('camera_up')
         return sorted(cams)
 
-    def get_traj(self, i):
+    def get_traj(self, i, T_horizon=None):
         # n_frames equals to the number of future poses (trajectory length)
-        T_horizon = self.dphys_cfg.traj_sim_time
+        if T_horizon is None:
+            T_horizon = self.dphys_cfg.traj_sim_time
         dt = 0.1  # lidar frequency is 10 Hz
 
         # get trajectory as sequence of `n_frames` future poses
@@ -336,7 +337,7 @@ class ROUGH(Dataset):
         heightmap = torch.as_tensor(lidar_hm)
         return heightmap
 
-    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0)):
+    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0), T_horizon=None):
         # robot footprint points grid
         width, length = robot_size
         x = np.arange(-length / 2, length / 2, self.dphys_cfg.grid_res)
@@ -348,7 +349,7 @@ class ROUGH(Dataset):
 
         Tr_base_link__base_footprint = np.asarray(self.calib['transformations']['T_base_link__base_footprint']['data'],
                                                   dtype=np.float32).reshape((4, 4))
-        traj = self.get_traj(i)
+        traj = self.get_traj(i, T_horizon=T_horizon)
         poses = traj['poses']
         poses_footprint = poses
         poses_footprint[:, 2, 3] -= abs(Tr_base_link__base_footprint[2, 3])  # subtract robot's clearance
@@ -622,7 +623,7 @@ class ROUGH(Dataset):
         if cached and os.path.exists(file_path):
             hm_rigid = np.load(file_path)
         else:
-            traj_points = self.get_footprint_traj_points(i)
+            traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
             seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
