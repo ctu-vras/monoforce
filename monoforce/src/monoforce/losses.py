@@ -52,14 +52,15 @@ def rotation_difference(R1, R2, reduction='mean'):
     assert R1.shape[-2:] == (3, 3)
     dR = R1 @ R2.transpose(dim0=-2, dim1=-1)
     # trace
-    tr = dR.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+    tr = dR.diagonal(dim1=-2, dim2=-1).sum(dim=-1, keepdim=True)
     cos = (tr - 1) / 2.
     cos = torch.clip(cos, min=-1, max=1.)
     theta = torch.arccos(cos)
+    theta = theta ** 2
     if reduction == 'mean':
-        return theta.abs().mean()
+        return theta.mean()
     elif reduction == 'sum':
-        return theta.abs().sum()
+        return theta.sum()
     else:
         return theta
 
@@ -98,7 +99,7 @@ def hm_loss(height_pred, height_gt, weights=None, h_max=None):
     return loss
 
 
-def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=1.):
+def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0., rotation_loss=False):
     """
     Compute the physics loss between predicted and ground truth states.
     :param states_pred: predicted states [N x T1 x 3]
@@ -122,7 +123,15 @@ def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=1.):
     pred = X_pred_gt_ts * time_weights
     gt = X * time_weights
 
-    # trajectory loss
+    # trajectory position (xyz) MSE loss
     loss = ((pred - gt) ** 2).mean()
+
+    if rotation_loss:
+        # add trajectories rotation difference to loss
+        R = states_gt[2]
+        R_pred_gt_ts = states_pred[2][torch.arange(R.shape[0]).unsqueeze(1), ts_ids]
+        loss_rot = rotation_difference(R_pred_gt_ts, R, reduction='none')
+        loss_rot = (loss_rot * time_weights).mean()
+        loss = loss + loss_rot
 
     return loss
