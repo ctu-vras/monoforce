@@ -481,7 +481,9 @@ class DPhysics(torch.nn.Module):
 
         # start robot at the terrain height (not under or above the terrain)
         x = state[0]
-        z_interp = self.interpolate_grid(self.z_grid, self.x_points[..., 0], self.x_points[..., 1]).mean(dim=1, keepdim=True)
+        x_points = self.x_points.repeat(batch_size, 1, 1)
+        x_points = x_points @ state[2].transpose(1, 2) + x.unsqueeze(1)
+        z_interp = self.interpolate_grid(self.z_grid, x_points[..., 0], x_points[..., 1]).mean(dim=1, keepdim=True)
         x[..., 2:3] = z_interp
 
         N_ts = min(int(T / dt), controls.shape[1])
