@@ -495,6 +495,10 @@ class DPhysics(torch.nn.Module):
         # dynamics of the rigid body
         Xs, Xds, Rs, Omegas, F_springs, F_frictions = self.integrator(state)
 
+        # mg = k * delta_h, at equilibrium, delta_h = mg / k
+        delta_h = self.dphys_cfg.robot_mass * self.dphys_cfg.gravity / self.stiffness.mean()
+        Xs[..., 2] = Xs[..., 2] + delta_h.abs()  # add the equilibrium height
+
         States = Xs, Xds, Rs, Omegas
         Forces = F_springs, F_frictions
 
