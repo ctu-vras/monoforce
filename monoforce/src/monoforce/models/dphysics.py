@@ -164,8 +164,9 @@ class DPhysics(torch.nn.Module):
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
+        # in_contact = dh_points < 0.
         # soft contact model
-        in_contact = torch.sigmoid(-dh_points)
+        in_contact = torch.sigmoid(-10. * dh_points)
         assert in_contact.shape == (B, n_pts, 1)
 
         # reaction at the contact points as spring-damper forces
@@ -478,6 +479,11 @@ class DPhysics(torch.nn.Module):
         self.damping = damping.to(self.device)
         self.friction = friction.to(self.device)
 
+        # start robot at the terrain height (not under or above the terrain)
+        x = state[0]
+        z_interp = self.interpolate_grid(self.z_grid, self.x_points[..., 0], self.x_points[..., 1]).mean(dim=1, keepdim=True)
+        x[..., 2:3] = z_interp
+
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
         assert controls.shape == (B, N_ts, 2), f'Its shape {controls.shape} != {(B, N_ts, 2)}'  # (B, N, 2), v, w
@@ -500,7 +506,7 @@ class DPhysics(torch.nn.Module):
                 self.visualize(states, forces, z_grid, friction=friction)
         return states, forces
 
-    def visualize(self, states, forces, z_grid, friction=None, step=20, batch_i=0):
+    def visualize(self, states, forces, z_grid, friction=None, step=10, batch_i=0):
         # visualize using mayavi
         from monoforce.vis import setup_visualization, animate_trajectory
 
