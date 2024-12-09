@@ -104,13 +104,13 @@ def vw_to_track_vels(v, w, robot_size, n_tracks):
 
 
 class DPhysics(torch.nn.Module):
-    def __init__(self, dphys_cfg=DPhysConfig(), device='cpu', use_odeint=True):
+    def __init__(self, dphys_cfg=DPhysConfig(), device='cpu'):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
         self.device = device
-        self.I = torch.as_tensor(self.dphys_cfg.robot_I, device=device)  # 3x3 inertia tensor, kg*m^2
+        self.I = self.dphys_cfg.robot_I.to(self.device)  # 3x3 inertia tensor, kg*m^2
         self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
-        self.x_points = torch.as_tensor(self.dphys_cfg.robot_points, device=device)  # robot body points
+        self.x_points = self.dphys_cfg.robot_points.to(self.device)  # robot body points
         
         self.z_grid = None
         self.friction = None
@@ -118,9 +118,9 @@ class DPhysics(torch.nn.Module):
         self.damping = None
         self.controls = None
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-        self.ts = torch.linspace(0, T, int(T / dt)).to(device)
+        self.ts = torch.linspace(0, T, int(T / dt)).to(self.device)
 
-        self.integrator = self.dynamics_odeint if use_odeint else self.dynamics
+        self.integrator = self.dynamics_odeint if self.dphys_cfg.use_odeint else self.dynamics
 
     def forward_kinematics(self, t, state):
         # unpack state
@@ -154,30 +154,23 @@ class DPhysics(torch.nn.Module):
         z_points = z_points.unsqueeze(-1)
         assert z_points.shape == (B, n_pts, 1)
         assert n.shape == (B, n_pts, 3)
-        if not isinstance(self.stiffness, (int, float)):
-            stiffness_points = self.interpolate_grid(self.stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-            assert stiffness_points.shape == (B, n_pts, 1)
-        else:
-            stiffness_points = self.stiffness
-        if not isinstance(self.damping, (int, float)):
-            damping_points = self.interpolate_grid(self.damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-            assert damping_points.shape == (B, n_pts, 1)
-        else:
-            damping_points = self.damping
-        if not isinstance(self.friction, (int, float)):
-            friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-            assert friction_points.shape == (B, n_pts, 1)
-        else:
-            friction_points = self.friction
+
+        stiffness_points = self.interpolate_grid(self.stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert stiffness_points.shape == (B, n_pts, 1)
+        damping_points = self.interpolate_grid(self.damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert damping_points.shape == (B, n_pts, 1)
+        friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert friction_points.shape == (B, n_pts, 1)
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
+        # in_contact = dh_points < 0.
         # soft contact model
-        in_contact = torch.sigmoid(-dh_points)
+        in_contact = torch.sigmoid(-10. * dh_points)
         assert in_contact.shape == (B, n_pts, 1)
 
         # reaction at the contact points as spring-damper forces
-        xd_points_n = (xd_points * n).sum(dim=-1, keepdims=True)  # normal velocity
+        xd_points_n = (xd_points * n).sum(dim=2).unsqueeze(2)  # normal velocity
         assert xd_points_n.shape == (B, n_pts, 1)
         F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
         F_spring = torch.mul(F_spring, in_contact) / n_pts  # apply forces only at the contact points
@@ -195,7 +188,13 @@ class DPhysics(torch.nn.Module):
             mask = self.dphys_cfg.driving_parts[i]
             u = track_vels[:, i].unsqueeze(1) * thrust_dir
             cmd_vels[:, mask] = u.unsqueeze(1)
-        F_friction = N.unsqueeze(2) * normalized(friction_points * cmd_vels - xd_points)  # F_f = mu * N * v / |v|
+        mu_cmd_vels = friction_points * cmd_vels
+        mu_cmd_vels = torch.clamp(mu_cmd_vels, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
+        vels_diff = mu_cmd_vels - xd_points
+        vels_diff_n = (vels_diff * n).sum(dim=2).unsqueeze(2)  # normal velocity difference
+        vels_diff_tau = vels_diff - vels_diff_n * n  # tangential velocity difference
+        F_friction = N.unsqueeze(2) * vels_diff_tau  # F_f = mu * N * v
+        # F_friction = N.unsqueeze(2) * vels_diff
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
@@ -334,8 +333,8 @@ class DPhysics(torch.nn.Module):
         y_i = ((y_query_flat + d_max) / grid_res).long()
 
         # Compute the fractional part of the indices
-        x_f = (x_query_flat + d_max) / grid_res - x_i.float()
-        y_f = (y_query_flat + d_max) / grid_res - y_i.float()
+        x_frac = (x_query_flat + d_max) / grid_res - x_i.float()
+        y_frac = (y_query_flat + d_max) / grid_res - y_i.float()
 
         # Compute the indices of the grid points
         i_c = y_i + H * x_i
@@ -353,10 +352,10 @@ class DPhysics(torch.nn.Module):
         z_front = z_grid_flat.gather(1, i_f)
         z_left = z_grid_flat.gather(1, i_l)
         z_front_left = z_grid_flat.gather(1, i_fl)
-        z_query = (1 - x_f) * (1 - y_f) * z_center + \
-                  (1 - x_f) * y_f * z_front + \
-                  x_f * (1 - y_f) * z_left + \
-                  x_f * y_f * z_front_left
+        z_query = (1 - x_frac) * (1 - y_frac) * z_center + \
+                  (1 - x_frac) * y_frac * z_front + \
+                  x_frac * (1 - y_frac) * z_left + \
+                  x_frac * y_frac * z_front_left
 
         if return_normals:
             # Estimate normals using the height map
@@ -472,13 +471,20 @@ class DPhysics(torch.nn.Module):
             state = (x, xd, R, omega)
 
         # terrain properties
-        stiffness = self.dphys_cfg.k_stiffness if stiffness is None else stiffness
-        damping = self.dphys_cfg.k_damping if damping is None else damping
-        friction = self.dphys_cfg.k_friction if friction is None else friction
-        self.z_grid = z_grid
-        self.stiffness = stiffness
-        self.damping = damping
-        self.friction = friction
+        stiffness = self.dphys_cfg.stiffness.repeat(batch_size, 1, 1) if stiffness is None else stiffness
+        damping = self.dphys_cfg.damping.repeat(batch_size, 1, 1) if damping is None else damping
+        friction = self.dphys_cfg.friction.repeat(batch_size, 1, 1) if friction is None else friction
+        self.z_grid = z_grid.to(self.device)
+        self.stiffness = stiffness.to(self.device)
+        self.damping = damping.to(self.device)
+        self.friction = friction.to(self.device)
+
+        # start robot at the terrain height (not under or above the terrain)
+        x = state[0]
+        x_points = self.x_points.repeat(batch_size, 1, 1)
+        x_points = x_points @ state[2].transpose(1, 2) + x.unsqueeze(1)
+        z_interp = self.interpolate_grid(self.z_grid, x_points[..., 0], x_points[..., 1]).mean(dim=1, keepdim=True)
+        x[..., 2:3] = z_interp
 
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
@@ -489,64 +495,47 @@ class DPhysics(torch.nn.Module):
         # dynamics of the rigid body
         Xs, Xds, Rs, Omegas, F_springs, F_frictions = self.integrator(state)
 
+        # mg = k * delta_h, at equilibrium, delta_h = mg / k
+        delta_h = self.dphys_cfg.robot_mass * self.dphys_cfg.gravity / self.stiffness.mean()
+        Xs[..., 2] = Xs[..., 2] + delta_h.abs()  # add the equilibrium height
+
         States = Xs, Xds, Rs, Omegas
         Forces = F_springs, F_frictions
 
         return States, Forces
 
-    def forward(self, z_grid, controls, state=None, **kwargs):
-        return self.dphysics(z_grid, controls, state, **kwargs)
+    def forward(self, z_grid, controls, state=None, vis=False, stiffness=None, damping=None, friction=None):
+        states, forces = self.dphysics(z_grid, controls, state,
+                                       stiffness=stiffness, damping=damping, friction=friction)
+        if vis:
+            with torch.no_grad():
+                self.visualize(states, forces, z_grid, friction=friction)
+        return states, forces
 
+    def visualize(self, states, forces, z_grid, friction=None, step=10, batch_i=0):
+        # visualize using mayavi
+        from monoforce.vis import setup_visualization, animate_trajectory
 
-def debug():
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    robot = 'tradr'
-    dphys_cfg = DPhysConfig(robot=robot)
-    dphys_cfg.n_sim_trajs = 32
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    B = dphys_cfg.n_sim_trajs
-    T = dphys_cfg.traj_sim_time
-    dt = dphys_cfg.dt
-
-    # instantiate the simulator
-    dphysics = DPhysics(dphys_cfg, device=device)
-
-    # terrain properties
-    H, W = int(2 * dphys_cfg.d_max / dphys_cfg.grid_res), int(2 * dphys_cfg.d_max / dphys_cfg.grid_res)
-    z_grid = torch.rand(B, H, W, device=device)
-
-    controls = torch.stack([torch.tensor([[1.0, 0.0]] * int(T / dt))]).repeat(B, 1, 1)
-    controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
-
-    # put tensors to device
-    z_grid = z_grid.to(device)
-    controls = controls.to(device)
-
-    # simulate the rigid body dynamics
-    with torch.no_grad():
-        states, forces = dphysics(z_grid=z_grid, controls=controls)
-        print('xyz shape:', states[0].shape)
-
-    with torch.no_grad():
-        states1, forces1 = dphysics(z_grid=z_grid[:1], controls=controls[:1])
-        print('xyz1 shape:', states1[0].shape)
-
-        plt.figure()
-        xyz = states[0][:1].cpu().numpy()
-        xyz1 = states1[0].cpu().numpy()
-        plt.plot(xyz[0, ::8, 0], xyz[0, ::8, 1], 'r.')
-        plt.plot(xyz1[0, ::10, 0], xyz1[0, ::10, 1], 'b.')
-        plt.legend(['xyz', 'xyz1'])
-        plt.show()
-
-        if torch.allclose(states[0][:1], states1[0], atol=1e-3):
-            print('Success!')
+        xs, xds, rs, omegas = [s[batch_i].cpu().numpy() for s in states]
+        F_spring, F_friction = [f[batch_i].cpu().numpy() for f in forces]
+        x_grid_np, y_grid_np = self.dphys_cfg.x_grid.cpu().numpy(), self.dphys_cfg.y_grid.cpu().numpy()
+        z_grid_np = z_grid[batch_i].cpu().numpy()
+        if friction is not None:
+            friction_np = friction[batch_i].cpu().numpy()
         else:
-            print('xyz1 != xyz')
-            raise ValueError('xyz1 != xyz')
+            friction_np = self.dphys_cfg.friction.cpu().numpy()
+        x_points = self.dphys_cfg.robot_points.cpu().numpy()
 
+        # set up the visualization
+        vis_cfg = setup_visualization(states=(xs, xds, rs, omegas),
+                                      x_points=x_points,
+                                      forces=(F_spring, F_friction),
+                                      x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
 
-if __name__ == '__main__':
-    debug()
+        # visualize animated trajectory
+        animate_trajectory(states=(xs, xds, rs, omegas),
+                           x_points=x_points,
+                           forces=(F_spring, F_friction),
+                           z_grid=z_grid_np,
+                           friction=friction_np,
+                           vis_cfg=vis_cfg, step=step)

@@ -52,27 +52,62 @@ def rotation_difference(R1, R2, reduction='mean'):
     assert R1.shape[-2:] == (3, 3)
     dR = R1 @ R2.transpose(dim0=-2, dim1=-1)
     # trace
-    tr = dR.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+    tr = dR.diagonal(dim1=-2, dim2=-1).sum(dim=-1, keepdim=True)
     cos = (tr - 1) / 2.
     cos = torch.clip(cos, min=-1, max=1.)
     theta = torch.arccos(cos)
+    theta = theta ** 2
     if reduction == 'mean':
-        return theta.abs().mean()
+        return theta.mean()
     elif reduction == 'sum':
-        return theta.abs().sum()
+        return theta.sum()
     else:
         return theta
 
 
 def total_variation(heightmap):
     h, w = heightmap.shape[-2:]
-    # Compute the total variation of the image
+    # Compute the total variation of a heightmap
     tv = torch.sum(torch.abs(heightmap[..., :, :-1] - heightmap[..., :, 1:])) + \
          torch.sum(torch.abs(heightmap[..., :-1, :] - heightmap[..., 1:, :]))
-    tv /= h * w
+    tv = tv / (h * w)
     return tv
 
-def physics_loss(states_pred, states_gt, pred_ts, gt_ts):
+
+def hm_loss(height_pred, height_gt, weights=None, h_max=None):
+    assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+    if weights is None:
+        weights = torch.ones_like(height_gt)
+    assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+
+    if h_max is not None:
+        # limit heightmap values to the physical limits: [-h_max, h_max]
+        limit_fn = lambda x: h_max * torch.tanh(x)
+        height_pred = limit_fn(height_pred)
+
+    # remove nan values if any
+    mask_valid = ~(torch.isnan(height_pred) | torch.isnan(height_gt))
+    height_gt = height_gt[mask_valid]
+    height_pred = height_pred[mask_valid]
+    weights = weights[mask_valid]
+
+    # compute weighted loss
+    pred = height_pred * weights
+    gt = height_gt * weights
+    loss = ((pred - gt) ** 2).mean()
+
+    return loss
+
+
+def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0., rotation_loss=False):
+    """
+    Compute the physics loss between predicted and ground truth states.
+    :param states_pred: predicted states [N x T1 x 3]
+    :param states_gt: ground truth states [N x T2 x 3]
+    :param pred_ts: predicted timestamps N x T1
+    :param gt_ts: ground truth timestamps N x T2
+    :param gamma: time weight discount factor, w = 1 / (1 + gamma * t).
+    """
     # unpack states
     X = states_gt[0]
     X_pred = states_pred[0]
@@ -81,29 +116,22 @@ def physics_loss(states_pred, states_gt, pred_ts, gt_ts):
     ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
 
     # get the predicted states at the closest timesteps to the ground truth timesteps
-    batch_size = X.shape[0]
-    X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
+    X_pred_gt_ts = X_pred[torch.arange(X.shape[0]).unsqueeze(1), ts_ids]
 
-    # trajectory loss
-    time_weight = 1. / (1. + gt_ts.unsqueeze(2))
-    loss = ((X_pred_gt_ts * time_weight - X * time_weight) ** 2).mean()
+    # compute time weights: farthest timesteps have the least weight, w = 1 / (1 + t)
+    time_weights = 1. / (1. + gamma * gt_ts.unsqueeze(2))
+    pred = X_pred_gt_ts * time_weights
+    gt = X * time_weights
 
-    return loss
+    # trajectory position (xyz) MSE loss
+    loss = ((pred - gt) ** 2).mean()
 
-
-def hm_loss(height_pred, height_gt, weights=None):
-    assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
-    if weights is None:
-        weights = torch.ones_like(height_gt)
-    assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
-
-    # remove nan values
-    mask_valid = ~torch.isnan(height_gt)
-    height_gt = height_gt[mask_valid]
-    height_pred = height_pred[mask_valid]
-    weights = weights[mask_valid]
-
-    # compute weighted loss
-    loss = torch.nn.functional.mse_loss(height_pred * weights, height_gt * weights, reduction='mean')
+    if rotation_loss:
+        # add trajectories rotation difference to loss
+        R = states_gt[2]
+        R_pred_gt_ts = states_pred[2][torch.arange(R.shape[0]).unsqueeze(1), ts_ids]
+        loss_rot = rotation_difference(R_pred_gt_ts, R, reduction='none')
+        loss_rot = (loss_rot * time_weights).mean()
+        loss = loss + loss_rot
 
     return loss

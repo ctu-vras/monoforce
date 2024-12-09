@@ -6,7 +6,7 @@ import open3d as o3d
 
 
 class DPhysConfig:
-    def __init__(self, robot='tradr'):
+    def __init__(self, robot='marv'):
         # robot parameters
         self.robot = robot
         self.vel_max = 1.0  # m/s
@@ -68,9 +68,13 @@ class DPhysConfig:
         self.r_min = 1.0  # minimum distance of the terrain from the robot, [m]
         self.d_max = 6.4  # half-size of the terrain, heightmap range: [-d_max, d_max]
         self.h_max = 1.0  # maximum height of the terrain, heightmap range: [-h_max, h_max]
-        self.k_stiffness = 10_000.
-        self.k_damping = float(np.sqrt(4 * self.robot_mass * self.k_stiffness))  # critical damping
-        self.k_friction = 1.0
+        x_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
+        y_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
+        self.x_grid, self.y_grid = torch.meshgrid(x_grid, y_grid)
+        self.z_grid = torch.zeros_like(self.x_grid)
+        self.stiffness = 50_000. * torch.ones_like(self.z_grid)  # stiffness of the terrain, [N/m]
+        self.damping = torch.sqrt(4 * self.robot_mass * self.stiffness)  # critical damping
+        self.friction = 1.0 * torch.ones_like(self.z_grid)  # friction of the terrain
         self.hm_interp_method = None
 
         # trajectory shooting parameters
@@ -79,8 +83,10 @@ class DPhysConfig:
         self.n_sim_trajs = 64
         self.integration_mode = 'euler'  # 'euler', 'rk4'
 
-    @staticmethod
-    def inertia_tensor(mass, points):
+        # using odeint for integration or not, from torchdiffeq: https://github.com/rtqichen/torchdiffeq
+        self.use_odeint = True
+
+    def inertia_tensor(self, mass, points):
         """
         Compute the inertia tensor for a rigid body represented by point masses.
 
@@ -152,18 +158,7 @@ class DPhysConfig:
 
         return x_points
 
-    def get_points(self, s_x=0.5, s_y=0.5):
-        x_points = torch.stack([
-            torch.hstack([torch.linspace(-s_x / 2., s_x / 2., 16 // 2),
-                          torch.linspace(-s_x / 2., s_x / 2., 16 // 2)]),
-            torch.hstack([s_y / 2. * torch.ones(16 // 2),
-                          -s_y / 2. * torch.ones(16 // 2)]),
-            torch.hstack([torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2]),
-                          torch.tensor([0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2])])
-        ]).T
-        return x_points
-
-    def robot_geometry(self, robot, device='cpu'):
+    def robot_geometry(self, robot):
         """
         Returns the parameters of the rigid body.
         """
@@ -173,20 +168,24 @@ class DPhysConfig:
         cog = x_points.mean(dim=0)
         if robot in ['tradr', 'tradr2']:
             # divide the point cloud into left and right parts
-            mask_l = x_points[..., 1] > (cog[1] + s_y / 4.)
-            mask_r = x_points[..., 1] < (cog[1] - s_y / 4.)
+            mask_l = (x_points[..., 1] > (cog[1] + s_y / 4.)) & (x_points[..., 2] < cog[2])
+            mask_r = (x_points[..., 1] < (cog[1] - s_y / 4.)) & (x_points[..., 2] < cog[2])
             # driving parts: left and right tracks
             driving_parts = [mask_l, mask_r]
         elif robot in ['marv', 'husky', 'husky_oru']:
             # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
-            mask_fl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
-                                        x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_fr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
-                                        x_points[..., 1] < (cog[1] - s_y / 3.))
-            mask_rl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
-                                        x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_rr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
-                                        x_points[..., 1] < (cog[1] - s_y / 3.))
+            mask_fl = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
+                      (x_points[..., 1] > (cog[1] + s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
+            mask_fr = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
+                      (x_points[..., 1] < (cog[1] - s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
+            mask_rl = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
+                      (x_points[..., 1] > (cog[1] + s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
+            mask_rr = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
+                      (x_points[..., 1] < (cog[1] - s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
             # driving parts: front left, front right, rear left, rear right flippers / wheels
             driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
         else:
@@ -196,8 +195,8 @@ class DPhysConfig:
         robot_size = (s_x, s_y)
 
         # put tensors on the device
-        x_points = x_points.to(device)
-        driving_parts = [p.to(device) for p in driving_parts]
+        x_points = x_points
+        driving_parts = [p for p in driving_parts]
 
         return x_points, driving_parts, robot_size
 
@@ -261,8 +260,8 @@ def show_robot():
 
     robot = 'marv'
     dphys_cfg = DPhysConfig(robot=robot)
-    points = dphys_cfg.robot_points
-    points_driving = [points[mask] for mask in dphys_cfg.driving_parts]
+    points = dphys_cfg.robot_points.cpu()
+    points_driving = [points[mask.cpu()] for mask in dphys_cfg.driving_parts]
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
@@ -286,9 +285,9 @@ def show_robot():
     base_link_sphere.paint_uniform_color([0.0, 0.0, 1.0])
 
     # visualize
-    o3d.visualization.draw_geometries([mesh, pcd_driving, base_link_sphere] + joint_poses)
+    # o3d.visualization.draw_geometries([mesh, pcd_driving, base_link_sphere] + joint_poses)
     # o3d.visualization.draw_geometries([pcd, pcd_driving] + joint_poses)
-    # o3d.visualization.draw_geometries([pcd, pcd_driving])
+    o3d.visualization.draw_geometries([pcd, pcd_driving])
     # o3d.visualization.draw_geometries([mesh, pcd, pcd_driving])
 
 

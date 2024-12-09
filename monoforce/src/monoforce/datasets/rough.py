@@ -70,7 +70,7 @@ class ROUGH(Dataset):
 
     def __init__(self, path,
                  lss_cfg=None,
-                 dphys_cfg=DPhysConfig(),
+                 dphys_cfg=None,
                  is_train=False):
         super(Dataset, self).__init__()
         self.path = path
@@ -80,7 +80,7 @@ class ROUGH(Dataset):
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
         self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
-        self.dphys_cfg = dphys_cfg
+        self.dphys_cfg = dphys_cfg if dphys_cfg is not None else DPhysConfig()
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.poses_ts, self.poses = self.get_poses(return_stamps=True)
@@ -223,6 +223,14 @@ class ROUGH(Dataset):
         poses = all_poses[il:ir]
         stamps = np.asarray(all_ts[il:ir])
 
+        # transform poses to the same coordinate frame as the height map
+        poses = np.linalg.inv(poses[0]) @ poses
+        stamps = stamps - stamps[0]
+
+        # limit stamps and poses to the horizon
+        stamps = stamps[stamps <= T_horizon]
+        poses = poses[:len(stamps)]
+
         # make sure the trajectory has the fixed length
         n_frames = int(np.ceil(T_horizon / dt))
         if len(poses) < n_frames:
@@ -234,10 +242,6 @@ class ROUGH(Dataset):
         stamps = stamps[:n_frames]
         assert len(poses) == len(stamps), f'Poses and time stamps have different lengths'
         assert len(poses) == n_frames
-
-        # transform poses to the same coordinate frame as the height map
-        poses = np.linalg.inv(poses[0]) @ poses
-        stamps = stamps - stamps[0]
 
         # gravity-aligned poses
         pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
@@ -282,8 +286,8 @@ class ROUGH(Dataset):
                   omegas.reshape([n_states, 3])]
 
         # to torch tensors
-        ts = torch.as_tensor(ts)
-        states = [torch.as_tensor(s) for s in states]
+        ts = torch.as_tensor(ts, dtype=torch.float32)
+        states = [torch.as_tensor(s, dtype=torch.float32) for s in states]
 
         return ts, states
 

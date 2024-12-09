@@ -3,6 +3,7 @@
 import sys
 sys.path.append('../src')
 import torch
+import numpy as np
 from monoforce.dphys_config import DPhysConfig
 from monoforce.models.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
@@ -11,9 +12,8 @@ import matplotlib as mpl
 mpl.use('Qt5Agg')
 
 # simulation parameters
-robot = 'tradr'
+robot = 'marv'
 dphys_cfg = DPhysConfig(robot=robot)
-dphys_cfg.k_friction = 1.0
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -25,13 +25,13 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[1.0, 0.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
 
     # initial state
-    x = torch.tensor([[0.5, 0.0, 1.0]], device=device).repeat(B, 1)
+    x = torch.tensor([[-0.2, 0.0, 0.2]], device=device).repeat(B, 1)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
@@ -42,53 +42,32 @@ def motion():
     state0 = (x, xd, rs, omega)
 
     # heightmap defining the terrain
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
-    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    # z_grid = torch.zeros_like(x_grid)
+    # z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
+    z_grid = torch.zeros_like(x_grid)
+    # z_grid = torch.from_numpy(np.load('./gen/terrain_optimization/z_grid.npy'))
+    z_grid[80:81, 0:100] = 1.0  # add a wall
+
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
-    stiffness = dphys_cfg.k_stiffness * torch.ones_like(z_grid)
-    friction = dphys_cfg.k_friction * torch.ones_like(z_grid)
+    friction = dphys_cfg.friction
+    # friction = torch.from_numpy(np.load('./gen/terrain_optimization/friction.npy'))
+    friction = friction.to(device)
+
     # repeat the heightmap for each rigid body
     x_grid = x_grid.repeat(x.shape[0], 1, 1)
     y_grid = y_grid.repeat(x.shape[0], 1, 1)
     z_grid = z_grid.repeat(x.shape[0], 1, 1)
-    stiffness = stiffness.repeat(x.shape[0], 1, 1)
     friction = friction.repeat(x.shape[0], 1, 1)
     H, W = int(2 * dphys_cfg.d_max / dphys_cfg.grid_res), int(2 * dphys_cfg.d_max / dphys_cfg.grid_res)
     assert x_grid.shape == (B, H, W)
     assert y_grid.shape == (B, H, W)
     assert z_grid.shape == (B, H, W)
-    assert stiffness.shape == (B, H, W)
     assert friction.shape == (B, H, W)
 
     # simulate the rigid body dynamics
     states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0,
-                              stiffness=stiffness, friction=friction)
-
-    # visualize using mayavi
-    xs, xds, rs, omegas = [s[0].detach().cpu().numpy() for s in states]
-    F_spring, F_friction = [f[0].detach().cpu().numpy() for f in forces]
-    x_grid_np, y_grid_np, z_grid_np = [g[0].detach().cpu().numpy() for g in [x_grid, y_grid, z_grid]]
-    friction_np = friction[0].detach().cpu().numpy()
-    x_points = dphys_cfg.robot_points.cpu().numpy()
-
-    # set up the visualization
-    vis_cfg = setup_visualization(states=(xs, xds, rs, omegas),
-                                  x_points=x_points,
-                                  forces=(F_spring, F_friction),
-                                  x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
-
-    # visualize animated trajectory
-    animate_trajectory(states=(xs, xds, rs, omegas),
-                       x_points=x_points,
-                       forces=(F_spring, F_friction),
-                       z_grid=z_grid_np,
-                       friction=friction_np,
-                       vis_cfg=vis_cfg, step=10)
-
+                              friction=friction, vis=True)
 
 def motion_dataset():
     import numpy as np
@@ -97,7 +76,7 @@ def motion_dataset():
     from scipy.spatial.transform import Rotation
 
     # load the dataset
-    path = rough_seq_paths[2]
+    path = rough_seq_paths[0]
     # path = np.random.choice(rough_seq_paths)
     ds = ROUGH(path, dphys_cfg=dphys_cfg)
     # ds, _ = compile_data(val_fraction=0.0)
@@ -106,13 +85,11 @@ def motion_dataset():
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # helper quantities for visualization
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
 
     # sample_i = 532 + 335 + 59
-    # sample_i = 59
-    sample_i = np.random.choice(len(ds))
+    sample_i = 59
+    # sample_i = np.random.choice(len(ds))
     print(f'Sample index: {sample_i}')
     explore_data(ds, sample_range=[sample_i])
 
@@ -192,9 +169,7 @@ def shoot_multiple():
     omega = torch.zeros_like(x)
 
     # terrain properties
-    x_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
-    y_grid = torch.arange(-dphys_cfg.d_max, dphys_cfg.d_max, dphys_cfg.grid_res).to(device)
-    x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
     z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
     # z_grid = torch.zeros_like(x_grid)

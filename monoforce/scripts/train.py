@@ -41,31 +41,9 @@ def arg_parser():
     parser.add_argument('--geom_weight', type=float, default=1.0, help='Weight for geometry loss')
     parser.add_argument('--terrain_weight', type=float, default=2.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
+    parser.add_argument('--traj_sim_time', type=float, default=5.0, help='Trajectory simulation time')
 
     return parser.parse_args()
-
-
-def create_dataloaders(bsz=1, debug=False, vis=False, Data=ROUGH):
-    # create dataset for LSS model training
-    train_ds, val_ds = compile_data(small_data=debug, vis=vis, Data=Data)
-    # create dataloaders: making sure all elemts in a batch are tensors
-    def collate_fn(batch):
-        def to_tensor(item):
-            if isinstance(item, np.ndarray):
-                return torch.tensor(item)
-            elif isinstance(item, (list, tuple)):
-                return [to_tensor(i) for i in item]
-            elif isinstance(item, dict):
-                return {k: to_tensor(v) for k, v in item.items()}
-            return item  # Return as is if it's already a tensor or unsupported type
-
-        batch = [to_tensor(item) for item in batch]
-        return torch.utils.data.default_collate(batch)
-
-    train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False, collate_fn=collate_fn)
-
-    return train_loader, val_loader
 
 
 class TrainerCore:
@@ -132,6 +110,30 @@ class TrainerCore:
         self.log_dir = os.path.join('../config/tb_runs/',
                                     f'{self.dataset}/{self.model}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         self.writer = SummaryWriter(log_dir=self.log_dir)
+
+    def create_dataloaders(self, bsz=1, debug=False, vis=False, Data=ROUGH):
+        # create dataset for LSS model training
+        train_ds, val_ds = compile_data(small_data=debug, vis=vis, Data=Data,
+                                        dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_cfg)
+
+        # create dataloaders: making sure all elemts in a batch are tensors
+        def collate_fn(batch):
+            def to_tensor(item):
+                if isinstance(item, np.ndarray):
+                    return torch.tensor(item)
+                elif isinstance(item, (list, tuple)):
+                    return [to_tensor(i) for i in item]
+                elif isinstance(item, dict):
+                    return {k: to_tensor(v) for k, v in item.items()}
+                return item  # Return as is if it's already a tensor or unsupported type
+
+            batch = [to_tensor(item) for item in batch]
+            return torch.utils.data.default_collate(batch)
+
+        train_loader = DataLoader(train_ds, batch_size=bsz, shuffle=True, collate_fn=collate_fn)
+        val_loader = DataLoader(val_ds, batch_size=bsz, shuffle=False, collate_fn=collate_fn)
+
+        return train_loader, val_loader
 
     def compute_losses(self, batch):
         loss_geom = torch.tensor(0.0, device=self.device)
@@ -347,13 +349,12 @@ class TrainerLSS(TrainerCore):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight, phys_weight)
         # create dataloaders
-        self.train_loader, self.val_loader = create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGH)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGH)
 
         # load models: terrain encoder
         self.terrain_encoder = LiftSplatShoot(self.lss_cfg['grid_conf'],
                                               self.lss_cfg['data_aug_conf']).from_pretrained(pretrained_model_path)
         self.terrain_encoder.to(self.device)
-        self.terrain_encoder.train()
 
         # define optimizer
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
@@ -381,12 +382,13 @@ class TrainerLSS(TrainerCore):
             loss_terrain = torch.tensor(0.0, device=self.device)
 
         # physics loss: difference between predicted and ground truth states
-        states_gt = [Xs, Xds, Rs, Omegas]
-        states_pred = self.predicts_states(terrain, pose0, controls)
-
         if self.phys_weight > 0:
+            # predict trajectory
+            states_gt = [Xs, Xds, Rs, Omegas]
+            states_pred = self.predicts_states(terrain, pose0, controls)
+            # compute physics loss
             loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
-                                          pred_ts=control_ts, gt_ts=traj_ts)
+                                     pred_ts=control_ts, gt_ts=traj_ts)
         else:
             loss_phys = torch.tensor(0.0, device=self.device)
 
@@ -435,7 +437,7 @@ class TrainerBEVFusion(TrainerCore):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight, phys_weight)
         # create dataloaders
-        self.train_loader, self.val_loader = create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Fusion)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Fusion)
 
         # load models: terrain encoder
         self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
@@ -523,7 +525,7 @@ class TrainerLidarBEV(TrainerCore):
             super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                              geom_weight, terrain_weight, phys_weight)
             # create dataloaders
-            self.train_loader, self.val_loader = create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
+            self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
 
             # load models: terrain encoder
             self.terrain_encoder = LidarBEV(grid_conf=self.lss_cfg['grid_conf'],
@@ -598,6 +600,7 @@ def main():
 
     # load configs: DPhys and LSS (terrain encoder)
     dphys_cfg = DPhysConfig(robot=args.robot)
+    dphys_cfg.traj_sim_time = args.traj_sim_time
     lss_config_path = args.lss_cfg_path
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path
     lss_cfg = read_yaml(lss_config_path)
