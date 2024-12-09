@@ -168,20 +168,24 @@ class DPhysConfig:
         cog = x_points.mean(dim=0)
         if robot in ['tradr', 'tradr2']:
             # divide the point cloud into left and right parts
-            mask_l = x_points[..., 1] > (cog[1] + s_y / 4.)
-            mask_r = x_points[..., 1] < (cog[1] - s_y / 4.)
+            mask_l = (x_points[..., 1] > (cog[1] + s_y / 4.)) & (x_points[..., 2] < cog[2])
+            mask_r = (x_points[..., 1] < (cog[1] - s_y / 4.)) & (x_points[..., 2] < cog[2])
             # driving parts: left and right tracks
             driving_parts = [mask_l, mask_r]
         elif robot in ['marv', 'husky', 'husky_oru']:
             # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
-            mask_fl = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
-                                        x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_fr = torch.logical_and(x_points[..., 0] > (cog[0] + s_x / 8.),
-                                        x_points[..., 1] < (cog[1] - s_y / 3.))
-            mask_rl = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
-                                        x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_rr = torch.logical_and(x_points[..., 0] < (cog[0] - s_x / 8.),
-                                        x_points[..., 1] < (cog[1] - s_y / 3.))
+            mask_fl = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
+                      (x_points[..., 1] > (cog[1] + s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
+            mask_fr = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
+                      (x_points[..., 1] < (cog[1] - s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
+            mask_rl = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
+                      (x_points[..., 1] > (cog[1] + s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
+            mask_rr = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
+                      (x_points[..., 1] < (cog[1] - s_y / 3.)) & \
+                      (x_points[..., 2] < cog[2])
             # driving parts: front left, front right, rear left, rear right flippers / wheels
             driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
         else:

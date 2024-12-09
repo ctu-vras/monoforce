@@ -133,18 +133,16 @@ def optimize_terrain():
 
 def optimize_terrain_heads():
     from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-    from monoforce.utils import read_yaml
+    from monoforce.utils import read_yaml, explore_data
 
-    n_iters = 100
+    n_iters = 40
     vis_step = 10
     vis = True
     device = torch.device('cuda')
-    torch.manual_seed(42)
-    np.random.seed(42)
 
     dphys_cfg = DPhysConfig()
     dphys_cfg.traj_sim_time = 2.0
-    path = rough_seq_paths[0]
+    path = rough_seq_paths[2]
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
 
     # load the dataset
@@ -157,7 +155,10 @@ def optimize_terrain_heads():
     dphysics = DPhysics(dphys_cfg, device=device)
 
     # get a sample from the dataset
-    sample_i = 79
+    # sample_i = 270
+    sample_i = np.random.choice(len(ds))
+    print(f'Sample index: {sample_i}')
+    explore_data(ds, sample_range=[sample_i])
     batch = [s[None] for s in ds[sample_i]]
     # loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
     # batch = next(iter(loader))
@@ -183,34 +184,33 @@ def optimize_terrain_heads():
     lss.bevencode.up_friction.train()
     lss.bevencode.up_geom.train()
     optimizer = torch.optim.Adam([{'params': lss.bevencode.up_friction.parameters(), 'lr': 1e-3},
-                                  {'params': lss.bevencode.up_geom.parameters(), 'lr': 1e-3}])
-
-    for name, param in lss.named_parameters():
-        if param.requires_grad:
-            print(name)
+                                  {'params': lss.bevencode.up_geom.parameters(), 'lr': 1e-4}])
+    # for name, param in lss.named_parameters():
+    #     if param.requires_grad:
+    #         print(name)
 
     losses = []
     img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+    states_gt = [X, Xd, R, Omega]
     fig, ax = plt.subplots(2, 3, figsize=(15, 10))
     for i in range(n_iters):
         optimizer.zero_grad()
 
         terrain = lss(*img_inputs)
         z_grid = terrain['geom'].squeeze(1)
-        # print(f'Heightmap mean: {z_grid.mean().item()}')
         friction = terrain['friction'].squeeze(1)
-        # print(f'Friction mean: {friction.mean().item()}')
         states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)
         X_pred, Xd_pred, R_pred, Omega_pred = states_pred
 
         # compute the loss as the mean squared error between the predicted and ground truth poses
-        loss = physics_loss(states_pred=[X_pred], states_gt=[X], pred_ts=control_ts, gt_ts=traj_ts, gamma=0.)
+        loss = physics_loss(states_pred=states_pred, states_gt=states_gt, pred_ts=control_ts, gt_ts=traj_ts,
+                            gamma=1., rotation_loss=True)
         loss.backward()
         optimizer.step()
         print(f'Iteration {i}, Loss: {loss.item()}')
         losses.append(loss.item())
 
-        if i % vis_step == 0:
+        if i % vis_step == 0 or i == n_iters - 1:
             with torch.no_grad():
                 for axis in ax.flatten():
                     axis.clear()
@@ -235,7 +235,7 @@ def optimize_terrain_heads():
                 ax[0, 1].set_ylabel('Y [m]')
                 ax[0, 1].grid()
                 ax[0, 1].axis('equal')
-                plt.legend()
+                ax[0, 1].legend()
 
                 ax[0, 2].set_title('Control inputs: V(t) and W(t)')
                 ax[0, 2].plot(control_ts[batch_i].cpu().numpy(), controls[batch_i, :, 0].cpu().numpy(), '.b', label='V')
@@ -285,10 +285,6 @@ def optimize_terrain_heads():
                 plt.savefig(f'./gen/terrain_optimization/iter_{i:04d}.png')
 
     if vis:
-        # save terrain
-        np.save('./gen/terrain_optimization/z_grid.npy', z_grid.detach().cpu().numpy())
-        np.save('./gen/terrain_optimization/friction.npy', friction.detach().cpu().numpy())
-
         plt.show()
         visualize(states_pred, dphys_cfg.robot_points, forces_pred,
                   dphys_cfg.x_grid[None], dphys_cfg.y_grid[None], z_grid, [X])
