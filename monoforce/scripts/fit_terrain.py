@@ -292,15 +292,13 @@ def optimize_terrain_heads():
 
 def optimize_model():
     from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-    from monoforce.utils import read_yaml
+    from monoforce.utils import read_yaml, explore_data
 
     vis = True
     device = torch.device('cuda')
-    torch.manual_seed(42)
-    np.random.seed(42)
 
     dphys_cfg = DPhysConfig()
-    dphys_cfg.traj_sim_time = 1.0
+    dphys_cfg.traj_sim_time = 2.0
     path = rough_seq_paths[0]
     lss_cfg = read_yaml('../config/lss_cfg.yaml')
 
@@ -316,6 +314,7 @@ def optimize_model():
 
     # get a sample from the dataset
     sample_i = 79
+    explore_data(ds, sample_range=[sample_i])
     batch = [s[None] for s in ds[sample_i]]
     # loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
     # batch = next(iter(loader))
@@ -330,12 +329,13 @@ def optimize_model():
 
     # optimize the model parameters
     lss.train()
-    optimizer = torch.optim.Adam(lss.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(lss.parameters(), lr=1e-5)
 
-    n_iters = 100
+    n_iters = 40
     losses = []
 
     img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+    states_gt = [X, Xd, R, Omega]
     for i in range(n_iters):
         optimizer.zero_grad()
 
@@ -343,12 +343,11 @@ def optimize_model():
         terrain = lss(*img_inputs)
         z_grid = terrain['geom'].squeeze(1)
         friction = terrain['friction'].squeeze(1)
-        states, forces = dphysics(z_grid=z_grid, controls=controls, friction=friction)
+        states_pred, forces_pred = dphysics(z_grid=z_grid, controls=controls, friction=friction)
 
         # compute the loss as the mean squared error between the predicted and ground truth poses
-        X_pred = states[0]
-        loss = physics_loss(states_pred=[X_pred], states_gt=[X], pred_ts=control_ts, gt_ts=traj_ts)
-
+        loss = physics_loss(states_pred=states_pred, states_gt=states_gt, pred_ts=control_ts, gt_ts=traj_ts,
+                            gamma=1., rotation_loss=False)
         # backward pass
         loss.backward()
         optimizer.step()
@@ -364,15 +363,15 @@ def optimize_model():
     plt.show()
 
     if vis:
-        visualize(states=states, x_points=dphysics.x_points, forces=forces,
+        visualize(states=states_pred, x_points=dphysics.x_points, forces=forces_pred,
                   x_grid=dphys_cfg.x_grid[None],
                   y_grid=dphys_cfg.y_grid[None], z_grid=z_grid, states_gt=[X])
 
 
 def main():
     # optimize_terrain()
-    optimize_terrain_heads()
-    # optimize_model()
+    # optimize_terrain_heads()
+    optimize_model()
 
 
 if __name__ == '__main__':
