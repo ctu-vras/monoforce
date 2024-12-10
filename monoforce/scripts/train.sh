@@ -2,9 +2,9 @@
 
 MODEL=lss  # lss, lidarbev, bevfusion
 ROBOT=marv
-DEBUG=True
+DEBUG=False
 VIS=False
-BSZ=4  # 32, 32, 8
+BSZ=32  # 32, 32, 8
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/${MODEL}/val.pth
 
 source $HOME/workspaces/traversability_ws/devel/setup.bash

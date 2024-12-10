@@ -178,8 +178,8 @@ def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None, dphys
         # concatenate datasets
         train_ds = ConcatDataset(train_datasets)
         val_ds = ConcatDataset(val_datasets)
-        ids = [79]
-        # ids = np.random.choice(len(train_ds), 4, replace=False).tolist()
+        # ids = [79]
+        ids = np.random.choice(len(train_ds), 4, replace=False).tolist()
         train_ds = Subset(train_ds, ids)
         val_ds = Subset(val_ds, ids)
     print('Concatenated datasets length: train %i, valid: %i' % (len(train_ds), len(val_ds)))
