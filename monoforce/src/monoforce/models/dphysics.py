@@ -170,16 +170,17 @@ class DPhysics(torch.nn.Module):
         assert in_contact.shape == (B, n_pts, 1)
 
         # reaction at the contact points as spring-damper forces
+        m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         xd_points_n = (xd_points * n).sum(dim=2).unsqueeze(2)  # normal velocity
         assert xd_points_n.shape == (B, n_pts, 1)
         F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
         F_spring = torch.mul(F_spring, in_contact) / n_pts  # apply forces only at the contact points
+        F_spring = torch.clamp(F_spring, min=-m*g, max=m*g)
         assert F_spring.shape == (B, n_pts, 3)
 
         # static and dynamic friction forces: https://en.wikipedia.org/wiki/Friction
         thrust_dir = normalized(R[..., 0])  # direction of the thrust
         N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
-        m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         track_vels = vw_to_track_vels(v=controls_t[:, 0], w=controls_t[:, 1],
                                       robot_size=self.dphys_cfg.robot_size, n_tracks=len(self.dphys_cfg.driving_parts))
         assert track_vels.shape == (B, len(self.dphys_cfg.driving_parts))
@@ -195,6 +196,7 @@ class DPhysics(torch.nn.Module):
         vels_diff_tau = vels_diff - vels_diff_n * n  # tangential velocity difference
         F_friction = N.unsqueeze(2) * vels_diff_tau  # F_f = mu * N * v
         # F_friction = N.unsqueeze(2) * vels_diff
+        F_friction = torch.clamp(F_friction, min=-m*g, max=m*g)
         assert F_friction.shape == (B, n_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)

@@ -99,7 +99,7 @@ def hm_loss(height_pred, height_gt, weights=None, h_max=None):
     return loss
 
 
-def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0., rotation_loss=False):
+def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0.9, rotation_loss=False):
     """
     Compute the physics loss between predicted and ground truth states.
     :param states_pred: predicted states [N x T1 x 3]

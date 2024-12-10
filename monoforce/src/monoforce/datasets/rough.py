@@ -238,6 +238,7 @@ class ROUGH(Dataset):
             # repeat the last pose to fill the trajectory
             poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
             stamps = np.concatenate([stamps, stamps[-1] + np.arange(1, n_frames - len(stamps) + 1) * dt], axis=0)
+            assert len(poses) == n_frames, f'Poses and stamps have different lengths {len(poses)} != {n_frames}'
         # truncate the trajectory
         poses = poses[:n_frames]
         stamps = stamps[:n_frames]
