@@ -27,11 +27,10 @@ catkin build
 ### Model Weights
 
 The pretrained weights for the terrain encoder are available at:
-[]().
+[https://github.com/ctu-vras/monoforce/releases/download/v0.1.1/weights.zip](https://github.com/ctu-vras/monoforce/releases/download/v0.1.1/weights.zip).
 
-Once downloaded, please, put the weights to 
-`monoforce/config/weights/${MODEL_NAME}` folder,
-where `${MODEL_NAME}` is the name is one of the models: `lss, lidarbev, bevfusion`.
+Once downloaded, please, unzip the weights to the
+`monoforce/config/weights/` folder.
 
 ## Docker
 
