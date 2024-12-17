@@ -25,7 +25,7 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 0.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
@@ -44,14 +44,12 @@ def motion():
     # heightmap defining the terrain
     x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
     # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
-    # z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    z_grid = torch.zeros_like(x_grid)
-    # z_grid = torch.from_numpy(np.load('./gen/terrain_optimization/z_grid.npy'))
-    z_grid[80:81, 0:100] = 1.0  # add a wall
+    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
+    # z_grid = torch.zeros_like(x_grid)
+    # z_grid[80:81, 0:100] = 1.0  # add a wall
 
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     friction = dphys_cfg.friction
-    # friction = torch.from_numpy(np.load('./gen/terrain_optimization/friction.npy'))
     friction = friction.to(device)
 
     # repeat the heightmap for each rigid body
@@ -201,7 +199,7 @@ def shoot_multiple():
     # simulate the rigid body dynamics
     with torch.no_grad():
         t0 = time()
-        states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0)
+        states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0, vis=False)
         t1 = time()
         Xs, Xds, Rs, Omegas = states
         print(f'Simulation took {(t1-t0):.3f} [sec] on device: {device}')

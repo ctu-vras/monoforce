@@ -16,6 +16,7 @@ from monoforce.transformations import transform_cloud, position
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv
+from monoforce.losses import physics_loss, hm_loss
 import matplotlib as mpl
 
 
@@ -80,45 +81,6 @@ class Evaluation:
         # self.ds = Fusion(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
         self.loader = torch.utils.data.DataLoader(self.ds, batch_size=1, shuffle=False)
 
-    def hm_loss(self, height_pred, height_gt, weights=None):
-        assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
-        if weights is None:
-            weights = torch.ones_like(height_gt)
-        assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
-
-        # remove nan values
-        mask_valid = ~torch.isnan(height_gt)
-        height_gt = height_gt[mask_valid]
-        height_pred = height_pred[mask_valid]
-        weights = weights[mask_valid]
-
-        # compute weighted loss
-        loss = torch.nn.functional.mse_loss(height_pred * weights, height_gt * weights, reduction='mean')
-        assert not torch.isnan(loss), 'Terrain Loss is nan'
-
-        return loss
-
-    def physics_loss(self, states_pred, states_gt, pred_ts, gt_ts):
-        # unpack the states
-        X, Xd, R, Omega = states_gt
-        X_pred, Xd_pred, R_pred, Omega_pred = states_pred
-
-        # find the closest timesteps in the trajectory to the ground truth timesteps
-        ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
-
-        # get the predicted states at the closest timesteps to the ground truth timesteps
-        batch_size = X.shape[0]
-        X_pred_gt_ts = X_pred[torch.arange(batch_size).unsqueeze(1), ts_ids]
-
-        # remove nan values
-        mask_valid = ~torch.isnan(X_pred_gt_ts)
-        X_pred_gt_ts = X_pred_gt_ts[mask_valid]
-        X = X[mask_valid]
-        loss = torch.nn.functional.mse_loss(X_pred_gt_ts, X)
-        assert not torch.isnan(loss), 'Physics Loss is nan'
-
-        return loss
-
     def run(self, vis=False, save=False):
         if save:
             # create output folder
@@ -168,12 +130,12 @@ class Evaluation:
                 # friction_pred = torch.ones_like(terrain_pred)
 
                 # evaluation losses
-                terrain_loss = self.hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0])
+                loss_terrain = hm_loss(height_pred=terrain_pred[0, 0], height_gt=hm_terrain[0, 0], weights=hm_terrain[0, 1])
                 states_gt = [Xs, Xds, Rs, Omegas]
                 state0 = tuple([s[:, 0] for s in states_gt])
                 states_pred, _ = self.dphysics(z_grid=terrain_pred.squeeze(1), state=state0,
                                                controls=controls, friction=friction_pred.squeeze(1))
-                physics_loss = self.physics_loss(states_pred, states_gt, pred_ts=control_ts, gt_ts=traj_ts)
+                loss_physics = physics_loss(states_pred=states_pred, states_gt=states_gt, pred_ts=control_ts, gt_ts=traj_ts)
 
                 # visualizations
                 terrain_pred = terrain_pred[0, 0].cpu()
@@ -187,7 +149,7 @@ class Evaluation:
                 # hm_points = hm_points[:, terrain_mask]
 
                 plt.clf()
-                plt.suptitle(f'Terrain Loss: {terrain_loss.item():.4f}, Physics Loss: {physics_loss.item():.4f}')
+                plt.suptitle(f'Terrain Loss: {loss_terrain.item():.4f}, Physics Loss: {loss_physics.item():.4f}')
                 for imgi, img in enumerate(imgs[0]):
                     cam_pts = ego_to_cam(hm_points, rots[0, imgi], trans[0, imgi], intrins[0, imgi])
                     mask = get_only_in_img_mask(cam_pts, H, W)
@@ -251,7 +213,7 @@ class Evaluation:
                 if save:
                     plt.savefig(f'{self.output_folder}/{i:04d}.png')
                     append_to_csv(f'{self.output_folder}/losses.csv',
-                                  f'{i:04d}.png, {terrain_loss.item():.4f},{physics_loss.item():.4f}\n')
+                                  f'{i:04d}.png, {loss_terrain.item():.4f},{loss_physics.item():.4f}\n')
 
             plt.close(fig)
 

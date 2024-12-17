@@ -50,11 +50,7 @@ Colored point cloud            |            Front-facing camera            |    
 ![](./imgs/rgb_cloud.png) | ![](./imgs/camera_fisheye_front.png) | ![](./imgs/camera_up.png)
 
 To explore the data, please follow the tutorial
-at [../examples/explore_data_rgb_rigid_terrain.ipynb](../examples/explore_data_rgb_rigid_terrain.ipynb)
-or run the module:
-```commandline
-python -m monoforce.datasets.rough
-```
+at [../examples/explore_data_rgb_rigid_terrain.ipynb](../examples/explore_data_rgb_rigid_terrain.ipynb).
 
 ### Data Sample
 

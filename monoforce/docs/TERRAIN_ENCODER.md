@@ -19,11 +19,3 @@ To train the LSS model, please run:
 cd scripts/
 python train
 ```
-
-### Weights
-
-The pretrained weights for the LSS terrain encoder can be downloaded from
-[Google Drive](https://drive.google.com/drive/folders/1n0KoUEQ0FIznf-qMKshk0C956CJenIhd?usp=sharing).
-
-Once downloaded put the weights to
-`monoforce/monoforce/config/weights/lss` folder.

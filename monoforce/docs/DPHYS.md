@@ -6,9 +6,9 @@ Run the differentiable physics simulation with a robot model and the provided da
 python scripts/robot_control
 ```
 
-![](./imgs/hm_learning.gif)
-
 Terrain properties optimization from the ground-truth trajectories followed by the robot:
 ```commandline
 python scripts/fit_terrain
 ```
+
+![](./imgs/hm_learning.gif)
