@@ -195,7 +195,6 @@ class DPhysics(torch.nn.Module):
         vels_diff_n = (vels_diff * n).sum(dim=2).unsqueeze(2)  # normal velocity difference
         vels_diff_tau = vels_diff - vels_diff_n * n  # tangential velocity difference
         F_friction = N.unsqueeze(2) * vels_diff_tau  # F_f = mu * N * v
-        # F_friction = N.unsqueeze(2) * vels_diff
         F_friction = torch.clamp(F_friction, min=-m*g, max=m*g)
         assert F_friction.shape == (B, n_pts, 3)
 
@@ -229,7 +228,6 @@ class DPhysics(torch.nn.Module):
         xd = self.integration_step(xd, xdd, dt, mode=self.dphys_cfg.integration_mode)
         x = self.integration_step(x, xd, dt, mode=self.dphys_cfg.integration_mode)
         omega = self.integration_step(omega, omega_d, dt, mode=self.dphys_cfg.integration_mode)
-        # R = self.integration_step(R, dR, dt, mode=self.dphys_cfg.integration_mode)
         R = self.integrate_rotation(R, omega, dt)
 
         state = (x, xd, R, omega)
@@ -498,8 +496,9 @@ class DPhysics(torch.nn.Module):
         Xs, Xds, Rs, Omegas, F_springs, F_frictions = self.integrator(state)
 
         # mg = k * delta_h, at equilibrium, delta_h = mg / k
-        delta_h = self.dphys_cfg.robot_mass * self.dphys_cfg.gravity / self.stiffness.mean()
-        Xs[..., 2] = Xs[..., 2] + delta_h.abs()  # add the equilibrium height
+        delta_h = self.dphys_cfg.robot_mass * self.dphys_cfg.gravity / (self.stiffness.mean() + 1e-6)
+        # add the equilibrium height to the robot points along the z-axis of the robot
+        Xs = Xs + Rs[:, :, :3, 2] * delta_h
 
         States = Xs, Xds, Rs, Omegas
         Forces = F_springs, F_frictions
