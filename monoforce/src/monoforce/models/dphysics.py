@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torchdiffeq import odeint, odeint_adjoint
 from ..dphys_config import DPhysConfig
@@ -117,6 +118,8 @@ class DPhysics(torch.nn.Module):
         self.stiffness = None
         self.damping = None
         self.controls = None
+        self.joint_angles = None
+
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         self.ts = torch.linspace(0, T, int(T / dt)).to(self.device)
 
@@ -129,54 +132,60 @@ class DPhysics(torch.nn.Module):
         assert xd.dim() == 2 and xd.shape[1] == 3  # (B, 3)
         assert R.dim() == 3 and R.shape[-2:] == (3, 3)  # (B, 3, 3)
         assert omega.dim() == 2 and omega.shape[1] == 3  # (B, 3)
-
-        x_points = self.x_points @ R.transpose(1, 2) + x.unsqueeze(1)
-        assert x_points.dim() == 3 and x_points.shape[-1] == 3  # (B, N, 3)
-        B, n_pts, D = x_points.shape
-
-        # motion of point composed of cog motion and rotation of the rigid body
-        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
-        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
-        assert xd_points.shape == (B, n_pts, 3)
-
-        for p in self.dphys_cfg.driving_parts:
-            assert p.dim() == 1 and p.shape[0] == x_points.shape[1]  # (N,)
+        B = x.shape[0]
+        N_pts = len(self.dphys_cfg.robot_points)
 
         # closest time step in the control inputs
         t_id = torch.argmin(torch.abs(t - self.ts))
         controls_t = self.controls[:, t_id]
-        assert controls_t.dim() == 2 and controls_t.shape[0] == x.shape[0]  # (B, 2)
+        assert controls_t.shape == (B, 2)
         assert controls_t.shape[1] == 2  # linear and angular velocities
+        joint_angles_t = self.joint_angles[:, t_id]
+        assert joint_angles_t.shape == (B, 4)
         assert self.z_grid.dim() == 3  # (B, H, W)
+
+        # update the robot body points based on the joint angles
+        x_points = self.update_joints(joint_angles_t)
+        assert x_points.shape == (B, N_pts, 3)
+        # motion of point composed of cog motion and rotation of the rigid body
+        x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
+
+        # motion of point composed of cog motion and rotation of the rigid body
+        # Koenig's theorem in mechanics: v_i = v_cog + omega x (r_i - r_cog)
+        xd_points = xd.unsqueeze(1) + torch.linalg.cross(omega.unsqueeze(1), x_points - x.unsqueeze(1))
+        assert xd_points.shape == (B, N_pts, 3)
+
+        for p in self.dphys_cfg.driving_parts:
+            assert p.dim() == 1 and p.shape[0] == x_points.shape[1]  # (N,)
 
         # compute the terrain properties at the robot points
         z_points, n = self.interpolate_grid(self.z_grid, x_points[..., 0], x_points[..., 1], return_normals=True)
         z_points = z_points.unsqueeze(-1)
-        assert z_points.shape == (B, n_pts, 1)
-        assert n.shape == (B, n_pts, 3)
+        assert z_points.shape == (B, N_pts, 1)
+        assert n.shape == (B, N_pts, 3)
 
         stiffness_points = self.interpolate_grid(self.stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-        assert stiffness_points.shape == (B, n_pts, 1)
+        assert stiffness_points.shape == (B, N_pts, 1)
         damping_points = self.interpolate_grid(self.damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-        assert damping_points.shape == (B, n_pts, 1)
+        assert damping_points.shape == (B, N_pts, 1)
         friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-        assert friction_points.shape == (B, n_pts, 1)
+        assert friction_points.shape == (B, N_pts, 1)
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
         # in_contact = dh_points < 0.
         # soft contact model
         in_contact = torch.sigmoid(-10. * dh_points)
-        assert in_contact.shape == (B, n_pts, 1)
+        assert in_contact.shape == (B, N_pts, 1)
 
         # reaction at the contact points as spring-damper forces
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         xd_points_n = (xd_points * n).sum(dim=2).unsqueeze(2)  # normal velocity
-        assert xd_points_n.shape == (B, n_pts, 1)
+        assert xd_points_n.shape == (B, N_pts, 1)
         F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
-        F_spring = torch.mul(F_spring, in_contact) / n_pts  # apply forces only at the contact points
+        F_spring = torch.mul(F_spring, in_contact) / N_pts  # apply forces only at the contact points
         F_spring = torch.clamp(F_spring, min=-m*g, max=m*g)
-        assert F_spring.shape == (B, n_pts, 3)
+        assert F_spring.shape == (B, N_pts, 3)
 
         # static and dynamic friction forces: https://en.wikipedia.org/wiki/Friction
         thrust_dir = normalized(R[..., 0])  # direction of the thrust
@@ -196,7 +205,7 @@ class DPhysics(torch.nn.Module):
         vels_diff_tau = vels_diff - vels_diff_n * n  # tangential velocity difference
         F_friction = N.unsqueeze(2) * vels_diff_tau  # F_f = mu * N * v
         F_friction = torch.clamp(F_friction, min=-m*g, max=m*g)
-        assert F_friction.shape == (B, n_pts, 3)
+        assert F_friction.shape == (B, N_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
@@ -269,6 +278,35 @@ class DPhysics(torch.nn.Module):
         R_new = R @ (I + Omega_x_norm * torch.sin(theta * dt) + Omega_x_norm @ Omega_x_norm * (1 - torch.cos(theta * dt)))
 
         return R_new
+
+    def update_joints(self, joint_angles):
+        """
+        Rotate the driving parts according to the joint angles
+
+        Parameters:
+        - joint_angles: Joint angles, [fl, fr, rr, rl].
+        - joint_positions: Joint positions, [xyz_fl, xyz_fr, xyz_rl, xyz_rr], xyz.shape = (3,).
+        - x_points: Robot body points, (N, 3).
+        - driving_parts: List of driving parts, [[fl], [fr], [rr], [rl]].
+        """
+        B = joint_angles.shape[0]
+        x_points = self.dphys_cfg.robot_points.clone().to(self.device).unsqueeze(0).repeat(B, 1, 1)  # (B, N, 3)
+        driving_parts = self.dphys_cfg.driving_parts
+        joint_positions = list(self.dphys_cfg.joint_positions.values())
+        for i in range(len(driving_parts)):
+            # rotate around y-axis of the joint position
+            xyz = torch.as_tensor(joint_positions[i], dtype=x_points.dtype, device=self.device).unsqueeze(0)
+            angle = joint_angles[:, i]
+            R = torch.stack([torch.cos(angle), torch.zeros_like(angle), torch.sin(angle),
+                            torch.zeros_like(angle), torch.ones_like(angle), torch.zeros_like(angle),
+                            -torch.sin(angle), torch.zeros_like(angle), torch.cos(angle)], dim=1).view(B, 3, 3)
+            mask = driving_parts[i]
+            points = x_points[:, mask]
+            points = points - xyz.unsqueeze(1)
+            points = points @ R.transpose(1, 2)
+            points = points + xyz.unsqueeze(1)
+            x_points[:, mask] = points
+        return x_points
 
     @staticmethod
     def integration_step(x, xd, dt, mode='euler'):
@@ -440,13 +478,14 @@ class DPhysics(torch.nn.Module):
 
         return Xs, Xds, Rs, Omegas, F_springs, F_frictions
 
-    def dphysics(self, z_grid, controls, state=None, stiffness=None, damping=None, friction=None):
+    def dphysics(self, z_grid, controls, joint_angles=None, state=None, stiffness=None, damping=None, friction=None):
         """
         Simulates the dynamics of the robot moving on the terrain.
 
         Parameters:
         - z_grid: Tensor of the height map (B, H, W).
         - controls: Tensor of control inputs (B, N, 2).
+        - joint_angles: Tensor of joint angles (B, N, 4).
         - state: Tuple of the robot state (x, xd, R, omega).
         - stiffness: scalar or Tensor of the stiffness values at the robot points (B, H, W).
         - damping: scalar or Tensor of the damping values at the robot points (B, H, W).
@@ -488,8 +527,12 @@ class DPhysics(torch.nn.Module):
 
         N_ts = min(int(T / dt), controls.shape[1])
         B = state[0].shape[0]
-        assert controls.shape == (B, N_ts, 2), f'Its shape {controls.shape} != {(B, N_ts, 2)}'  # (B, N, 2), v, w
+        assert controls.shape == (B, N_ts, 2), f'Controls shape {controls.shape} != {(B, N_ts, 2)}'  # (B, N, 2), v, w
         self.controls = controls
+        if joint_angles is None:
+            joint_angles = torch.zeros((B, N_ts, 4), device=self.device)
+        assert joint_angles.shape == (B, N_ts, 4), f'Joint angles shape {joint_angles.shape} != {(B, N_ts, 4)}'  # (B, N, 4), [fr, fl, rr, rl]
+        self.joint_angles = joint_angles
         self.ts = self.ts[:N_ts]
 
         # dynamics of the rigid body
@@ -505,38 +548,51 @@ class DPhysics(torch.nn.Module):
 
         return States, Forces
 
-    def forward(self, z_grid, controls, state=None, vis=False, stiffness=None, damping=None, friction=None):
-        states, forces = self.dphysics(z_grid, controls, state,
+    def forward(self, z_grid,
+                controls, joint_angles=None,
+                state=None, vis=False,
+                stiffness=None, damping=None, friction=None):
+        states, forces = self.dphysics(z_grid=z_grid,
+                                       controls=controls, joint_angles=joint_angles, state=state,
                                        stiffness=stiffness, damping=damping, friction=friction)
         if vis:
             with torch.no_grad():
-                self.visualize(states, forces, z_grid, friction=friction)
+                self.visualize(states, z_grid)
         return states, forces
 
-    def visualize(self, states, forces, z_grid, friction=None, step=10, batch_i=0):
+    def visualize(self, states, z_grid):
         # visualize using mayavi
-        from monoforce.vis import setup_visualization, animate_trajectory
+        from mayavi import mlab
+        import os
 
-        xs, xds, rs, omegas = [s[batch_i].cpu().numpy() for s in states]
-        F_spring, F_friction = [f[batch_i].cpu().numpy() for f in forces]
+        batch_i = np.random.choice(z_grid.shape[0])
+        Xs, Xds, Rs, Omegas = [s.cpu().numpy() for s in states]
         x_grid_np, y_grid_np = self.dphys_cfg.x_grid.cpu().numpy(), self.dphys_cfg.y_grid.cpu().numpy()
         z_grid_np = z_grid[batch_i].cpu().numpy()
-        if friction is not None:
-            friction_np = friction[batch_i].cpu().numpy()
-        else:
-            friction_np = self.dphys_cfg.friction.cpu().numpy()
         x_points = self.dphys_cfg.robot_points.cpu().numpy()
 
         # set up the visualization
-        vis_cfg = setup_visualization(states=(xs, xds, rs, omegas),
-                                      x_points=x_points,
-                                      forces=(F_spring, F_friction),
-                                      x_grid=x_grid_np, y_grid=y_grid_np, z_grid=z_grid_np)
+        mlab.figure(size=(1500, 800))
+        mlab.plot3d(Xs[batch_i, :, 0], Xs[batch_i, :, 1], Xs[batch_i, :, 2], color=(0, 1, 0), line_width=2.0)
+        mlab.mesh(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8)
+        visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
+                                   scale_factor=0.05, color=(0, 0, 0))
+        # set view point
+        mlab.view(azimuth=95, elevation=80, distance=12.0, focalpoint=(0, 0, 0))
 
-        # visualize animated trajectory
-        animate_trajectory(states=(xs, xds, rs, omegas),
-                           x_points=x_points,
-                           forces=(F_spring, F_friction),
-                           z_grid=z_grid_np,
-                           friction=friction_np,
-                           vis_cfg=vis_cfg, step=step)
+        # animate robot's motion and forces
+        N_ts = Xs.shape[1]
+        frame_i = 0
+        for t in range(N_ts):
+            # update the robot body points based on the joint angles
+            joint_angles_t = self.joint_angles[batch_i, t][np.newaxis]
+            x_points = self.update_joints(joint_angles_t).squeeze(0).cpu().numpy()
+            # motion of point composed of cog motion and rotation of the rigid body
+            x_points_t = x_points @ Rs[batch_i, t].T + Xs[batch_i, t][np.newaxis]
+            visu_robot.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2])
+            if t % 10 == 0:
+                path = os.path.join(os.path.dirname(__file__), '../../../gen/robot_control')
+                os.makedirs(path, exist_ok=True)
+                mlab.savefig(f'{path}/{frame_i:04d}.png')
+                frame_i += 1
+        mlab.show()

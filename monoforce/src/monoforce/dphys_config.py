@@ -56,8 +56,6 @@ class DPhysConfig:
         else:
             raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
         self.robot_points, self.driving_parts, self.robot_size = self.robot_geometry(robot=robot)
-        if 'marv' in robot:
-            self.update_driving_parts()
         self.robot_I = self.inertia_tensor(self.robot_mass, self.robot_points)
 
         self.gravity = 9.81  # acceleration due to gravity, m/s^2
@@ -175,17 +173,13 @@ class DPhysConfig:
         elif robot in ['marv', 'husky', 'husky_oru']:
             # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
             mask_fl = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
-                      (x_points[..., 1] > (cog[1] + s_y / 3.)) & \
-                      (x_points[..., 2] < cog[2])
+                      (x_points[..., 1] > (cog[1] + s_y / 3.))
             mask_fr = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
-                      (x_points[..., 1] < (cog[1] - s_y / 3.)) & \
-                      (x_points[..., 2] < cog[2])
+                      (x_points[..., 1] < (cog[1] - s_y / 3.))
             mask_rl = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
-                      (x_points[..., 1] > (cog[1] + s_y / 3.)) & \
-                      (x_points[..., 2] < cog[2])
+                      (x_points[..., 1] > (cog[1] + s_y / 3.))
             mask_rr = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
-                      (x_points[..., 1] < (cog[1] - s_y / 3.)) & \
-                      (x_points[..., 2] < cog[2])
+                      (x_points[..., 1] < (cog[1] - s_y / 3.))
             # driving parts: front left, front right, rear left, rear right flippers / wheels
             driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
         else:
@@ -199,25 +193,6 @@ class DPhysConfig:
         driving_parts = [p for p in driving_parts]
 
         return x_points, driving_parts, robot_size
-
-    def update_driving_parts(self):
-        """
-        Update the driving parts according to the joint angles
-        """
-        assert self.robot in ['marv'], 'Only MARV is supported for now.'
-        # rotate driving parts according to joint angles
-        for i, (angle, xyz) in enumerate(zip(self.joint_angles.values(), self.joint_positions.values())):
-            # rotate around y-axis of the joint position
-            xyz = torch.tensor(xyz)
-            R = torch.tensor([[np.cos(angle), 0, np.sin(angle)],
-                              [0, 1, 0],
-                              [-np.sin(angle), 0, np.cos(angle)]]).float()
-            mask = self.driving_parts[i]
-            points = self.robot_points[mask]
-            points -= xyz
-            points = points @ R.T
-            points += xyz
-            self.robot_points[mask] = points
 
     def __str__(self):
         return str(self.__dict__)

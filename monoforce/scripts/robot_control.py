@@ -25,13 +25,26 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 1.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[1.0, 0.3]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
 
+    # joint angles: [theta_fl, theta_fr, theta_rl, theta_rr]
+    joint_angles = torch.stack([
+        # 1. * torch.ones((B, N_ts)),  # front left
+        # 1. * torch.ones((B, N_ts)),  # front right
+        # -1. * torch.ones((B, N_ts)),  # rear left
+        # -1. * torch.ones((B, N_ts)),  # rear right
+        torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # front left
+        torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # front right
+        -torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # rear left
+        -torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # rear right
+    ], dim=-1).to(device)
+    assert joint_angles.shape == (B, N_ts, 4), f'joint_angles shape: {joint_angles.shape}'
+
     # initial state
-    x = torch.tensor([[-0.2, 0.0, 0.2]], device=device).repeat(B, 1)
+    x = torch.tensor([[-1.0, 0.0, 0.0]], device=device).repeat(B, 1)
     assert x.shape == (B, 3)
     xd = torch.zeros_like(x)
     assert xd.shape == (B, 3)
@@ -47,6 +60,7 @@ def motion():
     z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
     # z_grid = torch.zeros_like(x_grid)
     # z_grid[80:81, 0:100] = 1.0  # add a wall
+    z_grid += 0.02 * torch.randn_like(z_grid)  # add noise
 
     x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
     friction = dphys_cfg.friction
@@ -64,7 +78,9 @@ def motion():
     assert friction.shape == (B, H, W)
 
     # simulate the rigid body dynamics
-    states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0,
+    states, forces = dphysics(z_grid=z_grid,
+                              controls=controls, joint_angles=joint_angles,
+                              state=state0,
                               friction=friction, vis=True)
 
 def motion_dataset():
