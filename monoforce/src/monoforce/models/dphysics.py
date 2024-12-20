@@ -334,6 +334,11 @@ class DPhysics(torch.nn.Module):
         """
         B = joint_angles.shape[0]
         x_points = self.dphys_cfg.robot_points.clone().to(self.device).unsqueeze(0).repeat(B, 1, 1)  # (B, N, 3)
+
+        # TODO: add support for other robots, not only marv
+        if self.dphys_cfg.robot != 'marv':
+            return x_points
+
         driving_parts = self.dphys_cfg.driving_parts
         joint_positions = list(self.dphys_cfg.joint_positions.values())
         for i in range(len(driving_parts)):
