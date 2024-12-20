@@ -32,14 +32,10 @@ def motion():
 
     # joint angles: [theta_fl, theta_fr, theta_rl, theta_rr]
     joint_angles = torch.stack([
-        # 1. * torch.ones((B, N_ts)),  # front left
-        # 1. * torch.ones((B, N_ts)),  # front right
-        # -1. * torch.ones((B, N_ts)),  # rear left
-        # -1. * torch.ones((B, N_ts)),  # rear right
-        torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # front left
-        torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # front right
-        -torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # rear left
-        -torch.linspace(-np.pi/2, np.pi/2, N_ts).repeat(B, 1),  # rear right
+        torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # front left
+        torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # front right
+        -torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # rear left
+        -torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # rear right
     ], dim=-1).to(device)
     assert joint_angles.shape == (B, N_ts, 4), f'joint_angles shape: {joint_angles.shape}'
 

@@ -104,36 +104,79 @@ def vw_to_track_vels(v, w, robot_size, n_tracks):
     return track_vels
 
 
+def inertia_tensor(mass, points):
+    """
+    Compute the inertia tensor for a rigid body represented by point masses.
+
+    Parameters:
+    mass (float): The total mass of the body.
+    points (array-like): A list or array of points (x, y, z) representing the mass distribution.
+                         Each point contributes equally to the total mass.
+
+    Returns:
+    torch.Tensor: A 3x3 inertia tensor matrix.
+    """
+    # Number of points
+    n_points = points.shape[0]
+
+    # Mass per point: assume uniform mass distribution
+    mass_per_point = mass / n_points
+
+    # Compute the inertia tensor components
+    Ixx = torch.sum(mass_per_point * (points[:, 1] ** 2 + points[:, 2] ** 2))
+    Iyy = torch.sum(mass_per_point * (points[:, 0] ** 2 + points[:, 2] ** 2))
+    Izz = torch.sum(mass_per_point * (points[:, 0] ** 2 + points[:, 1] ** 2))
+    Ixy = -torch.sum(mass_per_point * points[:, 0] * points[:, 1])
+    Ixz = -torch.sum(mass_per_point * points[:, 0] * points[:, 2])
+    Iyz = -torch.sum(mass_per_point * points[:, 1] * points[:, 2])
+
+    # Construct the inertia tensor matrix
+    I = torch.tensor([
+        [Ixx, Ixy, Ixz],
+        [Ixy, Iyy, Iyz],
+        [Ixz, Iyz, Izz]
+    ])
+
+    return I
+
+
 class DPhysics(torch.nn.Module):
     def __init__(self, dphys_cfg=DPhysConfig(), device='cpu'):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
         self.device = device
-        self.I = self.dphys_cfg.robot_I.to(self.device)  # 3x3 inertia tensor, kg*m^2
-        self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
         self.x_points = self.dphys_cfg.robot_points.to(self.device)  # robot body points
-        
+
+        # 3x3 inertia tensor, kg*m^2
+        self.I = inertia_tensor(mass=self.dphys_cfg.robot_mass, points=self.x_points).to(self.device)
+        self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
+
+        # terrain properties: heightmap, stiffness, damping, friction
         self.z_grid = None
         self.friction = None
         self.stiffness = None
         self.damping = None
+
+        # control inputs and joint angles
         self.controls = None
         self.joint_angles = None
 
+        # simulation (prediction) parameters: time horizon and step size
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
         self.ts = torch.linspace(0, T, int(T / dt)).to(self.device)
 
+        # integration method: odeint or custom
         self.integrator = self.dynamics_odeint if self.dphys_cfg.use_odeint else self.dynamics
 
     def forward_kinematics(self, t, state):
         # unpack state
         x, xd, R, omega = state
-        assert x.dim() == 2 and x.shape[1] == 3  # (B, 3)
-        assert xd.dim() == 2 and xd.shape[1] == 3  # (B, 3)
-        assert R.dim() == 3 and R.shape[-2:] == (3, 3)  # (B, 3, 3)
-        assert omega.dim() == 2 and omega.shape[1] == 3  # (B, 3)
         B = x.shape[0]
-        N_pts = len(self.dphys_cfg.robot_points)
+        N_pts = self.x_points.shape[0]
+        assert x.shape == (B, 3)
+        assert xd.shape == (B, 3)
+        assert R.shape == (B, 3, 3)
+        assert omega.shape == (B, 3)
 
         # closest time step in the control inputs
         t_id = torch.argmin(torch.abs(t - self.ts))

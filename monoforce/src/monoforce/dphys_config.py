@@ -5,6 +5,75 @@ import os
 import open3d as o3d
 
 
+def get_points_from_robot_mesh(robot, voxel_size=0.1, return_mesh=False):
+    """
+    Returns the point cloud as vertices of the robot mesh.
+
+    Parameters:
+    - robot: Name of the robot.
+    - voxel_size: Voxel size for downsampling the point cloud.
+    - return_mesh: Whether to return the mesh object as well.
+
+    Returns:
+    - Point cloud as vertices of the robot mesh.
+    """
+    if 'tradr' in robot:
+        robot = 'tradr'
+    elif 'marv' in robot:
+        robot = 'marv'
+    mesh_path = os.path.join(os.path.dirname(__file__), f'../../config/meshes/{robot}.obj')
+    assert os.path.exists(mesh_path), f'Mesh file {mesh_path} does not exist.'
+    mesh = o3d.io.read_triangle_mesh(mesh_path)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = mesh.vertices
+    if voxel_size:
+        pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+    x_points = torch.as_tensor(np.asarray(pcd.points), dtype=torch.float32)
+    if return_mesh:
+        return x_points, mesh
+
+    return x_points
+
+
+def robot_geometry(robot):
+    """
+    Returns the parameters of the rigid body.
+    """
+    x_points = get_points_from_robot_mesh(robot)
+    s_x, s_y = x_points[:, 0].max() - x_points[:, 0].min(), x_points[:, 1].max() - x_points[:, 1].min()
+
+    cog = x_points.mean(dim=0)
+    if robot in ['tradr', 'tradr2']:
+        # divide the point cloud into left and right parts
+        mask_l = (x_points[..., 1] > (cog[1] + s_y / 4.)) & (x_points[..., 2] < cog[2])
+        mask_r = (x_points[..., 1] < (cog[1] - s_y / 4.)) & (x_points[..., 2] < cog[2])
+        # driving parts: left and right tracks
+        driving_parts = [mask_l, mask_r]
+    elif robot in ['marv', 'husky', 'husky_oru']:
+        # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
+        mask_fl = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
+                  (x_points[..., 1] > (cog[1] + s_y / 3.))
+        mask_fr = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
+                  (x_points[..., 1] < (cog[1] - s_y / 3.))
+        mask_rl = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
+                  (x_points[..., 1] > (cog[1] + s_y / 3.))
+        mask_rr = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
+                  (x_points[..., 1] < (cog[1] - s_y / 3.))
+        # driving parts: front left, front right, rear left, rear right flippers / wheels
+        driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
+    else:
+        raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
+
+    # robot size
+    robot_size = (s_x, s_y)
+
+    # put tensors on the device
+    x_points = x_points
+    driving_parts = [p for p in driving_parts]
+
+    return x_points, driving_parts, robot_size
+
+
 class DPhysConfig:
     def __init__(self, robot='marv'):
         # robot parameters
@@ -55,8 +124,7 @@ class DPhysConfig:
             }
         else:
             raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
-        self.robot_points, self.driving_parts, self.robot_size = self.robot_geometry(robot=robot)
-        self.robot_I = self.inertia_tensor(self.robot_mass, self.robot_points)
+        self.robot_points, self.driving_parts, self.robot_size = robot_geometry(robot=robot)
 
         self.gravity = 9.81  # acceleration due to gravity, m/s^2
         self.gravity_direction = torch.tensor([0., 0., -1.])  # gravity direction in the world frame
@@ -83,116 +151,6 @@ class DPhysConfig:
 
         # using odeint for integration or not, from torchdiffeq: https://github.com/rtqichen/torchdiffeq
         self.use_odeint = True
-
-    def inertia_tensor(self, mass, points):
-        """
-        Compute the inertia tensor for a rigid body represented by point masses.
-
-        Parameters:
-        mass (float): The total mass of the body.
-        points (array-like): A list or array of points (x, y, z) representing the mass distribution.
-                             Each point contributes equally to the total mass.
-
-        Returns:
-        torch.Tensor: A 3x3 inertia tensor matrix.
-        """
-
-        # Convert points to a tensor
-        points = torch.as_tensor(points)
-
-        # Number of points
-        n_points = points.shape[0]
-
-        # Mass per point: assume uniform mass distribution
-        mass_per_point = mass / n_points
-
-        # Initialize the inertia tensor components
-        Ixx = Iyy = Izz = Ixy = Ixz = Iyz = 0.0
-
-        # Loop over each point and accumulate the inertia tensor components
-        for x, y, z in points:
-            Ixx += mass_per_point * (y ** 2 + z ** 2)
-            Iyy += mass_per_point * (x ** 2 + z ** 2)
-            Izz += mass_per_point * (x ** 2 + y ** 2)
-            Ixy -= mass_per_point * x * y
-            Ixz -= mass_per_point * x * z
-            Iyz -= mass_per_point * y * z
-
-        # Construct the inertia tensor matrix
-        I = torch.tensor([
-            [Ixx, Ixy, Ixz],
-            [Ixy, Iyy, Iyz],
-            [Ixz, Iyz, Izz]
-        ])
-
-        return I
-
-    def get_points_from_robot_mesh(self, robot, voxel_size=0.1, return_mesh=False):
-        """
-        Returns the point cloud as vertices of the robot mesh.
-
-        Parameters:
-        - robot: Name of the robot.
-        - voxel_size: Voxel size for downsampling the point cloud.
-        - return_mesh: Whether to return the mesh object as well.
-
-        Returns:
-        - Point cloud as vertices of the robot mesh.
-        """
-        if 'tradr' in robot:
-            robot = 'tradr'
-        elif 'marv' in robot:
-            robot = 'marv'
-        mesh_path = os.path.join(os.path.dirname(__file__), f'../../config/meshes/{robot}.obj')
-        assert os.path.exists(mesh_path), f'Mesh file {mesh_path} does not exist.'
-        mesh = o3d.io.read_triangle_mesh(mesh_path)
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = mesh.vertices
-        if voxel_size:
-            pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
-        x_points = torch.as_tensor(np.asarray(pcd.points), dtype=torch.float32)
-        if return_mesh:
-            return x_points, mesh
-
-        return x_points
-
-    def robot_geometry(self, robot):
-        """
-        Returns the parameters of the rigid body.
-        """
-        x_points = self.get_points_from_robot_mesh(robot)
-        s_x, s_y = x_points[:, 0].max() - x_points[:, 0].min(), x_points[:, 1].max() - x_points[:, 1].min()
-
-        cog = x_points.mean(dim=0)
-        if robot in ['tradr', 'tradr2']:
-            # divide the point cloud into left and right parts
-            mask_l = (x_points[..., 1] > (cog[1] + s_y / 4.)) & (x_points[..., 2] < cog[2])
-            mask_r = (x_points[..., 1] < (cog[1] - s_y / 4.)) & (x_points[..., 2] < cog[2])
-            # driving parts: left and right tracks
-            driving_parts = [mask_l, mask_r]
-        elif robot in ['marv', 'husky', 'husky_oru']:
-            # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
-            mask_fl = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
-                      (x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_fr = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
-                      (x_points[..., 1] < (cog[1] - s_y / 3.))
-            mask_rl = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
-                      (x_points[..., 1] > (cog[1] + s_y / 3.))
-            mask_rr = (x_points[..., 0] < (cog[0] - s_x / 8.)) & \
-                      (x_points[..., 1] < (cog[1] - s_y / 3.))
-            # driving parts: front left, front right, rear left, rear right flippers / wheels
-            driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
-        else:
-            raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
-
-        # robot size
-        robot_size = (s_x, s_y)
-
-        # put tensors on the device
-        x_points = x_points
-        driving_parts = [p for p in driving_parts]
-
-        return x_points, driving_parts, robot_size
 
     def __str__(self):
         return str(self.__dict__)
@@ -246,7 +204,7 @@ def show_robot():
     pcd_driving.points = o3d.utility.Vector3dVector(torch.vstack(points_driving))
     pcd_driving.paint_uniform_color([1.0, 0.0, 0.0])
 
-    mesh = dphys_cfg.get_points_from_robot_mesh(robot, return_mesh=True)[1]
+    mesh = get_points_from_robot_mesh(robot, return_mesh=True)[1]
 
     joint_poses = []
     for joint in dphys_cfg.joint_positions.values():

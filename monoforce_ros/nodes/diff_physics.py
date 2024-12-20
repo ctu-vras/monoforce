@@ -30,7 +30,6 @@ class DiffPhysBase:
                  max_age=0.5,
                  device='cpu',
                  dt=0.01):
-        self.robot_size = dphys_cfg.robot_size
         self.robot_frame = robot_frame
         self.dphys_cfg = dphys_cfg
         self.gridmap_layer = gridmap_layer
