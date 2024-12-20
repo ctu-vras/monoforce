@@ -110,32 +110,33 @@ def inertia_tensor(mass, points):
 
     Parameters:
     mass (float): The total mass of the body.
-    points (array-like): A list or array of points (x, y, z) representing the mass distribution.
-                         Each point contributes equally to the total mass.
+    points (tensor): A tensor of points (x, y, z) representing the mass distribution.
+                     Each point contributes equally to the total mass, BxNx3.
 
     Returns:
-    torch.Tensor: A 3x3 inertia tensor matrix.
+    torch.Tensor: A Bx3x3 inertia tensor matrix.
     """
     # Number of points
-    n_points = points.shape[0]
+    assert points.dim() == 3
+    n_points = points.shape[1]
+    B = points.shape[0]
 
     # Mass per point: assume uniform mass distribution
     mass_per_point = mass / n_points
 
     # Compute the inertia tensor components
-    Ixx = torch.sum(mass_per_point * (points[:, 1] ** 2 + points[:, 2] ** 2))
-    Iyy = torch.sum(mass_per_point * (points[:, 0] ** 2 + points[:, 2] ** 2))
-    Izz = torch.sum(mass_per_point * (points[:, 0] ** 2 + points[:, 1] ** 2))
-    Ixy = -torch.sum(mass_per_point * points[:, 0] * points[:, 1])
-    Ixz = -torch.sum(mass_per_point * points[:, 0] * points[:, 2])
-    Iyz = -torch.sum(mass_per_point * points[:, 1] * points[:, 2])
+    Ixx = torch.sum(mass_per_point * (points[:, :, 1] ** 2 + points[:, :, 2] ** 2), dim=1)
+    Iyy = torch.sum(mass_per_point * (points[:, :, 0] ** 2 + points[:, :, 2] ** 2), dim=1)
+    Izz = torch.sum(mass_per_point * (points[:, :, 0] ** 2 + points[:, :, 1] ** 2), dim=1)
+    Ixy = -torch.sum(mass_per_point * points[:, :, 0] * points[:, :, 1], dim=1)
+    Ixz = -torch.sum(mass_per_point * points[:, :, 0] * points[:, :, 2], dim=1)
+    Iyz = -torch.sum(mass_per_point * points[:, :, 1] * points[:, :, 2], dim=1)
 
     # Construct the inertia tensor matrix
-    I = torch.tensor([
-        [Ixx, Ixy, Ixz],
-        [Ixy, Iyy, Iyz],
-        [Ixz, Iyz, Izz]
-    ])
+    I = torch.stack([torch.stack([Ixx, Ixy, Ixz], dim=1),
+                     torch.stack([Ixy, Iyy, Iyz], dim=1),
+                     torch.stack([Ixz, Iyz, Izz], dim=1)], dim=1)
+    assert I.shape == (B, 3, 3)
 
     return I
 
@@ -145,11 +146,11 @@ class DPhysics(torch.nn.Module):
         super(DPhysics, self).__init__()
         self.dphys_cfg = dphys_cfg
         self.device = device
-        self.x_points = self.dphys_cfg.robot_points.to(self.device)  # robot body points
+        self.x_points = self.dphys_cfg.robot_points.to(self.device).unsqueeze(0)  # robot body points, (1, N, 3)
 
-        # 3x3 inertia tensor, kg*m^2
+        # 1x3x3 inertia tensor, kg*m^2
         self.I = inertia_tensor(mass=self.dphys_cfg.robot_mass, points=self.x_points).to(self.device)
-        self.I_inv = torch.inverse(self.I)  # inverse of the inertia tensor
+        self.I_inv = torch.linalg.inv(self.I)  # inverse of the inertia tensor
 
         # terrain properties: heightmap, stiffness, damping, friction
         self.z_grid = None
@@ -172,7 +173,7 @@ class DPhysics(torch.nn.Module):
         # unpack state
         x, xd, R, omega = state
         B = x.shape[0]
-        N_pts = self.x_points.shape[0]
+        N_pts = self.x_points.shape[1]
         assert x.shape == (B, 3)
         assert xd.shape == (B, 3)
         assert R.shape == (B, 3, 3)
@@ -190,6 +191,11 @@ class DPhysics(torch.nn.Module):
         # update the robot body points based on the joint angles
         x_points = self.update_joints(joint_angles_t)
         assert x_points.shape == (B, N_pts, 3)
+
+        # update the inertia tensor based on the new robot body points configuration
+        I = inertia_tensor(mass=self.dphys_cfg.robot_mass, points=x_points)
+        self.I_inv = torch.linalg.inv(I)  # inverse of the inertia tensor
+
         # motion of point composed of cog motion and rotation of the rigid body
         x_points = x_points @ R.transpose(1, 2) + x.unsqueeze(1)
 
@@ -252,7 +258,7 @@ class DPhysics(torch.nn.Module):
 
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
-        omega_d = torque @ self.I_inv.transpose(0, 1)  # omega_d = I^(-1) M
+        omega_d = (self.I_inv @ torque.unsqueeze(2)).squeeze(2)  # omega_d = I^(-1) M
         omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
@@ -333,7 +339,7 @@ class DPhysics(torch.nn.Module):
         - driving_parts: List of driving parts, [[fl], [fr], [rr], [rl]].
         """
         B = joint_angles.shape[0]
-        x_points = self.dphys_cfg.robot_points.clone().to(self.device).unsqueeze(0).repeat(B, 1, 1)  # (B, N, 3)
+        x_points = self.x_points.repeat(B, 1, 1)  # (B, N, 3)
 
         # TODO: add support for other robots, not only marv
         if self.dphys_cfg.robot != 'marv':
@@ -500,7 +506,7 @@ class DPhysics(torch.nn.Module):
         Simulates the dynamics of the robot using ODE solver.
         """
         B = state[0].shape[0]
-        N_pts = len(self.x_points)
+        N_pts = self.x_points.shape[1]
         N_ts = len(self.ts)
         f_spring = torch.zeros(B, N_pts, 3, device=self.device)
         f_friction = torch.zeros(B, N_pts, 3, device=self.device)
