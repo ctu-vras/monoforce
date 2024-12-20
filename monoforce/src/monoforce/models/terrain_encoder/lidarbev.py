@@ -115,7 +115,7 @@ class LidarBEV(nn.Module):
         print(f'Loading pretrained {self.__class__.__name__} model from', modelf)
         # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
         model_dict = self.state_dict()
-        pretrained_model = torch.load(modelf)
+        pretrained_model = torch.load(modelf, weights_only=True)
         model_dict.update(pretrained_model)
         self.load_state_dict(model_dict)
         return self
