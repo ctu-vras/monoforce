@@ -4,8 +4,10 @@ import sys
 sys.path.append('../src')
 import torch
 import numpy as np
+from scipy.spatial.transform import Rotation
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.lstm import TrajectoryLSTM
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -18,8 +20,6 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def motion():
-    from scipy.spatial.transform import Rotation
-
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
 
@@ -82,7 +82,6 @@ def motion():
 def motion_dataset():
     from monoforce.datasets import ROUGH, rough_seq_paths
     from monoforce.utils import explore_data
-    from scipy.spatial.transform import Rotation
 
     # load the dataset
     path = rough_seq_paths[0]
@@ -230,11 +229,167 @@ def shoot_multiple():
         ax.set_zlabel('Z [m]')
         plt.show()
 
+def motion_lstm():
+    from mayavi import mlab
+    import os
+
+    grid_res = dphys_cfg.grid_res
+    d_max = dphys_cfg.d_max
+    H, W = int(2 * d_max / grid_res), int(2 * d_max / grid_res)
+
+    # instantiate the trajectory LSTM predictor
+    lstm_predictor = TrajectoryLSTM(state_features=6, control_features=2, heightmap_shape=(H, W))
+    lstm_predictor.from_pretrained(modelf='../config/weights/traj_lstm/lstm.pth')
+    lstm_predictor.eval()
+
+    # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
+    controls = torch.stack([
+        torch.tensor([[1.0, 0.0]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
+    ])
+    B, N_ts, _ = controls.shape
+    assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
+
+    # initial state: [x, y, z, roll, pitch, yaw]
+    xyz_rpy0 = torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device).repeat(B, 1)
+    assert xyz_rpy0.shape == (B, 6)
+
+    # heightmap defining the terrain
+    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
+    # z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
+    z_grid = torch.zeros_like(x_grid)
+
+    # repeat the heightmap for each rigid body
+    z_grid = z_grid.repeat(B, 1, 1).unsqueeze(1)
+    assert z_grid.shape == (B, 1, H, W)
+
+    # put tensors to device
+    lstm_predictor.to(device)
+    controls = controls.to(device)
+    xyz_rpy0 = xyz_rpy0.to(device)
+    x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
+
+    # simulate the rigid body dynamics
+    with torch.no_grad():
+        xyz_rpy = lstm_predictor(xyz_rpy0, controls, z_grid)
+        print(f'xyz_rpy shape: {xyz_rpy.shape}')
+
+    # visualize using mayavi
+    batch_i = np.random.choice(z_grid.shape[0])
+    xyz, rpy = xyz_rpy[batch_i, :, :3].cpu().numpy(), xyz_rpy[batch_i, :, 3:].cpu().numpy()
+    Rs = Rotation.from_euler('xyz', rpy).as_matrix()
+    x_grid_np, y_grid_np = dphys_cfg.x_grid.cpu().numpy(), dphys_cfg.y_grid.cpu().numpy()
+    z_grid_np = z_grid[batch_i, 0].cpu().numpy()
+    x_points = dphys_cfg.robot_points.cpu().numpy()
+
+    # set up the visualization
+    mlab.figure(size=(1500, 800))
+    mlab.plot3d(xyz[:, 0], xyz[:, 1], xyz[:, 2], color=(0, 1, 0), line_width=2.0)
+    mlab.mesh(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8)
+    visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
+                               scale_factor=0.05, color=(0, 0, 0))
+
+    # animate robot's motion and forces
+    N_ts = xyz.shape[0]
+    frame_i = 0
+    for t in range(N_ts):
+        # motion of point composed of cog motion and rotation of the rigid body
+        x_points_t = x_points @ Rs[t].T + xyz[t][np.newaxis]
+        visu_robot.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2])
+        if t % 10 == 0:
+            path = os.path.join(os.path.dirname(__file__), '../../../gen/lstm_control')
+            os.makedirs(path, exist_ok=True)
+            mlab.savefig(f'{path}/{frame_i:04d}.png')
+            frame_i += 1
+    mlab.show()
+
+
+def motion_lstm_dataset():
+    from monoforce.datasets import ROUGH, rough_seq_paths
+    from mayavi import mlab
+    import os
+
+    class Data(ROUGH):
+        def __init__(self, path, is_train=False):
+            super(Data, self).__init__(path, is_train=is_train)
+
+        def get_sample(self, i):
+            control_ts, controls = self.get_controls(i)
+
+            traj = self.get_traj(i)
+            traj_ts = traj['stamps']
+            traj_ts = torch.as_tensor(traj_ts - traj_ts[0], dtype=torch.float32)
+
+            poses = traj['poses']
+            xyz = torch.as_tensor(poses[:, :3, 3], dtype=torch.float32)
+            Rs = poses[:, :3, :3]
+            rpy = torch.as_tensor(Rotation.from_matrix(Rs).as_euler('xyz'), dtype=torch.float32)
+            states = torch.cat((xyz, rpy), dim=-1)
+
+            hm = self.get_geom_height_map(i)[0:1]
+            return (hm,
+                    control_ts, controls,
+                    traj_ts, states)
+
+    ds = Data(rough_seq_paths[0])
+
+    # instantiate the trajectory LSTM predictor
+    lstm_predictor = TrajectoryLSTM(state_features=6, control_features=2, heightmap_shape=(128, 128))
+    lstm_predictor.from_pretrained(modelf='../config/weights/traj_lstm/lstm.pth')
+    lstm_predictor.eval()
+
+    # Inference
+    # sample_i = 120
+    sample_i = np.random.randint(len(ds))
+    sample = ds[sample_i]
+    batch = [s[None] for s in sample]
+    z_grid, control_ts, controls, traj_ts, xyz_rpy_gt = batch
+    print("Heightmap shape:", z_grid.shape)
+    print("Controls shape:", controls.shape)
+    print("GT states shape:", xyz_rpy_gt.shape)
+
+    with torch.no_grad():
+        xyz_rpy0 = xyz_rpy_gt[:, 0]
+        xyz_rpy = lstm_predictor(xyz_rpy0, controls, z_grid)
+        print("Output trajectory shape:", xyz_rpy.shape)  # Should be (batch_size, seq_len, output_size)
+
+    batch_i = 0
+    xyz, rpy = xyz_rpy[batch_i, :, :3].cpu().numpy(), xyz_rpy[batch_i, :, 3:].cpu().numpy()
+    Rs = Rotation.from_euler('xyz', rpy).as_matrix()
+    xyz_gt = xyz_rpy_gt[batch_i, :, :3].cpu().numpy()
+    x_grid_np, y_grid_np = dphys_cfg.x_grid.cpu().numpy(), dphys_cfg.y_grid.cpu().numpy()
+    z_grid_np = z_grid[batch_i, 0].cpu().numpy()
+    x_points = dphys_cfg.robot_points.cpu().numpy()
+
+    # set up the visualization
+    mlab.figure(size=(1500, 800))
+    mlab.plot3d(xyz[:, 0], xyz[:, 1], xyz[:, 2], color=(0, 1, 0), line_width=2.0)
+    mlab.plot3d(xyz_gt[:, 0], xyz_gt[:, 1], xyz_gt[:, 2], color=(0, 0, 1), line_width=1.0)
+    mlab.mesh(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8)
+    visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
+                               scale_factor=0.05, color=(0, 0, 0))
+
+    # animate robot's motion and forces
+    N_ts = xyz.shape[0]
+    frame_i = 0
+    for t in range(N_ts):
+        # motion of point composed of cog motion and rotation of the rigid body
+        x_points_t = x_points @ Rs[t].T + xyz[t][np.newaxis]
+        visu_robot.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2])
+        if t % 10 == 0:
+            path = os.path.join(os.path.dirname(__file__), '../../../gen/lstm_control')
+            os.makedirs(path, exist_ok=True)
+            mlab.savefig(f'{path}/{frame_i:04d}.png')
+            frame_i += 1
+    mlab.show()
+
 
 def main():
     motion()
     motion_dataset()
     shoot_multiple()
+
+    # motion_lstm()
+    # motion_lstm_dataset()
 
 
 if __name__ == '__main__':

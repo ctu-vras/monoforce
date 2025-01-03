@@ -39,8 +39,8 @@ class Data(ROUGH):
 
 class Trainer:
     def __init__(self,
-                 state_features=6,
-                 control_features=2,
+                 state_features=6,  # (x, y, z, roll, pitch, yaw)
+                 control_features=2,  # (linear velocity, angular velocity)
                  heightmap_shape=(128, 128),
                  batch_size=1,
                  lr=1e-4,
