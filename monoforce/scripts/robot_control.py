@@ -4,7 +4,7 @@ import sys
 sys.path.append('../src')
 import torch
 import numpy as np
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt

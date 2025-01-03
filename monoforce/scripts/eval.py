@@ -8,7 +8,7 @@ import os
 import numpy as np
 import torch
 import argparse
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.transformations import position

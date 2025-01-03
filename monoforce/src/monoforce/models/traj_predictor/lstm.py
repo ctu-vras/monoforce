@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 
 
-class TrajectoryModel(nn.Module):
+class TrajectoryLSTM(nn.Module):
     def __init__(self, state_features, control_features, heightmap_shape, lstm_hidden_size=256):
-        super(TrajectoryModel, self).__init__()
+        super(TrajectoryLSTM, self).__init__()
 
         # CNN for processing the entire heightmap
         self.heightmap_cnn = nn.Sequential(

@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
-import os
 import numpy as np
 import rospy
 from grid_map_msgs.msg import GridMap
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.ros import height_map_to_gridmap_msg
 from monoforce.cloudproc import estimate_heightmap, filter_grid, filter_range
 from monoforce.utils import position

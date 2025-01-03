@@ -6,7 +6,7 @@ import torch
 import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import ROUGH, rough_seq_paths
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot

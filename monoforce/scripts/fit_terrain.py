@@ -3,7 +3,7 @@ sys.path.append('../src')
 import numpy as np
 import torch
 from monoforce.models.traj_predictor.dphysics import DPhysics
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
 from monoforce.datasets import ROUGH, rough_seq_paths
 from monoforce.losses import physics_loss, total_variation
