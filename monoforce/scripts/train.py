@@ -10,7 +10,7 @@ from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, 
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.bevfusion import BEVFusion
 from monoforce.models.terrain_encoder.lidarbev import LidarBEV
-from monoforce.models.dphysics import DPhysics
+from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
 from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data, position

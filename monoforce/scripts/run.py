@@ -9,7 +9,7 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib

@@ -9,8 +9,8 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, generate_control_inputs
-from monoforce.models.dphysics_warp import DiffSim, Heightmap
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
 from nav_msgs.msg import Path

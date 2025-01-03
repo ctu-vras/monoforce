@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torchdiffeq import odeint, odeint_adjoint
-from ..dphys_config import DPhysConfig
+from ...dphys_config import DPhysConfig
 
 
 def normalized(x, eps=1e-6, dim=-1):

@@ -9,10 +9,9 @@ import numpy as np
 import torch
 import argparse
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics
+from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion
-from monoforce.transformations import transform_cloud, position
+from monoforce.transformations import position
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv

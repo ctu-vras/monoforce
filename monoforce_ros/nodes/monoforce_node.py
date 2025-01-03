@@ -12,7 +12,7 @@ from std_msgs.msg import Float32MultiArray
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, poses_to_marker
 from monoforce.utils import read_yaml, timing
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from terrain_encoder import TerrainEncoder
 import rospkg
 

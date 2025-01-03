@@ -5,7 +5,7 @@ sys.path.append('../src')
 import torch
 import numpy as np
 from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -80,9 +80,8 @@ def motion():
                               friction=friction, vis=True)
 
 def motion_dataset():
-    import numpy as np
     from monoforce.datasets import ROUGH, rough_seq_paths
-    from monoforce.utils import explore_data, compile_data
+    from monoforce.utils import explore_data
     from scipy.spatial.transform import Rotation
 
     # load the dataset
@@ -159,7 +158,6 @@ def motion_dataset():
 
 def shoot_multiple():
     from time import time
-    from scipy.spatial.transform import Rotation
     from monoforce.vis import set_axes_equal
 
     # simulation parameters
