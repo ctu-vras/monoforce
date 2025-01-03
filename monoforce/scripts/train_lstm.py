@@ -1,14 +1,21 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation
+from datetime import datetime
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
 from monoforce.models.traj_predictor.lstm import TrajectoryLSTM
-from monoforce.datasets.rough import ROUGH, rough_seq_paths
+from monoforce.datasets.rough import ROUGH
+from monoforce.utils import compile_data
 
 
 class Data(ROUGH):
-    def __init__(self, path, is_train=False):
+    def __init__(self, path, is_train=False, **kwargs):
         super(Data, self).__init__(path, is_train=is_train)
 
     def get_sample(self, i):
@@ -37,7 +44,7 @@ class Trainer:
                  heightmap_shape=(128, 128),
                  batch_size=1,
                  lr=1e-4,
-                 n_epochs=100):
+                 n_epochs=1):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Instantiate the model
@@ -46,15 +53,25 @@ class Trainer:
         self.lstm.to(self.device)
 
         # Dataset
-        ds = Data(rough_seq_paths[0])
         self.batch_size = batch_size
-        self.loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
+        self.train_loader, self.val_loader = self.create_dataloaders()
 
         # Loss function and optimizer
         self.criterion = torch.nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.lstm.parameters(), lr=lr)
 
         self.n_epochs = n_epochs
+        self.dataset = 'rough'
+        self.model = 'lstm'
+        self.log_dir = os.path.join('../config/tb_runs/',
+                                    f'{self.dataset}/{self.model}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
+        self.writer = SummaryWriter(log_dir=self.log_dir)
+
+    def create_dataloaders(self):
+        train_ds, val_ds = compile_data(Data=Data, small_data=False)
+        train_loader = DataLoader(train_ds, batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=self.batch_size, shuffle=False)
+        return train_loader, val_loader
 
     def inference(self, batch):
         hm, control_ts, controls, traj_ts, xyz_rpy = batch
@@ -75,7 +92,7 @@ class Trainer:
         with torch.no_grad():
             hm, control_ts, controls, traj_ts, xyz_rpy = batch
 
-            plt.figure(figsize=(21, 7))
+            fig = plt.figure(figsize=(21, 7))
             plt.subplot(1, 3, 1)
             plt.plot(xyz_rpy[0, :, 0].cpu().numpy(), xyz_rpy[0, :, 1].cpu().numpy(),
                      '-r', label='GT poses')
@@ -120,33 +137,71 @@ class Trainer:
             plt.xlabel('t [s]')
             plt.ylabel('angle [rad]')
 
-            plt.show()
+        return fig
 
-    def train(self):
-        for epoch in range(self.n_epochs):
-            # Training loop
-            epoch_loss = 0.
-            for batch in tqdm(self.loader, desc=f'Training epoch {epoch}:', leave=False, total=len(self.loader)):
+    def epoch(self, train=True):
+        # choose data loader
+        loader = self.train_loader if train else self.val_loader
+
+        # set model mode
+        if train:
+            self.lstm.train()
+        else:
+            self.lstm.eval()
+
+        # Training loop
+        epoch_loss = 0.
+        for batch in tqdm(loader, total=len(loader)):
+            if train:
                 self.optimizer.zero_grad()
 
-                # model inference
-                batch = [b.to(self.device) for b in batch]
-                xyz_rpy_pred = self.inference(batch)
+            # model inference
+            batch = [b.to(self.device) for b in batch]
+            xyz_rpy_pred = self.inference(batch)
 
-                # compute loss
-                loss = self.compute_loss(batch, xyz_rpy_pred)
-                epoch_loss += loss.item()
+            # compute loss
+            loss = self.compute_loss(batch, xyz_rpy_pred)
+            epoch_loss += loss.item()
 
+            if train:
                 # backpropagation and optimization
                 loss.backward()
                 self.optimizer.step()
-            epoch_loss /= len(self.loader)
-            print(f'Epoch loss: {epoch_loss}')
-            self.vis(batch, xyz_rpy_pred)
+
+        epoch_loss /= len(loader)
+
+        return epoch_loss
+
+    def train(self):
+        min_loss = np.inf
+        for e in range(self.n_epochs):
+            train_epoch_loss = self.epoch(train=True)
+            print(f'Train epoch {e} loss: {train_epoch_loss}')
+            self.writer.add_scalar('train/loss', train_epoch_loss, global_step=e)
+
+            with torch.no_grad():
+                val_epoch_loss = self.epoch(train=False)
+                print(f'Val epoch {e} loss: {val_epoch_loss}')
+                self.writer.add_scalar('val/loss', val_epoch_loss, global_step=e)
+
+                # visualize predictions
+                sample_i = np.random.randint(len(self.val_loader.dataset))
+                sample = self.val_loader.dataset[sample_i]
+                batch = [s[None].to(self.device) for s in sample]
+                xyz_rpy_pred = self.inference(batch)
+                fig = self.vis(batch, xyz_rpy_pred)
+                self.writer.add_figure('val/sample', fig, global_step=e)
+
+                # save best model
+                if val_epoch_loss < min_loss:
+                    print('Saving model...')
+                    min_loss = val_epoch_loss
+                    self.lstm.eval()
+                    torch.save(self.lstm.state_dict(), os.path.join(self.log_dir, 'lstm.pth'))
 
 
 def main():
-    trainer = Trainer(batch_size=16)
+    trainer = Trainer(batch_size=16, n_epochs=1000)
     trainer.train()
 
 
