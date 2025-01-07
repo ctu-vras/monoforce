@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .lidarbev import LidarNet
+from .voxelnet import LidarNet
 from .lss import LiftSplatShoot, BevEncode
 
 

@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.bevfusion import BEVFusion
-from monoforce.models.terrain_encoder.lidarbev import LidarBEV
+from monoforce.models.terrain_encoder.voxelnet import VoxelNet
 from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
@@ -28,7 +28,7 @@ torch.manual_seed(42)
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
-    parser.add_argument('--model', type=str, default='lss', help='Model to train: lss, bevfusion, lidarbev')
+    parser.add_argument('--model', type=str, default='lss', help='Model to train: lss, bevfusion, voxelnet')
     parser.add_argument('--bsz', type=int, default=1, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
@@ -53,7 +53,7 @@ class TrainerCore:
     Args:
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     lss_cfg: dict, LSS model configuration
-    model: str, model to train: lss, bevfusion, lidarbev
+    model: str, model to train: lss, bevfusion, voxelnet
     bsz: int, batch size
     lr: float, learning rate
     weight_decay: float, weight decay
@@ -261,7 +261,7 @@ class TrainerCore:
              pose0,
              traj_ts, Xs, Xds, Rs, Omegas,
              points) = sample
-        elif self.model == 'lidarbev':
+        elif self.model == 'voxelnet':
             (points, hm_geom, hm_terrain,
              controls_ts, controls,
              pose0,
@@ -519,8 +519,8 @@ class Points(ROUGH):
                 pose0,
                 traj_ts, Xs, Xds, Rs, Omegas)
 
-class TrainerLidarBEV(TrainerCore):
-        def __init__(self, dphys_cfg, lss_cfg, model='lidarbev', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
+class TrainerVoxelNet(TrainerCore):
+        def __init__(self, dphys_cfg, lss_cfg, model='voxelnet', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
                     pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=0.1):
             super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                              geom_weight, terrain_weight, phys_weight)
@@ -528,7 +528,7 @@ class TrainerLidarBEV(TrainerCore):
             self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
 
             # load models: terrain encoder
-            self.terrain_encoder = LidarBEV(grid_conf=self.lss_cfg['grid_conf'],
+            self.terrain_encoder = VoxelNet(grid_conf=self.lss_cfg['grid_conf'],
                                             outC=1).from_pretrained(pretrained_model_path)
             self.terrain_encoder.to(self.device)
             self.terrain_encoder.train()
@@ -588,10 +588,10 @@ def choose_trainer(model):
         return TrainerLSS
     elif model == 'bevfusion':
         return TrainerBEVFusion
-    elif model == 'lidarbev':
-        return TrainerLidarBEV
+    elif model == 'voxelnet':
+        return TrainerVoxelNet
     else:
-        raise ValueError(f'Invalid model: {model}. Supported models: lss, bevfusion, lidarbev')
+        raise ValueError(f'Invalid model: {model}. Supported models: lss, bevfusion, voxelnet')
 
 
 def main():

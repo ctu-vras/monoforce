@@ -33,7 +33,7 @@ class TrajLSTM(nn.Module):
 
         # LSTM for sequential processing
         self.lstm_input_size = 16 + cnn_output_size
-        self.lstm = nn.LSTM(self.lstm_input_size, lstm_hidden_size, batch_first=True)
+        self.lstm = nn.LSTM(input_size=self.lstm_input_size, hidden_size=lstm_hidden_size, num_layers=1, batch_first=True)
 
         # Output layer to predict the next state in the sequence
         self.output_fc = nn.Linear(lstm_hidden_size, state_features)

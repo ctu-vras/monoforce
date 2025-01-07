@@ -9,7 +9,7 @@ from datetime import datetime
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
-from monoforce.models.traj_predictor.lstm import TrajectoryLSTM
+from monoforce.models.traj_predictor.traj_lstm import TrajLSTM
 from monoforce.datasets.rough import ROUGH
 from monoforce.utils import compile_data
 
@@ -48,7 +48,7 @@ class Trainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Instantiate the model
-        self.lstm = TrajectoryLSTM(state_features, control_features, heightmap_shape)
+        self.lstm = TrajLSTM(state_features, control_features, heightmap_shape)
         self.lstm.train()
         self.lstm.to(self.device)
 

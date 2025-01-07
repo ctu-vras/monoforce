@@ -7,7 +7,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
-from monoforce.models.traj_predictor.lstm import TrajectoryLSTM
+from monoforce.models.traj_predictor.traj_lstm import TrajLSTM
 from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -238,7 +238,7 @@ def motion_lstm():
     H, W = int(2 * d_max / grid_res), int(2 * d_max / grid_res)
 
     # instantiate the trajectory LSTM predictor
-    lstm_predictor = TrajectoryLSTM(state_features=6, control_features=2, heightmap_shape=(H, W))
+    lstm_predictor = TrajLSTM(state_features=6, control_features=2, heightmap_shape=(H, W))
     lstm_predictor.from_pretrained(modelf='../config/weights/traj_lstm/lstm.pth')
     lstm_predictor.eval()
 
@@ -333,7 +333,7 @@ def motion_lstm_dataset():
     ds = Data(rough_seq_paths[0])
 
     # instantiate the trajectory LSTM predictor
-    lstm_predictor = TrajectoryLSTM(state_features=6, control_features=2, heightmap_shape=(128, 128))
+    lstm_predictor = TrajLSTM(state_features=6, control_features=2, heightmap_shape=(128, 128))
     lstm_predictor.from_pretrained(modelf='../config/weights/traj_lstm/lstm.pth')
     lstm_predictor.eval()
 
@@ -387,9 +387,8 @@ def main():
     motion()
     motion_dataset()
     shoot_multiple()
-
-    # motion_lstm()
-    # motion_lstm_dataset()
+    motion_lstm()
+    motion_lstm_dataset()
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODEL=lss  # lss, lidarbev, bevfusion
+MODEL=lss  # lss, voxelnet, bevfusion
 ROBOT=marv
 DEBUG=False
 VIS=False

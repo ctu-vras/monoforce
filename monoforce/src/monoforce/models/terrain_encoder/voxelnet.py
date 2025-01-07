@@ -93,7 +93,7 @@ class LidarNet(nn.Module):
         return bev_features
 
 
-class LidarBEV(nn.Module):
+class VoxelNet(nn.Module):
     def __init__(self, grid_conf, n_features=16, outC=1):
         super().__init__()
 
