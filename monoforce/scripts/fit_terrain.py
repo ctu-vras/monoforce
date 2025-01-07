@@ -2,11 +2,11 @@ import sys
 sys.path.append('../src')
 import numpy as np
 import torch
-from monoforce.models.dphysics import DPhysics
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphysics import DPhysics
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.vis import setup_visualization, animate_trajectory
 from monoforce.datasets import ROUGH, rough_seq_paths
-from monoforce.losses import physics_loss, hm_loss, total_variation
+from monoforce.losses import physics_loss, total_variation
 import os
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -363,7 +363,7 @@ def optimize_model():
     plt.show()
 
     if vis:
-        visualize(states=states_pred, x_points=dphysics.x_points, forces=forces_pred,
+        visualize(states=states_pred, x_points=dphys_cfg.robot_points, forces=forces_pred,
                   x_grid=dphys_cfg.x_grid[None],
                   y_grid=dphys_cfg.y_grid[None], z_grid=z_grid, states_gt=[X])
 

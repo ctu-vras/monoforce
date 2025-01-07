@@ -53,7 +53,8 @@ def setup_visualization(states, x_points, forces, x_grid, y_grid, z_grid, states
     # visu_Frs = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
     #                          F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
     #                          line_width=1.0, scale_factor=0.1, color=(0, 1, 0))
-    visu_Ns, visu_Frs = None, None
+    visu_Ns = None
+    visu_Frs = None
     visu_terrain = mlab.mesh(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
     visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
                                scale_factor=0.03, color=(0, 0, 0))
@@ -115,7 +116,7 @@ def animate_trajectory(states, x_points, forces, z_grid, vis_cfg, step=1, fricti
         if t % step == 0:
             path = os.path.join(os.path.dirname(__file__), '../gen/robot_control')
             os.makedirs(path, exist_ok=True)
-            mlab.savefig(f'{path}/frame_{t}.png')
+            mlab.savefig(f'{path}/frame_{t:04d}.png')
     mlab.show()
 
 

@@ -5,7 +5,7 @@ import numpy as np
 import rospy
 from grid_map_msgs.msg import GridMap
 from monoforce.cloudproc import merge_heightmaps
-from monoforce.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.ros import height_map_to_gridmap_msg, gridmap_msg_to_numpy
 from monoforce.transformations import transform_cloud
 from ros_numpy import numpify

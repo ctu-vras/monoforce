@@ -8,11 +8,10 @@ import os
 import numpy as np
 import torch
 import argparse
-from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion
-from monoforce.transformations import transform_cloud, position
+from monoforce.transformations import position
 from monoforce.datasets.rough import ROUGH, rough_seq_paths
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv
@@ -72,9 +71,11 @@ class Evaluation:
         self.model_path = model_path
         self.terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
                                               self.lss_config['data_aug_conf']).from_pretrained(self.model_path)
-        self.terrain_encoder.to(self.device)
         # self.terrain_encoder = BEVFusion(self.lss_config['grid_conf'],
         #                                  self.lss_config['data_aug_conf']).from_pretrained(self.model_path)
+        self.terrain_encoder.to(self.device)
+        self.terrain_encoder.eval()
+
         # load dataset
         self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)

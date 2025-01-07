@@ -8,9 +8,9 @@ from scipy.spatial.transform import Rotation
 import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
-from monoforce.dphys_config import DPhysConfig
-from monoforce.models.dphysics import DPhysics, generate_control_inputs
-from monoforce.models.dphysics_warp import DiffSim, Heightmap
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
 from nav_msgs.msg import Path
@@ -30,7 +30,6 @@ class DiffPhysBase:
                  max_age=0.5,
                  device='cpu',
                  dt=0.01):
-        self.robot_size = dphys_cfg.robot_size
         self.robot_frame = robot_frame
         self.dphys_cfg = dphys_cfg
         self.gridmap_layer = gridmap_layer

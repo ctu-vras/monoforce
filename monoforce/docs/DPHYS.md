@@ -5,6 +5,7 @@ Run the differentiable physics simulation with a robot model and the provided da
 ```commandline
 python scripts/robot_control
 ```
+![](./imgs/flipper_control.gif)
 
 Terrain properties optimization from the ground-truth trajectories followed by the robot:
 ```commandline
