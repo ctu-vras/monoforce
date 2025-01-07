@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class TrajLSTM(nn.Module):
-    def __init__(self, state_features, control_features, heightmap_shape, lstm_hidden_size=256):
+    def __init__(self, state_features=6, control_features=2, heightmap_shape=(128, 128), lstm_hidden_size=256):
         super(TrajLSTM, self).__init__()
 
         # CNN for processing the entire heightmap

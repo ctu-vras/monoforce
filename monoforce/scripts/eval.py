@@ -8,6 +8,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from scipy.spatial.transform import Rotation
 import argparse
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics
@@ -31,6 +32,7 @@ def arg_parser():
     parser.add_argument('--robot', type=str, default='tradr', help='Robot name')
     parser.add_argument('--terrain_encoder', type=str, default='lss', help='Terrain encoder model')
     parser.add_argument('--terrain_encoder_path', type=str, default=None, help='Path to the LSS model')
+    parser.add_argument('--traj_predictor', type=str, default='dphysics', help='Trajectory predictor model')
     parser.add_argument('--vis', action='store_true', help='Visualize the results')
     return parser.parse_args()
 
@@ -55,33 +57,94 @@ class Data(ROUGH):
                 traj_ts, Xs, Xds, Rs, Omegas,
                 points)
 
-class EvalBase:
+class Eval:
     def __init__(self,
                  robot='marv',
-                 terrain_encoder_path=None):
+                 terrain_encoder='lss',
+                 terrain_encoder_path=None,
+                 traj_predictor='dphysics'):
         self.device = 'cpu'  # for visualization purposes using CPU
 
         # load DPhys config
         self.dphys_cfg = DPhysConfig(robot=robot)
-        self.traj_pred = DPhysics(self.dphys_cfg, device=self.device)
+        self.traj_predictor = self.get_traj_pred(model=traj_predictor)
 
         # load LSS config
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
-        self.terrain_encoder = self.get_terrain_encoder(terrain_encoder_path)
-        self.output_folder = f'./gen/eval/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_pred.__class__.__name__}'
+        self.terrain_encoder = self.get_terrain_encoder(terrain_encoder_path, model=terrain_encoder)
+        self.output_folder = f'./gen/eval/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_predictor.__class__.__name__}'
 
         # load data
         self.loader = self.get_dataloader()
 
-    def get_terrain_encoder(self, path):
-        return None
+    def get_terrain_encoder(self, path, model='lss'):
+        if model == 'lss':
+            terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
+                                             self.lss_config['data_aug_conf']).from_pretrained(path)
+        elif model == 'bevfusion':
+            terrain_encoder = BEVFusion(self.lss_config['grid_conf'],
+                                        self.lss_config['data_aug_conf']).from_pretrained(path)
+        elif model == 'voxelnet':
+            terrain_encoder = VoxelNet(self.lss_config['grid_conf']).from_pretrained(path)
+        else:
+            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: lss, bevfusion, voxelnet')
+        terrain_encoder.to(self.device)
+        terrain_encoder.eval()
+        return terrain_encoder
 
     def predict_terrain(self, batch):
-        terrain = {}
+        model = self.terrain_encoder.__class__.__name__
+        if model == 'LiftSplatShoot':
+            imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
+            img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
+            terrain = self.terrain_encoder(*img_inputs)
+        elif model == 'BEVFusion':
+            imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
+            img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
+            points_inputs = batch[-1]
+            terrain = self.terrain_encoder(img_inputs, points_inputs)
+        elif model == 'VoxelNet':
+            points_inputs = batch[-1]
+            terrain = self.terrain_encoder(points_inputs)
+        else:
+            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: LiftSplatShoot, BEVFusion, VoxelNet')
         return terrain
 
+    def get_traj_pred(self, model='dphysics'):
+        if model == 'dphysics':
+            traj_predictor = DPhysics(self.dphys_cfg, device=self.device)
+        elif model == 'traj_lstm':
+            h = w = int(2 * self.dphys_cfg.d_max / self.dphys_cfg.grid_res)
+            traj_predictor = TrajLSTM(state_features=6,
+                                      control_features=2,
+                                      heightmap_shape=(h, w)).from_pretrained('../config/weights/traj_lstm/lstm.pth')
+        else:
+            raise ValueError(f'Invalid trajectory predictor model: {model}. Supported: dphysics, traj_lstm')
+        traj_predictor.to(self.device)
+        traj_predictor.eval()
+        return traj_predictor
+
     def predict_states(self, terrain, batch):
-        states_pred = []
+        model = self.traj_predictor.__class__.__name__
+        if model == 'DPhysics':
+            Xs, Xds, Rs, Omegas = batch[12:16]
+            controls = batch[9]
+            state0 = tuple([s[:, 0] for s in [Xs, Xds, Rs, Omegas]])
+            height, friction = terrain['terrain'], terrain['friction']
+            states_pred, _ = self.traj_predictor(z_grid=height.squeeze(1), state=state0,
+                                                 controls=controls, friction=friction.squeeze(1))
+        elif model == 'TrajLSTM':
+            controls = batch[9]
+            height = terrain['terrain']
+            pose0 = batch[10]
+            xyz0 = pose0[:, :3, 3]
+            rpy0 = torch.as_tensor(Rotation.from_matrix(pose0[:, :3, :3]).as_euler('xyz'), dtype=xyz0.dtype).to(self.device)
+            xyz_rpy0 = torch.cat([xyz0, rpy0], dim=-1)
+            xyz_rpy_pred = self.traj_predictor(xyz_rpy0, controls, height)
+            X_pred = xyz_rpy_pred[:, :, :3]
+            states_pred = [X_pred, None, None, None]
+        else:
+            raise ValueError(f'Invalid model: {model}. Supported: DPhysics, TrajLSTM')
         return states_pred
 
     def get_dataloader(self):
@@ -209,92 +272,13 @@ class EvalBase:
             if vis:
                 plt.close(fig)
 
-
-class EvalLSS(EvalBase):
-    def __init__(self,
-                 robot='marv',
-                 terrain_encoder_path=None):
-        super(EvalLSS, self).__init__(robot=robot, terrain_encoder_path=terrain_encoder_path)
-
-    def get_terrain_encoder(self, terrain_encoder_path):
-        terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
-                                         self.lss_config['data_aug_conf']).from_pretrained(terrain_encoder_path)
-        terrain_encoder.to(self.device)
-        terrain_encoder.eval()
-        return terrain_encoder
-
-    def predict_terrain(self, batch):
-        imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
-        img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
-        terrain = self.terrain_encoder(*img_inputs)
-        return terrain
-
-    def predict_states(self, terrain, batch):
-        Xs, Xds, Rs, Omegas = batch[12:16]
-        controls = batch[9]
-        state0 = tuple([s[:, 0] for s in [Xs, Xds, Rs, Omegas]])
-        height, friction = terrain['terrain'], terrain['friction']
-        states_pred, _ = self.traj_pred(z_grid=height.squeeze(1), state=state0,
-                                        controls=controls, friction=friction.squeeze(1))
-        return states_pred
-
-
-class EvalBEVFusion(EvalLSS):
-    def __init__(self,
-                 robot='marv',
-                 terrain_encoder_path=None):
-        super(EvalBEVFusion, self).__init__(robot=robot, terrain_encoder_path=terrain_encoder_path)
-
-    def get_terrain_encoder(self, terrain_encoder_path):
-        terrain_encoder = BEVFusion(self.lss_config['grid_conf'],
-                                    self.lss_config['data_aug_conf']).from_pretrained(terrain_encoder_path)
-        terrain_encoder.to(self.device)
-        terrain_encoder.eval()
-        return terrain_encoder
-
-    def predict_terrain(self, batch):
-        imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
-        img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
-        points_inputs = batch[-1]
-        terrain = self.terrain_encoder(img_inputs, points_inputs)
-        return terrain
-
-
-class EvalVoxelNet(EvalLSS):
-    def __init__(self,
-                 robot='marv',
-                 terrain_encoder_path=None):
-        super(EvalVoxelNet, self).__init__(robot=robot, terrain_encoder_path=terrain_encoder_path)
-
-    def get_terrain_encoder(self, terrain_encoder_path):
-        terrain_encoder = VoxelNet(grid_conf=self.lss_config['grid_conf']).from_pretrained(terrain_encoder_path)
-        terrain_encoder.to(self.device)
-        terrain_encoder.eval()
-        return terrain_encoder
-
-    def predict_terrain(self, batch):
-        points_input = batch[-1]
-        terrain = self.terrain_encoder(points_input)
-        return terrain
-
-
-def choose_evaluator(encoder):
-    if encoder == 'lss':
-        return EvalLSS
-    elif encoder == 'bevfusion':
-        return EvalBEVFusion
-    elif encoder == 'voxelnet':
-        return EvalVoxelNet
-    else:
-        raise ValueError(f'Invalid evaluator model: {encoder}. Supported: lss, bevfusion, voxelnet')
-
-
 def main():
     args = arg_parser()
     print(args)
-    Eval = choose_evaluator(args.terrain_encoder)
     monoforce = Eval(robot=args.robot,
-                     terrain_encoder_path=args.terrain_encoder_path)
+                     terrain_encoder=args.terrain_encoder,
+                     terrain_encoder_path=args.terrain_encoder_path,
+                     traj_predictor=args.traj_predictor)
     monoforce.run(vis=args.vis)
 
 
