@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODEL=lss  # lss, lidarbev, bevfusion
+MODEL=lss  # lss, voxelnet, bevfusion
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/${MODEL}/val.pth
 ROBOT=marv
 

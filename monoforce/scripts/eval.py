@@ -71,9 +71,11 @@ class Evaluation:
         self.model_path = model_path
         self.terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
                                               self.lss_config['data_aug_conf']).from_pretrained(self.model_path)
-        self.terrain_encoder.to(self.device)
         # self.terrain_encoder = BEVFusion(self.lss_config['grid_conf'],
         #                                  self.lss_config['data_aug_conf']).from_pretrained(self.model_path)
+        self.terrain_encoder.to(self.device)
+        self.terrain_encoder.eval()
+
         # load dataset
         self.path = rough_seq_paths[seq_i]
         self.ds = ROUGH(path=self.path, lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, is_train=False)
