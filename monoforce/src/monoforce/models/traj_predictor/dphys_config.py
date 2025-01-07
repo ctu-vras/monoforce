@@ -138,8 +138,8 @@ class DPhysConfig:
         y_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
         self.x_grid, self.y_grid = torch.meshgrid(x_grid, y_grid)
         self.z_grid = torch.zeros_like(self.x_grid)
-        self.stiffness = 50_000. * torch.ones_like(self.z_grid)  # stiffness of the terrain, [N/m]
-        self.damping = torch.sqrt(4 * self.robot_mass * self.stiffness)  # critical damping
+        self.stiffness = 50_000.  # stiffness of the terrain, [N/m]
+        self.damping = np.sqrt(4 * self.robot_mass * self.stiffness)  # critical damping
         self.friction = 1.0 * torch.ones_like(self.z_grid)  # friction of the terrain
         self.hm_interp_method = None
 

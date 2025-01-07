@@ -155,8 +155,8 @@ class DPhysics(torch.nn.Module):
         # terrain properties: heightmap, stiffness, damping, friction
         self.z_grid = None
         self.friction = None
-        self.stiffness = None
-        self.damping = None
+        self.stiffness = dphys_cfg.stiffness
+        self.damping = dphys_cfg.damping
 
         # control inputs and joint angles
         self.controls = None
@@ -213,10 +213,6 @@ class DPhysics(torch.nn.Module):
         assert z_points.shape == (B, N_pts, 1)
         assert n.shape == (B, N_pts, 3)
 
-        stiffness_points = self.interpolate_grid(self.stiffness, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-        assert stiffness_points.shape == (B, N_pts, 1)
-        damping_points = self.interpolate_grid(self.damping, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-        assert damping_points.shape == (B, N_pts, 1)
         friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
         assert friction_points.shape == (B, N_pts, 1)
 
@@ -231,7 +227,7 @@ class DPhysics(torch.nn.Module):
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         xd_points_n = (xd_points * n).sum(dim=2).unsqueeze(2)  # normal velocity
         assert xd_points_n.shape == (B, N_pts, 1)
-        F_spring = -torch.mul((stiffness_points * dh_points + damping_points * xd_points_n), n)  # F_s = -k * dh - b * v_n
+        F_spring = -torch.mul((self.stiffness * dh_points + self.damping * xd_points_n), n)  # F_s = -k * dh - b * v_n
         F_spring = torch.mul(F_spring, in_contact) / N_pts  # apply forces only at the contact points
         F_spring = torch.clamp(F_spring, min=0.0, max=m*g)
         assert F_spring.shape == (B, N_pts, 3)
@@ -342,7 +338,7 @@ class DPhysics(torch.nn.Module):
         x_points = self.x_points.repeat(B, 1, 1)  # (B, N, 3)
 
         # TODO: add support for other robots, not only marv
-        if self.dphys_cfg.robot != 'marv':
+        if self.dphys_cfg.robot != 'marv' or torch.allclose(joint_angles, torch.zeros_like(joint_angles)):
             return x_points
 
         driving_parts = self.dphys_cfg.driving_parts
@@ -532,7 +528,7 @@ class DPhysics(torch.nn.Module):
 
         return Xs, Xds, Rs, Omegas, F_springs, F_frictions
 
-    def dphysics(self, z_grid, controls, joint_angles=None, state=None, stiffness=None, damping=None, friction=None):
+    def dphysics(self, z_grid, controls, joint_angles=None, state=None, friction=None):
         """
         Simulates the dynamics of the robot moving on the terrain.
 
@@ -564,12 +560,8 @@ class DPhysics(torch.nn.Module):
             state = (x, xd, R, omega)
 
         # terrain properties
-        stiffness = self.dphys_cfg.stiffness.repeat(batch_size, 1, 1) if stiffness is None else stiffness
-        damping = self.dphys_cfg.damping.repeat(batch_size, 1, 1) if damping is None else damping
         friction = self.dphys_cfg.friction.repeat(batch_size, 1, 1) if friction is None else friction
         self.z_grid = z_grid.to(self.device)
-        self.stiffness = stiffness.to(self.device)
-        self.damping = damping.to(self.device)
         self.friction = friction.to(self.device)
 
         # start robot at the terrain height (not under or above the terrain)
@@ -593,7 +585,7 @@ class DPhysics(torch.nn.Module):
         Xs, Xds, Rs, Omegas, F_springs, F_frictions = self.integrator(state)
 
         # mg = k * delta_h, at equilibrium, delta_h = mg / k
-        delta_h = self.dphys_cfg.robot_mass * self.dphys_cfg.gravity / (self.stiffness.mean() + 1e-6)
+        delta_h = self.dphys_cfg.robot_mass * self.dphys_cfg.gravity / (self.stiffness + 1e-6)
         # add the equilibrium height to the robot points along the z-axis of the robot
         Xs = Xs + Rs[:, :, :3, 2] * delta_h
 
@@ -604,11 +596,10 @@ class DPhysics(torch.nn.Module):
 
     def forward(self, z_grid,
                 controls, joint_angles=None,
-                state=None, vis=False,
-                stiffness=None, damping=None, friction=None):
+                state=None, vis=False, friction=None):
         states, forces = self.dphysics(z_grid=z_grid,
                                        controls=controls, joint_angles=joint_angles, state=state,
-                                       stiffness=stiffness, damping=damping, friction=friction)
+                                       friction=friction)
         if vis:
             with torch.no_grad():
                 self.visualize(states, z_grid)
