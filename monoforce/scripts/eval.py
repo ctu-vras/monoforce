@@ -60,10 +60,11 @@ class Data(ROUGH):
 class Eval:
     def __init__(self,
                  robot='marv',
+                 batch_size=1,
                  terrain_encoder='lss',
                  terrain_encoder_path=None,
                  traj_predictor='dphysics'):
-        self.device = 'cpu'  # for visualization purposes using CPU
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # load DPhys config
         self.dphys_cfg = DPhysConfig(robot=robot)
@@ -75,7 +76,7 @@ class Eval:
         self.output_folder = f'./gen/eval/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_predictor.__class__.__name__}'
 
         # load data
-        self.loader = self.get_dataloader()
+        self.loader = self.get_dataloader(batch_size=batch_size)
 
     def get_terrain_encoder(self, path, model='lss'):
         if model == 'lss':
@@ -115,8 +116,8 @@ class Eval:
             traj_predictor = DPhysics(self.dphys_cfg, device=self.device)
         elif model == 'traj_lstm':
             h = w = int(2 * self.dphys_cfg.d_max / self.dphys_cfg.grid_res)
-            traj_predictor = TrajLSTM(state_features=6,
-                                      control_features=2,
+            traj_predictor = TrajLSTM(state_dims=6,
+                                      control_dims=2,
                                       heightmap_shape=(h, w)).from_pretrained('../config/weights/traj_lstm/lstm.pth')
         else:
             raise ValueError(f'Invalid trajectory predictor model: {model}. Supported: dphysics, traj_lstm')
@@ -138,25 +139,27 @@ class Eval:
             height = terrain['terrain']
             pose0 = batch[10]
             xyz0 = pose0[:, :3, 3]
-            rpy0 = torch.as_tensor(Rotation.from_matrix(pose0[:, :3, :3]).as_euler('xyz'), dtype=xyz0.dtype).to(self.device)
+            rpy0 = torch.as_tensor(Rotation.from_matrix(pose0[:, :3, :3].cpu()).as_euler('xyz'), dtype=xyz0.dtype, device=self.device)
             xyz_rpy0 = torch.cat([xyz0, rpy0], dim=-1)
             xyz_rpy_pred = self.traj_predictor(xyz_rpy0, controls, height)
             X_pred = xyz_rpy_pred[:, :, :3]
-            states_pred = [X_pred, None, None, None]
+            Rs_pred = Rotation.from_euler('xyz', xyz_rpy_pred[:, :, 3:].cpu().view(-1, 3), degrees=False).as_matrix()
+            Rs_pred = torch.as_tensor(Rs_pred, dtype=xyz0.dtype, device=self.device).view(X_pred.shape[0], X_pred.shape[1], 3, 3)
+            states_pred = [X_pred, None, Rs_pred, None]
         else:
             raise ValueError(f'Invalid model: {model}. Supported: DPhysics, TrajLSTM')
         return states_pred
 
-    def get_dataloader(self):
+    def get_dataloader(self, batch_size=1):
         train_ds, val_ds = compile_data(lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, Data=Data)
-        loader = DataLoader(val_ds, batch_size=1, shuffle=False)
+        loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         return loader
 
     def run(self, vis=False):
         # create output folder
         os.makedirs(self.output_folder, exist_ok=True)
         # write losses to output csv
-        write_to_csv(f'{self.output_folder}/losses.csv', 'Image id,Terrain Loss,Physics Loss\n')
+        write_to_csv(f'{self.output_folder}/losses.csv', 'Batch i,H_g loss,H_t loss,XYZ loss,Rot loss\n')
 
         with torch.no_grad():
             if vis:
@@ -187,27 +190,42 @@ class Eval:
 
                 # terrain prediction
                 terrain = self.predict_terrain(batch)
-                height_pred, friction_pred = terrain['terrain'], terrain['friction']
+                H_t_pred, H_g_pred, Friction_pred = terrain['terrain'], terrain['geom'], terrain['friction']
 
-                # evaluation losses
-                loss_terrain = hm_loss(height_pred=height_pred[0, 0], height_gt=hm_terrain[0, 0], weights=hm_terrain[0, 1])
+                # terrain and geom heightmap losses
+                loss_geom = hm_loss(height_pred=H_g_pred[:, 0], height_gt=hm_geom[:, 0], weights=hm_geom[:, 1])
+                loss_terrain = hm_loss(height_pred=H_t_pred[:, 0], height_gt=hm_terrain[:, 0], weights=hm_terrain[:, 1])
+
+                # trajectory prediction loss: xyz and rotation
                 states_pred = self.predict_states(terrain, batch)
-                loss_physics = physics_loss(states_pred=states_pred, states_gt=states_gt, pred_ts=control_ts, gt_ts=traj_ts)
+                loss_xyz, loss_rot = physics_loss(states_pred=states_pred, states_gt=states_gt,
+                                                  pred_ts=control_ts, gt_ts=traj_ts,
+                                                  gamma=1.0, rotation_loss=True)
 
                 # write losses to csv
                 append_to_csv(f'{self.output_folder}/losses.csv',
-                              f'{i:04d}.png, {loss_terrain.item():.4f},{loss_physics.item():.4f}\n')
+                              f'{i:04d}, {loss_geom.item()},{loss_terrain.item()},{loss_xyz.item()},{loss_rot.item()}\n')
 
                 # visualizations
                 if vis:
-                    height_pred = height_pred[0, 0].cpu()
-                    friction_pred = friction_pred[0, 0].cpu()
+                    H_t_pred = H_t_pred[0, 0].cpu()
+                    Friction_pred = Friction_pred[0, 0].cpu()
                     # get height map points
-                    hm_points = torch.stack([x_grid, y_grid, height_pred], dim=-1)
+                    hm_points = torch.stack([x_grid, y_grid, H_t_pred], dim=-1)
                     hm_points = hm_points.view(-1, 3).T
 
+                    batch = [t.to('cpu') for t in batch]
+                    # get a sample from the dataset
+                    (imgs, rots, trans, intrins, post_rots, post_trans,
+                     hm_geom, hm_terrain,
+                     control_ts, controls,
+                     pose0,
+                     traj_ts, Xs, Xds, Rs, Omegas,
+                     points) = batch
+                    states_gt = [Xs, Xds, Rs, Omegas]
+
                     plt.clf()
-                    plt.suptitle(f'Terrain Loss: {loss_terrain.item():.4f}, Physics Loss: {loss_physics.item():.4f}')
+                    plt.suptitle(f'Terrain Loss: {loss_terrain.item():.3f}, Traj Loss: {loss_xyz.item() + loss_rot.item():.3f}')
                     for imgi, img in enumerate(imgs[0]):
                         cam_pts = ego_to_cam(hm_points, rots[0, imgi], trans[0, imgi], intrins[0, imgi])
                         mask = get_only_in_img_mask(cam_pts, H, W)
@@ -218,7 +236,7 @@ class Eval:
 
                         plt.imshow(showimg)
                         plt.scatter(plot_pts[0, mask], plot_pts[1, mask],
-                                    # c=friction_pred.view(-1)[terrain_mask][mask],
+                                    # c=Friction_pred.view(-1)[terrain_mask][mask],
                                     c=hm_points[2, mask],
                                     s=2, alpha=0.8, cmap='jet', vmin=-1, vmax=1.)
                         plt.axis('off')
@@ -230,21 +248,21 @@ class Eval:
                     # plot terrain heightmap
                     plt.subplot(gs[:, 2])
                     plt.title('Terrain Height')
-                    plt.imshow(height_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+                    plt.imshow(H_t_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
                     plt.axis('off')
                     plt.colorbar()
 
                     # plot friction map
                     plt.subplot(gs[:, 3])
                     plt.title('Friction')
-                    plt.imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=1.)
+                    plt.imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=1.)
                     plt.axis('off')
                     plt.colorbar()
 
                     # plot trajectories: XY
                     plt.subplot(gs[:, 4])
-                    plt.plot(states_pred[0].squeeze()[:, 0], states_pred[0].squeeze()[:, 1], 'r.', label='Pred Traj')
-                    plt.plot(states_gt[0].squeeze()[:, 0], states_gt[0].squeeze()[:, 1], 'kx', label='GT Traj')
+                    plt.plot(states_pred[0][0, :, 0].cpu(), states_pred[0][0, :, 1].cpu(), 'r.', label='Pred Traj')
+                    plt.plot(states_gt[0][0, :, 0], states_gt[0][0, :, 1], 'kx', label='GT Traj')
                     plt.xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
                     plt.ylim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
                     plt.grid()
@@ -256,8 +274,8 @@ class Eval:
 
                     # plot trajectories: Z
                     plt.subplot(gs[:, 5])
-                    plt.plot(control_ts.squeeze(), states_pred[0].squeeze()[:, 2], 'r.', label='Pred Traj')
-                    plt.plot(traj_ts.squeeze(), states_gt[0].squeeze()[:, 2], 'kx', label='GT Traj')
+                    plt.plot(control_ts[0], states_pred[0][0, :, 2].cpu(), 'r.', label='Pred Traj')
+                    plt.plot(traj_ts[0], states_gt[0][0, :, 2], 'kx', label='GT Traj')
                     plt.grid()
                     plt.xlabel('Time [s]')
                     plt.ylabel('z [m]')
@@ -266,8 +284,7 @@ class Eval:
 
                     plt.pause(0.01)
                     plt.draw()
-
-                    plt.savefig(f'{self.output_folder}/{i:04d}.png')
+                    # plt.savefig(f'{self.output_folder}/{i:04d}.png')
 
             if vis:
                 plt.close(fig)
@@ -276,6 +293,7 @@ def main():
     args = arg_parser()
     print(args)
     monoforce = Eval(robot=args.robot,
+                     batch_size=args.batch_size,
                      terrain_encoder=args.terrain_encoder,
                      terrain_encoder_path=args.terrain_encoder_path,
                      traj_predictor=args.traj_predictor)

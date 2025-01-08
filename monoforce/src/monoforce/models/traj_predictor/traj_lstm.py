@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class TrajLSTM(nn.Module):
-    def __init__(self, state_features=6, control_features=2, heightmap_shape=(128, 128), lstm_hidden_size=256):
+    def __init__(self, state_dims=6, control_dims=2, heightmap_shape=(128, 128), lstm_hidden_size=256):
         super(TrajLSTM, self).__init__()
 
         # CNN for processing the entire heightmap
@@ -27,7 +27,7 @@ class TrajLSTM(nn.Module):
 
         # Dense layer for robot state + control input processing
         self.robot_state_nn = nn.Sequential(
-            nn.Linear(state_features + control_features, 16),
+            nn.Linear(state_dims + control_dims, 16),
             nn.ReLU()
         )
 
@@ -36,7 +36,7 @@ class TrajLSTM(nn.Module):
         self.lstm = nn.LSTM(input_size=self.lstm_input_size, hidden_size=lstm_hidden_size, num_layers=1, batch_first=True)
 
         # Output layer to predict the next state in the sequence
-        self.output_fc = nn.Linear(lstm_hidden_size, state_features)
+        self.output_fc = nn.Linear(lstm_hidden_size, state_dims)
 
     def forward(self, initial_state, control_inputs, heightmap):
         # Process heightmap through CNN (global terrain context)

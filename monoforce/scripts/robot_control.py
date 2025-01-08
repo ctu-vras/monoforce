@@ -238,7 +238,7 @@ def motion_lstm():
     H, W = int(2 * d_max / grid_res), int(2 * d_max / grid_res)
 
     # instantiate the trajectory LSTM predictor
-    lstm_predictor = TrajLSTM(state_features=6, control_features=2, heightmap_shape=(H, W))
+    lstm_predictor = TrajLSTM(state_dims=6, control_dims=2, heightmap_shape=(H, W))
     lstm_predictor.from_pretrained(modelf='../config/weights/traj_lstm/lstm.pth')
     lstm_predictor.eval()
 
@@ -333,7 +333,7 @@ def motion_lstm_dataset():
     ds = Data(rough_seq_paths[0])
 
     # instantiate the trajectory LSTM predictor
-    lstm_predictor = TrajLSTM(state_features=6, control_features=2, heightmap_shape=(128, 128))
+    lstm_predictor = TrajLSTM(state_dims=6, control_dims=2, heightmap_shape=(128, 128))
     lstm_predictor.from_pretrained(modelf='../config/weights/traj_lstm/lstm.pth')
     lstm_predictor.eval()
 

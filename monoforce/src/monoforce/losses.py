@@ -132,6 +132,7 @@ def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0.9, rotation_los
         R_pred_gt_ts = states_pred[2][torch.arange(R.shape[0]).unsqueeze(1), ts_ids]
         loss_rot = rotation_difference(R_pred_gt_ts, R, reduction='none')
         loss_rot = (loss_rot * time_weights).mean()
-        loss = loss + loss_rot
+
+        return loss, loss_rot
 
     return loss

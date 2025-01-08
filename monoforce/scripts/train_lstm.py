@@ -39,8 +39,8 @@ class Data(ROUGH):
 
 class Trainer:
     def __init__(self,
-                 state_features=6,  # (x, y, z, roll, pitch, yaw)
-                 control_features=2,  # (linear velocity, angular velocity)
+                 state_dims=6,  # (x, y, z, roll, pitch, yaw)
+                 control_dims=2,  # (linear velocity, angular velocity)
                  heightmap_shape=(128, 128),
                  batch_size=1,
                  lr=1e-4,
@@ -48,7 +48,7 @@ class Trainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Instantiate the model
-        self.lstm = TrajLSTM(state_features, control_features, heightmap_shape)
+        self.lstm = TrajLSTM(state_dims, control_dims, heightmap_shape)
         self.lstm.train()
         self.lstm.to(self.device)
 
