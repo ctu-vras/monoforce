@@ -30,6 +30,7 @@ torch.manual_seed(42)
 def arg_parser():
     parser = argparse.ArgumentParser(description='Terrain encoder predictor input arguments')
     parser.add_argument('--robot', type=str, default='tradr', help='Robot name')
+    parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
     parser.add_argument('--terrain_encoder', type=str, default='lss', help='Terrain encoder model')
     parser.add_argument('--terrain_encoder_path', type=str, default=None, help='Path to the LSS model')
     parser.add_argument('--traj_predictor', type=str, default='dphysics', help='Trajectory predictor model')
@@ -255,7 +256,7 @@ class Eval:
                     # plot friction map
                     plt.subplot(gs[:, 3])
                     plt.title('Friction')
-                    plt.imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=1.)
+                    plt.imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=2.)
                     plt.axis('off')
                     plt.colorbar()
 
@@ -282,9 +283,9 @@ class Eval:
                     plt.ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
                     plt.legend()
 
-                    plt.pause(0.01)
-                    plt.draw()
-                    # plt.savefig(f'{self.output_folder}/{i:04d}.png')
+                    # plt.pause(0.01)
+                    # plt.draw()
+                    plt.savefig(f'{self.output_folder}/{i:04d}.png')
 
             if vis:
                 plt.close(fig)
