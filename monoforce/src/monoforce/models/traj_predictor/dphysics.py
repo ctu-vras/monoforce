@@ -244,7 +244,7 @@ class DPhysics(torch.nn.Module):
             u = track_vels[:, i].unsqueeze(1) * thrust_dir
             cmd_vels[:, mask] = u.unsqueeze(1)
         mu_cmd_vels = friction_points * cmd_vels
-        mu_cmd_vels = torch.clamp(mu_cmd_vels, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
+        # mu_cmd_vels = torch.clamp(mu_cmd_vels, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
         vels_diff = mu_cmd_vels - xd_points
         vels_diff_n = (vels_diff * n).sum(dim=2).unsqueeze(2)  # normal velocity difference
         vels_diff_tau = vels_diff - vels_diff_n * n  # tangential velocity difference
@@ -255,7 +255,7 @@ class DPhysics(torch.nn.Module):
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = (self.I_inv @ torque.unsqueeze(2)).squeeze(2)  # omega_d = I^(-1) M
-        omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
+        # omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
         assert omega_d.shape == (B, 3)
