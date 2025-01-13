@@ -75,7 +75,8 @@ def motion():
 
     # simulate the rigid body dynamics
     states, forces = dphysics(z_grid=z_grid,
-                              controls=controls, joint_angles=joint_angles,
+                              controls=controls,
+                              joint_angles=joint_angles,
                               state=state0,
                               friction=friction, vis=True)
 
