@@ -602,10 +602,10 @@ class DPhysics(torch.nn.Module):
                                        friction=friction)
         if vis:
             with torch.no_grad():
-                self.visualize(states, z_grid)
+                self.visualize(states=states, z_grid=z_grid, forces=forces)
         return states, forces
 
-    def visualize(self, states, z_grid):
+    def visualize(self, states, z_grid, forces=None):
         # visualize using mayavi
         from mayavi import mlab
         import os
@@ -617,27 +617,44 @@ class DPhysics(torch.nn.Module):
         x_points = self.dphys_cfg.robot_points.cpu().numpy()
 
         # set up the visualization
-        mlab.figure(size=(1500, 800))
-        mlab.plot3d(Xs[batch_i, :, 0], Xs[batch_i, :, 1], Xs[batch_i, :, 2], color=(0, 1, 0), line_width=2.0)
-        mlab.mesh(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8)
+        mlab.figure(size=(2000, 1000))
+        # mlab.plot3d(Xs[batch_i, :, 0], Xs[batch_i, :, 1], Xs[batch_i, :, 2], color=(0, 1, 0), line_width=2.0)
+        mlab.surf(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8, representation='wireframe')
+        # colorbar = mlab.colorbar(title='Height', orientation='vertical', label_fmt='%.1f')
         visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
                                    scale_factor=0.05, color=(0, 0, 0))
+        if forces is not None:
+            F_spring, F_friction = [f[batch_i].cpu().numpy() for f in forces]
+            visu_Ns = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
+                                    F_spring[0, :, 0], F_spring[0, :, 1], F_spring[0, :, 2],
+                                    line_width=4, scale_factor=0.02, color=(0, 0, 1))
+            visu_Frs = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
+                                     F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
+                                     line_width=4, scale_factor=0.02, color=(1, 0, 0))
+
         # set view point
         mlab.view(azimuth=95, elevation=80, distance=12.0, focalpoint=(0, 0, 0))
 
         # animate robot's motion and forces
         N_ts = Xs.shape[1]
         frame_i = 0
-        for t in range(N_ts):
+        path = os.path.join(os.path.dirname(__file__), '../../../gen/robot_control')
+        os.makedirs(path, exist_ok=True)
+        for t in range(0, N_ts, 1):
             # update the robot body points based on the joint angles
             joint_angles_t = self.joint_angles[batch_i, t][np.newaxis]
             x_points = self.update_joints(joint_angles_t).squeeze(0).cpu().numpy()
             # motion of point composed of cog motion and rotation of the rigid body
             x_points_t = x_points @ Rs[batch_i, t].T + Xs[batch_i, t][np.newaxis]
             visu_robot.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2])
-            if t % 10 == 0:
-                path = os.path.join(os.path.dirname(__file__), '../../../gen/robot_control')
-                os.makedirs(path, exist_ok=True)
-                mlab.savefig(f'{path}/{frame_i:04d}.png')
-                frame_i += 1
+
+            if forces is not None:
+                F_spring_t, F_friction_t = F_spring[t], F_friction[t]
+                visu_Ns.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2],
+                                        u=F_spring_t[:, 0], v=F_spring_t[:, 1], w=F_spring_t[:, 2])
+                visu_Frs.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2],
+                                         u=F_friction_t[:, 0], v=F_friction_t[:, 1], w=F_friction_t[:, 2])
+
+            mlab.savefig(f'{path}/{frame_i:04d}.png')
+            frame_i += 1
         mlab.show()

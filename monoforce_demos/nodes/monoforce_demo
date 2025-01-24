@@ -138,7 +138,7 @@ class MonoForce:
             marker.pose.position.z = xyz[2]
             marker.pose.orientation.w = 1
             marker.points.append(xyz_to_point([0, 0, 0]))
-            marker.points.append(xyz_to_point(force / self.dphys_cfg.robot_mass / 9.8))
+            marker.points.append(xyz_to_point(force / 9.8))
             marker.scale.x = 0.05
             marker.scale.y = 0.10
             marker.scale.z = 0.05
