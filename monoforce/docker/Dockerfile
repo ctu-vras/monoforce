@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     python3-catkin-tools \
     ros-noetic-husky* \
     build-essential \
+    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and setup the catkin workspace
