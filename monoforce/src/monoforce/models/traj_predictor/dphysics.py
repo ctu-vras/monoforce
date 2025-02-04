@@ -255,7 +255,7 @@ class DPhysics(torch.nn.Module):
         # rigid body rotation: M = sum(r_i x F_i)
         torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
         omega_d = (self.I_inv @ torque.unsqueeze(2)).squeeze(2)  # omega_d = I^(-1) M
-        # omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
+        omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
         dR = Omega_skew @ R  # dR = [omega]_x R
         assert omega_d.shape == (B, 3)
@@ -602,7 +602,7 @@ class DPhysics(torch.nn.Module):
                                        friction=friction)
         if vis:
             with torch.no_grad():
-                self.visualize(states=states, z_grid=z_grid, forces=forces)
+                self.visualize(states=states, z_grid=z_grid)  #, forces=forces)
         return states, forces
 
     def visualize(self, states, z_grid, forces=None):
@@ -617,7 +617,7 @@ class DPhysics(torch.nn.Module):
         x_points = self.dphys_cfg.robot_points.cpu().numpy()
 
         # set up the visualization
-        mlab.figure(size=(2000, 1000))
+        mlab.figure(size=(1600, 800))
         # mlab.plot3d(Xs[batch_i, :, 0], Xs[batch_i, :, 1], Xs[batch_i, :, 2], color=(0, 1, 0), line_width=2.0)
         mlab.surf(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8, representation='wireframe')
         # colorbar = mlab.colorbar(title='Height', orientation='vertical', label_fmt='%.1f')
@@ -640,7 +640,7 @@ class DPhysics(torch.nn.Module):
         frame_i = 0
         path = os.path.join(os.path.dirname(__file__), '../../../gen/robot_control')
         os.makedirs(path, exist_ok=True)
-        for t in range(0, N_ts, 1):
+        for t in range(0, N_ts, 10):
             # update the robot body points based on the joint angles
             joint_angles_t = self.joint_angles[batch_i, t][np.newaxis]
             x_points = self.update_joints(joint_angles_t).squeeze(0).cpu().numpy()
