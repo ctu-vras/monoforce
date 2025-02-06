@@ -8,7 +8,6 @@ from scipy.spatial.transform import Rotation
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from monoforce.models.traj_predictor.traj_lstm import TrajLSTM
-from monoforce.vis import setup_visualization, animate_trajectory
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 mpl.use('Qt5Agg')
@@ -136,25 +135,9 @@ def motion_dataset():
                                         state=state0,
                                         controls=torch.as_tensor(controls)[None].to(device))
 
-    # get the states and forces for and move them to the cpu
-    states_np = [s.cpu().numpy() for s in [Xs, Xds, Rs, Omegas]]
-    states_pred_np = [s.squeeze(0).cpu().numpy() for s in states_pred]
-    forces_pred_np = [f.squeeze(0).cpu().numpy() for f in forces_pred]
-    x_points = dphys_cfg.robot_points.cpu().numpy()
-
-    # set up the visualization
-    vis_cfg = setup_visualization(states=states_pred_np,
-                                  x_points=x_points,
-                                  states_gt=states_np,
-                                  forces=forces_pred_np,
-                                  x_grid=x_grid.cpu().numpy(), y_grid=y_grid.cpu().numpy(), z_grid=z_grid.cpu().numpy())
-
-    # visualize animated trajectory
-    animate_trajectory(states=states_pred_np,
-                       x_points=x_points,
-                       forces=forces_pred_np,
-                       z_grid=z_grid.cpu().numpy(),
-                       vis_cfg=vis_cfg, step=10)
+    # visualize the simulation
+    with torch.no_grad():
+        dphysics.visualize(states=states_pred, z_grid=z_grid[None], states_gt=[Xs[None]])
 
 def shoot_multiple():
     from time import time

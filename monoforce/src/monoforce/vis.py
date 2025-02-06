@@ -1,5 +1,4 @@
-import os
-from matplotlib import cm, pyplot as plt
+from matplotlib import pyplot as plt
 import numpy as np
 from mayavi import mlab
 
@@ -7,8 +6,6 @@ from mayavi import mlab
 __all__ = [
     'visualize_imgs',
     'set_axes_equal',
-    'setup_visualization',
-    'animate_trajectory',
     'draw_coord_frames',
     'draw_coord_frame',
 ]
@@ -27,98 +24,6 @@ def visualize_imgs(images, names=None):
             plt.title(names[i])
     plt.tight_layout()
     plt.show()
-
-
-def setup_visualization(states, x_points, forces, x_grid, y_grid, z_grid, states_gt=None):
-    # unpack the states and forces
-    xs = states[0]
-    F_spring, F_friction = forces
-    assert xs.shape[1] == 3, 'States should be 3D'
-    assert x_points.shape[1] == 3, 'Points should be 3D'
-    assert F_spring.shape == F_friction.shape, 'Forces should have the same shape'
-
-    # set up the visualization
-    mlab.figure(size=(1280, 720))
-    mlab.clf()
-    visu_traj = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=2.0)
-    # visu_Ns = mlab.quiver3d(x_points[:, 0].mean(), x_points[:, 1].mean(), x_points[:, 2].mean(),
-    #                         F_spring[0, :, 0].mean(), F_spring[0, :, 1].mean(), F_spring[0, :, 2].mean(),
-    #                         line_width=1.0, scale_factor=1.0, color=(0, 0, 1))
-    # visu_Frs = mlab.quiver3d(x_points[:, 0].mean(), x_points[:, 1].mean(), x_points[:, 2].mean(),
-    #                          F_friction[0, :, 0].mean(), F_friction[0, :, 1].mean(), F_friction[0, :, 2].mean(),
-    #                          line_width=1.0, scale_factor=1.0, color=(0, 1, 0))
-    # visu_Ns = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
-    #                         F_spring[0, :, 0], F_spring[0, :, 1], F_spring[0, :, 2],
-    #                         line_width=1.0, scale_factor=0.1, color=(0, 0, 1))
-    # visu_Frs = mlab.quiver3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
-    #                          F_friction[0, :, 0], F_friction[0, :, 1], F_friction[0, :, 2],
-    #                          line_width=1.0, scale_factor=0.1, color=(0, 1, 0))
-    visu_Ns = None
-    visu_Frs = None
-    # visu_terrain = mlab.mesh(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.6)
-    visu_terrain = mlab.surf(x_grid, y_grid, z_grid, colormap='terrain', opacity=0.8, representation='wireframe')
-    visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
-                               scale_factor=0.03, color=(0, 0, 0))
-
-    visu_cfg = [visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot]
-
-    if states_gt:
-        xs_gt = states_gt[0]
-        assert xs_gt.shape[1] == 3, 'States should be 3D'
-        visu_traj_gt = mlab.plot3d(xs_gt[:, 0], xs_gt[:, 1], xs_gt[:, 2], color=(0, 0, 1), line_width=2.0)
-        visu_cfg.append(visu_traj_gt)
-
-    # set view angle: top down from 10 units above
-    # mlab.view(azimuth=0, elevation=0, distance=15)
-
-    return visu_cfg
-
-
-def animate_trajectory(states, x_points, forces, z_grid, vis_cfg, step=1, friction=None):
-    # unpack the states and forces
-    xs, xds, rs, omegas = states
-    F_spring, F_friction = forces
-    assert xs.shape[1] == 3, 'States should be 3D'
-    assert xds.shape[1] == 3, 'Velocities should be 3D'
-    assert rs.shape[-2:] == (3, 3), 'Rotations should be 3x3'
-    assert omegas.shape[1] == 3, 'Angular velocities should be 3D'
-    assert x_points.shape[1] == 3, 'Points should be 3D'
-    assert F_spring.shape == F_friction.shape, 'Forces should have the same shape'
-
-    # unpack the visualization configuration
-    visu_traj, visu_Ns, visu_Frs, visu_terrain, visu_robot = vis_cfg[:5]
-
-    # plot the terrain
-    visu_terrain.mlab_source.z = z_grid
-    if friction is not None:
-        visu_terrain.mlab_source.scalars = friction
-
-    # plot the trajectory
-    visu_traj.mlab_source.set(x=xs[:, 0], y=xs[:, 1], z=xs[:, 2])
-
-    # plot initial pose
-    pose = np.eye(4)
-    pose[:3, :3] = rs[0]
-    pose[:3, 3] = xs[0]
-    draw_coord_frame(pose)
-
-    # animate robot's motion and forces
-    for t in range(len(xs)):
-        x_points_t = x_points @ rs[t].T + xs[t][np.newaxis]
-        visu_robot.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2])
-        # visu_Ns.mlab_source.set(x=x_points_t[:, 0].mean(), y=x_points_t[:, 1].mean(), z=x_points_t[:, 2].mean(),
-        #                         u=F_spring[t, :, 0].mean(), v=F_spring[t, :, 1].mean(), w=F_spring[t, :, 2].mean())
-        # visu_Frs.mlab_source.set(x=x_points_t[:, 0].mean(), y=x_points_t[:, 1].mean(), z=x_points_t[:, 2].mean(),
-        #                          u=F_friction[t, :, 0].mean(), v=F_friction[t, :, 1].mean(), w=F_friction[t, :, 2].mean())
-        # visu_Ns.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2],
-        #                         u=F_spring[t, :, 0], v=F_spring[t, :, 1], w=F_spring[t, :, 2])
-        # visu_Frs.mlab_source.set(x=x_points_t[:, 0], y=x_points_t[:, 1], z=x_points_t[:, 2],
-        #                          u=F_friction[t, :, 0], v=F_friction[t, :, 1], w=F_friction[t, :, 2])
-        if t % step == 0:
-            path = os.path.join(os.path.dirname(__file__), '../gen/robot_control')
-            os.makedirs(path, exist_ok=True)
-            mlab.savefig(f'{path}/frame_{t:04d}.png')
-    mlab.show()
 
 
 # https://stackoverflow.com/questions/13685386/matplotlib-equal-unit-length-with-equal-aspect-ratio-z-axis-is-not-equal-to

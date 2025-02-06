@@ -602,7 +602,7 @@ class DPhysics(torch.nn.Module):
                                        friction=friction)
         if vis:
             with torch.no_grad():
-                self.visualize(states=states, z_grid=z_grid, forces=forces)
+                self.visualize(states=states, z_grid=z_grid)  #, forces=forces)
         return states, forces
 
     def visualize(self, states, z_grid, forces=None, states_gt=None, friction=None):
