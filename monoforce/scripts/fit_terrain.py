@@ -8,8 +8,6 @@ from monoforce.datasets import ROUGH, rough_seq_paths
 from monoforce.losses import physics_loss, total_variation
 import os
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-mpl.use('Qt5Agg')
 
 
 def optimize_terrain():

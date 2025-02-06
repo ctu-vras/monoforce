@@ -9,8 +9,7 @@ from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
 from monoforce.models.traj_predictor.traj_lstm import TrajLSTM
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-mpl.use('Qt5Agg')
+
 
 # simulation parameters
 robot = 'marv'

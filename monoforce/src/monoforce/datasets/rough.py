@@ -429,6 +429,8 @@ class ROUGH(Dataset):
         return img, K
 
     def get_cached_resized_img(self, i, camera=None):
+        if camera is None:
+            camera = self.camera_names[0]
         cache_dir = os.path.join(self.path, 'images', 'resized')
         os.makedirs(cache_dir, exist_ok=True)
         cached_img_path = os.path.join(cache_dir, '%s_%s.png' % (self.ids[i], camera))
