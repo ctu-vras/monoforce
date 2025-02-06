@@ -602,10 +602,10 @@ class DPhysics(torch.nn.Module):
                                        friction=friction)
         if vis:
             with torch.no_grad():
-                self.visualize(states=states, z_grid=z_grid)  #, forces=forces)
+                self.visualize(states=states, z_grid=z_grid, forces=forces)
         return states, forces
 
-    def visualize(self, states, z_grid, forces=None):
+    def visualize(self, states, z_grid, forces=None, states_gt=None, friction=None):
         # visualize using mayavi
         from mayavi import mlab
         import os
@@ -618,9 +618,19 @@ class DPhysics(torch.nn.Module):
 
         # set up the visualization
         mlab.figure(size=(1600, 800))
-        # mlab.plot3d(Xs[batch_i, :, 0], Xs[batch_i, :, 1], Xs[batch_i, :, 2], color=(0, 1, 0), line_width=2.0)
-        mlab.surf(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.8, representation='wireframe')
-        # colorbar = mlab.colorbar(title='Height', orientation='vertical', label_fmt='%.1f')
+        mlab.plot3d(Xs[batch_i, :, 0], Xs[batch_i, :, 1], Xs[batch_i, :, 2], color=(0, 1, 0), line_width=2.0)
+        if states_gt is not None:
+            Xs_gt = states_gt[0].cpu().numpy()
+            mlab.plot3d(Xs_gt[batch_i, :, 0], Xs_gt[batch_i, :, 1], Xs_gt[batch_i, :, 2], color=(0, 0, 1), line_width=2.0)
+        # colorize the heightmap with friction values
+        if friction is not None:
+            friction_np = friction[batch_i].cpu().numpy()
+            mlab.mesh(x_grid_np, y_grid_np, z_grid_np, scalars=friction_np, colormap='terrain', opacity=0.5)
+            mlab.colorbar(orientation='horizontal', label_fmt='%.1f', nb_labels=5)
+        else:
+            mlab.mesh(x_grid_np, y_grid_np, z_grid_np, colormap='terrain', opacity=0.5)
+            mlab.colorbar(orientation='horizontal', label_fmt='%.1f', nb_labels=5)
+        mlab.surf(x_grid_np, y_grid_np, z_grid_np, representation='wireframe')
         visu_robot = mlab.points3d(x_points[:, 0], x_points[:, 1], x_points[:, 2],
                                    scale_factor=0.05, color=(0, 0, 0))
         if forces is not None:
