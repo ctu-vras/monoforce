@@ -648,7 +648,7 @@ class ROUGH(Dataset):
             traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, remove_vegetaion=True, vis=False)
+            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, remove_vegetation=True, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
             hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
