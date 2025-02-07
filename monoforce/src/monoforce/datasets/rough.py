@@ -17,6 +17,7 @@ from .coco import COCO_CATEGORIES, COCO_CLASSES
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
+import cv2
 
 
 __all__ = [
@@ -52,6 +53,23 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-08-30'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-24-48'),
 ]
+
+# HSV bounds for green color
+lower_green = np.array([35, 40, 40])
+upper_green = np.array([85, 255, 255])
+
+def segment_vegetation(rgb, lower_green, upper_green):
+    # convert RGB to HSV
+    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+    # create mask for green color
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+    # morphological operations: dilation to fill holes in mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.dilate(mask, kernel, iterations=3)
+    # make sure mask is binary
+    mask = mask > 0
+
+    return mask
 
 
 class ROUGH(Dataset):
@@ -524,7 +542,7 @@ class ROUGH(Dataset):
         seg = transform(seg)
         return seg
     
-    def get_semantic_cloud(self, i, classes=None, vis=False):
+    def get_semantic_cloud(self, i, classes=None, remove_vegetation=False, vis=False):
         if classes is None:
             classes = np.copy(COCO_CLASSES)
         # ids of classes in COCO
@@ -549,15 +567,25 @@ class ROUGH(Dataset):
             E = torch.as_tensor(E)
             K = torch.as_tensor(K)
     
-            cam_points = ego_to_cam(lidar_points.T, E[:3, :3], E[:3, 3], K).T
-            mask = get_only_in_img_mask(cam_points.T, seg_label_cam.shape[0], seg_label_cam.shape[1])
-            cam_points = cam_points[mask]
+            img_plane_points = ego_to_cam(lidar_points.T, E[:3, :3], E[:3, 3], K).T
+            mask = get_only_in_img_mask(img_plane_points.T, seg_label_cam.shape[0], seg_label_cam.shape[1])
+            img_plane_points = img_plane_points[mask]
+            cam_points = lidar_points[mask].numpy()
 
             # colorize point cloud with values from segmentation image
-            uv = cam_points[:, :2].numpy().astype(int)
+            uv = img_plane_points[:, :2].numpy().astype(int)
             seg_label_cam = seg_label_cam[uv[:, 1], uv[:, 0]]
+
+            if remove_vegetation:
+                # remove vegetation points
+                rgb = self.get_raw_image(i, cam)
+                rgb = np.asarray(rgb)
+                veg_mask = segment_vegetation(rgb, lower_green, upper_green)
+                veg_mask = veg_mask[uv[:, 1], uv[:, 0]]
+                cam_points = cam_points[~veg_mask]
+                seg_label_cam = seg_label_cam[~veg_mask]
     
-            points.append(lidar_points[mask].numpy())
+            points.append(cam_points)
             labels.append(seg_label_cam)
 
         points = np.concatenate(points)
@@ -620,7 +648,7 @@ class ROUGH(Dataset):
             traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
+            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, remove_vegetaion=True, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
             hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
