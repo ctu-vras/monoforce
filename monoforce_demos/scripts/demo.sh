@@ -24,7 +24,7 @@ roscore &
 ROSCORE_PID=$!
 sleep 1
 
-rviz -d ../config/rviz/monoforce.rviz &
+rviz -d ../config/rviz/monoforce_rough.rviz &
 RVIZ_PID=$!
 
 MONOFORCE_DIR=$(abspath "../../")

@@ -210,12 +210,12 @@ class ROUGH(Dataset):
 
         return control_stamps_horizon, controls_horizon
 
-    def get_camera_names(self):
-        cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
-        cams = [cam.replace('.yaml', '') for cam in cams_yaml]
-        if 'camera_up' in cams:
-            cams.remove('camera_up')
-        return sorted(cams)
+    @staticmethod
+    def get_camera_names():
+        # cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
+        # cams = sorted([cam.replace('.yaml', '') for cam in cams_yaml])
+        cams = ['camera_left', 'camera_front', 'camera_right', 'camera_rear']
+        return cams
 
     def get_traj(self, i, T_horizon=None):
         # n_frames equals to the number of future poses (trajectory length)

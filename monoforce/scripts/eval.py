@@ -165,7 +165,7 @@ class Eval:
         with torch.no_grad():
             if vis:
                 H, W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
-                cams = ['cam_front', 'cam_left', 'cam_rear', 'cam_right']
+                cams = ['cam_left', 'cam_front', 'cam_right', 'cam_rear']
 
                 n_rows, n_cols = 2, int(np.ceil(len(cams) / 2)) + 4
                 img_h, img_w = self.lss_config['data_aug_conf']['final_dim']
