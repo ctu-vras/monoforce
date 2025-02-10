@@ -25,7 +25,6 @@ class MonoForce:
                  name='monoforce',
                  robot='marv',
                  lss_config_path=None,
-                 lss_weights_path=None,
                  map_frame='map',
                  robot_initial_frame='base_link0',
                  robot_frame='base_link'):
@@ -55,7 +54,8 @@ class MonoForce:
         self.camera_frames = None  # will be set from the data sequence
         # load terrain encoder
         self.terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
-                                              self.lss_config['data_aug_conf']).from_pretrained(lss_weights_path)
+                                              self.lss_config['data_aug_conf'])
+        self.terrain_encoder.from_pretrained(os.path.join(self.lib_path, 'config/weights/lss/val.pth'))
         self.terrain_encoder.to(self.device)
         self.terrain_encoder.eval()
 
@@ -157,10 +157,10 @@ class MonoForce:
         poses[:, :3, 3] = xyz
         return poses
 
-    def predict_states(self, z_grid, controls):
+    def predict_states(self, z_grid, controls, friction=None):
         with torch.no_grad():
             controls = controls.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
-            states, forces = self.dphysics(z_grid, controls=controls)
+            states, forces = self.dphysics(z_grid, controls=controls, friction=friction)
         return states, forces
 
     def run(self):
@@ -227,7 +227,7 @@ class MonoForce:
                                                       w_range=w_range,
                                                       time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
 
-                states, forces = self.predict_states(z_grid=terrain_pred.squeeze(1), controls=controls)
+                states, forces = self.predict_states(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
                 poses = self.poses_from_states(states)
                 poses[:, 2, 3] += 0.132  # add robot clearance
                 rospy.logdebug('Predicted poses shape: %s' % str(poses.shape))
@@ -300,14 +300,12 @@ def main():
     rospy.loginfo('Library path: %s' % lib_path)
     robot = rospy.get_param('~robot', 'marv')
     lss_config_path = rospy.get_param('~lss_config_path', os.path.join(lib_path, f'config/lss_cfg.yaml'))
-    lss_weights_path = rospy.get_param('~lss_weights_path', os.path.join(lib_path, f'config/weights/lss/lss.pt'))
     map_frame = rospy.get_param('~map_frame', 'map')
     robot_initial_frame = rospy.get_param('~robot_initial_frame', 'base_link0')
     robot_frame = rospy.get_param('~robot_frame', 'base_link')
     
     node = MonoForce(robot=robot,
                      lss_config_path=lss_config_path,
-                     lss_weights_path=lss_weights_path,
                      map_frame=map_frame,
                      robot_initial_frame=robot_initial_frame,
                      robot_frame=robot_frame)
