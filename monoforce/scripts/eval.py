@@ -283,8 +283,8 @@ class Eval:
                     plt.ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
                     plt.legend()
 
-                    # plt.pause(0.01)
-                    # plt.draw()
+                    plt.pause(0.01)
+                    plt.draw()
                     plt.savefig(f'{self.output_folder}/{i:04d}.png')
 
             if vis:

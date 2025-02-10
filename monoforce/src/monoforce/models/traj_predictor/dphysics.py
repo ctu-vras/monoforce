@@ -245,10 +245,10 @@ class DPhysics(torch.nn.Module):
             cmd_vels[:, mask] = u.unsqueeze(1)
         mu_cmd_vels = friction_points * cmd_vels
         # mu_cmd_vels = torch.clamp(mu_cmd_vels, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
-        vels_diff = mu_cmd_vels - xd_points
-        vels_diff_n = (vels_diff * n).sum(dim=2).unsqueeze(2)  # normal velocity difference
-        vels_diff_tau = vels_diff - vels_diff_n * n  # tangential velocity difference
-        F_friction = N.unsqueeze(2) * vels_diff_tau  # F_f = mu * N * v
+        slip_vel = mu_cmd_vels - xd_points
+        slip_vel_n = (slip_vel * n).sum(dim=2).unsqueeze(2)  # normal velocity difference
+        slip_vel_tau = slip_vel - slip_vel_n * n  # tangential velocity difference
+        F_friction = N.unsqueeze(2) * slip_vel_tau  # F_f = mu * N * v_slip
         F_friction = torch.clamp(F_friction, min=-m*g, max=m*g)
         assert F_friction.shape == (B, N_pts, 3)
 
