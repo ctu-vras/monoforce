@@ -115,6 +115,8 @@ class MonoForce(TerrainEncoder):
             marker_msg.header.stamp = stamp
             marker_msg.ns = 'paths'
             marker_msg.id = i
+            # path thickness
+            marker_msg.scale.x = 0.05
             marker_array.markers.append(marker_msg)
 
         # publish all sampled paths
@@ -152,8 +154,9 @@ class MonoForce(TerrainEncoder):
         rospy.loginfo('Predicted height map shape: %s' % str(height_terrain.shape))
 
         grid_maps = height_terrain.squeeze(1).repeat(self.dphys_cfg.n_sim_trajs, 1, 1)
+        frictions = friction.squeeze(1).repeat(self.dphys_cfg.n_sim_trajs, 1, 1)
         xyz_qs_init = torch.tensor([[0., 0., 0., 0., 0., 0., 1.]]).repeat(self.dphys_cfg.n_sim_trajs, 1)
-        xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
+        xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init, frictions)
 
         # update path cost bounds
         if path_costs is not None:
@@ -175,7 +178,9 @@ class MonoForce(TerrainEncoder):
         grid_msg = height_map_to_gridmap_msg(height=height_terrain.squeeze().cpu().numpy(),
                                              grid_res=self.lss_cfg['grid_conf']['xbound'][2],
                                              xyz=np.array([0., 0., 0.]),
-                                             q=np.array([0., 0., 0., 1.]))
+                                             q=np.array([0., 0., 0., 1.]),
+                                             mask=friction.squeeze().cpu().numpy(),
+                                             mask_layer_name='friction')
         grid_msg.info.header.stamp = stamp
         grid_msg.info.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(grid_msg)
