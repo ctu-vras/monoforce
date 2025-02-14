@@ -1,4 +1,4 @@
-# MonoForce: PINN for Traversability Estimation from RGB images
+# MonoForce: Learnable Image-conditioned Physics Engine
 
 [![IROS-2024](http://img.shields.io/badge/paper-IEEE-blue.svg?style=plastic)](https://ieeexplore.ieee.org/abstract/document/10801353)
 [![Arxiv](http://img.shields.io/badge/paper-arxiv-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
