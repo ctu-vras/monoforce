@@ -1,7 +1,8 @@
 # MonoForce: Learnable Image-conditioned Physics Engine
 
-[![IROS-2024](http://img.shields.io/badge/paper-IEEE-blue.svg?style=plastic)](https://ieeexplore.ieee.org/abstract/document/10801353)
-[![Arxiv](http://img.shields.io/badge/paper-arxiv-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
+[![IROS-2024](http://img.shields.io/badge/paper-IROS_2024-blue.svg?style=plastic)](https://ieeexplore.ieee.org/abstract/document/10801353)
+[![Arxiv](http://img.shields.io/badge/paper-arxiv_IROS-critical.svg?style=plastic)](https://arxiv.org/abs/2309.09007)
+[![Arxiv](http://img.shields.io/badge/paper-arxiv_TRO-critical.svg?style=plastic)](https://arxiv.org/abs/2502.10156)
 [![ICML-2024-Diff-XYZ](http://img.shields.io/badge/paper-ICML_2024_Diff_XYZ-green.svg?style=plastic)](https://differentiable.xyz/papers-2024/paper_30.pdf)
 
 [![Video](http://img.shields.io/badge/video-13mins-blue.svg?style=plastic)](https://drive.google.com/file/d/1XP0o5xvUlE1_pGOX9tKGPCKOJVdANM_H/view?usp=sharing)
