@@ -130,7 +130,7 @@ class DPhysConfig:
         self.gravity_direction = torch.tensor([0., 0., -1.])  # gravity direction in the world frame
 
         # height map parameters
-        self.grid_res = 0.1  # grid resolution of the heightmap, [m]
+        self.grid_res = 0.4  # grid resolution of the heightmap, [m]
         self.r_min = 1.0  # minimum distance of the terrain from the robot, [m]
         self.d_max = 6.4  # half-size of the terrain, heightmap range: [-d_max, d_max]
         self.h_max = 1.0  # maximum height of the terrain, heightmap range: [-h_max, h_max]
