@@ -29,9 +29,9 @@ grid_conf:
   - 6.4
   - 0.4
   zbound:
-  - -1.0
-  - 1.0
-  - 2.0
+  - -3.2
+  - 3.2
+  - 6.4
 
 # use ImageNet mean and std
 img_mean:
