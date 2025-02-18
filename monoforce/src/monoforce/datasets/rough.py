@@ -100,6 +100,7 @@ class ROUGH(Dataset):
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
+        self.grid_res = lss_cfg['grid_conf']['xbound'][2]
 
     def __getitem__(self, i):
         if isinstance(i, (int, np.int64)):
@@ -339,7 +340,7 @@ class ROUGH(Dataset):
         else:
             points = torch.as_tensor(position(self.get_cloud(i)))
             lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
-                                          grid_res=self.dphys_cfg.grid_res,
+                                          grid_res=self.grid_res,
                                           h_max=self.dphys_cfg.h_max,
                                           r_min=self.dphys_cfg.r_min)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -350,8 +351,8 @@ class ROUGH(Dataset):
     def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0), T_horizon=None):
         # robot footprint points grid
         width, length = robot_size
-        x = np.arange(-length / 2, length / 2, self.dphys_cfg.grid_res)
-        y = np.arange(-width / 2, width / 2, self.dphys_cfg.grid_res)
+        x = np.arange(-length / 2, length / 2, self.grid_res)
+        y = np.arange(-width / 2, width / 2, self.grid_res)
         x, y = np.meshgrid(x, y)
         z = np.zeros_like(x)
         footprint0 = np.stack([x, y, z], axis=-1).reshape((-1, 3))
@@ -385,7 +386,7 @@ class ROUGH(Dataset):
                 T = self.get_pose(i)
                 cloud = transform_cloud(cloud, T)
                 points = position(cloud)
-                points = filter_grid(points, self.dphys_cfg.grid_res, keep='first', log=False)
+                points = filter_grid(points, self.grid_res, keep='first', log=False)
                 if i == 0:
                     global_cloud = points
                 else:
@@ -652,7 +653,7 @@ class ROUGH(Dataset):
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
             hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
-                                          grid_res=self.dphys_cfg.grid_res,
+                                          grid_res=self.grid_res,
                                           h_max=self.dphys_cfg.h_max)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, hm_rigid.cpu().numpy())

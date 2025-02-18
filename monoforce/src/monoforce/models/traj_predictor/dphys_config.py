@@ -75,7 +75,7 @@ def robot_geometry(robot):
 
 
 class DPhysConfig:
-    def __init__(self, robot='marv'):
+    def __init__(self, robot='marv', grid_res=0.1):
         # robot parameters
         self.robot = robot
         self.vel_max = 1.0  # m/s
@@ -130,17 +130,17 @@ class DPhysConfig:
         self.gravity_direction = torch.tensor([0., 0., -1.])  # gravity direction in the world frame
 
         # height map parameters
-        self.grid_res = 0.4  # grid resolution of the heightmap, [m]
+        self.grid_res = grid_res  # grid resolution of the heightmap, [m]
         self.r_min = 1.0  # minimum distance of the terrain from the robot, [m]
         self.d_max = 6.4  # half-size of the terrain, heightmap range: [-d_max, d_max]
         self.h_max = 1.0  # maximum height of the terrain, heightmap range: [-h_max, h_max]
         x_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
         y_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)
-        self.x_grid, self.y_grid = torch.meshgrid(x_grid, y_grid)
+        self.x_grid, self.y_grid = torch.meshgrid(x_grid, y_grid, indexing='ij')
         self.z_grid = torch.zeros_like(self.x_grid)
+        self.friction = 1.0 * torch.ones_like(self.z_grid)  # friction of the terrain
         self.stiffness = 50_000.  # stiffness of the terrain, [N/m]
         self.damping = np.sqrt(4 * self.robot_mass * self.stiffness)  # critical damping
-        self.friction = 1.0 * torch.ones_like(self.z_grid)  # friction of the terrain
         self.hm_interp_method = None
 
         # trajectory shooting parameters

@@ -86,6 +86,16 @@ class CamEncode(nn.Module):
         return x
 
 
+class ScaledTanh(nn.Module):
+    def __init__(self, min_val=-1., max_val=1.):
+        super(ScaledTanh, self).__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def forward(self, x):
+        return self.min_val + (self.max_val - self.min_val) * (torch.tanh(x) + 1) / 2
+
+
 class BevEncode(nn.Module):
     def __init__(self, inC, outC):
         super(BevEncode, self).__init__()
@@ -106,7 +116,7 @@ class BevEncode(nn.Module):
             nn.BatchNorm2d(128),
             nn.GELU(),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
-            # nn.Tanh()
+            ScaledTanh(-1, 1)
         )
         self.up_diff = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),

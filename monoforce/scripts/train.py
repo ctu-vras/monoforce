@@ -42,6 +42,7 @@ def arg_parser():
     parser.add_argument('--terrain_weight', type=float, default=2.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
     parser.add_argument('--traj_sim_time', type=float, default=5.0, help='Trajectory simulation time')
+    parser.add_argument('--dphys_grid_res', type=float, default=0.4, help='DPhys grid resolution')
 
     return parser.parse_args()
 
@@ -99,6 +100,12 @@ class TrainerCore:
         # models and optimizer
         self.terrain_encoder = None
         self.dphysics = DPhysics(dphys_cfg, device=self.device)
+
+        # coarser grid resolution for dphysics: average pooling of terrain encoder grid
+        self.dphys_grid_res = self.dphys_cfg.grid_res
+        self.terrain_encoder_grid_res = self.lss_cfg['grid_conf']['xbound'][2]
+        kernel_size = int(self.dphys_grid_res / self.terrain_encoder_grid_res)
+        self.terrain_preproc = torch.nn.AvgPool2d(kernel_size=kernel_size, stride=kernel_size)
         
         # optimizer
         self.optimizer = None
@@ -231,14 +238,20 @@ class TrainerCore:
         raise NotImplementedError
 
     def predicts_states(self, terrain, pose0, controls):
+        # preprocess terrain for physics
+        terrain_ = {}
+        for k, v in terrain.items():
+            terrain_[k] = self.terrain_preproc(v)
+        # initial state
         x0 = pose0[:, :3, 3].to(self.device)
         xd0 = torch.zeros_like(x0)
         R0 = pose0[:, :3, :3].to(self.device)
         omega0 = torch.zeros_like(xd0)
         state0 = (x0, xd0, R0, omega0)
-        states_pred, _ = self.dphysics(z_grid=terrain['terrain'].squeeze(1), state=state0,
+        # predict states
+        states_pred, _ = self.dphysics(z_grid=terrain_['terrain'].squeeze(1), state=state0,
                                        controls=controls.to(self.device),
-                                       friction=terrain['friction'].squeeze(1))
+                                       friction=terrain_['friction'].squeeze(1))
         return states_pred
 
     def vis_pred(self, loader):
@@ -282,8 +295,8 @@ class TrainerCore:
 
         # get height map points
         z_grid = terrain_pred
-        x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
-        y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
+        x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.terrain_encoder_grid_res)
+        y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.terrain_encoder_grid_res)
         x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
         hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
         hm_points = hm_points.view(-1, 3).T
@@ -478,7 +491,7 @@ class TrainerBEVFusion(TrainerCore):
 
         if self.phys_weight > 0:
             loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
-                                          pred_ts=control_ts, gt_ts=traj_ts)
+                                     pred_ts=control_ts, gt_ts=traj_ts)
         else:
             loss_phys = torch.tensor(0.0, device=self.device)
 
@@ -599,7 +612,7 @@ def main():
     print(args)
 
     # load configs: DPhys and LSS (terrain encoder)
-    dphys_cfg = DPhysConfig(robot=args.robot)
+    dphys_cfg = DPhysConfig(robot=args.robot, grid_res=args.dphys_grid_res)
     dphys_cfg.traj_sim_time = args.traj_sim_time
     lss_config_path = args.lss_cfg_path
     assert os.path.isfile(lss_config_path), 'LSS config file %s does not exist' % lss_config_path

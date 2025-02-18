@@ -1,3 +1,4 @@
+# RGB images augmentation configuration
 data_aug_conf:
   H: 1200
   W: 1920
@@ -15,19 +16,20 @@ data_aug_conf:
   - -5.4
   - 5.4
 
+# grid configuration
 grid_conf:
   dbound:
   - 0.6
   - 6.4
-  - 0.4
+  - 0.1
   xbound:
   - -6.4
   - 6.4
-  - 0.4
+  - 0.1
   ybound:
   - -6.4
   - 6.4
-  - 0.4
+  - 0.1
   zbound:
   - -3.2
   - 3.2

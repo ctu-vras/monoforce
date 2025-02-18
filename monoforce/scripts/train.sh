@@ -13,5 +13,5 @@ source $HOME/workspaces/traversability_ws/devel/setup.bash
            --geom_weight 1.0 --terrain_weight 2.0 --phys_weight 1.0 \
            --traj_sim_time 5.0 \
            --robot $ROBOT \
-           --model $MODEL #\
-#           --pretrained_model_path ${WEIGHTS}
+           --model $MODEL \
+           --pretrained_model_path ${WEIGHTS}

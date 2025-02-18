@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 # simulation parameters
 robot = 'marv'
-dphys_cfg = DPhysConfig(robot=robot)
+dphys_cfg = DPhysConfig(robot=robot, grid_res=0.1)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -23,7 +23,7 @@ def motion():
 
     # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
     controls = torch.stack([
-        torch.tensor([[1.0, 0.3]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
+        torch.tensor([[1.0, 0.6]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
     ]).to(device)
     B, N_ts, _ = controls.shape
     assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
@@ -90,9 +90,6 @@ def motion_dataset():
 
     # instantiate the simulator
     dphysics = DPhysics(dphys_cfg, device=device)
-
-    # helper quantities for visualization
-    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
 
     # sample_i = 532 + 335 + 59
     sample_i = 59
