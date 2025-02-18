@@ -32,7 +32,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 - [Installation Instructions](./monoforce/docs/INSTALL.md)
 - [Data](./monoforce/docs/DATA.md)
 - [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md)
-- [Differentiable Physics](./monoforce/docs/DPHYS.md)
+- [Differentiable Physics Engine](./monoforce/docs/DPHYS.md)
 - [Running](#running)
 - [Examples](./monoforce/examples)
 - [ROS Integration](#ros-integration)
@@ -44,10 +44,10 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 <img src="./monoforce/docs/imgs/pipeline.png" width="800"/>
 
-The MonoForce pipeline consists of the Terrain Encoder and the Differentiable Physics modules.
-Given input RGB images and cameras calibration the Terrain Encoder predicts robot's supporting terrain.
-Then the Differentiable Physics module simulates robot trajectory and interaction forces on the predicted terrain
-for a provided control sequence (linear and angular velocities).
+The MonoForce pipeline consists of the Terrain Encoder and the Physics Engine.
+Given input RGB images and cameras calibration the Terrain Encoder predicts terrain properties.
+Then the differentiable Physics Engine simulates robot trajectory and interaction forces on the predicted terrain
+for a provided control sequence.
 Refer to the [monoforce/examples](./monoforce/examples) folder for implementation details.
 
 Please run the following command to explore the MonoForce pipeline:
@@ -56,7 +56,8 @@ cd monoforce/
 python scripts/run.py --img-paths IMG1_PATH IMG2_PATH ... IMGN_PATH --cameras CAM1 CAM2 ... CAMN --calibration-path CALIB_PATH
 ```
 
-For example if you want to test the model with the provided images from the ROUGH dataset:
+For example if you want to test the model with the provided images from the
+[ROUGH](https://github.com/ctu-vras/rough-dataset) dataset:
 ```commandline
 cd monoforce/scripts/
 ./run.sh
@@ -120,19 +121,19 @@ The package is used as robot-terrain interaction and path planning pipeline.
 </p>
 
 We provide the two differentiable physics models for robot-terrain interaction prediction:
+- **Pytorch**: The model is implemented in Pytorch. Please refer to the
+[trajectory_shooting_with_torch_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_torch_diff_physics.ipynb)
+notebook for the example of the trajectory prediction.
 - **Warp**: The model is based on the
 [NVIDIA/warp](https://github.com/NVIDIA/warp) and
 [ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
 packages.
 Take a look at the [trajectory_shooting_with_warp_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_warp_diff_physics.ipynb)
 notebook for the example of the trajectory prediction.
-- **Pytorch**: The model is implemented in Pytorch. Please refer to the
-[trajectory_shooting_with_torch_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_torch_diff_physics.ipynb)
-notebook for the example of the trajectory prediction.
 
 Navigation consists of the following stages:
-- **Height map prediction**: The Terrain Encoder part of the MonoForce is used to estimate terrain properties.
-- **Trajectories prediction**: The Diff Physics part of the MonoForce is used to shoot the robot trajectories.
+- **Terrain prediction**: The Terrain Encoder is used to estimate terrain properties.
+- **Trajectories simulation**: The Physics Engine is used to shoot the robot trajectories.
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
 
