@@ -62,7 +62,7 @@ For example if you want to test the model with the provided images from the
 cd monoforce/scripts/
 ./run.sh
 ```
-Please, refer to the [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md) documentation to download the pretrained model weights.
+Please, refer to the [installation instructions](./monoforce/docs/INSTALL.md#model-weights) to download the pre-trained model weights.
 
 ## ROS Integration
 
