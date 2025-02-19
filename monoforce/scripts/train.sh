@@ -4,7 +4,7 @@ MODEL=lss  # lss, voxelnet, bevfusion
 ROBOT=marv
 DEBUG=False
 VIS=False
-BSZ=32  # 32, 32, 8
+BSZ=24  # 24, 24, 4
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/${MODEL}/val.pth
 
 source $HOME/workspaces/traversability_ws/devel/setup.bash
