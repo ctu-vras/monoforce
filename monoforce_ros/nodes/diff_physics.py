@@ -10,7 +10,6 @@ import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
-from monoforce.models.traj_predictor.dphysics_warp import DiffSim, Heightmap
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
 from nav_msgs.msg import Path
@@ -204,114 +203,13 @@ class DiffPhysBase:
     def predict_paths(self, grid_maps, xyz_qs_init):
         raise NotImplementedError
 
-
-class DiffPhysicsWarp(DiffPhysBase):
-    def __init__(self,
-                 dphys_cfg: DPhysConfig = None,
-                 gridmap_topic='/grid_map/terrain',
-                 gridmap_layer='elevation',
-                 robot_frame='base_link',
-                 max_age=0.5,
-                 allow_backward=True,
-                 dt=0.001,
-                 device='cpu'):
-        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot_frame=robot_frame,
-                         max_age=max_age, device=device, dt=dt)
-        # initialize warp
-        wp.init()
-        assert 'tradr' in dphys_cfg.robot, 'Only Tradr robot is supported for WARP engine'
-
-        self.n_sim_trajs = dphys_cfg.n_sim_trajs if dphys_cfg.n_sim_trajs % 2 == 0 else dphys_cfg.n_sim_trajs + 1
-
-        self.xyz_q0 = self.init_poses()
-        self.track_vels = self.init_controls()
-        self.flipper_angles = self.init_flippers()
-        height0 = np.zeros((int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res),
-                            int(dphys_cfg.d_max * 2 / dphys_cfg.grid_res)))
-        self.simulator = self.init_simulator(height=height0)
-
-        # grid map subscriber
-        self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
-
-    def init_flippers(self):
-        """
-        Initialize flipper angles.
-        """
-        flipper_angles = np.zeros((self.n_sim_trajs, self.n_sim_steps, 4))
-        # flipper_angles[0, :, 0] = 0.5
-        return flipper_angles
-
-    def init_simulator(self, height):
-        """
-        Initialize simulator with given height map.
-        """
-        t_start = time()
-        np_heights = [height for _ in range(self.n_sim_trajs)]
-        res = [self.dphys_cfg.grid_res for _ in range(self.n_sim_trajs)]
-        # create simulator
-        simulator = DiffSim(np_heights, res, T=self.n_sim_steps, use_renderer=False, device=self.device)
-        simulator.set_control(self.track_vels, self.flipper_angles)
-        simulator.set_init_poses(self.xyz_q0)
-        rospy.logdebug('Simulator initialization took %.3f [sec]' % (time() - t_start))
-        return simulator
-
-    def update_heightmaps(self, heights):
-        assert len(heights) == self.simulator.n_robots
-        n = self.simulator.n_robots
-        for traj_idx in range(n):
-            self.simulator.heightmap_list[traj_idx].heights.assign(heights[traj_idx])
-        self.simulator.heightmap_array = wp.array(self.simulator.heightmap_list, dtype=Heightmap, device=self.device)
-
-    def update_robot_poses(self, xyz_q):
-        assert xyz_q.shape == (self.n_sim_trajs, 7)
-        self.simulator.body_q.assign(xyz_q)
-
-    def predict_paths(self, grid_maps, xyz_qs_init=None):
-        for grid_map in grid_maps:
-            assert isinstance(grid_map, np.ndarray)
-            assert grid_map.shape[0] == grid_map.shape[1]
-        if xyz_qs_init is None:
-            xyz_qs_init = self.xyz_q0
-        assert xyz_qs_init.shape == (self.n_sim_trajs, 7), 'xyz_q0 shape: %s' % str(xyz_qs_init.shape)
-
-        # simulate trajectories
-        t_start = time()
-        # TODO: does not work with CUDA, warp simulation breaks
-        assert self.device == 'cpu', 'WARP-based dphysics does not support CUDA'
-        self.update_heightmaps(heights=grid_maps)
-        self.update_robot_poses(xyz_q=xyz_qs_init)
-        xyz_qs = self.simulator.simulate(render=False, use_graph=True if self.device == 'cuda' else False)
-        rospy.loginfo('WARP Simulation took %.3f [sec]' % (time() - t_start))
-
-        t_start = time()
-        xyz_qs = torch.as_tensor(xyz_qs.numpy().transpose(1, 0, 2))
-        forces = torch.as_tensor(self.simulator.body_f.numpy().transpose(1, 0, 2))
-        rospy.logdebug('xyz_qs: %s' % str(xyz_qs.shape))
-        rospy.logdebug('forces: %s' % str(forces.shape))
-        assert xyz_qs.shape == (self.n_sim_trajs, self.n_sim_steps + 1, 7)
-        assert forces.shape == (self.n_sim_trajs, self.n_sim_steps, 6)
-
-        # path cost as a sum of force magnitudes
-        path_costs = torch.linalg.norm(forces, dim=-1).std(dim=-1)
-        assert path_costs.shape == (self.n_sim_trajs,)
-
-        # remove unfeasible paths
-        if len(path_costs) == 0:
-            rospy.logwarn('All simulated paths are unfeasible')
-            return None, None
-
-        rospy.logdebug('Paths post-processing took %.3f [sec]' % (time() - t_start))
-        return xyz_qs, path_costs
-
-
-class DiffPhysicsTorch(DiffPhysBase):
+class DPhysEngine(DiffPhysBase):
     def __init__(self,
                  dphys_cfg: DPhysConfig,
                  gridmap_topic='/grid_map/terrain',
                  gridmap_layer='elevation',
                  robot_frame='base_link',
                  max_age=0.5,
-                 allow_backward=False,
                  dt=0.01,
                  device='cpu'):
         super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot_frame=robot_frame,
@@ -376,19 +274,13 @@ def main():
     gridmap_topic = rospy.get_param('~gridmap_topic')
     gridmap_layer = rospy.get_param('~gridmap_layer', 'elevation')
     max_age = rospy.get_param('~max_age', 0.5)
-    allow_backward = rospy.get_param('~allow_backward', True)
     device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
-    engine = rospy.get_param('~engine', 'torch')
-    assert engine in ['torch', 'warp'], 'Unknown engine: %s' % engine
-
-    DPhysEngine = DiffPhysicsTorch if engine == 'torch' else DiffPhysicsWarp
 
     node = DPhysEngine(dphys_cfg=dphys_cfg,
                        robot_frame=robot_frame,
                        gridmap_topic=gridmap_topic,
                        gridmap_layer=gridmap_layer,
                        max_age=max_age,
-                       allow_backward=allow_backward,
                        device=device)
     node.spin()
 

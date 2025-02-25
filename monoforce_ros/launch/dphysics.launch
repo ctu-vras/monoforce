@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="robot" default="marv" doc="Robot name"/>
-    <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
     <arg name="gridmap_topic" default="grid_map/terrain" doc="Input height map topic"/>
     <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>
     <arg name="gridmap_layer" default="elevation" doc="Height map layer name"/>
@@ -15,9 +14,7 @@
             gridmap_topic: $(arg gridmap_topic)
             gridmap_layer: $(arg gridmap_layer)
             max_age: $(arg max_age)
-            allow_backward: true
             device: $(arg device)
-            engine: $(arg engine)
         </rosparam>
     </node>
 </launch>
