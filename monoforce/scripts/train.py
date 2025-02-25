@@ -8,12 +8,10 @@ import numpy as np
 from torch.utils.data import DataLoader
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion
-from monoforce.models.terrain_encoder.voxelnet import VoxelNet
 from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.datasets.rough import ROUGH
-from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data, position
+from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
 from monoforce.losses import hm_loss, physics_loss
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -54,7 +52,7 @@ class TrainerCore:
     Args:
     dphys_cfg: DPhysConfig, physical robot-terrain interaction configuration
     lss_cfg: dict, LSS model configuration
-    model: str, model to train: lss, bevfusion, voxelnet
+    model: str, model to train: lss
     bsz: int, batch size
     lr: float, learning rate
     weight_decay: float, weight decay
@@ -422,189 +420,11 @@ class TrainerLSS(TrainerCore):
 
         return terrain, states_pred
 
-
-class Fusion(ROUGH):
-    def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
-        super(Fusion, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
-
-    def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        points = torch.as_tensor(position(self.get_cloud(i))).T
-        control_ts, controls = self.get_controls(i)
-        traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, Rs, Omegas = states
-        hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_height_map(i)
-        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
-        return (imgs, rots, trans, intrins, post_rots, post_trans,
-                hm_geom, hm_terrain,
-                control_ts, controls,
-                pose0,
-                traj_ts, Xs, Xds, Rs, Omegas,
-                points)
-
-class TrainerBEVFusion(TrainerCore):
-
-    def __init__(self, dphys_cfg, lss_cfg, model='bevfusion', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
-                 pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=0.1):
-        super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
-                         geom_weight, terrain_weight, phys_weight)
-        # create dataloaders
-        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Fusion)
-
-        # load models: terrain encoder
-        self.terrain_encoder = BEVFusion(grid_conf=self.lss_cfg['grid_conf'],
-                                         data_aug_conf=self.lss_cfg['data_aug_conf']).from_pretrained(pretrained_model_path)
-        self.terrain_encoder.to(self.device)
-        self.terrain_encoder.train()
-
-        # define optimizer
-        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
-
-    def compute_losses(self, batch):
-        (imgs, rots, trans, intrins, post_rots, post_trans,
-         hm_geom, hm_terrain,
-         control_ts, controls,
-         pose0,
-         traj_ts, Xs, Xds, Rs, Omegas,
-         points) = batch
-        # terrain encoder forward pass
-        img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-        points_input = points
-        terrain = self.terrain_encoder(img_inputs, points_input)
-
-        # geometry loss: difference between predicted and ground truth height maps
-        if self.geom_weight > 0:
-            loss_geom = hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
-        else:
-            loss_geom = torch.tensor(0.0, device=self.device)
-
-        # rigid / terrain height map loss
-        if self.terrain_weight > 0:
-            loss_terrain = hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
-        else:
-            loss_terrain = torch.tensor(0.0, device=self.device)
-
-        # physics loss: difference between predicted and ground truth states
-        states_gt = [Xs, Xds, Rs, Omegas]
-        states_pred = self.predicts_states(terrain, pose0, controls)
-
-        if self.phys_weight > 0:
-            loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
-                                     pred_ts=control_ts, gt_ts=traj_ts)
-        else:
-            loss_phys = torch.tensor(0.0, device=self.device)
-
-        return loss_geom, loss_terrain, loss_phys
-
-    def pred(self, batch):
-        (imgs, rots, trans, intrins, post_rots, post_trans,
-         hm_geom, hm_terrain,
-         controls_ts, controls,
-         pose0,
-         traj_ts, Xs, Xds, Rs, Omegas,
-         points) = batch
-
-        # predict height maps
-        img_inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
-        terrain = self.terrain_encoder(img_inputs, points)
-
-        # predict states
-        states_pred = self.predicts_states(terrain, pose0, controls)
-
-        return terrain, states_pred
-
-
-class Points(ROUGH):
-    def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
-        super(Points, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
-
-    def get_sample(self, i):
-        points = torch.as_tensor(position(self.get_cloud(i))).T
-        control_ts, controls = self.get_controls(i)
-        traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, Rs, Omegas = states
-        hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_height_map(i)
-        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
-        return (points, hm_geom, hm_terrain,
-                control_ts, controls,
-                pose0,
-                traj_ts, Xs, Xds, Rs, Omegas)
-
-class TrainerVoxelNet(TrainerCore):
-        def __init__(self, dphys_cfg, lss_cfg, model='voxelnet', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
-                    pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=0.1):
-            super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
-                             geom_weight, terrain_weight, phys_weight)
-            # create dataloaders
-            self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=Points)
-
-            # load models: terrain encoder
-            self.terrain_encoder = VoxelNet(grid_conf=self.lss_cfg['grid_conf'],
-                                            outC=1).from_pretrained(pretrained_model_path)
-            self.terrain_encoder.to(self.device)
-            self.terrain_encoder.train()
-
-            # define optimizer
-            self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
-
-        def compute_losses(self, batch):
-            (points, hm_geom, hm_terrain,
-             control_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = batch
-            # terrain encoder forward pass
-            points_input = points
-            terrain = self.terrain_encoder(points_input)
-
-            # geometry loss: difference between predicted and ground truth height maps
-            if self.geom_weight > 0:
-                loss_geom = hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
-            else:
-                loss_geom = torch.tensor(0.0, device=self.device)
-
-            # rigid / terrain height map loss
-            if self.terrain_weight > 0:
-                loss_terrain = hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
-            else:
-                loss_terrain = torch.tensor(0.0, device=self.device)
-
-            # physics loss: difference between predicted and ground truth states
-            states_gt = [Xs, Xds, Rs, Omegas]
-            states_pred = self.predicts_states(terrain, pose0, controls)
-
-            if self.phys_weight > 0:
-                loss_phys = physics_loss(states_pred=states_pred, states_gt=states_gt,
-                                              pred_ts=control_ts, gt_ts=traj_ts)
-            else:
-                loss_phys = torch.tensor(0.0, device=self.device)
-
-            return loss_geom, loss_terrain, loss_phys
-
-        def pred(self, batch):
-            (points, hm_geom, hm_terrain,
-             control_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = batch
-
-            # predict terrain
-            terrain = self.terrain_encoder(points)
-
-            # predict states
-            states_pred = self.predicts_states(terrain, pose0, controls)
-
-            return terrain, states_pred
-
 def choose_trainer(model):
     if model == 'lss':
         return TrainerLSS
-    elif model == 'bevfusion':
-        return TrainerBEVFusion
-    elif model == 'voxelnet':
-        return TrainerVoxelNet
     else:
-        raise ValueError(f'Invalid model: {model}. Supported models: lss, bevfusion, voxelnet')
+        raise ValueError(f'Invalid model: {model}. Supported models: lss')
 
 
 def main():

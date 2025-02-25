@@ -20,8 +20,6 @@ install(
     PROGRAMS
         nodes/diff_physics.py
         nodes/terrain_encoder.py
-        nodes/geom_hm_estimator.py
-        nodes/gridmaps_merger.py
         nodes/monoforce_node.py
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

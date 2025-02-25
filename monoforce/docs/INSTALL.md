@@ -2,19 +2,15 @@
 
 Install Python dependencies:
 ```commandline
-pip install -r ../singularity/requirements.txt
+pip install -r ../docker/requirements.txt
 ```
 
+## ROS Integration
 Please clone the ROS package, install its dependencies, and build the workspace:
 ```commandline
 mkdir -p ~/traversability_ws/src/
 cd ~/traversability_ws/src/
 git clone https://github.com/ctu-vras/monoforce.git
-
-wstool init
-wstool merge monoforce/monoforce_gazebo/dependencies.rosinstall
-wstool merge monoforce/monoforce_navigation/dependencies.rosinstall
-wstool up -j 4
 
 cd ~/traversability_ws/
 catkin init
@@ -24,7 +20,7 @@ rosdep install --from-paths src --ignore-src -r -y
 catkin build
 ```
 
-### Model Weights
+## Model Weights
 
 The pretrained weights for the terrain encoder are available at:
 [https://github.com/ctu-vras/monoforce/releases/download/t-ro-2025/weights.zip](https://github.com/ctu-vras/monoforce/releases/download/t-ro-2025/weights.zip).

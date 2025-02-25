@@ -92,4 +92,3 @@ if __name__ == '__main__':
     draw_coord_frame(T1)
     # Show the figure
     mlab.show()
-

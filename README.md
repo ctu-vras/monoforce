@@ -66,17 +66,6 @@ Please, refer to the [installation instructions](./monoforce/docs/INSTALL.md#mod
 
 ## ROS Integration
 
-If you have [ROS](http://wiki.ros.org/noetic/Installation/Ubuntu) and [Docker](https://docs.docker.com/engine/install/ubuntu/) installed you can also run:
-```commandline
-docker pull agishrus/monoforce
-cd monoforce_demos/scripts/
-./demo.sh
-```
-or equivalently:
-```commandline
-roslaunch monoforce_demos monoforce_rough.launch
-```
-
 <img src="./monoforce/docs/imgs/monoforce.gif" width="800"/>
 
 We provide a ROS nodes for both the trained Terrain Encoder model and the Differentiable Physics module.
@@ -120,15 +109,9 @@ The package is used as robot-terrain interaction and path planning pipeline.
   </a>
 </p>
 
-We provide the two differentiable physics models for robot-terrain interaction prediction:
+We provide the differentiable physics model for robot-terrain interaction prediction:
 - **Pytorch**: The model is implemented in Pytorch. Please refer to the
 [trajectory_shooting_with_torch_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_torch_diff_physics.ipynb)
-notebook for the example of the trajectory prediction.
-- **Warp**: The model is based on the
-[NVIDIA/warp](https://github.com/NVIDIA/warp) and
-[ctu-vras/diffsim](https://github.com/ctu-vras/diffsim)
-packages.
-Take a look at the [trajectory_shooting_with_warp_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_warp_diff_physics.ipynb)
 notebook for the example of the trajectory prediction.
 
 Navigation consists of the following stages:
@@ -136,11 +119,6 @@ Navigation consists of the following stages:
 - **Trajectories simulation**: The Physics Engine is used to shoot the robot trajectories.
 - **Trajectory selection**: The trajectory with the smallest cost based on robot-terrain interaction forces is selected.
 - **Control**: The robot is controlled to follow the selected trajectory.
-
-To run the navigation pipeline in the Gazebo simulator:
-```commandline
-roslaunch monoforce_demos husky_gazebo_monoforce.launch
-```
 
 ## Citation
 

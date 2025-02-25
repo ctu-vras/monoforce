@@ -17,5 +17,5 @@ We utilize the [Lift-Splat-Shoot (LSS)](https://github.com/nv-tlabs/lift-splat-s
 To train the LSS model, please run:
 ```commandline
 cd scripts/
-python train
+python train.py
 ```

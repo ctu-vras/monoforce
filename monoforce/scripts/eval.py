@@ -8,14 +8,10 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from scipy.spatial.transform import Rotation
 import argparse
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics
-from monoforce.models.traj_predictor.traj_lstm import TrajLSTM
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-from monoforce.models.terrain_encoder.bevfusion import BEVFusion
-from monoforce.models.terrain_encoder.voxelnet import VoxelNet
 from monoforce.transformations import position
 from monoforce.datasets.rough import ROUGH
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
@@ -83,13 +79,8 @@ class Eval:
         if model == 'lss':
             terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
                                              self.lss_config['data_aug_conf']).from_pretrained(path)
-        elif model == 'bevfusion':
-            terrain_encoder = BEVFusion(self.lss_config['grid_conf'],
-                                        self.lss_config['data_aug_conf']).from_pretrained(path)
-        elif model == 'voxelnet':
-            terrain_encoder = VoxelNet(self.lss_config['grid_conf']).from_pretrained(path)
         else:
-            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: lss, bevfusion, voxelnet')
+            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: lss')
         terrain_encoder.to(self.device)
         terrain_encoder.eval()
         return terrain_encoder
@@ -100,28 +91,15 @@ class Eval:
             imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
             img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
             terrain = self.terrain_encoder(*img_inputs)
-        elif model == 'BEVFusion':
-            imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
-            img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
-            points_inputs = batch[-1]
-            terrain = self.terrain_encoder(img_inputs, points_inputs)
-        elif model == 'VoxelNet':
-            points_inputs = batch[-1]
-            terrain = self.terrain_encoder(points_inputs)
         else:
-            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: LiftSplatShoot, BEVFusion, VoxelNet')
+            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: LiftSplatShoot')
         return terrain
 
     def get_traj_pred(self, model='dphysics'):
         if model == 'dphysics':
             traj_predictor = DPhysics(self.dphys_cfg, device=self.device)
-        elif model == 'traj_lstm':
-            h = w = int(2 * self.dphys_cfg.d_max / self.dphys_cfg.grid_res)
-            traj_predictor = TrajLSTM(state_dims=6,
-                                      control_dims=2,
-                                      heightmap_shape=(h, w)).from_pretrained('../config/weights/traj_lstm/lstm.pth')
         else:
-            raise ValueError(f'Invalid trajectory predictor model: {model}. Supported: dphysics, traj_lstm')
+            raise ValueError(f'Invalid trajectory predictor model: {model}. Supported: dphysics')
         traj_predictor.to(self.device)
         traj_predictor.eval()
         return traj_predictor
@@ -135,20 +113,8 @@ class Eval:
             height, friction = terrain['terrain'], terrain['friction']
             states_pred, _ = self.traj_predictor(z_grid=height.squeeze(1), state=state0,
                                                  controls=controls, friction=friction.squeeze(1))
-        elif model == 'TrajLSTM':
-            controls = batch[9]
-            height = terrain['terrain']
-            pose0 = batch[10]
-            xyz0 = pose0[:, :3, 3]
-            rpy0 = torch.as_tensor(Rotation.from_matrix(pose0[:, :3, :3].cpu()).as_euler('xyz'), dtype=xyz0.dtype, device=self.device)
-            xyz_rpy0 = torch.cat([xyz0, rpy0], dim=-1)
-            xyz_rpy_pred = self.traj_predictor(xyz_rpy0, controls, height)
-            X_pred = xyz_rpy_pred[:, :, :3]
-            Rs_pred = Rotation.from_euler('xyz', xyz_rpy_pred[:, :, 3:].cpu().view(-1, 3), degrees=False).as_matrix()
-            Rs_pred = torch.as_tensor(Rs_pred, dtype=xyz0.dtype, device=self.device).view(X_pred.shape[0], X_pred.shape[1], 3, 3)
-            states_pred = [X_pred, None, Rs_pred, None]
         else:
-            raise ValueError(f'Invalid model: {model}. Supported: DPhysics, TrajLSTM')
+            raise ValueError(f'Invalid model: {model}. Supported: DPhysics')
         return states_pred
 
     def get_dataloader(self, batch_size=1):
