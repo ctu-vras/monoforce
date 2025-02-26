@@ -11,6 +11,7 @@ from .utils import (timestamp_to_bag_time,
                     convert_ts_to_float,
                     get_extrinsics_yaml,
                     get_intrinsics)
+from .utils3d import METAINFO
 from ..rough import data_dir
 import os
 import numpy as np
@@ -57,6 +58,9 @@ class BaseDataset(Dataset):
     def get_cloud(self, i):
         raise NotImplementedError
 
+    def get_cloud_label(self, i):
+        raise NotImplementedError
+
     def get_image(self, i):
         raise NotImplementedError
 
@@ -68,17 +72,29 @@ class BaseDataset(Dataset):
         :param dir_name: directory to save/load heightmap
         :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
-        points = torch.as_tensor(self.get_cloud(i))
-        lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+        cloud = torch.as_tensor(self.get_cloud(i))
+        heightmap = estimate_heightmap(cloud, d_max=self.dphys_cfg.d_max,
                                       grid_res=self.grid_res,
                                       h_max=self.dphys_cfg.h_max,
                                       r_min=self.dphys_cfg.r_min)
-        heightmap = torch.as_tensor(lidar_hm)
+        heightmap = torch.as_tensor(heightmap)
         return heightmap
 
     def get_terrain_height_map(self, i):
-        # TODO: use semantic classes to estimate terrain height map
-        heightmap = self.get_geom_height_map(i)
+        soft_classes = self.lss_cfg['soft_classes']
+        soft_labels = [METAINFO['cidx'][METAINFO['classes'].index(cls)] for cls in soft_classes]
+        cloud = self.get_cloud(i)
+        label = self.get_cloud_label(i)
+        mask = np.isin(label, [soft_labels])
+        cloud = cloud[~mask]
+
+        cloud = torch.as_tensor(cloud)
+        heightmap = estimate_heightmap(cloud, d_max=self.dphys_cfg.d_max,
+                                       grid_res=self.grid_res,
+                                       h_max=self.dphys_cfg.h_max,
+                                       r_min=self.dphys_cfg.r_min)
+        heightmap = torch.as_tensor(heightmap)
+
         return heightmap
 
     def get_images_data(self, i):
@@ -175,6 +191,12 @@ class WildScenes(BaseDataset):
         cloud = np.fromfile(cloud_path, dtype=np.float32).reshape(-1, 3)
         return cloud
 
+    def get_cloud_label(self, i):
+        img_i = self.get_cloud_i_closest_to_image(i)
+        cloud_label_path = self.cloud_label_paths[img_i]
+        cloud_label = np.fromfile(cloud_label_path, dtype=np.int32)
+        return cloud_label
+
     def get_image(self, i):
         img_path = self.img_paths[i]
         img = Image.open(img_path)
@@ -230,28 +252,33 @@ class WildScenes(BaseDataset):
 
 
 def main():
-    from monoforce.utils import explore_data
     import open3d as o3d
-    import matplotlib.pyplot as plt
+    from .utils3d import METAINFO
+    from monoforce.utils import explore_data
     from tqdm import tqdm
     import matplotlib as mpl
     mpl.use('TkAgg')
 
-    seq = np.random.choice(['K-01', 'K-03', 'V-01', 'V-02', 'V-03'])
-    ds = WildScenes(seq=seq, is_train=True)
+    # seq = np.random.choice(['K-01', 'K-03', 'V-01', 'V-02', 'V-03'])
+    seq = 'K-01'
+    ds = WildScenes(seq=seq, is_train=False)
 
-    # poses = ds.poses[:10]
-    # plt.figure()
-    # X = poses[:, 0, 3]
-    # Y = poses[:, 1, 3]
-    # plt.plot(X, Y, '.')
-    # plt.show()
+    # i = np.random.randint(len(ds))
+    i = 200
+    explore_data(ds, sample_range=[i])
+    cloud = ds.get_cloud(i)
+    label = ds.get_cloud_label(i)
+    print(cloud.shape, label.shape)
 
-    idx = np.random.randint(len(ds))
-    explore_data(ds, sample_range=[idx])
+    # remove points belonging to soft classes from the cloud
+    soft_classes = ds.lss_cfg['soft_classes']
+    soft_labels = [METAINFO['cidx'][METAINFO['classes'].index(cls)] for cls in soft_classes]
+    mask = np.isin(label, [soft_labels])
+    cloud = cloud[~mask]
 
-    # for i in tqdm(range(len(ds))):
-    #     sample = ds[i]
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(cloud)
+    o3d.visualization.draw_geometries([pcd])
 
 
 if __name__ == "__main__":

@@ -50,3 +50,5 @@ soft_classes:
 - 'tree-foliage'
 - 'bush'
 - 'grass'
+- 'sky'
+- 'unlabelled'
