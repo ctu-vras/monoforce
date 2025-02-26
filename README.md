@@ -111,7 +111,7 @@ The package is used as robot-terrain interaction and path planning pipeline.
 
 We provide the differentiable physics model for robot-terrain interaction prediction:
 - **Pytorch**: The model is implemented in Pytorch. Please refer to the
-[trajectory_shooting_with_torch_diff_physics.ipynb](./monoforce/examples/trajectory_shooting_with_torch_diff_physics.ipynb)
+[diff_physics.ipynb](./monoforce/examples/diff_physics.ipynb)
 notebook for the example of the trajectory prediction.
 
 Navigation consists of the following stages:
