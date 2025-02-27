@@ -209,9 +209,8 @@ def explore_data(ds, sample_range='random', save=False):
 
     for sample_i in tqdm(sample_range):
         imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
-        hm_terrain = ds.get_terrain_height_map(sample_i)
+        height_terrain = ds.get_terrain_height_map(sample_i)[0]
         pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
-        height_terrain, mask_rigid = hm_terrain[0], hm_terrain[1]
 
         frustum_pts = model.get_geometry(rots[None], trans[None], intrins[None], post_rots[None], post_trans[None]).squeeze(0)
 
