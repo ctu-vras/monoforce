@@ -68,7 +68,7 @@ def convert_ts_to_float(timestamps):
     return timestamps
 
 
-def get_extrinsics_yaml(params):
+def get_extrinsics(params):
     T = np.eye(4)
     T[:3, 3] = params["translation"]
     quat = params["rotation"]  # qx qy qz qw

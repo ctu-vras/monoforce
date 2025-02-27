@@ -9,16 +9,18 @@ from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from .utils import (timestamp_to_bag_time,
                     get_ids_2d, get_ids_3d,
                     convert_ts_to_float,
-                    get_extrinsics_yaml,
+                    get_extrinsics,
                     get_intrinsics)
 from .utils3d import METAINFO
-from ..rough import data_dir
 import os
 import numpy as np
 import quaternion
 import pandas as pd
 from glob import glob
 from pathlib import Path
+
+monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
 
 class BaseDataset(Dataset):
@@ -74,9 +76,10 @@ class BaseDataset(Dataset):
         """
         cloud = torch.as_tensor(self.get_cloud(i))
         heightmap = estimate_heightmap(cloud, d_max=self.dphys_cfg.d_max,
-                                      grid_res=self.grid_res,
-                                      h_max=self.dphys_cfg.h_max,
-                                      r_min=self.dphys_cfg.r_min)
+                                       grid_res=self.grid_res,
+                                       h_max=self.dphys_cfg.h_max - 1.2,
+                                       h_min=-self.dphys_cfg.h_max - 1.2,
+                                       r_min=self.dphys_cfg.r_min)
         heightmap = torch.as_tensor(heightmap)
         return heightmap
 
@@ -91,7 +94,8 @@ class BaseDataset(Dataset):
         cloud = torch.as_tensor(cloud)
         heightmap = estimate_heightmap(cloud, d_max=self.dphys_cfg.d_max,
                                        grid_res=self.grid_res,
-                                       h_max=self.dphys_cfg.h_max,
+                                       h_max=self.dphys_cfg.h_max - 1.2,
+                                       h_min=-self.dphys_cfg.h_max - 1.2,
                                        r_min=self.dphys_cfg.r_min)
         heightmap = torch.as_tensor(heightmap)
 
@@ -162,63 +166,47 @@ class WildScenes(BaseDataset):
         self.cloud_label_paths = sorted(glob(os.path.join(data_dir, f'WildScenes/WildScenes3d/{seq}', 'Labels', '*')))
         self.img_paths = sorted(glob(os.path.join(data_dir, f'WildScenes/WildScenes2d/{seq}', 'image', '*')))
         self.img_label_paths = sorted(glob(os.path.join(data_dir, f'WildScenes/WildScenes2d/{seq}', 'label', '*')))
-        _, self.cloud_ts = self.get_cloud_ids()
-        self.ids, self.img_ts = self.get_image_ids()
+        self.cloud_ids = self.get_cloud_ids()
+        self.img_ids = self.get_image_ids()
+        self.ids = self.img_ids
         self.calib = self.get_calib()
         self.poses = self.get_poses()
 
     def get_cloud_ids(self):
-        cloud_seq_path = os.path.join(data_dir, f'WildScenes/WildScenes3d/{self.seq}')
-        cloud_timestamp_strings = [
-            timestamp_to_bag_time(t) for t in get_ids_3d(Path(cloud_seq_path))
-        ]
-        cloud_timestamp_strings = sorted(cloud_timestamp_strings)
-        cloud_timestamps = convert_ts_to_float(cloud_timestamp_strings)
-        return cloud_timestamp_strings, cloud_timestamps
+        image_seq_path = os.path.join(data_dir, f'WildScenes/WildScenes2d/{self.seq}')
+        df = pd.read_csv(os.path.join(image_seq_path, 'corresponding_cloud_id.csv'))
+        cloud_ids = df['cloud_i'].values
+        return cloud_ids
 
     def get_image_ids(self):
         image_seq_path = os.path.join(data_dir, f'WildScenes/WildScenes2d/{self.seq}')
-        image_timestamp_strings = [
-            timestamp_to_bag_time(t) for t in get_ids_2d(Path(image_seq_path))
-        ]
-        image_timestamp_strings = sorted(image_timestamp_strings)
-        image_timestamps = convert_ts_to_float(image_timestamp_strings)
-        return image_timestamp_strings, image_timestamps
+        df = pd.read_csv(os.path.join(image_seq_path, 'corresponding_cloud_id.csv'))
+        img_ids = df['img_i'].values
+        return img_ids
 
     def get_cloud(self, i):
-        img_i = self.get_cloud_i_closest_to_image(i)
-        cloud_path = self.cloud_paths[img_i]
+        cloud_i = self.cloud_ids[i]
+        cloud_path = self.cloud_paths[cloud_i]
         cloud = np.fromfile(cloud_path, dtype=np.float32).reshape(-1, 3)
         return cloud
 
     def get_cloud_label(self, i):
-        img_i = self.get_cloud_i_closest_to_image(i)
-        cloud_label_path = self.cloud_label_paths[img_i]
+        cloud_i = self.cloud_ids[i]
+        cloud_label_path = self.cloud_label_paths[cloud_i]
         cloud_label = np.fromfile(cloud_label_path, dtype=np.int32)
         return cloud_label
 
     def get_image(self, i):
-        img_path = self.img_paths[i]
+        img_i = self.img_ids[i]
+        img_path = self.img_paths[img_i]
         img = Image.open(img_path)
         return img
-
-    def get_cloud_i_closest_to_image(self, i):
-        img_ts = self.img_ts[i]
-        cloud_ts = np.asarray(self.cloud_ts)
-        img_ts = np.asarray(img_ts)
-        diff = np.abs(cloud_ts - img_ts)
-        bestcloud_i = np.argmin(diff)
-        bestdiff = diff[bestcloud_i]
-        if bestdiff > 5:
-            print(f"Warning: For this image idx there is no suitable point cloud anywhere near this image")
-            # raise ValueError("For this image idx there is no suitable point cloud anywhere near this image")
-        return bestcloud_i
 
     def get_calib(self):
         path = os.path.join(data_dir, f'WildScenes/WildScenes2d/{self.seq}')
         params = read_yaml(os.path.join(path, 'camera_calibration.yaml'))['centre-camera']
         K, D = get_intrinsics(params['intrinsics'])
-        E = get_extrinsics_yaml(params['extrinsics'])
+        E = get_extrinsics(params['extrinsics'])
         calib = {'K': K,
                  'D': D,
                  'E': E,
@@ -251,7 +239,7 @@ class WildScenes(BaseDataset):
                 hm_geom, hm_terrain)
 
 
-def main():
+def show_segmented_cloud_and_heightmap():
     import open3d as o3d
     from .utils3d import METAINFO
     from monoforce.utils import explore_data
@@ -259,26 +247,55 @@ def main():
     import matplotlib as mpl
     mpl.use('TkAgg')
 
-    # seq = np.random.choice(['K-01', 'K-03', 'V-01', 'V-02', 'V-03'])
-    seq = 'K-01'
+    seq = np.random.choice(['K-01', 'K-03', 'V-01', 'V-02', 'V-03'])
+    # seq = 'K-01'
     ds = WildScenes(seq=seq, is_train=False)
 
-    # i = np.random.randint(len(ds))
-    i = 200
+    i = np.random.randint(len(ds))
+    # i = 200
     explore_data(ds, sample_range=[i])
     cloud = ds.get_cloud(i)
     label = ds.get_cloud_label(i)
     print(cloud.shape, label.shape)
+    class_2_rgb = {c: p for c, p in zip(METAINFO['classes'], METAINFO['palette'])}
+    color = np.array([class_2_rgb[METAINFO['classes'][cidx]] for cidx in label])
 
     # remove points belonging to soft classes from the cloud
     soft_classes = ds.lss_cfg['soft_classes']
     soft_labels = [METAINFO['cidx'][METAINFO['classes'].index(cls)] for cls in soft_classes]
-    mask = np.isin(label, [soft_labels])
-    cloud = cloud[~mask]
+    soft_mask = np.isin(label, [soft_labels])
 
+    hm = ds.get_terrain_height_map(i).numpy()
+    z_grid, mask = hm[0], np.asarray(hm[1], dtype=bool)
+    x_grid = ds.dphys_cfg.x_grid.numpy()
+    y_grid = ds.dphys_cfg.y_grid.numpy()
+    hm_points = np.stack([x_grid, y_grid, z_grid], axis=2)[mask].reshape(-1, 3)
+    pcd_hm = o3d.geometry.PointCloud()
+    pcd_hm.points = o3d.utility.Vector3dVector(hm_points)
+    pcd_hm.paint_uniform_color([0.5, 0.5, 0.5])
+
+    cloud = cloud[~soft_mask]
+    color = color[~soft_mask]
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(cloud)
-    o3d.visualization.draw_geometries([pcd])
+    pcd.colors = o3d.utility.Vector3dVector(color / 255.)
+
+    # coordinates of the camera
+    E = ds.calib['E']
+    robot_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
+    robot_frame.transform(np.eye(4))
+    camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
+    camera_frame.transform(E)
+    ground_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
+    T = np.eye(4)
+    T[2, 3] = -1.2
+    ground_frame.transform(T)
+
+    o3d.visualization.draw_geometries([pcd, camera_frame, robot_frame, ground_frame])
+
+
+def main():
+    show_segmented_cloud_and_heightmap()
 
 
 if __name__ == "__main__":

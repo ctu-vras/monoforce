@@ -6,8 +6,8 @@ data_aug_conf:
   - 0.0
   - 0.0
   final_dim:
-  - 378
-  - 504
+  - 384
+  - 512
   rand_flip: false
   resize_lim:
   - 0.193

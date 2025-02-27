@@ -85,7 +85,7 @@ def filter_grid(cloud, grid_res, keep='first', log=False, rng=default_rng, only_
     filtered = cloud[ind]
     return filtered
 
-def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None):
+def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None, h_min=None):
     # remove nans from the point cloud if any
     mask = ~torch.isnan(points).any(dim=1)
     points = points[mask]
@@ -96,9 +96,12 @@ def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None):
         mask = distances > r_min
         points = points[mask]
 
+    if h_min is None:
+        h_min = -h_max
+
     mask = ((points[:, 0] > -d_max) & (points[:, 0] < d_max) &
             (points[:, 1] > -d_max) & (points[:, 1] < d_max) &
-            (points[:, 2] > -h_max) & (points[:, 2] < h_max))
+            (points[:, 2] > h_min) & (points[:, 2] < h_max))
     points = points[mask]
 
     # Extract X, Y, Z
@@ -133,8 +136,8 @@ def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None):
 
     # Replace NaNs with a default value (e.g., 0.0)
     measurements_mask = ~torch.isnan(heightmap)
-    # heightmap = torch.nan_to_num(heightmap, nan=0.0)
-    heightmap = torch.nan_to_num(heightmap, nan=-h_max)
+    heightmap = torch.nan_to_num(heightmap, nan=0.0)
+    # heightmap = torch.nan_to_num(heightmap, nan=(h_max + h_min) / 2.)
 
     # TODO: fix that bug, not sure why need to do that
     heightmap = heightmap.T
