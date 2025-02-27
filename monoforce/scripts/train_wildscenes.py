@@ -104,14 +104,17 @@ class TrainerCore:
                                     f'{self.dataset}/{self.model}_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}')
         self.writer = SummaryWriter(log_dir=self.log_dir)
 
-    def create_dataloaders(self, bsz=1):
+    def create_dataloaders(self, bsz=1, debug=False):
         # create dataset for LSS model training
-        # train_seqs = ['K-01', 'K-03', 'V-03']
-        # val_seqs = ['V-01', 'V-02']
-        train_seqs = ['V-02']
-        val_seqs = ['V-01']
+        if not debug:
+            train_seqs = ['K-01', 'K-03', 'V-03']
+            val_seqs = ['V-01', 'V-02']
+        else:
+            train_seqs = ['V-02']
+            val_seqs = ['V-01']
         train_ds = ConcatDataset([WildScenes(seq=seq, is_train=True) for seq in train_seqs])
         val_ds = ConcatDataset([WildScenes(seq=seq, is_train=False) for seq in val_seqs])
+        print('Train dataset:', len(train_ds), 'Val dataset:', len(val_ds))
 
         # create dataloaders: making sure all elements in a batch are tensors
         def collate_fn(batch):
@@ -293,7 +296,7 @@ class Trainer(TrainerCore):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight)
         # create dataloaders
-        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz)
+        self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug)
 
         # load models: terrain encoder
         self.terrain_encoder = LiftSplatShoot(self.lss_cfg['grid_conf'],

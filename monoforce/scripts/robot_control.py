@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 # simulation parameters
 robot = 'marv'
-dphys_cfg = DPhysConfig(robot=robot, grid_res=0.1)
+dphys_cfg = DPhysConfig(robot=robot)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
