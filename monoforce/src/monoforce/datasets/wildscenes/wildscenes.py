@@ -6,18 +6,12 @@ from monoforce.cloudproc import estimate_heightmap
 from monoforce.models.terrain_encoder.utils import sample_augmentation, img_transform, normalize_img
 from monoforce.utils import read_yaml
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from .utils import (timestamp_to_bag_time,
-                    get_ids_2d, get_ids_3d,
-                    convert_ts_to_float,
-                    get_extrinsics,
-                    get_intrinsics)
+from .utils import get_extrinsics, get_intrinsics
 from .utils3d import METAINFO
 import os
 import numpy as np
-import quaternion
 import pandas as pd
 from glob import glob
-from pathlib import Path
 
 monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
@@ -170,7 +164,6 @@ class WildScenes(BaseDataset):
         self.img_ids = self.get_image_ids()
         self.ids = self.img_ids
         self.calib = self.get_calib()
-        self.poses = self.get_poses()
 
     def get_cloud_ids(self):
         image_seq_path = os.path.join(data_dir, f'WildScenes/WildScenes2d/{self.seq}')
@@ -212,24 +205,6 @@ class WildScenes(BaseDataset):
                  'E': E,
                  'imgW': 2016, 'imgH': 1512}
         return calib
-
-    def get_poses(self):
-        image_seq_path = os.path.join(data_dir, f'WildScenes/WildScenes2d/{self.seq}')
-        df = pd.read_csv(os.path.join(image_seq_path, 'poses2d.csv'), sep=' ').sort_index()
-        xyz_q_cam = np.array(df[['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']])
-        R_cam = quaternion.as_rotation_matrix(quaternion.from_float_array(xyz_q_cam[:, 3:]))
-        poses_cam = np.zeros((len(xyz_q_cam), 4, 4))
-        poses_cam[:, :3, :3] = R_cam
-        poses_cam[:, :3, 3] = xyz_q_cam[:, :3]
-        poses_cam[:, 3, 3] = 1.0
-
-        E = self.calib['E']
-        poses = poses_cam @ E.T
-
-        return poses
-
-    def get_pose(self, i):
-        return self.poses[i]
 
     def get_sample(self, i):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
