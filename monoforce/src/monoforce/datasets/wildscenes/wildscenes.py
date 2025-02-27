@@ -15,6 +15,7 @@ from glob import glob
 
 monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
+wild_seq_names = ['K-01', 'K-03', 'V-01', 'V-02', 'V-03']
 
 
 class BaseDataset(Dataset):

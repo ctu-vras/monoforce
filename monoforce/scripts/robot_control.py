@@ -11,8 +11,7 @@ import matplotlib.pyplot as plt
 
 
 # simulation parameters
-robot = 'marv'
-dphys_cfg = DPhysConfig(robot=robot)
+dphys_cfg = DPhysConfig()
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 

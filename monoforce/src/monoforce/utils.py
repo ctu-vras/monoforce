@@ -193,7 +193,7 @@ def explore_data(ds, sample_range='random', save=False):
     from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 
     lss_cfg = ds.lss_cfg
-    dphys_cfg = ds.dphys_cfg
+    d_max = lss_cfg['grid_conf']['xbound'][1]
     model = LiftSplatShoot(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
 
     H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
@@ -248,8 +248,8 @@ def explore_data(ds, sample_range='random', save=False):
         plt.legend(loc='upper right')
         final_ax.set_aspect('equal')
         plt.title('Frustum points')
-        plt.xlim((-dphys_cfg.d_max, dphys_cfg.d_max))
-        plt.ylim((-dphys_cfg.d_max, dphys_cfg.d_max))
+        plt.xlim((-d_max, d_max))
+        plt.ylim((-d_max, d_max))
 
         # plot height maps
         plt.subplot(gs[:, -3:-2])

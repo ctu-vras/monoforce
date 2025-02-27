@@ -118,7 +118,7 @@ class Eval:
         return states_pred
 
     def get_dataloader(self, batch_size=1):
-        train_ds, val_ds = compile_data(lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, Data=Data)
+        _, val_ds = compile_data(lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, Data=Data)
         loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         return loader
 
@@ -130,15 +130,12 @@ class Eval:
 
         with torch.no_grad():
             if vis:
+                fig = plt.figure(figsize=(20, 8))
+                # remove whitespace around the figure
+                plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
                 H, W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
                 cams = ['cam_left', 'cam_front', 'cam_right', 'cam_rear']
-
-                n_rows, n_cols = 2, int(np.ceil(len(cams) / 2)) + 4
-                img_h, img_w = self.lss_config['data_aug_conf']['final_dim']
-                ratio = img_h / img_w
-                fig = plt.figure(figsize=(n_cols * 5, n_rows * ratio * 4))
-                gs = mpl.gridspec.GridSpec(n_rows, n_cols)
-                gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
                 x_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
                 y_grid = torch.arange(-self.dphys_cfg.d_max, self.dphys_cfg.d_max, self.dphys_cfg.grid_res)
@@ -198,7 +195,7 @@ class Eval:
                         mask = get_only_in_img_mask(cam_pts, H, W)
                         plot_pts = post_rots[0, imgi].matmul(cam_pts) + post_trans[0, imgi].unsqueeze(1)
 
-                        ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
+                        ax = plt.subplot(2, 4, imgi + 1)
                         showimg = denormalize_img(img)
 
                         plt.imshow(showimg)
@@ -213,21 +210,21 @@ class Eval:
                                  transform=ax.transAxes, fontsize=10)
 
                     # plot terrain heightmap
-                    plt.subplot(gs[:, 2])
+                    plt.subplot(2, 4, 5)
                     plt.title('Terrain Height')
                     plt.imshow(H_t_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
                     plt.axis('off')
                     plt.colorbar()
 
                     # plot friction map
-                    plt.subplot(gs[:, 3])
+                    plt.subplot(2, 4, 6)
                     plt.title('Friction')
                     plt.imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=2.)
                     plt.axis('off')
                     plt.colorbar()
 
                     # plot trajectories: XY
-                    plt.subplot(gs[:, 4])
+                    plt.subplot(2, 4, 7)
                     plt.plot(states_pred[0][0, :, 0].cpu(), states_pred[0][0, :, 1].cpu(), 'r.', label='Pred Traj')
                     plt.plot(states_gt[0][0, :, 0], states_gt[0][0, :, 1], 'kx', label='GT Traj')
                     plt.xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
@@ -240,7 +237,7 @@ class Eval:
                     plt.legend()
 
                     # plot trajectories: Z
-                    plt.subplot(gs[:, 5])
+                    plt.subplot(2, 4, 8)
                     plt.plot(control_ts[0], states_pred[0][0, :, 2].cpu(), 'r.', label='Pred Traj')
                     plt.plot(traj_ts[0], states_gt[0][0, :, 2], 'kx', label='GT Traj')
                     plt.grid()
