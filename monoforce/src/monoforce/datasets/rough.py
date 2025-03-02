@@ -13,7 +13,6 @@ from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
 from ..utils import normalize, load_calib
-from .coco import COCO_CATEGORIES, COCO_CLASSES
 from .wildscenes.utils2d import METAINFO as WILDSCENES_METAINFO
 from PIL import Image
 from tqdm import tqdm
@@ -81,7 +80,7 @@ class ROUGH(Dataset):
         self.is_train = is_train
 
         if lss_cfg is None:
-            lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
+            lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg_wildscenes.yaml'))
         self.lss_cfg = lss_cfg
         self.grid_res = lss_cfg['grid_conf']['xbound'][2]
 
@@ -505,28 +504,14 @@ class ROUGH(Dataset):
         return img_data
 
     def seg_label_to_color(self, seg_label):
-        coco_colors = [(np.array(color['color'])).tolist() for color in COCO_CATEGORIES] + [[0, 0, 0]]
-        seg_label = np.asarray(seg_label)
-        # transform segmentation labels to colors
-        size = [s for s in seg_label.shape] + [3]
-        seg_color = np.zeros(size, dtype=np.uint8)
-        for color_i, color in enumerate(coco_colors):
-            seg_color[seg_label == color_i] = color
+        label_2_rgb = {cidx: p for cidx, p in zip(WILDSCENES_METAINFO['cidx'], WILDSCENES_METAINFO['palette'])}
+        seg_color = np.zeros(list(seg_label.shape) + [3], dtype=np.float32)
+        for cidx, c in label_2_rgb.items():
+            seg_color[seg_label == cidx] = c
+        seg_color /= 255.
         return seg_color
 
     def get_seg_label(self, i, camera=None):
-        if camera is None:
-            camera = self.camera_names[0]
-        id = self.ids[i]
-        seg_path = os.path.join(self.path, 'images/seg/', '%s_%s.npy' % (id, camera))
-        assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
-        seg = Image.fromarray(np.load(seg_path))
-        size = self.get_raw_img_size(i, camera)
-        transform = torchvision.transforms.Resize(size)
-        seg = transform(seg)
-        return seg
-
-    def get_seg_label_wildscenes(self, i, camera=None):
         if camera is None:
             camera = self.camera_names[0]
         id = self.ids[i]
@@ -537,68 +522,8 @@ class ROUGH(Dataset):
         transform = torchvision.transforms.Resize(size)
         seg = transform(seg)
         return seg
-    
+
     def get_semantic_cloud(self, i, classes=None, vis=False):
-        if classes is None:
-            classes = np.copy(COCO_CLASSES)
-        # ids of classes in COCO
-        selected_labels = []
-        for c in classes:
-            if c in COCO_CLASSES:
-                selected_labels.append(COCO_CLASSES.index(c))
-
-        lidar_points = position(self.get_cloud(i, gravity_aligned=False))
-        points = []
-        labels = []
-        for cam in self.camera_names[::-1]:
-            seg_label_cam = self.get_seg_label(i, camera=cam)
-            seg_label_cam = np.asarray(seg_label_cam)
-
-            K = self.calib[cam]['camera_matrix']['data']
-            K = np.asarray(K, dtype=np.float32).reshape((3, 3))
-            E = self.calib['transformations'][f'T_base_link__{cam}']['data']
-            E = np.asarray(E, dtype=np.float32).reshape((4, 4))
-    
-            lidar_points = torch.as_tensor(lidar_points)
-            E = torch.as_tensor(E)
-            K = torch.as_tensor(K)
-    
-            img_plane_points = ego_to_cam(lidar_points.T, E[:3, :3], E[:3, 3], K).T
-            mask = get_only_in_img_mask(img_plane_points.T, seg_label_cam.shape[0], seg_label_cam.shape[1])
-            img_plane_points = img_plane_points[mask]
-            cam_points = lidar_points[mask].numpy()
-
-            # colorize point cloud with values from segmentation image
-            uv = img_plane_points[:, :2].numpy().astype(int)
-            seg_label_cam = seg_label_cam[uv[:, 1], uv[:, 0]]
-    
-            points.append(cam_points)
-            labels.append(seg_label_cam)
-
-        points = np.concatenate(points)
-        labels = np.concatenate(labels)
-        colors = self.seg_label_to_color(labels)
-        assert len(points) == len(colors)
-
-        # mask out points with labels not in selected classes
-        mask = np.isin(labels, selected_labels)
-        points = points[mask]
-        colors = colors[mask]
-
-        # gravity-aligned cloud
-        pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
-        points = transform_cloud(points, pose_grav_aligned)
-
-        if vis:
-            colors = normalize(colors)
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(points)
-            pcd.colors = o3d.utility.Vector3dVector(colors)
-            o3d.visualization.draw_geometries([pcd])
-
-        return points, colors
-
-    def get_semantic_cloud_wildscenes(self, i, classes=None, vis=False):
         mi = WILDSCENES_METAINFO
         if classes is None:
             classes = mi['classes']
@@ -609,7 +534,7 @@ class ROUGH(Dataset):
         points = []
         labels = []
         for cam in self.camera_names[::-1]:
-            seg_label_cam = self.get_seg_label_wildscenes(i, camera=cam)
+            seg_label_cam = self.get_seg_label(i, camera=cam)
             seg_label_cam = np.asarray(seg_label_cam)
 
             K = self.calib[cam]['camera_matrix']['data']
@@ -692,7 +617,7 @@ class ROUGH(Dataset):
         else:
             traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
             soft_classes = self.lss_cfg['soft_classes']
-            rigid_classes = [c for c in COCO_CLASSES if c not in soft_classes]
+            rigid_classes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes]
             seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
