@@ -54,22 +54,3 @@ METAINFO = {
         14
     ]
 }
-
-def rgb_to_hex(r, g, b):
-    return '#{:02x}{:02x}{:02x}'.format(int(r), int(g), int(b))
-
-
-# # METAINFO['cidx'] = list(range(len(METAINFO['palette'])))
-# METAINFO['hex'] = [rgb_to_hex(x[0], x[1], x[2]) for x in METAINFO['palette']]
-# METAINFO['hash'] = [str(x[0]) + str(x[1]) + str(x[2]) for x in METAINFO['palette']]
-# hex_2_class = {h: c for h, c in zip(METAINFO['hex'], METAINFO['classes'])}
-# hex_2_cidx = {h: cidx for h, cidx in zip(METAINFO['hex'], METAINFO['cidx'])}
-# class_2_hex = {c: h for h, c in hex_2_class.items()}
-# rgb_2_class = {p: c for p, c in zip(METAINFO['palette'], METAINFO['classes'])}
-# cidx_2_rgb = {cidx: p for cidx, p in zip(METAINFO['cidx'], METAINFO['palette'])}
-# cidx_2_class = {cidx: p for cidx, p in zip(METAINFO['cidx'], METAINFO['classes'])}
-# class_2_cidx = {c: cidx for c, cidx in zip(METAINFO['classes'], METAINFO['cidx'])}
-#
-# hash_2_class = {h: c for h, c in zip(METAINFO['hash'], METAINFO['classes'])}
-# hash_2_cidx = {h: c for h, c in zip(METAINFO['hash'], METAINFO['cidx'])}
-# class_2_rgb = {c: p for c, p in zip(METAINFO['classes'], METAINFO['palette'])}

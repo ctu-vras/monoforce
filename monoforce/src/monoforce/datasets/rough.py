@@ -13,7 +13,7 @@ from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
 from ..utils import normalize, load_calib
-from .wildscenes.utils2d import METAINFO as WILDSCENES_METAINFO
+from .wildscenes.utils3d import METAINFO as WILDSCENES_METAINFO
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
@@ -80,7 +80,7 @@ class ROUGH(Dataset):
         self.is_train = is_train
 
         if lss_cfg is None:
-            lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg_wildscenes.yaml'))
+            lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
         self.grid_res = lss_cfg['grid_conf']['xbound'][2]
 
