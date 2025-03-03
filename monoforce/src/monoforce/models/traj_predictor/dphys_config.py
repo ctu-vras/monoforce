@@ -75,7 +75,7 @@ def robot_geometry(robot):
 
 
 class DPhysConfig:
-    def __init__(self, robot='marv', grid_res=0.2):
+    def __init__(self, robot='marv', grid_res=0.1):
         # robot parameters
         self.robot = robot
         self.vel_max = 1.0  # m/s
@@ -131,7 +131,7 @@ class DPhysConfig:
 
         # height map parameters
         self.grid_res = grid_res  # grid resolution of the heightmap, [m]
-        self.r_min = 1.0  # minimum distance of the terrain from the robot, [m]
+        self.r_min = 0.6  # minimum distance of the terrain from the robot, [m]
         self.d_max = 6.4  # half-size of the terrain, heightmap range: [-d_max, d_max]
         self.h_max = 1.0  # maximum height of the terrain, heightmap range: [-h_max, h_max]
         x_grid = torch.arange(-self.d_max, self.d_max, self.grid_res)

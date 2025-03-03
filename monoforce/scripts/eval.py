@@ -17,7 +17,6 @@ from monoforce.datasets.rough import ROUGH
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv, compile_data
 from monoforce.losses import physics_loss, hm_loss
-import matplotlib as mpl
 
 
 np.random.seed(42)
