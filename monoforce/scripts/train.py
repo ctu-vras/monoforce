@@ -30,7 +30,6 @@ def arg_parser():
     parser.add_argument('--bsz', type=int, default=1, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-7, help='Weight decay')
     parser.add_argument('--robot', type=str, default='marv', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
@@ -55,7 +54,6 @@ class TrainerCore:
     model: str, model to train: lss
     bsz: int, batch size
     lr: float, learning rate
-    weight_decay: float, weight decay
     nepochs: int, number of epochs
     pretrained_model_path: str, path to pretrained model
     debug: bool, debug mode: use small datasets
@@ -70,7 +68,6 @@ class TrainerCore:
                  model,
                  bsz=1,
                  lr=1e-3,
-                 weight_decay=1e-7,
                  nepochs=1000,
                  pretrained_model_path=None,
                  debug=False,
@@ -155,7 +152,7 @@ class TrainerCore:
         else:
             self.terrain_encoder.eval()
 
-        max_grad_norm = 5.0
+        max_grad_norm = 1.0
         epoch_losses = {'geom': 0.0, 'terrain': 0.0, 'phys': 0.0, 'total': 0.0}
         for batch in tqdm(loader, total=len(loader)):
             if train:
@@ -355,9 +352,9 @@ class TrainerCore:
 
 
 class TrainerLSS(TrainerCore):
-    def __init__(self, dphys_cfg, lss_cfg, model='lss', bsz=1, lr=1e-3, weight_decay=1e-7, nepochs=1000,
+    def __init__(self, dphys_cfg, lss_cfg, model='lss', bsz=1, lr=1e-3, nepochs=1000,
                  pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=0.1):
-        super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, weight_decay, nepochs, pretrained_model_path, debug, vis,
+        super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight, phys_weight)
         # create dataloaders
         self.train_loader, self.val_loader = self.create_dataloaders(bsz=bsz, debug=debug, vis=vis, Data=ROUGH)
@@ -368,7 +365,8 @@ class TrainerLSS(TrainerCore):
         self.terrain_encoder.to(self.device)
 
         # define optimizer
-        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(),
+                                          lr=lr, betas=(0.8, 0.999))
 
     def compute_losses(self, batch):
         (imgs, rots, trans, intrins, post_rots, post_trans,
@@ -443,7 +441,7 @@ def main():
     trainer = Trainer(model=args.model,
                       dphys_cfg=dphys_cfg, lss_cfg=lss_cfg,
                       bsz=args.bsz, nepochs=args.nepochs,
-                      lr=args.lr, weight_decay=args.weight_decay,
+                      lr=args.lr,
                       pretrained_model_path=args.pretrained_model_path,
                       geom_weight=args.geom_weight,
                       terrain_weight=args.terrain_weight,
