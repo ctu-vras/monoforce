@@ -26,10 +26,10 @@ torch.manual_seed(42)
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
-    parser.add_argument('--model', type=str, default='lss', help='Model to train: lss, bevfusion, voxelnet')
-    parser.add_argument('--bsz', type=int, default=1, help='Batch size')
+    parser.add_argument('--model', type=str, default='lss', help='Model to train: lss')
+    parser.add_argument('--bsz', type=int, default=4, help='Batch size')
     parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--robot', type=str, default='marv', help='Robot name')
     parser.add_argument('--lss_cfg_path', type=str, default='../config/lss_cfg.yaml', help='Path to LSS config')
     parser.add_argument('--pretrained_model_path', type=str, default=None, help='Path to pretrained model')
@@ -74,7 +74,7 @@ class TrainerCore:
                  vis=False,
                  geom_weight=1.0,
                  terrain_weight=1.0,
-                 phys_weight=0.1):
+                 phys_weight=1.0):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.dataset = 'rough'
         self.model = model
@@ -174,7 +174,7 @@ class TrainerCore:
             epoch_losses['geom'] += loss_geom.item()
             epoch_losses['terrain'] += loss_terrain.item()
             epoch_losses['phys'] += loss_phys.item()
-            epoch_losses['total'] += loss.item()
+            epoch_losses['total'] += (loss_geom + loss_terrain + loss_phys).item()
 
             counter += 1
             self.writer.add_scalar(f"{'train' if train else 'val'}/iter_loss_geom", loss_geom.item(), counter)
@@ -256,26 +256,11 @@ class TrainerCore:
         sample_i = np.random.choice(len(loader.dataset))
         sample = loader.dataset[sample_i]
 
-        if self.model == 'lss':
-            (imgs, rots, trans, intrins, post_rots, post_trans,
-             hm_geom, hm_terrain,
-             controls_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = sample
-        elif self.model == 'bevfusion':
-            (imgs, rots, trans, intrins, post_rots, post_trans,
-             hm_geom, hm_terrain,
-             controls_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, Rs, Omegas,
-             points) = sample
-        elif self.model == 'voxelnet':
-            (points, hm_geom, hm_terrain,
-             controls_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = sample
-        else:
-            raise ValueError('Model not supported')
+        (imgs, rots, trans, intrins, post_rots, post_trans,
+         hm_geom, hm_terrain,
+         controls_ts, controls,
+         pose0,
+         traj_ts, Xs, Xds, Rs, Omegas) = sample
 
         # predict height maps and states
         with torch.no_grad():
@@ -287,6 +272,8 @@ class TrainerCore:
         terrain_pred = terrain['terrain'][0, 0].cpu()
         friction_pred = terrain['friction'][0, 0].cpu()
         Xs_pred = states_pred[0][0].cpu()
+        Xs_pred_grid = (Xs_pred[:, :2] + self.dphys_cfg.d_max) / self.terrain_encoder_grid_res
+        Xs_grid = (Xs[:, :2] + self.dphys_cfg.d_max) / self.terrain_encoder_grid_res
 
         # get height map points
         z_grid = terrain_pred
@@ -296,33 +283,50 @@ class TrainerCore:
         hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
         hm_points = hm_points.view(-1, 3).T
 
-        if self.model in ['lss', 'bevfusion']:
-            # plot images with projected height map points
-            for imgi in range(imgs.shape[0])[:4]:
-                ax = axes[0, imgi]
-                img = imgs[imgi]
-                img = denormalize_img(img[:3])
-                cam_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
-                img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
-                mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
-                plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
-                ax.imshow(img)
-                ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
-                           cmap='jet', vmin=-1.0, vmax=1.0)
-                ax.axis('off')
+        # plot images with projected height map points
+        img_H, img_W = self.lss_cfg['data_aug_conf']['H'], self.lss_cfg['data_aug_conf']['W']
+        for imgi in range(len(imgs))[:4]:
+            ax = axes[0, imgi]
+            img = imgs[imgi]
+            img = denormalize_img(img[:3])
+
+            cam_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
+            mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
+            plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
+
+            cam_pts_Xs = ego_to_cam(Xs[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
+            mask_img_Xs = get_only_in_img_mask(cam_pts_Xs, img_H, img_W)
+            plot_pts_Xs = post_rots[imgi].matmul(cam_pts_Xs) + post_trans[imgi].unsqueeze(1)
+
+            cam_pts_Xs_pred = ego_to_cam(Xs_pred[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
+            mask_img_Xs_pred = get_only_in_img_mask(cam_pts_Xs_pred, img_H, img_W)
+            plot_pts_Xs_pred = post_rots[imgi].matmul(cam_pts_Xs_pred) + post_trans[imgi].unsqueeze(1)
+
+            ax.imshow(img)
+            ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
+                       cmap='jet', vmin=-1.0, vmax=1.0)
+            ax.scatter(plot_pts_Xs[0, mask_img_Xs], plot_pts_Xs[1, mask_img_Xs], c='k', s=1)
+            ax.scatter(plot_pts_Xs_pred[0, mask_img_Xs_pred], plot_pts_Xs_pred[1, mask_img_Xs_pred], c='r', s=1)
+            ax.axis('off')
 
         axes[1, 0].set_title('Prediction: Terrain')
         axes[1, 0].imshow(terrain_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[1, 0].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 0].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
 
         axes[1, 1].set_title('Label: Terrain')
         axes[1, 1].imshow(hm_terrain[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[1, 1].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 1].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
 
         axes[1, 2].set_title('Friction')
         axes[1, 2].imshow(friction_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+        axes[1, 2].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
 
         axes[1, 3].set_title('Trajectories XY')
-        axes[1, 3].plot(Xs[:, 0], Xs[:, 1], 'kx', label='GT')
-        axes[1, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], 'r.', label='Pred')
+        axes[1, 3].plot(Xs[:, 0], Xs[:, 1], c='k', label='GT')
+        axes[1, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], c='r', label='Pred')
         axes[1, 3].set_xlabel('X [m]')
         axes[1, 3].set_ylabel('Y [m]')
         axes[1, 3].set_xlim(-self.dphys_cfg.d_max, self.dphys_cfg.d_max)
@@ -332,16 +336,22 @@ class TrainerCore:
 
         axes[2, 0].set_title('Prediction: Geom')
         axes[2, 0].imshow(geom_pred.T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[2, 0].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 0].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
 
         axes[2, 1].set_title('Label: Geom')
         axes[2, 1].imshow(hm_geom[0].T, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[2, 1].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 1].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k' , s=1)
 
         axes[2, 2].set_title('Height diff')
         axes[2, 2].imshow(diff_pred.T, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+        axes[2, 2].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k' , s=1)
 
         axes[2, 3].set_title('Trajectories Z')
-        axes[2, 3].plot(traj_ts, Xs[:, 2], 'kx', label='GT')
-        axes[2, 3].plot(controls_ts, Xs_pred[:, 2], 'r.', label='Pred')
+        axes[2, 3].plot(traj_ts, Xs[:, 2], 'k', label='GT')
+        axes[2, 3].plot(controls_ts, Xs_pred[:, 2], c='r', label='Pred')
         axes[2, 3].set_xlabel('Time [s]')
         axes[2, 3].set_ylabel('Z [m]')
         axes[2, 3].set_ylim(-self.dphys_cfg.h_max, self.dphys_cfg.h_max)
@@ -353,7 +363,7 @@ class TrainerCore:
 
 class TrainerLSS(TrainerCore):
     def __init__(self, dphys_cfg, lss_cfg, model='lss', bsz=1, lr=1e-3, nepochs=1000,
-                 pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=0.1):
+                 pretrained_model_path=None, debug=False, vis=False, geom_weight=1.0, terrain_weight=1.0, phys_weight=1.0):
         super().__init__(dphys_cfg, lss_cfg, model, bsz, lr, nepochs, pretrained_model_path, debug, vis,
                          geom_weight, terrain_weight, phys_weight)
         # create dataloaders
@@ -366,7 +376,7 @@ class TrainerLSS(TrainerCore):
 
         # define optimizer
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(),
-                                          lr=lr, betas=(0.8, 0.999))
+                                          lr=lr, betas=(0.8, 0.999), weight_decay=1e-7)
 
     def compute_losses(self, batch):
         (imgs, rots, trans, intrins, post_rots, post_trans,
