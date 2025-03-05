@@ -31,6 +31,7 @@ data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 rough_seq_paths = [
         # MARV robot
         os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-long_drive'),
+        os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-silly_drive'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-54-43'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-16-42'),
@@ -46,6 +47,7 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-27-16'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
