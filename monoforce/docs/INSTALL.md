@@ -23,7 +23,7 @@ catkin build
 ## Model Weights
 
 The pretrained weights for the terrain encoder are available at:
-[https://github.com/ctu-vras/monoforce/releases/download/t-ro-2025/weights.zip](https://github.com/ctu-vras/monoforce/releases/download/t-ro-2025/weights.zip).
+[https://github.com/ctu-vras/monoforce/releases/download/v0.2.0/weights.zip](https://github.com/ctu-vras/monoforce/releases/download/v0.2.0/weights.zip).
 
 Once downloaded, please, unzip the weights to the
 `monoforce/config/weights/` folder.
