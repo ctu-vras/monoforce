@@ -211,64 +211,73 @@ def explore_data(ds, sample_range='random', save=False):
         height_geom = ds.get_geom_height_map(sample_i)[0]
         height_terrain = ds.get_terrain_height_map(sample_i)[0]
         pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
+        traj_poses = ds.get_traj(sample_i)['poses']
+        control_ts, controls = ds.get_controls(sample_i)
 
         frustum_pts = model.get_geometry(rots[None], trans[None], intrins[None], post_rots[None], post_trans[None]).squeeze(0)
+        xyz = traj_poses[:, :3, 3]
+        grid_res = lss_cfg['grid_conf']['xbound'][2]
+        xy_grid = (xyz[:, :2] + d_max) / grid_res
 
-        n_rows, n_cols = 2, int(np.ceil(len(cams) / 2) + 3)
-        img_h, img_w = imgs.shape[-2], imgs.shape[-1]
-        ratio = img_h / img_w
-        fig = plt.figure(figsize=(n_cols * 5, n_rows * 5 * ratio))
-        gs = mpl.gridspec.GridSpec(n_rows, n_cols)
-        gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+        fig, axes = plt.subplots(2, 4, figsize=(20, 8))
 
-        plt.clf()
-        final_ax = plt.subplot(gs[:, -1:])
+        final_ax = axes[-1, -1]
         for imgi, img in enumerate(imgs):
+            ax = axes[0, imgi]
+
             cam_pts = ego_to_cam(pts, rots[imgi], trans[imgi], intrins[imgi])
             mask = get_only_in_img_mask(cam_pts, H, W)
             plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
-
-            ax = plt.subplot(gs[imgi // int(np.ceil(len(cams) / 2)), imgi % int(np.ceil(len(cams) / 2))])
             showimg = denormalize_img(img)
 
-            plt.imshow(showimg)
-            plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[2, mask],
+            ax.imshow(showimg)
+            ax.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[2, mask],
                         s=1, alpha=0.4, cmap='jet', vmin=-1., vmax=1.)
-            plt.axis('off')
+            ax.axis('off')
             # camera name as text on image
-            plt.text(0.5, 0.9, cams[imgi].replace('_', ' '),
-                     horizontalalignment='center', verticalalignment='top',
-                     transform=ax.transAxes, fontsize=10)
+            ax.text(0.5, 0.9, cams[imgi].replace('_', ' '),
+                    horizontalalignment='center', verticalalignment='top',
+                    transform=ax.transAxes, fontsize=10)
 
-            plt.sca(final_ax)
-            plt.scatter(frustum_pts[imgi, :, :, :, 0].view(-1), frustum_pts[imgi, :, :, :, 1].view(-1),
-                        label=cams[imgi].replace('_', ' '), s=0.2, alpha=0.5)
+            final_ax.scatter(frustum_pts[imgi, :, :, :, 0].view(-1), frustum_pts[imgi, :, :, :, 1].view(-1),
+                             label=cams[imgi].replace('_', ' '), s=0.2, alpha=0.5)
 
-        plt.legend(loc='upper right')
+        final_ax.legend(loc='upper right')
         final_ax.set_aspect('equal')
-        plt.title('Frustum points')
-        plt.xlim((-d_max, d_max))
-        plt.ylim((-d_max, d_max))
+        final_ax.set_title('Frustum points')
+        final_ax.set_xlim((-d_max, d_max))
+        final_ax.set_ylim((-d_max, d_max))
 
-        # plot height maps
-        plt.subplot(gs[:, -3:-2])
-        plt.imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-        # plt.axis('off')
-        plt.title('Geom HM')
-        # plt.colorbar()
+        # plot geom heightmap
+        axes[1, 0].imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        axes[1, 0].set_title('Geom HM')
+        axes[1, 0].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
+        axes[1, 0].set_xlabel('X [m]')
+        axes[1, 0].set_ylabel('Y [m]')
+        axes[1, 0].legend()
 
-        plt.subplot(gs[:, -2:-1])
-        plt.imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-        # plt.axis('off')
-        plt.title('Terrain HM')
-        # plt.colorbar()
+        # plot terrain heightmap
+        axes[1, 1].imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        axes[1, 1].set_title('Terrain HM')
+        axes[1, 1].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
+        axes[1, 1].set_xlabel('X [m]')
+        axes[1, 1].set_ylabel('Y [m]')
+        axes[1, 1].legend()
+
+        # plot control inputs
+        axes[1, 2].plot(control_ts, controls[:, 0], label='v(t)')
+        axes[1, 2].plot(control_ts, controls[:, 1], label='w(t)')
+        axes[1, 2].set_title('Control inputs')
+        axes[1, 2].legend()
+        axes[1, 2].set_xlabel('Time [s]')
+        axes[1, 2].set_ylabel('Control inputs')
+        axes[1, 2].grid()
 
         if save:
             save_dir = os.path.join(ds.path, 'visuals')
             os.makedirs(save_dir, exist_ok=True)
             imname = f'{ds.ids[sample_i]}.jpg'
             imname = os.path.join(save_dir, imname)
-            # print('saving', imname)
             plt.savefig(imname)
             plt.close(fig)
         else:
