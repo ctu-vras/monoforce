@@ -8,7 +8,6 @@ import torch
 import yaml
 from random import random
 from time import sleep
-from tqdm import tqdm
 
 
 __all__ = [

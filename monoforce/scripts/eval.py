@@ -2,6 +2,7 @@
 
 import sys
 sys.path.append('../src/')
+from datetime import datetime
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import os
@@ -12,11 +13,10 @@ import argparse
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
 from monoforce.models.traj_predictor.dphysics import DPhysics
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-from monoforce.transformations import position
-from monoforce.datasets.rough import ROUGH
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv, compile_data
 from monoforce.losses import physics_loss, hm_loss
+from monoforce.datasets import ROUGH, rough_seq_paths
 
 
 np.random.seed(42)
@@ -32,26 +32,6 @@ def arg_parser():
     parser.add_argument('--vis', action='store_true', help='Visualize the results')
     return parser.parse_args()
 
-
-class Data(ROUGH):
-    def __init__(self, path, lss_cfg=None, dphys_cfg=DPhysConfig(), is_train=True):
-        super(Data, self).__init__(path, lss_cfg, dphys_cfg=dphys_cfg, is_train=is_train)
-
-    def get_sample(self, i):
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
-        points = torch.as_tensor(position(self.get_cloud(i))).T
-        control_ts, controls = self.get_controls(i)
-        traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, Rs, Omegas = states
-        hm_geom = self.get_geom_height_map(i)
-        hm_terrain = self.get_terrain_height_map(i)
-        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
-        return (imgs, rots, trans, intrins, post_rots, post_trans,
-                hm_geom, hm_terrain,
-                control_ts, controls,
-                pose0,
-                traj_ts, Xs, Xds, Rs, Omegas,
-                points)
 
 class Eval:
     def __init__(self,
@@ -69,7 +49,7 @@ class Eval:
         # load LSS config
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
         self.terrain_encoder = self.get_terrain_encoder(terrain_encoder_path, model=terrain_encoder)
-        self.output_folder = f'./gen/eval/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_predictor.__class__.__name__}'
+        self.output_folder = f'./gen/eval_{datetime.now()}/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_predictor.__class__.__name__}'
 
         # load data
         self.loader = self.get_dataloader(batch_size=batch_size)
@@ -117,7 +97,8 @@ class Eval:
         return states_pred
 
     def get_dataloader(self, batch_size=1):
-        _, val_ds = compile_data(lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg, Data=Data)
+        # val_ds = ROUGH(path=rough_seq_paths[1], lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
+        _, val_ds = compile_data(lss_cfg=self.lss_config, dphys_cfg=self.dphys_cfg)
         loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         return loader
 
@@ -147,8 +128,7 @@ class Eval:
                  hm_geom, hm_terrain,
                  control_ts, controls,
                  pose0,
-                 traj_ts, Xs, Xds, Rs, Omegas,
-                 points) = batch
+                 traj_ts, Xs, Xds, Rs, Omegas) = batch
                 states_gt = [Xs, Xds, Rs, Omegas]
 
                 # terrain prediction
@@ -183,8 +163,7 @@ class Eval:
                      hm_geom, hm_terrain,
                      control_ts, controls,
                      pose0,
-                     traj_ts, Xs, Xds, Rs, Omegas,
-                     points) = batch
+                     traj_ts, Xs, Xds, Rs, Omegas) = batch
                     states_gt = [Xs, Xds, Rs, Omegas]
 
                     plt.clf()
@@ -218,7 +197,7 @@ class Eval:
                     # plot friction map
                     plt.subplot(2, 4, 6)
                     plt.title('Friction')
-                    plt.imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=2.)
+                    plt.imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=1.)
                     plt.axis('off')
                     plt.colorbar()
 
