@@ -12,6 +12,7 @@ from ..transformations import transform_cloud, position
 from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
+from ..imgproc import undistort_image
 from ..utils import normalize, load_calib
 from .wildscenes.utils3d import METAINFO as WILDSCENES_METAINFO
 from PIL import Image
@@ -543,6 +544,10 @@ class ROUGH(Dataset):
             K = np.asarray(K, dtype=np.float32).reshape((3, 3))
             E = self.calib['transformations'][f'T_base_link__{cam}']['data']
             E = np.asarray(E, dtype=np.float32).reshape((4, 4))
+            D = np.asarray(self.calib[cam]['distortion_coefficients']['data'], dtype=np.float32)
+
+            # undistort segmentation label
+            seg_label_cam, K = undistort_image(seg_label_cam, K, D)
 
             lidar_points = torch.as_tensor(lidar_points)
             E = torch.as_tensor(E)
