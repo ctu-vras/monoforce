@@ -12,6 +12,7 @@ from ..transformations import transform_cloud, position
 from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
+from ..imgproc import undistort_image
 from ..utils import normalize, load_calib
 from .wildscenes import METAINFO as WILDSCENES_METAINFO
 from PIL import Image
@@ -31,6 +32,7 @@ data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 rough_seq_paths = [
         # MARV robot
         os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-long_drive'),
+        os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-silly_drive'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-54-43'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-16-42'),
@@ -46,6 +48,7 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
+        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-27-16'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
@@ -541,6 +544,10 @@ class ROUGH(Dataset):
             K = np.asarray(K, dtype=np.float32).reshape((3, 3))
             E = self.calib['transformations'][f'T_base_link__{cam}']['data']
             E = np.asarray(E, dtype=np.float32).reshape((4, 4))
+            D = np.asarray(self.calib[cam]['distortion_coefficients']['data'], dtype=np.float32)
+
+            # undistort segmentation label
+            seg_label_cam, K = undistort_image(seg_label_cam, K, D)
 
             lidar_points = torch.as_tensor(lidar_points)
             E = torch.as_tensor(E)
