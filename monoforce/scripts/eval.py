@@ -49,7 +49,7 @@ class Eval:
         # load LSS config
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
         self.terrain_encoder = self.get_terrain_encoder(terrain_encoder_path, model=terrain_encoder)
-        self.output_folder = f'./gen/eval_{datetime.now()}/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_predictor.__class__.__name__}'
+        self.output_folder = f'./gen/eval_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}/{robot}_{self.terrain_encoder.__class__.__name__}_{self.traj_predictor.__class__.__name__}'
 
         # load data
         self.loader = self.get_dataloader(batch_size=batch_size)
