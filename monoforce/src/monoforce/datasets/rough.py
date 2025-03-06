@@ -13,7 +13,7 @@ from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
 from ..utils import normalize, load_calib
-from .wildscenes.utils3d import METAINFO as WILDSCENES_METAINFO
+from .wildscenes import METAINFO as WILDSCENES_METAINFO
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
