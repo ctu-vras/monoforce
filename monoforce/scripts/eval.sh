@@ -3,8 +3,8 @@
 echo "Source ROS workspace..."
 source $HOME/workspaces/traversability_ws/devel/setup.bash
 
-ROBOT=marv  # marv, tradr, husky
-BATCH_SIZE=4
+SEQ=val
+BATCH_SIZE=1
 TERRAIN_ENCODERS=(lss)
 TRAJ_PREDICTORS=(dphysics)
 VIS=False
@@ -19,7 +19,8 @@ do
               --terrain_encoder_path ${WEIGHTS} \
               --traj_predictor ${TRAJ_PREDICTOR} \
               --batch_size ${BATCH_SIZE} \
-              --robot ${ROBOT} --vis ${VIS}
+              --seq ${SEQ} \
+              --vis ${VIS}
   done
 done
 
