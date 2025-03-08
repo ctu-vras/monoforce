@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from scipy.spatial.transform import Rotation
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_controls
 import matplotlib.pyplot as plt
 
 
@@ -108,12 +108,12 @@ def shoot_multiple():
     z_grid = z_grid.repeat(num_trajs, 1, 1)
 
     # control inputs in m/s and rad/s
-    controls_front, _ = generate_control_inputs(n_trajs=num_trajs // 2,
-                                                v_range=(vel_max / 2, vel_max), w_range=(-omega_max, omega_max),
-                                                time_horizon=T, dt=dt)
-    controls_back, _ = generate_control_inputs(n_trajs=num_trajs // 2,
-                                               v_range=(-vel_max, -vel_max / 2), w_range=(-omega_max, omega_max),
-                                               time_horizon=T, dt=dt)
+    controls_front, _ = generate_controls(n_trajs=num_trajs // 2,
+                                          v_range=(vel_max / 2, vel_max), w_range=(-omega_max, omega_max),
+                                          time_horizon=T, dt=dt)
+    controls_back, _ = generate_controls(n_trajs=num_trajs // 2,
+                                         v_range=(-vel_max, -vel_max / 2), w_range=(-omega_max, omega_max),
+                                         time_horizon=T, dt=dt)
     controls = torch.cat([controls_front, controls_back], dim=0)
     # controls = torch.ones_like(controls)
     controls = torch.as_tensor(controls, dtype=torch.float32, device=device)

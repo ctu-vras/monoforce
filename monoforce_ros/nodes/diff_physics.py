@@ -9,7 +9,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_controls
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
 from nav_msgs.msg import Path
@@ -77,14 +77,14 @@ class DiffPhysBase:
         return xyz_q
 
     def init_controls(self):
-        controls_front, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                                    v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
-                                                    w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                                    time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
-        controls_back, _ = generate_control_inputs(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                                   v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
-                                                   w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                                   time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
+        controls_front, _ = generate_controls(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
+                                              v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
+                                              w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                              time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
+        controls_back, _ = generate_controls(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
+                                             v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
+                                             w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                             time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
         controls = torch.cat([controls_front, controls_back], dim=0)
         return controls
 
