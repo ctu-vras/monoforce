@@ -39,9 +39,9 @@ def skew_symmetric(v):
     U[:, 2, 1] = v[:, 0]
     return U
 
-def generate_control_inputs(n_trajs=10,
-                            time_horizon=5.0, dt=0.01,
-                            v_range=(-1.0, 1.0), w_range=(-1.0, 1.0)):
+def generate_controls(n_trajs=10,
+                      time_horizon=5.0, dt=0.01,
+                      v_range=(-1.0, 1.0), w_range=(-1.0, 1.0)):
     """
     Generates control inputs for the robot trajectories.
 

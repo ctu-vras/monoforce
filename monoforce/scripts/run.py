@@ -9,7 +9,7 @@ from PIL import Image
 from mayavi import mlab
 import argparse
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_controls
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import denormalize_img, normalize_img, img_transform, sample_augmentation
 from monoforce.utils import read_yaml, load_calib
@@ -69,10 +69,10 @@ class MonoForce:
 
     def predict_states(self, z_grid):
         T, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-        controls, _ = generate_control_inputs(n_trajs=z_grid.shape[0],
-                                              v_range=(self.dphys_cfg.vel_max / 2., self.dphys_cfg.vel_max),
-                                              w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                              time_horizon=T, dt=dt)
+        controls, _ = generate_controls(n_trajs=z_grid.shape[0],
+                                        v_range=(self.dphys_cfg.vel_max / 2., self.dphys_cfg.vel_max),
+                                        w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
+                                        time_horizon=T, dt=dt)
         controls = controls.to(self.device)
         states, forces = self.dphysics(z_grid, controls=controls)
         return states, forces
