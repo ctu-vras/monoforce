@@ -12,8 +12,10 @@ from ..transformations import transform_cloud, position
 from ..cloudproc import estimate_heightmap, hm_to_cloud
 from ..utils import position, read_yaml
 from ..cloudproc import filter_grid
+from ..imgproc import undistort_image
 from ..utils import normalize, load_calib
 from .wildscenes import METAINFO as WILDSCENES_METAINFO
+from .coco import COCO_CATEGORIES, COCO_CLASSES
 from PIL import Image
 from tqdm import tqdm
 import open3d as o3d
@@ -31,6 +33,7 @@ data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 rough_seq_paths = [
         # MARV robot
         os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-long_drive'),
+        # os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-silly_drive'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-54-43'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-16-42'),
@@ -39,18 +42,19 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
 
-        # TRADR robot
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-12-12'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-54-18'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-08-30'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-24-48'),
+        # # TRADR robot
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-12-12'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-54-18'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-27-16'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-08-30'),
+        # os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-24-48'),
 ]
 
 
@@ -503,53 +507,74 @@ class ROUGH(Dataset):
 
         return img_data
 
-    def seg_label_to_color(self, seg_label):
-        label_2_rgb = {cidx: p for cidx, p in zip(WILDSCENES_METAINFO['cidx'], WILDSCENES_METAINFO['palette'])}
-        seg_color = np.zeros(list(seg_label.shape) + [3], dtype=np.float32)
-        for cidx, c in label_2_rgb.items():
-            seg_color[seg_label == cidx] = c
-        seg_color /= 255.
+    def seg_label_to_color(self, seg_label, layout='wildscenes'):
+        seg_color = np.zeros(list(seg_label.shape) + [3], dtype=np.uint8)
+        if layout == 'wildscenes':
+            mi = WILDSCENES_METAINFO
+            label_2_rgb = {cidx: p for cidx, p in zip(mi['cidx'], mi['palette'])}
+            for cidx, c in label_2_rgb.items():
+                seg_color[seg_label == cidx] = c
+        elif layout == 'coco':
+            coco_colors = [(np.array(color['color'])).tolist() for color in COCO_CATEGORIES] + [[0, 0, 0]]
+            for color_i, color in enumerate(coco_colors):
+                seg_color[seg_label == color_i] = color
+        else:
+            raise(ValueError(f'Unknown layout {layout}. Supported layouts are "wildscenes" and "coco"'))
         return seg_color
 
-    def get_seg_label(self, i, camera=None):
+    def get_seg_label(self, i, camera=None, layout='wildscenes'):
         if camera is None:
             camera = self.camera_names[0]
         id = self.ids[i]
-        seg_path = os.path.join(self.path, 'images/wildscenes_seg/seg/', '%s_%s.png' % (id, camera))
+        if layout == 'wildscenes':
+            seg_path = os.path.join(self.path, 'images/wildscenes_seg/seg/', '%s_%s.png' % (id, camera))
+            seg = Image.open(seg_path)
+        elif layout == 'coco':
+            seg_path = os.path.join(self.path, 'images/seg/', '%s_%s.npy' % (id, camera))
+            seg = Image.fromarray(np.load(seg_path))
+        else:
+            raise(ValueError(f'Unknown layout {layout}. Supported layouts are "wildscenes" and "coco"'))
         assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
-        seg = Image.open(seg_path)
         size = self.get_raw_img_size(i, camera)
         transform = torchvision.transforms.Resize(size)
         seg = transform(seg)
         return seg
 
-    def get_semantic_cloud(self, i, classes=None, vis=False):
-        mi = WILDSCENES_METAINFO
-        if classes is None:
-            classes = mi['classes']
-        # ids of classes in WildScenes
-        selected_labels = [mi['cidx'][mi['classes'].index(cls)] for cls in classes]
+    def get_semantic_cloud(self, i, classes, layout='wildscenes', vis=False):
+        if layout == 'wildscenes':
+            # ids of classes in WildScenes
+            mi = WILDSCENES_METAINFO
+            selected_labels = [mi['cidx'][mi['classes'].index(c)] for c in classes]
+        elif layout == 'coco':
+            # ids of classes in COCO
+            selected_labels = [COCO_CLASSES.index(c) for c in classes]
+        else:
+            raise(ValueError(f'Unknown layout {layout}. Supported layouts are "wildscenes" and "coco"'))
 
         lidar_points = position(self.get_cloud(i, gravity_aligned=False))
         points = []
         labels = []
         for cam in self.camera_names[::-1]:
-            seg_label_cam = self.get_seg_label(i, camera=cam)
+            seg_label_cam = self.get_seg_label(i, camera=cam, layout=layout)
             seg_label_cam = np.asarray(seg_label_cam)
 
             K = self.calib[cam]['camera_matrix']['data']
             K = np.asarray(K, dtype=np.float32).reshape((3, 3))
             E = self.calib['transformations'][f'T_base_link__{cam}']['data']
             E = np.asarray(E, dtype=np.float32).reshape((4, 4))
+            D = np.asarray(self.calib[cam]['distortion_coefficients']['data'], dtype=np.float32)
+
+            # undistort segmentation label
+            seg_label_cam, K = undistort_image(seg_label_cam, K, D)
 
             lidar_points = torch.as_tensor(lidar_points)
             E = torch.as_tensor(E)
             K = torch.as_tensor(K)
 
             img_plane_points = ego_to_cam(lidar_points.T, E[:3, :3], E[:3, 3], K).T
-            mask = get_only_in_img_mask(img_plane_points.T, seg_label_cam.shape[0], seg_label_cam.shape[1])
-            img_plane_points = img_plane_points[mask]
-            cam_points = lidar_points[mask].numpy()
+            mask_img = get_only_in_img_mask(img_plane_points.T, seg_label_cam.shape[0], seg_label_cam.shape[1])
+            img_plane_points = img_plane_points[mask_img]
+            cam_points = lidar_points[mask_img].numpy()
 
             # colorize point cloud with values from segmentation image
             uv = img_plane_points[:, :2].numpy().astype(int)
@@ -560,13 +585,13 @@ class ROUGH(Dataset):
 
         points = np.concatenate(points)
         labels = np.concatenate(labels)
-        colors = self.seg_label_to_color(labels)
+        colors = self.seg_label_to_color(labels, layout=layout)
         assert len(points) == len(colors)
 
         # mask out points with labels not in selected classes
-        mask = np.isin(labels, selected_labels)
-        points = points[mask]
-        colors = colors[mask]
+        mask_labels = np.isin(labels, selected_labels)
+        points = points[mask_labels]
+        colors = colors[mask_labels]
 
         # gravity-aligned cloud
         pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
@@ -605,7 +630,6 @@ class ROUGH(Dataset):
         :param i: index of the sample
         :param cached: if True, load height map from file if it exists, otherwise estimate it
         :param dir_name: directory to save/load height map
-        :param rigid_classes: classes of obstacles to include in the height map
         :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
@@ -616,10 +640,13 @@ class ROUGH(Dataset):
             hm_rigid = np.load(file_path)
         else:
             traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
-            soft_classes = self.lss_cfg['soft_classes']
-            rigid_classes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
-            points = np.concatenate((seg_points, traj_points), axis=0)
+            soft_classes_wildscenes = ['tree-foliage', 'bush', 'grass', 'sky']
+            rigid_classes_wildscenes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes_wildscenes]
+            rigid_points_wildscenes, _ = self.get_semantic_cloud(i, classes=rigid_classes_wildscenes, layout='wildscenes')
+            soft_classes_coco = ['grass', 'snow', 'flower', 'tree']
+            rigid_classes_coco = [c for c in COCO_CLASSES if c not in soft_classes_coco]
+            rigid_points_coco, _ = self.get_semantic_cloud(i, classes=rigid_classes_coco, layout='coco')
+            points = np.concatenate((rigid_points_wildscenes, rigid_points_coco, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
             hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
                                           grid_res=self.grid_res,
