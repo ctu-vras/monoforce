@@ -3,7 +3,6 @@ pyyaml==6.0
 pathlib==1.0.1
 yacs==0.1.6
 setuptools==58.0.4
-rospkg==1.5.1
 python-dateutil==2.8.2
 empy==3.3.4
 gnupg==2.3.1

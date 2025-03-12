@@ -2,22 +2,21 @@
 
 Install Python dependencies:
 ```commandline
-pip install -r ../docker/requirements.txt
+pip install -r ../requirements.txt
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 ```
 
-## ROS Integration
-Please clone the ROS package, install its dependencies, and build the workspace:
+## ROS2 Integration
+
+Please clone the package, install its dependencies, and build the workspace:
 ```commandline
 mkdir -p ~/traversability_ws/src/
 cd ~/traversability_ws/src/
 git clone https://github.com/ctu-vras/monoforce.git
 
 cd ~/traversability_ws/
-catkin init
-catkin config --extend /opt/ros/$ROS_DISTRO/
-catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
 rosdep install --from-paths src --ignore-src -r -y
-catkin build
+colcon build --symlink-install --packages-select monoforce
 ```
 
 ## Model Weights
@@ -27,31 +26,3 @@ The pretrained weights for the terrain encoder are available at:
 
 Once downloaded, please, unzip the weights to the
 `monoforce/config/weights/` folder.
-
-## Docker
-
-We have prepared a [Docker](https://docs.docker.com/engine/install/ubuntu/) image to run the monoforce package.
-Please, install
-[Docker](https://docs.docker.com/engine/install/ubuntu/)
-and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
-
-To pull the prebuilt image:
-```commandline
-cd ../docker/
-make pull
-```
-
-Or if you would like to build the image from scratch:
-```commandline
-cd ../docker/
-make build
-```
-
-## Singularity
-
-It is possible to run the monoforce package in a [Singularity](https://sylabs.io/singularity/) container.
-To build the image:
-```commandline
-cd ../singularity/
-./build.sh
-```

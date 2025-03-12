@@ -12,27 +12,27 @@
 
 Examples of predicted trajectories and autonomous traversal through vegetation:
 
-[![](./monoforce/docs/imgs/demo_oru.png)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
+[![](./docs/imgs/demo_oru.png)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
 
 Input: onboard camera images:
 
-<img src="./monoforce/docs/imgs/tradr_rgb_input.png" width="800"/>
+<img src="./docs/imgs/tradr_rgb_input.png" width="800"/>
 
 Output: predicted trajectory, terrain shape and properties, interaction forces and contacts:
 
-![](./monoforce/docs/imgs/monoforce_mayavi.gif)
+![](./docs/imgs/monoforce_mayavi.gif)
 
 The three people are visible as the pillars within the blue area.
 
 Robot-terrain interaction prediction from only RGB images as input.
 
-<img src="./monoforce/docs/imgs/examples/ramp_success.png" width="200"/> <img src="./monoforce/docs/imgs/examples/high_grass2.png" width="200"/> <img src="./monoforce/docs/imgs/examples/wall3.png" width="200"/> <img src="./monoforce/docs/imgs/examples/snow.png" width="200"/>
+<img src="./docs/imgs/examples/ramp_success.png" width="200"/> <img src="./docs/imgs/examples/high_grass2.png" width="200"/> <img src="./docs/imgs/examples/wall3.png" width="200"/> <img src="./docs/imgs/examples/snow.png" width="200"/>
 
 ## Table of Contents
-- [Installation Instructions](./monoforce/docs/INSTALL.md)
-- [Data](./monoforce/docs/DATA.md)
-- [Terrain Encoder](./monoforce/docs/TERRAIN_ENCODER.md)
-- [Differentiable Physics Engine](./monoforce/docs/DPHYS.md)
+- [Installation Instructions](./docs/INSTALL.md)
+- [Data](./docs/DATA.md)
+- [Terrain Encoder](./docs/TERRAIN_ENCODER.md)
+- [Differentiable Physics Engine](./docs/DPHYS.md)
 - [Running](#running)
 - [Examples](./monoforce/examples)
 - [ROS Integration](#ros-integration)
@@ -42,7 +42,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 
 ## Running
 
-<img src="./monoforce/docs/imgs/pipeline.png" width="800"/>
+<img src="./docs/imgs/pipeline.png" width="800"/>
 
 The MonoForce pipeline consists of the Terrain Encoder and the Physics Engine.
 Given input RGB images and cameras calibration the Terrain Encoder predicts terrain properties.
@@ -62,11 +62,11 @@ For example if you want to test the model with the provided images from the
 cd monoforce/scripts/
 ./run.sh
 ```
-Please, refer to the [installation instructions](./monoforce/docs/INSTALL.md#model-weights) to download the pre-trained model weights.
+Please, refer to the [installation instructions](./docs/INSTALL.md#model-weights) to download the pre-trained model weights.
 
 ## ROS Integration
 
-<img src="./monoforce/docs/imgs/monoforce.gif" width="800"/>
+<img src="./docs/imgs/monoforce.gif" width="800"/>
 
 We provide a ROS nodes for both the trained Terrain Encoder model and the Differentiable Physics module.
 They are integrated into the launch file:
@@ -85,7 +85,7 @@ Except for the terrain shape (**Elevation**), we estimate the additional terrain
 An example of the predicted elevation and friction maps:
 <p align="center">
   <a href="https://drive.google.com/file/d/15Uo82hwE_OiRHsuGd0-9qcvrYOXsosn0/view?usp=drive_link">
-  <img src="./monoforce/docs/imgs/friction_prediction_tradr.png" alt="video link">
+  <img src="./docs/imgs/friction_prediction_tradr.png" alt="video link">
   </a>
 </p>
 One can see that the model predicts the friction map with
