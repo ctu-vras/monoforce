@@ -163,5 +163,4 @@ cython_debug/
 data/*
 gen*/
 *.pth
-*.pt
 *.bak

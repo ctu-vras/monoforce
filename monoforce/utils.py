@@ -1,5 +1,4 @@
 import os
-import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from numpy.lib.recfunctions import structured_to_unstructured

@@ -5,14 +5,12 @@ from scipy.ndimage import rotate
 from cv_bridge import CvBridge
 from monoforce.utils import slots
 from nav_msgs.msg import Path
-from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray, TransformStamped
-from tf.transformations import quaternion_from_matrix, quaternion_matrix
+from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
-from grid_map_msgs.msg import GridMap
+# from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import PointCloud2, CompressedImage, Image
-from ros_numpy import msgify, numpify
+# from ros_numpy import msgify, numpify
 from numpy.lib.recfunctions import unstructured_to_structured
-import rospy
 from visualization_msgs.msg import Marker
 
 
@@ -64,50 +62,6 @@ def height_map_to_gridmap_msg(height, grid_res,
     return map
 
 
-def height_map_to_point_cloud_msg(height, grid_res, xyz=np.asarray([0., 0., 0.]), q=np.asarray([0., 0., 0., 1.])):
-    assert isinstance(height, np.ndarray)
-    assert height.ndim == 2
-    H, W = height.shape
-    n_pts = H * W
-    x, y = np.meshgrid(np.arange(-H // 2, H // 2), np.arange(-W // 2, W // 2))
-    x = x.ravel() * grid_res
-    y = y.ravel() * grid_res
-    z = height.T.ravel()
-    pts = np.concatenate([x[None], y[None], z[None]], axis=0).T
-    # transform points using xyz and q
-    if not np.allclose(xyz, 0) or not np.allclose(q, np.array([0., 0., 0., 1.])):
-        T = np.eye(4)
-        T[:3, :3] = quaternion_matrix(q)[:3, :3]
-        T[:3, 3] = xyz
-        pts = pts @ T[:3, :3].T + T[:3, 3]
-    assert pts.shape == (n_pts, 3)
-    pts = np.asarray(pts, dtype='float32')
-    cloud = unstructured_to_structured(pts, names=['x', 'y', 'z'])
-    msg = msgify(PointCloud2, cloud)
-    return msg
-
-
-def to_tf(pose, frame_id, child_frame_id, stamp=None):
-    assert pose.shape == (4, 4)
-    if stamp is None:
-        stamp = rospy.Time.now()
-    t = TransformStamped()
-    t.header.stamp = stamp
-    t.header.frame_id = frame_id
-    t.child_frame_id = child_frame_id
-    t.transform.translation.x = pose[0, 3]
-    t.transform.translation.y = pose[1, 3]
-    t.transform.translation.z = pose[2, 3]
-    q = quaternion_from_matrix(pose)
-    # normalize quaternion
-    q /= np.linalg.norm(q)
-    t.transform.rotation.x = q[0]
-    t.transform.rotation.y = q[1]
-    t.transform.rotation.z = q[2]
-    t.transform.rotation.w = q[3]
-    return t
-
-
 def to_cloud_msg(cloud, stamp=None, frame_id=None, fields=None):
     assert isinstance(cloud, np.ndarray)
     assert cloud.shape[1] >= 3
@@ -130,38 +84,6 @@ def to_pose_array(poses, stamp=None, frame_id=None):
         pose_array.poses.append(pose)
     return pose_array
 
-
-def poses_to_path(poses, stamp=None, frame_id=None):
-    assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
-    assert poses.ndim == 3 or poses.ndim == 2
-    n_poses = poses.shape[0]
-    if poses.ndim == 3:
-        assert poses.shape == (n_poses, 4, 4)
-    elif poses.ndim == 2:
-        assert poses.shape == (n_poses, 7)
-    if stamp is None:
-        stamp = rospy.Time.now()
-    if frame_id is None:
-        frame_id = 'base_link'
-    path = Path()
-    path.header.stamp = stamp
-    path.header.frame_id = frame_id
-    for i in range(poses.shape[0]):
-        pose = PoseStamped()
-        pose.header.stamp = stamp
-        pose.header.frame_id = frame_id
-        if poses.ndim == 3:
-            pose.pose = msgify(Pose, poses[i])
-        elif poses.ndim == 2:
-            pose.pose.position.x = poses[i, 0]
-            pose.pose.position.y = poses[i, 1]
-            pose.pose.position.z = poses[i, 2]
-            pose.pose.orientation.x = poses[i, 3]
-            pose.pose.orientation.y = poses[i, 4]
-            pose.pose.orientation.z = poses[i, 5]
-            pose.pose.orientation.w = poses[i, 6]
-        path.poses.append(pose)
-    return path
 
 def transform_path(path, pose):
     assert isinstance(path, Path)

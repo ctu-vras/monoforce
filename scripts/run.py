@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.append('../src')
+sys.path.append('../')
 import os
 import numpy as np
 import torch

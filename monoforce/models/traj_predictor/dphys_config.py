@@ -21,7 +21,7 @@ def get_points_from_robot_mesh(robot, voxel_size=0.1, return_mesh=False):
         robot = 'tradr'
     elif 'marv' in robot:
         robot = 'marv'
-    mesh_path = os.path.join(os.path.dirname(__file__), f'../../../../config/meshes/{robot}.obj')
+    mesh_path = os.path.join(os.path.dirname(__file__), f'../../../config/meshes/{robot}.obj')
     assert os.path.exists(mesh_path), f'Mesh file {mesh_path} does not exist.'
     mesh = o3d.io.read_triangle_mesh(mesh_path)
     pcd = o3d.geometry.PointCloud()

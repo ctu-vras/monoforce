@@ -25,7 +25,7 @@ __all__ = [
     'rough_seq_paths',
 ]
 
-monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..'))
 data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
 rough_seq_paths = [

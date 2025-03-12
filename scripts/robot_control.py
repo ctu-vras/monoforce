@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-sys.path.append('../src')
+sys.path.append('../')
 import torch
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -74,7 +74,11 @@ def motion():
                               controls=controls,
                               joint_angles=joint_angles,
                               state=state0,
-                              friction=friction, vis=True)
+                              friction=friction, vis=False)
+    for s in states:
+        print(s.shape)
+    for f in forces:
+        print(f.shape)
 
 def shoot_multiple():
     from time import time
