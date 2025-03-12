@@ -34,7 +34,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 - [Terrain Encoder](./docs/TERRAIN_ENCODER.md)
 - [Differentiable Physics Engine](./docs/DPHYS.md)
 - [Running](#running)
-- [Examples](./monoforce/examples)
+- [Examples](./examples)
 - [ROS Integration](#ros-integration)
 - [Terrain Properties Prediction](#terrain-properties-prediction)
 - [Navigation](#navigation)
@@ -48,7 +48,7 @@ The MonoForce pipeline consists of the Terrain Encoder and the Physics Engine.
 Given input RGB images and cameras calibration the Terrain Encoder predicts terrain properties.
 Then the differentiable Physics Engine simulates robot trajectory and interaction forces on the predicted terrain
 for a provided control sequence.
-Refer to the [monoforce/examples](./monoforce/examples) folder for implementation details.
+Refer to the [monoforce/examples](./examples) folder for implementation details.
 
 Please run the following command to explore the MonoForce pipeline:
 ```commandline
@@ -68,12 +68,7 @@ Please, refer to the [installation instructions](./docs/INSTALL.md#model-weights
 
 <img src="./docs/imgs/monoforce.gif" width="800"/>
 
-We provide a ROS nodes for both the trained Terrain Encoder model and the Differentiable Physics module.
-They are integrated into the launch file:
-
-```commandline
-roslaunch monoforce monoforce.launch
-```
+We provide a ROS nodes for both the trained Terrain Encoder model and the Physics Engine.
 
 ## Terrain Properties Prediction
 
@@ -93,7 +88,7 @@ higher values for road areas and with the smaller value
 for grass where the robot could have less traction.
 
 Please refer to the
-[train_friction_head_with_pretrained_terrain_encoder.ipynb](./monoforce/examples/train_friction_head_with_pretrained_terrain_encoder.ipynb)
+[train_friction_head_with_pretrained_terrain_encoder.ipynb](./examples/train_friction_head_with_pretrained_terrain_encoder.ipynb)
 notebook for the example of the terrain properties learning
 with the pretrained Terrain Encoder model and differentiable physics loss.
 
@@ -105,13 +100,13 @@ The package is used as robot-terrain interaction and path planning pipeline.
 
 <p align="center">
   <a href="https://drive.google.com/file/d/1mqKEh_3VHZo4kDcJXP572SD1BVw37hSf/view?usp=drive_link">
-  <img src="monoforce/docs/imgs/forest_navigation_video_teaser.png" alt="video link">
+  <img src="docs/imgs/forest_navigation_video_teaser.png" alt="video link">
   </a>
 </p>
 
 We provide the differentiable physics model for robot-terrain interaction prediction:
 - **Pytorch**: The model is implemented in Pytorch. Please refer to the
-[diff_physics.ipynb](./monoforce/examples/diff_physics.ipynb)
+[diff_physics.ipynb](./examples/diff_physics.ipynb)
 notebook for the example of the trajectory prediction.
 
 Navigation consists of the following stages:
