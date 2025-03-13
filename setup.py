@@ -4,7 +4,7 @@ package_name = 'monoforce'
 
 setup(
     name=package_name,
-    version='0.0.0',
+    version='0.0.1',
     packages=find_packages(include=['monoforce']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -19,9 +19,8 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
-            'publisher = monoforce.nodes.publisher:main',
-            'subscriber = monoforce.nodes.subscriber:main',
             'terrain_encoder = monoforce.nodes.terrain_encoder:main',
+            'camera_publisher = monoforce.nodes.camera_publisher:main',
         ],
     },
 )
