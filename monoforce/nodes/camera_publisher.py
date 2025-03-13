@@ -44,11 +44,25 @@ class CameraPublisher(Node):
         self.caminfo_pub.publish(caminfo_msg)
         self.get_logger().debug("Published image and K messages")
 
-        # publish tf message: identity transform
+        # publish tf message: from base_link to camera_frame
         t = tf2_ros.TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "base_link"
         t.child_frame_id = "camera_frame"
+        t.transform.translation.x = 0.0
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = 0.0
+        t.transform.rotation.w = 1.0
+        self.tf_broadcaster.sendTransform(t)
+
+        # publish tf message: from odom to base_link
+        t = tf2_ros.TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "odom"
+        t.child_frame_id = "base_link"
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.0
         t.transform.translation.z = 0.0

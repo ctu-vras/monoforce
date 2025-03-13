@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 
 import os
-import torch
+from copy import copy
 
+import numpy as np
+import torch
+from scipy.spatial.transform import Rotation
+from PIL import Image as PILImage
+
+import rclpy.time
 from monoforce.utils import read_yaml
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
+from monoforce.models.terrain_encoder.utils import sample_augmentation, img_transform, normalize_img
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
+from rclpy.impl.logging_severity import LoggingSeverity
 from rclpy.node import Node
 
 from cv_bridge import CvBridge
@@ -15,7 +23,7 @@ from sensor_msgs.msg import CompressedImage, CameraInfo, Image
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import tf2_ros
 
-torch.set_default_dtype(torch.float32)
+
 monoforce_path = os.path.realpath(os.path.join(os.path.dirname(__file__), '../../'))
 
 
@@ -23,22 +31,22 @@ class TerrainEncoder(Node):
 
     def __init__(self):
         super().__init__('terrain_encoder')
-
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         self.declare_parameter('weights', os.path.join(monoforce_path, 'config/weights/lss/val.pth'))
         self.declare_parameter('robot_frame', 'base_link')
         self.declare_parameter('fixed_frame', 'odom')
-        self.declare_parameter('img_topics', ['/image_raw'])
-        self.declare_parameter('camera_info_topics', ['/camera_info'])
+        self.declare_parameter('img_topics', [''])
+        self.declare_parameter('camera_info_topics', [''])
         self.declare_parameter('max_msgs_delay', 0.1)
         self.declare_parameter('max_age', 0.2)
 
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self._logger.set_level(LoggingSeverity.DEBUG)
+
         self.lss_cfg = read_yaml(os.path.join(monoforce_path, 'config/lss_cfg.yaml'))
         weights = self.get_parameter('weights').get_parameter_value().string_value
-        self.get_logger().info(f'Loading LSS model from {weights}')
+        self._logger.info(f'Loading LSS model from {weights}')
         if not os.path.exists(weights):
-            self.get_logger().error(f'Model weights file {weights} does not exist. Using random weights.')
+            self._logger.error(f'Model weights file {weights} does not exist. Using random weights.')
         self.model = LiftSplatShoot(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf']).from_pretrained(weights)
         self.model.to(self.device)
         self.model.eval()
@@ -60,17 +68,156 @@ class TerrainEncoder(Node):
     def start(self):
         self.subs = []
         for topic in self.img_topics:
-            self.get_logger().info(f'Subscribing to {topic}')
+            self._logger.info(f'Subscribing to {topic}')
             self.subs.append(Subscriber(self, Image, topic))
         for topic in self.camera_info_topics:
-            self.get_logger().info(f'Subscribing to {topic}')
+            self._logger.info(f'Subscribing to {topic}')
             self.subs.append(Subscriber(self, CameraInfo, topic))
         self.sync = ApproximateTimeSynchronizer(self.subs, queue_size=1, slop=self.max_msgs_delay)
         self.sync.registerCallback(self.callback)
 
     def callback(self, *msgs):
-        for msg in msgs:
-            self.get_logger().info('I heard: "%s"' % msg.header)
+        self._logger.debug('Received %d messages' % len(msgs))
+        # if a message is stale, do not process it
+        t_now = self.get_clock().now().to_msg().sec + self.get_clock().now().to_msg().nanosec / 1e9
+        t_msg = msgs[0].header.stamp.sec + msgs[0].header.stamp.nanosec / 1e9
+        dt = abs(t_now - t_msg)
+        if dt > self.max_age:
+            self._logger.warning('Message is too old. Ignoring.')
+        else:
+            # process the messages
+            self.proc(*msgs)
+
+    @torch.inference_mode()
+    def proc(self, *msgs):
+        n = len(msgs)
+        assert n % 2 == 0
+        for i in range(n // 2):
+            assert isinstance(msgs[i], Image), 'First %d messages must be Image' % (n // 2)
+            assert isinstance(msgs[i + n // 2], CameraInfo), 'Last %d messages must be CameraInfo' % (n // 2)
+            assert msgs[i].header.frame_id == msgs[i + n // 2].header.frame_id, \
+                'Image and CameraInfo messages must have the same frame_id'
+        # preprocessing
+        img_msgs = msgs[:n // 2]
+        info_msgs = msgs[n // 2:]
+        inputs = self.get_lss_inputs(img_msgs, info_msgs)
+        inputs = [i.to(self.device) for i in inputs]
+
+        # model inference
+        out = self.model(*inputs)
+        height_terrain, friction = out['terrain'], out['friction']
+        self._logger.info('Predicted height map shape: %s' % str(height_terrain.shape))
+
+    def get_transform(self, from_frame, to_frame):
+        """Retrieve a transformation matrix between two frames using TF2."""
+        time = rclpy.time.Time()
+        timeout = rclpy.time.Duration(seconds=1.0)
+
+        try:
+            tf = self.tf_buffer.lookup_transform(to_frame, from_frame, time, timeout)
+        except Exception as ex:
+            self._logger.error(f'Could not transform from {from_frame} to {to_frame}: {ex}')
+            raise ex
+
+        # Convert TF2 transform message to a 4x4 transformation matrix
+        translation = [tf.transform.translation.x, tf.transform.translation.y, tf.transform.translation.z]
+        qaut = [tf.transform.rotation.x, tf.transform.rotation.y, tf.transform.rotation.z, tf.transform.rotation.w]
+        T = np.eye(4)
+        R = Rotation.from_quat(qaut).as_matrix()
+        T[:3, 3] = translation
+        T[:3, :3] = R
+        return T
+
+    def get_cam_calib_from_info_msg(self, msg):
+        """
+        Get camera calibration parameters from CameraInfo message.
+        :param msg: CameraInfo message
+        :return: E - extrinsics (4x4),
+                 K - intrinsics (3x3),
+                 D - distortion coefficients (5,)
+        """
+        assert isinstance(msg, CameraInfo)
+
+        # get camera extrinsics
+        E = self.get_transform(from_frame=msg.header.frame_id, to_frame=self.robot_frame)
+        K = np.array(msg.k).reshape((3, 3))
+        D = np.array(msg.d)
+
+        return E, K, D
+
+    def preprocess_img(self, img):
+        post_rot = torch.eye(2)
+        post_tran = torch.zeros(2)
+
+        # preprocessing parameters (resize, crop)
+        lss_cfg = copy(self.lss_cfg)
+        lss_cfg['data_aug_conf']['H'], lss_cfg['data_aug_conf']['W'] = img.shape[:2]
+        resize, resize_dims, crop, flip, rotate = sample_augmentation(lss_cfg, is_train=False)
+        img, post_rot2, post_tran2 = img_transform(PILImage.fromarray(img), post_rot, post_tran,
+                                                   resize=resize,
+                                                   resize_dims=resize_dims,
+                                                   crop=crop,
+                                                   flip=False,
+                                                   rotate=0)
+        # normalize image (substraction of mean and division by std)
+        img = normalize_img(img)
+
+        # for convenience, make augmentation matrices 3x3
+        post_tran = torch.zeros(3, dtype=torch.float32)
+        post_rot = torch.eye(3, dtype=torch.float32)
+        post_tran[:2] = post_tran2
+        post_rot[:2, :2] = post_rot2
+
+        return img, post_rot, post_tran
+
+    def get_lss_inputs(self, img_msgs, info_msgs):
+        """
+        Get inputs for LSS model from image and camera info messages.
+        """
+        assert len(img_msgs) == len(info_msgs)
+
+        robot_pose = self.get_transform(from_frame=self.robot_frame, to_frame=self.fixed_frame)
+        roll, pitch, yaw = Rotation.from_matrix(robot_pose[:3, :3]).as_euler('xyz')
+        R = Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix()
+
+        imgs = []
+        post_rots = []
+        post_trans = []
+        intriniscs = []
+        cams_to_robot = []
+        for cam_i, (img_msg, info_msg) in enumerate(zip(img_msgs, info_msgs)):
+            assert isinstance(img_msg, Image)
+            assert isinstance(info_msg, CameraInfo)
+
+            img = self.cv_bridge.imgmsg_to_cv2(img_msg)
+            self._logger.debug('Input image shape: %s' % str(img.shape))
+            # BGR to RGB
+            img = img[..., ::-1]
+            E, K, D = self.get_cam_calib_from_info_msg(info_msg)
+
+            # extrinsics relative to gravity-aligned frame
+            E[:3, :3] = R @ E[:3, :3]
+
+            img, post_rot, post_tran = self.preprocess_img(img)
+            imgs.append(img)
+            post_rots.append(post_rot)
+            post_trans.append(post_tran)
+            intriniscs.append(K)
+            cams_to_robot.append(E)
+
+        # to arrays
+        imgs = np.stack(imgs)
+        post_rots = np.stack(post_rots)
+        post_trans = np.stack(post_trans)
+        intrins = np.stack(intriniscs)
+        cams_to_robot = np.stack(cams_to_robot)
+        rots, trans = cams_to_robot[:, :3, :3], cams_to_robot[:, :3, 3]
+        self._logger.debug('Preprocessed image shape: %s' % str(imgs.shape))
+
+        inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+        inputs = [torch.as_tensor(i[np.newaxis], dtype=torch.float32) for i in inputs]
+
+        return inputs
 
 
 def main(args=None):
