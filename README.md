@@ -10,23 +10,22 @@
 [![Poster](http://img.shields.io/badge/poster-A0-blue.svg?style=plastic)](https://docs.google.com/presentation/d/1A9yT6MC-B9DdzMdzCZ44Y8nVHtBHWxpLAUOZKS_GUcU/edit?usp=sharing)
 [![Data](http://img.shields.io/badge/data-ROUGH-blue.svg?style=plastic)](https://drive.google.com/drive/folders/1nli-4YExqcBhl0mPNRUjSiNecX4yIcme?usp=sharing)
 
-Examples of predicted trajectories and autonomous traversal through vegetation:
+<img src="./monoforce/docs/imgs/qualitative_results_v2.jpg" width="800"/>
 
-[![](./monoforce/docs/imgs/demo_oru.png)](https://www.youtube.com/watch?v=JGi-OzTBG1k)
-
-Input: onboard camera images:
-
-<img src="./monoforce/docs/imgs/tradr_rgb_input.png" width="800"/>
-
-Output: predicted trajectory, terrain shape and properties, interaction forces and contacts:
-
-![](./monoforce/docs/imgs/monoforce_mayavi.gif)
-
-The three people are visible as the pillars within the blue area.
-
-Robot-terrain interaction prediction from only RGB images as input.
+Robot-terrain interaction prediction from RGB camera images as input:
+- predicted trajectory,
+- terrain shape and properties,
+- interaction forces and contacts.
 
 <img src="./monoforce/docs/imgs/examples/ramp_success.png" width="200"/> <img src="./monoforce/docs/imgs/examples/high_grass2.png" width="200"/> <img src="./monoforce/docs/imgs/examples/wall3.png" width="200"/> <img src="./monoforce/docs/imgs/examples/snow.png" width="200"/>
+
+Examples of predicted trajectories and autonomous traversal through vegetation:
+
+<p>
+  <a href="https://www.youtube.com/watch?v=JGi-OzTBG1k">
+  <img src="./monoforce/docs/imgs/demo_oru.png" alt="video link" width="400">
+  </a>
+</p>
 
 ## Table of Contents
 - [Installation Instructions](./monoforce/docs/INSTALL.md)
@@ -36,7 +35,7 @@ Robot-terrain interaction prediction from only RGB images as input.
 - [Running](#running)
 - [Examples](./monoforce/examples)
 - [ROS Integration](#ros-integration)
-- [Terrain Properties Prediction](#terrain-properties-prediction)
+- [Training](#training)
 - [Navigation](#navigation)
 - [Citation](#citation)
 
@@ -75,22 +74,31 @@ They are integrated into the launch file:
 roslaunch monoforce monoforce.launch
 ```
 
-## Terrain Properties Prediction
+## Training
 
-Except for the terrain shape (**Elevation**), we estimate the additional terrain properties:
-- **Friction**: The friction coefficient between the robot and the terrain.
-- **Stiffness**: The terrain stiffness.
-- **Damping**: The terrain damping.
+The following terrain properties are predicted by the model:
+- **Elevation**: the terrain shape.
+- **Friction**: the friction coefficient between the robot and the terrain.
+- **Stiffness**: the terrain stiffness.
+- **Damping**: the terrain damping.
 
-An example of the predicted elevation and friction maps:
-<p align="center">
+<img src="./monoforce/docs/imgs/training.jpg" width="800"/>
+
+An example of the predicted elevation and friction maps (projected to camera images):
+<p>
   <a href="https://drive.google.com/file/d/15Uo82hwE_OiRHsuGd0-9qcvrYOXsosn0/view?usp=drive_link">
-  <img src="./monoforce/docs/imgs/friction_prediction_tradr.png" alt="video link">
+  <img src="./monoforce/docs/imgs/friction_prediction_tradr.png" alt="video link" width="800">
   </a>
 </p>
 One can see that the model predicts the friction map with
 higher values for road areas and with the smaller value
 for grass where the robot could have less traction.
+
+To train the model, please run:
+```commandline
+cd scripts/
+python train.py
+```
 
 Please refer to the
 [train_friction_head_with_pretrained_terrain_encoder.ipynb](./monoforce/examples/train_friction_head_with_pretrained_terrain_encoder.ipynb)
@@ -103,9 +111,9 @@ Navigation method with MonoForce predicting terrain properties
 and possible robot trajectories from RGB images and control inputs.
 The package is used as robot-terrain interaction and path planning pipeline.
 
-<p align="center">
+<p>
   <a href="https://drive.google.com/file/d/1mqKEh_3VHZo4kDcJXP572SD1BVw37hSf/view?usp=drive_link">
-  <img src="monoforce/docs/imgs/forest_navigation_video_teaser.png" alt="video link">
+  <img src="monoforce/docs/imgs/forest_navigation_video_teaser.png" alt="video link" width="800">
   </a>
 </p>
 
