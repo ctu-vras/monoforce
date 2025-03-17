@@ -96,7 +96,7 @@ for grass where the robot could have less traction.
 
 To train the model, please run:
 ```commandline
-cd scripts/
+cd monoforce/scripts/
 python train.py
 ```
 
