@@ -290,7 +290,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: false
-      Image Topic: /camera_front/image_raw
+      Image Topic: /camera_front/image_color
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -303,7 +303,7 @@ Visualization Manager:
     - Class: rviz/Camera
       Enabled: true
       Image Rendering: background and overlay
-      Image Topic: /camera_front/image_raw
+      Image Topic: /camera_front/image_color
       Name: Camera
       Overlay Alpha: 0.5
       Queue Size: 2

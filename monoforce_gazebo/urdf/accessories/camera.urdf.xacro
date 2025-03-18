@@ -46,7 +46,7 @@
             <alwaysOn>true</alwaysOn>
             <updateRate>10.0</updateRate>
             <cameraName>${topic}_${label}</cameraName>
-            <imageTopicName>image_raw</imageTopicName>
+            <imageTopicName>image_color</imageTopicName>
             <cameraInfoTopicName>camera_info</cameraInfoTopicName>
             <frameName>camera_${label}_gazebo</frameName>
             <hackBaseline>0.07</hackBaseline>

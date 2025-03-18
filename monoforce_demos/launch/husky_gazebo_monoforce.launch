@@ -4,7 +4,7 @@
     <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
     <arg name="robot" default="marv" doc="Robot name"/>
     <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
-    <arg name="resize_imgs" default="false" doc="Resize images with img_proc or not"/>
+    <arg name="resize_imgs" default="false" doc="Resize images with img_proc or not before MonoForce input"/>
 
     <!-- Gazebo world and spawn Husky robot -->
     <include file="$(find monoforce_gazebo)/launch/husky_sim.launch">
@@ -13,23 +13,24 @@
     </include>
 
     <!-- Resize images with img_proc -->
-    <include if="$(arg resize_imgs)" file="$(find monoforce)/launch/resize_imgs.launch"/>
+    <include if="$(arg resize_imgs)" file="$(find monoforce)/launch/img_preproc.launch"/>
     
     <!-- MonoForce -->
     <include file="$(find monoforce)/launch/monoforce.launch">
         <arg name="robot" value="$(arg robot)"/>
-        <arg if="$(arg resize_imgs)" name="img_topics" value="['/camera_front/resize/image/compressed',
-                                                               '/camera_left/resize/image/compressed',
-                                                               '/camera_rear/resize/image/compressed',
-                                                               '/camera_right/resize/image/compressed',]"/>
-        <arg if="$(arg resize_imgs)" name="camera_info_topics" value="['/camera_front/resize/camera_info',
-                                                                       '/camera_left/resize/camera_info',
-                                                                       '/camera_rear/resize/camera_info',
-                                                                       '/camera_right/resize/camera_info']"/>
-        <arg unless="$(arg resize_imgs)" name="img_topics" value="['/camera_front/image_raw/compressed',
-                                                                   '/camera_left/image_raw/compressed',
-                                                                   '/camera_rear/image_raw/compressed',
-                                                                   '/camera_right/image_raw/compressed',]"/>
+        <arg if="$(arg resize_imgs)" name="lss_config_path" value="$(dirname)/../../monoforce/config/lss_cfg_resize.yaml"/>
+        <arg if="$(arg resize_imgs)" name="img_topics" value="['/img_preproc_left/image/compressed',
+                                                               '/img_preproc_front/image/compressed',
+                                                               '/img_preproc_right/image/compressed',
+                                                               '/img_preproc_rear/image/compressed',]"/>
+        <arg if="$(arg resize_imgs)" name="camera_info_topics" value="['/img_preproc_left/camera_info',
+                                                                       '/img_preproc_front/camera_info',
+                                                                       '/img_preproc_right/camera_info',
+                                                                       '/img_preproc_rear/camera_info']"/>
+        <arg unless="$(arg resize_imgs)" name="img_topics" value="['/camera_front/image_color/compressed',
+                                                                   '/camera_left/image_color/compressed',
+                                                                   '/camera_rear/image_color/compressed',
+                                                                   '/camera_right/image_color/compressed',]"/>
         <arg unless="$(arg resize_imgs)" name="camera_info_topics" value="['/camera_front/camera_info',
                                                                            '/camera_left/camera_info',
                                                                            '/camera_rear/camera_info',

@@ -45,13 +45,13 @@ img_std:
 - 0.224
 - 0.225
 
-## Traversable semantic classes Segment Anything from COCO labels
+## Traversable semantic classes from COCO labels
 #soft_classes:
 #- 'grass'
 #- 'snow'
 #- 'flower'
 
-# Traversable semantic classes Segment Anything from WildScenes labels
+# Traversable semantic classes from WildScenes labels
 soft_classes:
 - 'tree-foliage'
 - 'bush'

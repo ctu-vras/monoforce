@@ -323,7 +323,7 @@ Visualization Manager:
       Value: false
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /camera_front/image_raw
+      Image Topic: /camera_front/image_color
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -335,7 +335,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /camera_left/image_raw
+      Image Topic: /camera_left/image_color
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -347,7 +347,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /camera_right/image_raw
+      Image Topic: /camera_right/image_color
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -359,7 +359,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /camera_rear/image_raw
+      Image Topic: /camera_rear/image_color
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -371,7 +371,7 @@ Visualization Manager:
       Value: true
     - Class: jsk_rviz_plugin/CameraInfo
       Enabled: false
-      Image Topic: /camera_front/image_raw
+      Image Topic: /camera_front/image_color
       Name: Front CameraInfo
       Queue Size: 10
       Topic: /camera_front/camera_info
@@ -388,7 +388,7 @@ Visualization Manager:
       use image: true
     - Class: jsk_rviz_plugin/CameraInfo
       Enabled: false
-      Image Topic: /camera_left/image_raw
+      Image Topic: /camera_left/image_color
       Name: Left CameraInfo
       Queue Size: 10
       Topic: /camera_left/camera_info
@@ -405,7 +405,7 @@ Visualization Manager:
       use image: true
     - Class: jsk_rviz_plugin/CameraInfo
       Enabled: false
-      Image Topic: /camera_right/image_raw
+      Image Topic: /camera_right/image_color
       Name: Right CameraInfo
       Queue Size: 10
       Topic: /camera_right/camera_info
@@ -422,7 +422,7 @@ Visualization Manager:
       use image: true
     - Class: jsk_rviz_plugin/CameraInfo
       Enabled: false
-      Image Topic: /camera_rear/image_raw
+      Image Topic: /camera_rear/image_color
       Name: Rear CameraInfo
       Queue Size: 10
       Topic: /camera_rear/camera_info
