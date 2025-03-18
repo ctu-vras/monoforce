@@ -1,0 +1,319 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import torch
+import rospy
+from numpy.lib.recfunctions import unstructured_to_structured
+from monoforce.datasets import ROUGH, rough_seq_paths
+from monoforce.models.traj_predictor.dphys_config import DPhysConfig
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
+from monoforce.models.terrain_encoder.lss import LiftSplatShoot
+from nav_msgs.msg import Path
+from sensor_msgs.msg import PointCloud2, Image, CameraInfo
+from grid_map_msgs.msg import GridMap
+from ros_numpy import msgify
+from monoforce.utils import read_yaml, position
+import rospkg
+import tf2_ros
+from visualization_msgs.msg import Marker, MarkerArray
+
+
+class MonoForce:
+    def __init__(self,
+                 name='monoforce',
+                 robot='marv',
+                 lss_config_path=None,
+                 map_frame='map',
+                 robot_initial_frame='base_link0',
+                 robot_frame='base_link'):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.robot = robot
+
+        self.lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
+        self.data_seq = np.random.choice(rough_seq_paths)
+        if not os.path.isdir(self.data_seq):
+            rospy.loginfo('Data sequence for robot %s does not exist. Using sample data.' % self.robot)
+            self.data_seq = os.path.join(self.lib_path, 'config/data_sample', self.robot)
+        self.dphys_cfg = DPhysConfig(robot=self.robot)
+        self.dphys_cfg.from_rosparams(node_name=name)
+        # load dphysics model
+        self.dphysics = DPhysics(self.dphys_cfg, device=self.device)
+
+        # load LSS config
+        self.lss_config_path = lss_config_path
+        assert os.path.isfile(self.lss_config_path), 'LSS config file %s does not exist' % self.lss_config_path
+        rospy.loginfo('Loading LSS config from %s' % self.lss_config_path)
+        self.lss_config = read_yaml(self.lss_config_path)
+
+        self.rate = 1 / self.dphys_cfg.dt
+        self.map_frame = map_frame
+        self.robot_initial_frame = robot_initial_frame
+        self.robot_frame = robot_frame
+        self.camera_frames = None  # will be set from the data sequence
+        # load terrain encoder
+        self.terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
+                                              self.lss_config['data_aug_conf'])
+        self.terrain_encoder.from_pretrained(os.path.join(self.lib_path, 'config/weights/lss/val.pth'))
+        self.terrain_encoder.to(self.device)
+        self.terrain_encoder.eval()
+
+        # publishers
+        self.cloud_pub = rospy.Publisher('cloud', PointCloud2, queue_size=1)
+        self.path_pub = rospy.Publisher('path', Path, queue_size=1)
+        self.path_gt_pub = rospy.Publisher('path_gt', Path, queue_size=1)
+        self.img_pubs = None
+        self.caminfo_pubs = None
+        self.tf_broadcast = tf2_ros.TransformBroadcaster()
+        self.normal_forces_pub = rospy.Publisher('normal_forces', MarkerArray, queue_size=1)
+        self.friction_forces_pub = rospy.Publisher('friction_forces', MarkerArray, queue_size=1)
+
+    def publish_cloud(self, points, stamp):
+        assert points.ndim == 2, 'Points must be of shape (N, 3)'
+        assert points.shape[1] == 3, 'Points must be of shape (N, 3)'
+        points = np.asarray(points, dtype='float32')
+        cloud_struct = unstructured_to_structured(points, names=['x', 'y', 'z'])
+        cloud_msg = msgify(PointCloud2, cloud_struct)
+        cloud_msg.header.frame_id = self.robot_initial_frame
+        cloud_msg.header.stamp = stamp
+        self.cloud_pub.publish(cloud_msg)
+
+    def publish_images(self, imgs, Ks, stamp):
+        for cam, img, K, img_pub, K_pub in zip(self.camera_frames, imgs, Ks, self.img_pubs, self.caminfo_pubs):
+            # images
+            img = np.asarray(img, dtype='uint8')
+            img_msg = msgify(Image, img, encoding='rgb8')
+            img_msg.header.stamp = stamp
+            img_msg.header.frame_id = cam.lower()
+            img_pub.publish(img_msg)
+            # cameras info
+            K_msg = CameraInfo()
+            P = np.zeros((3, 4))
+            P[:3, :3] = K
+            R = np.eye(3)
+            K_msg.K = K.flatten().tolist()
+            K_msg.P = P.flatten().tolist()
+            K_msg.R = R.flatten().tolist()
+            K_msg.header.stamp = stamp
+            K_msg.header.frame_id = cam.lower()
+            K_msg.height = img.shape[0]
+            K_msg.width = img.shape[1]
+            K_pub.publish(K_msg)
+
+    def publish_gridmap(self, height, stamp, topic, mask=None, **kwargs):
+        assert isinstance(height, np.ndarray) or isinstance(height, torch.Tensor)
+        assert isinstance(mask, np.ndarray) or isinstance(mask, torch.Tensor) or mask is None
+        assert isinstance(stamp, rospy.Time)
+        assert isinstance(topic, str)
+
+        if isinstance(height, torch.Tensor):
+            height = height.squeeze().cpu().numpy()
+        if isinstance(mask, torch.Tensor):
+            mask = mask.squeeze().cpu().numpy()
+        grid_msg = height_map_to_gridmap_msg(height, grid_res=self.dphys_cfg.grid_res, mask=mask, **kwargs)
+        grid_msg.info.header.frame_id = self.robot_initial_frame
+        grid_msg.info.header.stamp = stamp
+        pub = rospy.Publisher(topic, GridMap, queue_size=1)
+        pub.publish(grid_msg)
+
+    def forces_to_msg(self, robot_forces, robot_points, stamp, color=None):
+        if color is None:
+            color = [0, 0, 1]
+        assert robot_forces.shape == robot_points.shape
+        assert robot_forces.shape[1] == 3
+        # publish forces as arrows with MarkerArray
+        markers = MarkerArray()
+        for i in range(len(robot_forces)):
+            force = robot_forces[i, :]
+            xyz = robot_points[i, :]
+            marker = Marker()
+            marker.header.frame_id = self.robot_frame
+            marker.header.stamp = stamp
+            marker.id = i
+            marker.type = Marker.ARROW
+            marker.action = Marker.ADD
+            marker.pose.position.x = xyz[0]
+            marker.pose.position.y = xyz[1]
+            marker.pose.position.z = xyz[2]
+            marker.pose.orientation.w = 1
+            marker.points.append(xyz_to_point([0, 0, 0]))
+            marker.points.append(xyz_to_point(force / 9.8))
+            marker.scale.x = 0.05
+            marker.scale.y = 0.10
+            marker.scale.z = 0.05
+            marker.color.a = 1.0
+            marker.color.r = color[0]
+            marker.color.g = color[1]
+            marker.color.b = color[2]
+            markers.markers.append(marker)
+        return markers
+
+    def poses_from_states(self, states):
+        xyz = states[0].squeeze().cpu().numpy()
+        Rs = states[2].squeeze().cpu().numpy()
+        poses = np.stack([np.eye(4) for _ in range(len(xyz))])
+        poses[:, :3, :3] = Rs
+        poses[:, :3, 3] = xyz
+        return poses
+
+    def predict_states(self, z_grid, controls, friction=None):
+        with torch.no_grad():
+            controls = controls.to(self.device).repeat(z_grid.shape[0], 1, 1)  # [B, N_ts, 2]
+            states, forces = self.dphysics(z_grid, controls=controls, friction=friction)
+        return states, forces
+
+    def run(self):
+        ds = ROUGH(self.data_seq, dphys_cfg=self.dphys_cfg, lss_cfg=self.lss_config, is_train=False)
+        rospy.loginfo('Loaded dataset with %d samples from path: %s' % (len(ds), self.data_seq))
+        sample_i = np.random.choice(range(len(ds)))
+        rospy.loginfo('Using sample number %d that corresponds to timestamp %f' % (sample_i, ds.poses_ts[sample_i]))
+
+        self.camera_frames = ds.camera_names
+        self.img_pubs = [rospy.Publisher('%s/image' % cam, Image, queue_size=1) for cam in self.camera_frames]
+        self.caminfo_pubs = [rospy.Publisher('%s/camera_info' % cam, CameraInfo, queue_size=1) for cam in self.camera_frames]
+
+        imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
+        points = position(ds.get_cloud(sample_i))
+
+        traj = ds.get_traj(sample_i)
+        poses_gt = traj['poses']
+
+        map_pose = ds.get_pose(sample_i)
+
+        imgs_raw = []
+        Ks = []
+        for cam in self.camera_frames:
+            img_raw, K = ds.get_image(sample_i, cam)
+            imgs_raw.append(img_raw)
+            Ks.append(K)
+
+        # get heightmap prediction
+        with torch.no_grad():
+            inputs = [imgs, rots, trans, intrins, post_rots, post_trans]
+            inputs = [torch.as_tensor(i[None], device=self.device) for i in inputs]
+            out = self.terrain_encoder(*inputs)
+            terrain_pred, friction_pred = out['terrain'], out['friction']
+            rospy.logdebug('Friction values range, min: %.3f, max: %.3f' % (friction_pred.min(), friction_pred.max()))
+
+        rate = rospy.Rate(self.rate)
+        pose_i = 0
+        poses = None
+        robot_points = None
+        F_springs = None
+        F_frictions = None
+        while not rospy.is_shutdown():
+            stamp = rospy.Time.now()
+
+            if pose_i == 0:
+                # point cloud
+                self.publish_cloud(points, stamp)
+
+                # grid map
+                self.publish_gridmap(terrain_pred, stamp, topic='grid_map_terrain_pred',
+                                     mask=friction_pred, mask_layer_name='friction')
+
+                # images
+                self.publish_images(imgs_raw, Ks, stamp)
+
+                # predict path poses
+                v_range = (self.dphys_cfg.vel_max / 2., self.dphys_cfg.vel_max)
+                w_range = (-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max)
+                # if robot has more than one (front-facing) camera, randomly change commanded linear velocity direction
+                if len(self.camera_frames) > 1 and np.random.random() > 0.5:
+                    v_range = (-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2.)
+                controls, _ = generate_control_inputs(n_trajs=1,
+                                                      v_range=v_range,
+                                                      w_range=w_range,
+                                                      time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
+
+                states, forces = self.predict_states(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
+                poses = self.poses_from_states(states)
+                poses[:, 2, 3] += 0.132  # add robot clearance
+                rospy.logdebug('Predicted poses shape: %s' % str(poses.shape))
+                F_springs = forces[0].squeeze().cpu().numpy()
+                rospy.logdebug('Predicted normal forces shape: %s' % str(F_springs.shape))
+                F_frictions = forces[1].squeeze().cpu().numpy()
+                rospy.logdebug('Predicted friction forces shape: %s' % str(F_frictions.shape))
+                robot_points = self.dphys_cfg.robot_points.cpu().numpy()
+                rospy.logdebug('Robot contact points shape: %s' % str(robot_points.shape))
+                # publish paths
+                path_msg = poses_to_path(poses, frame_id=self.robot_initial_frame, stamp=stamp)
+                path_gt_msg = poses_to_path(poses_gt, frame_id=self.robot_initial_frame, stamp=stamp)
+                self.path_pub.publish(path_msg)
+                self.path_gt_pub.publish(path_gt_msg)
+
+            # robot pose in map frame
+            tf = to_tf(map_pose, self.map_frame, self.robot_initial_frame, stamp)
+            self.tf_broadcast.sendTransform(tf)
+            # camera poses
+            for cam, tran, rot in zip(self.camera_frames, trans, rots):
+                pose = np.eye(4)
+                pose[:3, :3] = rot.numpy()
+                pose[:3, 3] = tran.numpy()
+                tf = to_tf(pose, self.robot_frame, cam, stamp)
+                self.tf_broadcast.sendTransform(tf)
+
+            # flipper positions
+            for flipper_name in self.dphys_cfg.joint_angles.keys():
+                Tr = np.eye(4)
+                Tr[:3, 3] = self.dphys_cfg.joint_positions[flipper_name]
+                angle = self.dphys_cfg.joint_angles[flipper_name]
+                if flipper_name == 'fl':
+                    frame = 'front_left_flipper'
+                elif flipper_name == 'fr':
+                    frame = 'front_right_flipper'
+                    angle = np.pi + angle
+                elif flipper_name == 'rl':
+                    frame = 'rear_left_flipper'
+                    angle = np.pi + angle
+                elif flipper_name == 'rr':
+                    frame = 'rear_right_flipper'
+                else:
+                    raise ValueError('Unknown flipper name: %s' % flipper_name)
+                Tr[:3, :3] = np.array([[np.cos(angle),  0, np.sin(angle)],
+                                       [0,              1,             0],
+                                       [-np.sin(angle), 0, np.cos(angle)]])
+                tf = to_tf(Tr, self.robot_frame, frame, stamp)
+                self.tf_broadcast.sendTransform(tf)
+
+            # robot's current pose
+            robot_traj_pose = poses[pose_i]
+            assert robot_traj_pose.shape == (4, 4)
+            tf = to_tf(robot_traj_pose, self.robot_initial_frame, self.robot_frame, stamp)
+            self.tf_broadcast.sendTransform(tf)
+
+            # publish forces
+            F_springs_marker = self.forces_to_msg(F_springs[pose_i], robot_points, stamp, color=[0, 0, 1])
+            self.normal_forces_pub.publish(F_springs_marker)
+            F_frictions_marker = self.forces_to_msg(F_frictions[pose_i], robot_points, stamp, color=[0, 1, 0])
+            self.friction_forces_pub.publish(F_frictions_marker)
+
+            pose_i = (pose_i + 1) % len(poses)
+            rate.sleep()
+
+
+def main():
+    rospy.init_node('monoforce', anonymous=True, log_level=rospy.DEBUG)
+    
+    lib_path = rospkg.RosPack().get_path('monoforce').replace('monoforce_ros', 'monoforce')
+    rospy.loginfo('Library path: %s' % lib_path)
+    robot = rospy.get_param('~robot', 'marv')
+    lss_config_path = rospy.get_param('~lss_config_path', os.path.join(lib_path, f'config/lss_cfg.yaml'))
+    map_frame = rospy.get_param('~map_frame', 'map')
+    robot_initial_frame = rospy.get_param('~robot_initial_frame', 'base_link0')
+    robot_frame = rospy.get_param('~robot_frame', 'base_link')
+    
+    node = MonoForce(robot=robot,
+                     lss_config_path=lss_config_path,
+                     map_frame=map_frame,
+                     robot_initial_frame=robot_initial_frame,
+                     robot_frame=robot_frame)
+    try:
+        node.run()
+    except rospy.ROSInterruptException:
+        rospy.loginfo('Shutting down monoforce node')
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,52 @@
+- git:
+    local-name: cloud_proc
+    uri: https://github.com/ctu-vras/cloud_proc
+    version: master
+- git:
+    local-name: nav_utils
+    uri: https://github.com/tpet/nav_utils
+    version: master
+- git:
+    local-name: tf2_client
+    uri: https://github.com/tpet/tf2_client
+    version: master
+- git:
+    local-name: ros-utils
+    uri: https://github.com/ctu-vras/ros-utils
+    version: master
+- git:
+    local-name: ouster-ros
+    uri: https://github.com/ouster-lidar/ouster-ros
+    version: master
+- git:
+    local-name: stamped_msgs
+    uri: https://github.com/ctu-vras/stamped_msgs
+    version: master
+- git:
+    local-name: libpointmatcher_ros
+    uri: https://github.com/norlab-ulaval/libpointmatcher_ros.git
+    version: melodic
+- git:
+    local-name: norlab_icp_mapper
+    uri: https://github.com/tpet/norlab_icp_mapper.git
+    version: master
+- git:
+    local-name: norlab_icp_mapper_ros
+    uri: https://github.com/tpet/norlab_icp_mapper_ros.git
+    version: master
+- git:
+    local-name: elevation_mapping
+    uri: https://github.com/ANYbotics/elevation_mapping
+    version: master
+- git:
+    local-name: kindr
+    uri: https://github.com/anybotics/kindr
+    version: master
+- git:
+    local-name: kindr_ros
+    uri: https://github.com/anybotics/kindr_ros
+    version: master
+- git:
+    local-name: message_logger
+    uri: https://github.com/ANYbotics/message_logger
+    version: master

@@ -1,0 +1,13 @@
+- DistanceLimitDataPointsFilter:
+    dim: -1
+    dist: 0.5
+
+- SurfaceNormalDataPointsFilter:
+    knn: 9
+    epsilon: 0
+    keepNormals: 1
+
+- ObservationDirectionDataPointsFilter
+
+- OrientNormalsDataPointsFilter:
+    towardCenter: 1

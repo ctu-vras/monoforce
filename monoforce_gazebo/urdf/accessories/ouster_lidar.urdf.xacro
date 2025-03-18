@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+    <xacro:macro name="ouster_sensor" params="xyz rpy parent">
+
+        <!-- Ouster sensor links and fixed joints -->
+        <joint name="ouster_base_mount_joint" type="fixed">
+          <origin xyz="${xyz}" rpy="${rpy}" />
+          <parent link="${parent}"/>
+          <child link="ouster_link"/>
+        </joint>
+
+        <link name="ouster_link">
+          <inertial>
+             <mass value="0.33"/>
+             <origin xyz="0 0 0.0365" rpy="0 0 0" />
+             <inertia ixx="0.000241148" ixy="0" ixz="0"
+              iyy="0.000241148" iyz="0" izz="0.000264"/>
+          </inertial>
+          <collision name="base_collision">
+             <origin xyz="0 0 0.0365" rpy="0 0 0" />
+             <geometry>
+           <cylinder radius="0.04" length="0.073"/>
+             </geometry>
+          </collision>
+          <visual name="base_visual">
+             <origin xyz="0 0 0" rpy="0 0 1.5707" />
+             <geometry>
+            <mesh filename="package://ouster_description/meshes/os1_64.dae" />
+             </geometry>
+          </visual>
+        </link>
+        <!-- Gazebo requires the ouster_gazebo_plugins package -->
+        <!-- Run Ouster plugin with GPU: https://engcang.github.io/Ouster-Gazebo-Plugin-boosting-up-with-GPU-ray/ -->
+        <gazebo reference="ouster_link">
+          <sensor type="gpu_ray" name="ouster-OS0-32">
+            <pose>0 0 0.035925 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>10</update_rate>
+            <always_on>1</always_on>
+            <ray>
+              <scan>
+                <horizontal>
+                  <samples>1024</samples>
+                  <resolution>1</resolution>
+                  <min_angle>-3.1415926535897931</min_angle>
+                  <max_angle>3.1415926535897931</max_angle>
+                </horizontal>
+                <vertical>
+                  <samples>32</samples>
+                  <resolution>1</resolution>
+                  <min_angle>-${pi/4}</min_angle>
+                  <max_angle>${pi/4}</max_angle>
+                </vertical>
+              </scan>
+              <range>
+                <min>0.25</min>  <!-- Datasheet says 0 cm, but that's a lie. -->
+                <max>50</max>
+                <resolution>0.01</resolution>
+              </range>
+              <noise>
+                <type>gaussian</type>
+                <mean>0.0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </ray>
+            <plugin name="gazebo_ros_laser_controller" filename="libgazebo_ros_ouster_gpu_laser.so">
+              <topicName>/points</topicName>
+              <frameName>ouster_link</frameName>
+              <min_range>0.25</min_range>
+              <max_range>50</max_range>
+              <gaussianNoise>0.008</gaussianNoise>
+            </plugin>
+          </sensor>
+        </gazebo>
+    </xacro:macro>
+</robot>

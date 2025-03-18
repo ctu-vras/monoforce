@@ -1,0 +1,50 @@
+<launch>
+    <param name="inspection_geom" command="$(find xacro)/xacro --inorder '$(find cpr_inspection_gazebo)/urdf/inspection_geometry.urdf.xacro'"/>
+
+    <arg name="robot_x" default="6.0"/>
+    <arg name="robot_y" default="-18.0"/>
+    <arg name="robot_z" default="1.0"/>
+    <arg name="robot_yaw" default="0"/>
+
+    <arg name="world_x" default="0.0"/>
+    <arg name="world_y" default="0.0"/>
+    <arg name="world_z" default="0.0"/>
+    <arg name="world_yaw" default="0.0"/>
+
+    <arg name="use_sim_time" default="true"/>
+    <arg name="gui" default="false"/>
+    <arg name="headless" default="false"/>
+    <arg name="world_name" default="$(find cpr_inspection_gazebo)/worlds/inspection_world.world"/>
+    <arg name="rviz" default="false"/>
+    <arg name="enable_ekf" default="$(optenv ENABLE_EKF true)"/>
+
+    <!-- Load inspection world -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+      <arg name="debug" value="0"/>
+      <arg name="gui" value="$(arg gui)"/>
+      <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+      <arg name="headless" value="$(arg headless)"/>
+      <arg name="world_name" value="$(arg world_name)"/>
+    </include>
+    <node name="inspection_world_spawner" pkg="gazebo_ros" type="spawn_model"
+      args="-urdf -model inspection_geometry -param inspection_geom -x $(arg world_x) -y $(arg world_y) -z $(arg world_z) -Y $(arg world_yaw)"/>
+
+    <!-- Spawn robot in gazebo -->
+    <include file="$(dirname)/spawn_husky.launch">
+      <arg name="x" value="$(arg robot_x)"/>
+      <arg name="y" value="$(arg robot_y)"/>
+      <arg name="z" value="$(arg robot_z)"/>
+      <arg name="yaw" value="$(arg robot_yaw)"/>
+    </include>
+
+    <!-- Start EKF for localization -->
+    <group if="$(arg enable_ekf)" >
+        <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization">
+            <rosparam command="load" file="$(find husky_control)/config/localization.yaml" />
+        </node>
+    </group>
+
+    <!-- RVIZ -->
+  <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+        args="-d $(dirname)/../config/rviz/husky.rviz"/>
+</launch>

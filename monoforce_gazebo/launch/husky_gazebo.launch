@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+
+<launch>
+  <!-- arguments -->
+  <arg name="world" default=""/>
+  <arg name="headless" default="true"/>
+  <arg name="gui" default="false"/>
+  <arg name="rviz" default="false"/>
+  <arg name="enable_ekf" default="true"/>
+  <arg name="publish_gt_odom" default="false"/>
+  <!-- Optionally disable teleop control -->
+  <arg name="joystick" default="false" />
+  <!-- Robot pose -->
+  <arg name="robot_x" default="0.0"/>
+  <arg name="robot_y" default="0.0"/>
+  <arg name="robot_z" default="0.2"/>
+  <arg name="robot_yaw" default="0.0"/>
+
+  <param name="use_sim_time" value="true" />
+
+  <!-- Simulated world -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world)" />
+    <arg name="debug" value="false" />
+    <arg name="paused" value="false"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="gui" value="$(arg gui)"/>
+  </include>
+
+  <!-- Start EKF for localization -->
+  <node if="$(arg enable_ekf)" pkg="robot_localization" type="ekf_localization_node" name="ekf_localization">
+    <rosparam command="load" file="$(find monoforce_gazebo)/config/localization.yaml" />
+  </node>
+
+  <!-- Ground Truth Odometry -->
+  <node if="$(arg publish_gt_odom)" pkg="monoforce_gazebo" type="robot_gt_pose_to_odom" name="robot_gt_pose_to_odom" output="screen">
+    <rosparam subst_value="true">
+      static_frame: odom
+      robot_frame: base_link
+      robot_name: husky
+      rate: 50
+    </rosparam>
+  </node>
+
+  <!-- Start joystick teleop -->
+  <include if="$(arg joystick)" file="$(find husky_control)/launch/teleop.launch">
+    <arg name="joystick" value="$(arg joystick)" />
+  </include>
+
+  <!-- Spawn robot in gazebo -->
+  <include file="$(dirname)/spawn_husky.launch">
+      <arg name="x" value="$(arg robot_x)"/>
+      <arg name="y" value="$(arg robot_y)"/>
+      <arg name="z" value="$(arg robot_z)"/>
+      <arg name="yaw" value="$(arg robot_yaw)"/>
+  </include>
+
+  <!-- RVIZ -->
+  <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+        args="-d $(dirname)/../config/rviz/husky.rviz"/>
+
+</launch>

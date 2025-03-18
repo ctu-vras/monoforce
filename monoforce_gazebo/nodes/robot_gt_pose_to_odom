@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+
+import numpy as np
+import rospy
+from gazebo_msgs.msg import ModelStates
+from geometry_msgs.msg import TransformStamped
+from ros_numpy import numpify
+from tf.transformations import quaternion_from_matrix
+from nav_msgs.msg import Odometry
+
+
+class GroundTruthOdomPublisher:
+    def __init__(self):
+        # Initialize the node
+        rospy.init_node('ground_truth_odom_publisher')
+
+        # Parameters
+        self.robot_name = rospy.get_param('~robot_name', 'husky')  # Robot model name in Gazebo
+        self.robot_frame = rospy.get_param('~robot_frame', 'base_link')  # Robot frame name
+        self.static_frame = rospy.get_param('~static_frame', 'odom')  # Static frame name
+        self.rate = rospy.Rate(rospy.get_param('~rate', 50))  # Rate at which to publish the odometry message
+
+        # Publisher for the odometry message
+        self.odom_pub = rospy.Publisher('/ground_truth_odom', Odometry, queue_size=10)
+
+        # Subscribe to /gazebo/model_states to get the robot's ground truth pose
+        rospy.loginfo(f"Subscribing to /gazebo/model_states to get the ground truth pose of '{self.robot_name}' robot")
+        rospy.Subscriber('/gazebo/model_states', ModelStates, self.model_states_callback)
+
+    def model_states_callback(self, msg):
+        try:
+            # Find the index of the robot in the list of models
+            robot_index = msg.name.index(self.robot_name)
+        except ValueError:
+            rospy.logerr(f"Robot model '{self.robot_name}' not found in /gazebo/model_states")
+        else:
+            stamp = rospy.Time.now()
+            # Extract the pose of the robot
+            robot_pose = msg.pose[robot_index]
+            robot_twist = msg.twist[robot_index]
+
+            # Create the odometry message
+            odom_msg = Odometry()
+            odom_msg.header.stamp = stamp
+            odom_msg.header.frame_id = self.static_frame
+            odom_msg.child_frame_id = self.robot_frame
+            odom_msg.pose.pose = robot_pose
+            odom_msg.twist.twist = robot_twist
+
+            # Publish the odometry message
+            self.odom_pub.publish(odom_msg)
+
+            # sleep
+            self.rate.sleep()
+
+    def spin(self):
+        try:
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
+
+
+def main():
+    node = GroundTruthOdomPublisher()
+    node.spin()
+
+
+if __name__ == '__main__':
+    main()

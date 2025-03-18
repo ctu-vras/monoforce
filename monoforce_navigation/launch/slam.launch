@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="cloud" default="ouster/points"/>
+    <arg name="robot_frame" default="base_link"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="config" default="oru"/>
+    <arg name="params" default="$(dirname)/../config/slam/mapper_node_$(arg config).params"/>
+
+    <!-- ICP mapper node -->
+    <node pkg="norlab_icp_mapper_ros" type="mapper_node" name="mapper_node">
+        <rosparam command="load" file="$(arg params)"/>
+        <rosparam subst_value="true">
+            robot_frame: $(arg robot_frame)
+            odom_frame: $(arg odom_frame)
+            icp_config: $(dirname)/../config/slam/icp_config_$(arg config).yaml
+            input_filters_config: $(dirname)/../config/slam/input_filters_$(arg config).yaml
+            map_post_filters_config: $(dirname)/../config/slam/map_post_filters_$(arg config).yaml
+        </rosparam>
+        <remap from="points_in" to="$(arg cloud)"/>
+    </node>
+</launch>

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>monoforce_demos</name>
+  <version>0.0.1</version>
+  <description>MonoForce navigation demos</description>
+
+  <!-- One maintainer tag required, multiple allowed, one person per tag -->
+  <maintainer email="agishrus@felk.cvut.cz">Ruslan Agishev</maintainer>
+  <license>BSD</license>
+  <url type="website">https://github.com/ctu-vras/monoforce</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>gazebo_ros</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+  <depend>husky_description</depend>
+  <depend>realsense2_description</depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>grid_map_msgs</depend>
+  <depend>ros_numpy</depend>
+  <depend>grid_map_rviz_plugin</depend>
+  <depend>grid_map_filters</depend>
+  <depend>visualization_msgs</depend>
+  <depend>jsk_rviz_plugin</depend>
+  <depend>rviz_plugin_tutorials</depend>
+
+</package>

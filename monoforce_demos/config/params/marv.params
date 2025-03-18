@@ -1,0 +1,2819 @@
+backup_localization: "  -0.814238    0.580321  -0.0156072    -77.6546\n  -0.580528\
+  \   -0.814022   0.0188498    -128.247\n-0.00176571   0.0244086    0.999701    -14.5607\n\
+  \          0           0           0           1"
+bullet_snmp_diag:
+  agent_address: marv-robot-bullet
+  modules:
+    if_mib:
+      ports:
+        eth0:
+          connected: true
+          speed: 1000
+  snmp_v2: false
+camera_fisheye_front:
+  allow_lossy_compression: false
+  camera_frame: pylon_camera_fisheye_front
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 0.0
+  debayer:
+    debayer: 0
+  device_user_id: '23741890'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 9000
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_bggr8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: false
+  startup_user_set: UserSet1
+  timestamp_mode: receive
+  trigger_source: line1
+  trigger_timeout: 500
+camera_fisheye_rear:
+  allow_lossy_compression: false
+  camera_frame: pylon_camera_fisheye_rear
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 0.0
+  debayer:
+    debayer: 0
+  device_user_id: '23741898'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 9000
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_bggr8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: false
+  startup_user_set: UserSet1
+  timestamp_mode: receive
+  trigger_source: line1
+  trigger_timeout: 500
+camera_front:
+  allow_lossy_compression: true
+  camera_frame: pylon_camera_front
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 70.0
+  debayer:
+    debayer: 0
+  device_user_id: '40113915'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 1500
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_rggb8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: true
+  startup_user_set: UserSet1
+  timestamp_mode: cam_simple
+  trigger_source: line1
+  trigger_timeout: 500
+camera_left:
+  allow_lossy_compression: true
+  camera_frame: pylon_camera_left
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 70.0
+  debayer:
+    debayer: 0
+  device_user_id: '40113904'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 1500
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_rggb8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: true
+  startup_user_set: UserSet1
+  timestamp_mode: cam_simple
+  trigger_source: line1
+  trigger_timeout: 500
+camera_rear:
+  allow_lossy_compression: true
+  camera_frame: pylon_camera_rear
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 70.0
+  debayer:
+    debayer: 0
+  device_user_id: '40113909'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 1500
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_rggb8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: true
+  startup_user_set: UserSet1
+  timestamp_mode: cam_simple
+  trigger_source: line1
+  trigger_timeout: 500
+camera_right:
+  allow_lossy_compression: true
+  camera_frame: pylon_camera_right
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 70.0
+  debayer:
+    debayer: 0
+  device_user_id: '40113908'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 1500
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_rggb8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: true
+  startup_user_set: UserSet1
+  timestamp_mode: cam_simple
+  trigger_source: line1
+  trigger_timeout: 500
+camera_up:
+  allow_lossy_compression: true
+  camera_frame: pylon_camera_up
+  camera_info_url: package://cras_basler_camera/calibrations/${NAME}.yaml
+  compression_beyond_ratio: 70.0
+  debayer:
+    debayer: 0
+  device_user_id: '40115503'
+  enable_current_params_publisher: false
+  enable_status_publisher: false
+  frame_rate: 5.0
+  gige:
+    mtu_size: 1500
+  grab_strategy: 1
+  grab_timeout: 210
+  image_bayer_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_color:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_encoding: bayer_rggb8
+  image_mono:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_raw:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  image_rect:
+    compressed:
+      format: jpeg
+      jpeg_optimize: false
+      jpeg_progressive: false
+      jpeg_quality: 80
+      jpeg_restart_interval: 0
+      png_level: 9
+    compressedDepth:
+      depth_max: 10.0
+      depth_quantization: 100.0
+      format: png
+      png_level: 9
+    h264:
+      crf: 30
+      max_rate: 60.0
+      width: 640
+    theora:
+      keyframe_frequency: 64
+      optimize_for: 1
+      quality: 31
+      target_bitrate: 800000
+  ptp_delay_mechanism: E2E
+  ptp_enable_management: true
+  ptp_enable_two_step: false
+  ptp_network_mode: multicast
+  ptp_priority1: 240
+  ptp_profile: e2e-default
+  rectify:
+    interpolation: 1
+  run_ptp: true
+  startup_user_set: UserSet1
+  timestamp_mode: cam_simple
+  trigger_source: line1
+  trigger_timeout: 500
+cloud_to_cloud_filtering:
+  cloud_filter_chain:
+  - name: RobotBodyFilter
+    params:
+      body_model/inflation/padding: 0.01
+      body_model/inflation/per_link/padding:
+        base_link::0::contains: 0.1
+        camera_4::shadow: 0.0
+        dgps_aux_antenna::contains: 0.08
+        front_left_flipper::contains: 0.07
+        front_left_flipper::shadow: 0.03
+        front_right_flipper::contains: 0.07
+        front_right_flipper::shadow: 0.03
+        mobilicom_antenna_l::contains: 0.07
+        mobilicom_antenna_r::contains: 0.07
+        rear_left_flipper::contains: 0.05
+        rear_left_flipper::shadow: 0.03
+        rear_right_flipper::contains: 0.05
+        rear_right_flipper::shadow: 0.03
+      body_model/inflation/scale: 1.01
+      body_model/robot_description_param: marv/robot_description
+      bounding_box/compute: true
+      bounding_box/debug: true
+      bounding_box/marker: true
+      bounding_box/publish_cut_out_pointcloud: true
+      bounding_sphere/compute: true
+      bounding_sphere/debug: true
+      bounding_sphere/marker: true
+      bounding_sphere/publish_cut_out_pointcloud: true
+      debug/marker/bounding_box: true
+      debug/marker/bounding_sphere: true
+      debug/marker/contains: true
+      debug/marker/shadow: true
+      debug/pcl/clip: true
+      debug/pcl/inside: true
+      debug/pcl/shadow: true
+      filter/do_clipping: true
+      filter/do_shadow_test: true
+      filter/keep_clouds_organized: true
+      filter/max_shadow_distance: 1.0
+      frames/fixed: odom
+      frames/output: os_lidar
+      frames/sensor: os_lidar
+      ignored_links/contains_test:
+      - battery1
+      - battery2
+      - front_cam
+      - rear_cam
+      - base_link::1
+      - base_link::2
+      - base_link::3
+      ignored_links/shadow_test:
+      - os_sensor
+      - top_box::0
+      - battery1
+      - battery2
+      - camera1
+      - camera3
+      - front_cam
+      - rear_cam
+      - base_link::1
+      - base_link::2
+      - base_link::3
+      sensor/max_distance: 50.0
+      sensor/min_distance: 0.1
+      sensor/point_by_point: false
+    type: robot_body_filter/RobotBodyFilterPointCloud2
+  disabled_filters: ''
+  lazy_subscription: false
+  max_age: 3600.0
+  publish_diagnostics: true
+  publish_each_filter: false
+  publisher:
+    delay:
+      max: 0.3
+      min: 0.0
+    rate:
+      desired: 10.0
+      tolerance: 1.0
+      window_size: 1
+  publisher_queue_size: 15
+  subscriber:
+    delay:
+      max: 0.2
+      min: 0.0
+    rate:
+      desired: 10.0
+      tolerance: 1.0
+      window_size: 1
+  subscriber_queue_size: 5
+compass:
+  publish_mag_azimuth_ned_deg: true
+  publish_mag_unbiased: true
+  publish_true_azimuth_enu_rad: true
+  publish_utm_azimuth_enu_rad: true
+depth_image_to_rgb_pointcloud:
+  queue_size: 10
+gnss:
+  septentrio:
+    raw:
+      septentrio:
+        activate_debug_log: false
+        ant_aux1_serial_nr: Unknown
+        ant_aux1_type: Unknown
+        ant_serial_nr: Unknown
+        ant_type: Unknown
+        aux1_frame_id: dgps_aux_antenna
+        configure_rx: true
+        datum: Default
+        device: serial:/dev/septentrio_usb2
+        frame_id: dgps_main_antenna
+        get_spatial_config_from_tf: true
+        latency_compensation: false
+        leap_seconds: 18
+        lock_utm_zone: true
+        multi_antenna: true
+        polling_period:
+          pvt: 100
+          rest: 100
+        publish:
+          aimplusstatus: true
+          attcoveuler: true
+          atteuler: true
+          diagnostics: true
+          extsensormeas: true
+          gpgga: true
+          gpgsa: true
+          gpgsv: true
+          gprmc: true
+          gpsfix: true
+          gpst: true
+          localization: true
+          localization_ecef: true
+          measepoch: true
+          navsatfix: true
+          poscovcartesian: true
+          poscovgeodetic: true
+          pose: true
+          pvtcartesian: true
+          pvtgeodetic: true
+          tf: false
+          tf_ecef: false
+          twist: true
+          velcovcartesian: true
+          velcovgeodetic: true
+        receiver_type: gnss
+        rtk_settings:
+          ntrip_1:
+            caster: http://ntrip.pecny.cz
+            caster_port: 2101
+            keep_open: true
+            mountpoint: GOP60
+            rtk_standard: auto
+            send_gga: auto
+            tls: false
+            version: v2
+        serial:
+          baudrate: 921600
+          hw_flow_control: 'off'
+        use_gnss_time: false
+        use_ros_axis_orientation: true
+gyro_bias_remover:
+  initial_calibration_duration: 15
+  min_calibration_samples: 500
+imu_and_wheel_odom_node:
+  base_frame: base_link
+  imu_alignment_rpy:
+  - 3.1415921
+  - 0.0
+  - -1.570796327
+  mag_north_correction_yaw: 0.0
+  odom_frame: odom
+  odom_topic_name: imu_odom
+  publish_odom: true
+  publish_translation: true
+  wheel_odom_velocity_scale_x: 0.88
+laser_nodelet_manager_nuc:
+  num_worker_threads: 16
+llh_publisher:
+  baud: 115200
+  port: /dev/ttyACM_gps
+magnetometer_bias_x: -1.6431224346160889
+magnetometer_bias_y: 0.07365274429321289
+magnetometer_bias_z: 0
+mapper_node:
+  alpha: 0.8
+  backup_in_ram: true
+  beam_half_angle: 0.003054326
+  beta: 0.99
+  compute_prob_dynamic: true
+  epsilon_a: 0.01
+  epsilon_d: 0.01
+  icp_config: /home/robot/workspace/mapper_ws/src/ctu_mapping/params/realtime_icp_config.yaml
+  input_filters_config: /home/robot/workspace/mapper_ws/src/ctu_mapping/params/realtime_input_filters.yaml
+  is_3D: true
+  is_mapping: true
+  is_online: true
+  map_post_filters_config: /home/robot/workspace/mapper_ws/src/ctu_mapping/params/realtime_post_filters.yaml
+  map_tf_publish_rate: 100
+  map_update_condition: overlap
+  map_update_overlap: 0.95
+  min_dist_new_point: 0.11
+  odom_frame: odom
+  prior_dynamic: 0.5
+  publish_tfs_between_registrations: false
+  robot_frame: base_link
+  save_map_cells_on_hard_drive: false
+  sensor_max_range: 50
+  threshold_dynamic: 0.75
+marv:
+  all_coast: false
+  battery_serial_server:
+    baud: 57600
+    port: /dev/ttyS3
+  brake_publish_rate: 10
+  bus_current_publish_rate: 10
+  bus_voltage_publish_rate: 10
+  cartesian_controller:
+    cmd_timeout: 0.12
+    front_steering_efficiency:
+      default: 0.5
+      max: 2
+      min: 0
+    left_joints:
+    - front_left_flipper_wheel1_j
+    - rear_left_flipper_wheel1_j
+    rear_steering_efficiency:
+      default: 0.5
+      max: 2
+      min: 0
+    right_joints:
+    - front_right_flipper_wheel1_j
+    - rear_right_flipper_wheel1_j
+    steering_efficiency: 0.5
+    tracks_distance: 0.5
+    type: marv_cartesian_controller/CartesianController
+  controllers_update_rate: 10
+  debug:
+    absolute_sensor_disabled: false
+    collision_disabled: false
+    command_output: false
+    estop_disabled: false
+  diagnostic_publish_rate: 1
+  display:
+    backlight: 3
+    device: /dev/ttyUSB1
+  driver:
+    port: /dev/ttyS1
+  fet_temperature_publish_rate: 10
+  flipper_collision:
+    collision_big_wheel: 0.06
+    collision_safe_margin: 0.18
+    collision_small_wheel: 0.0
+    collision_step: 0.004363323
+    collision_steps: 150
+    flipper_length: 0.287
+    front_rear_distance: 0.5
+    joint_zero_offset: 0.105306418
+  flippers_effort_controller:
+    cmd_timeout: 0.12
+    joints:
+    - front_left_flipper_j
+    - front_right_flipper_j
+    - rear_left_flipper_j
+    - rear_right_flipper_j
+    type: marv_effort_controller/EffortController
+  flippers_max_current: 15.0
+  flippers_max_vel: 1.57
+  flippers_position_controller:
+    cmd_timeout: 0.12
+    command_wrap: true
+    deadzone_enabled: true
+    deadzone_max:
+      front: 3.1414
+      rear: -1.57079632679
+    deadzone_min:
+      front: 1.57079632679
+      rear: -3.1414
+    joints:
+    - front_left_flipper_j
+    - front_right_flipper_j
+    - rear_left_flipper_j
+    - rear_right_flipper_j
+    position:
+    - front
+    - front
+    - rear
+    - rear
+    type: marv_position_controller/PositionController
+  flippers_velocity_controller:
+    cmd_timeout: 0.12
+    default_max_vel: 1.57
+    joints:
+    - front_left_flipper_j
+    - front_right_flipper_j
+    - rear_left_flipper_j
+    - rear_right_flipper_j
+    max_control_vel: 1.57
+    max_vel: 1.57
+    type: marv_velocity_controller/VelocityController
+  front_left_flipper: front_left_flipper_j
+  front_left_flipper_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: true
+    ticks_per_unit_denominator: 312
+    ticks_per_unit_numerator: 114075
+    type: flipper
+    wheel_radius: 0.1
+  front_left_flipper_wheel1_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: true
+    ticks_per_unit_denominator: 12
+    ticks_per_unit_numerator: 637
+    type: track
+    wheel_radius: 0.12187
+  front_left_tracks: front_left_flipper_wheel1_j
+  front_right_flipper: front_right_flipper_j
+  front_right_flipper_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: false
+    ticks_per_unit_denominator: 312
+    ticks_per_unit_numerator: 114075
+    type: flipper
+    wheel_radius: 0.1
+  front_right_flipper_wheel1_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: false
+    ticks_per_unit_denominator: 12
+    ticks_per_unit_numerator: 637
+    type: track
+    wheel_radius: 0.12187
+  front_right_tracks: front_right_flipper_wheel1_j
+  hardware_id: marv-robot
+  has_relay: true
+  joint_state_publish_rate: 10
+  joints:
+  - front_left_flipper_j
+  - front_right_flipper_j
+  - rear_left_flipper_j
+  - rear_right_flipper_j
+  - front_left_flipper_wheel1_j
+  - front_right_flipper_wheel1_j
+  - rear_left_flipper_wheel1_j
+  - rear_right_flipper_wheel1_j
+  lights:
+    flipper_directions:
+    - 1
+    - -1
+    - 1
+    - -1
+    flipper_flipped:
+    - -1
+    - -1
+    - 1
+    - 1
+    flipper_names:
+    - front_left
+    - front_right
+    - rear_left
+    - rear_right
+    flipper_offsets:
+    - -0.728641
+    - -0.569107
+    - -0.538427
+    - -2.00798
+    port: /dev/ttyS0
+  limits:
+    flippers_max_vel: 1.57
+    tracks_max_vel: 1.05
+  marv_joint_state_controller:
+    flipper_joints:
+    - front_left_flipper_j
+    - front_right_flipper_j
+    - rear_left_flipper_j
+    - rear_right_flipper_j
+    tracks_joints:
+    - front_left_flipper_wheel1_j
+    - front_right_flipper_wheel1_j
+    - rear_left_flipper_wheel1_j
+    - rear_right_flipper_wheel1_j
+    type: marv_joint_state_controller/JointStateController
+  motor_currents_publish_rate: 10
+  motor_errors_publish_rate: 10
+  motor_state_publish_rate: 10
+  motor_temperature_publish_rate: 10
+  motor_torque_publish_rate: 10
+  odom_controller:
+    front_left_track: front_left_flipper_wheel1_j
+    front_right_track: front_right_flipper_wheel1_j
+    rear_left_track: rear_left_flipper_wheel1_j
+    rear_right_track: rear_right_flipper_wheel1_j
+    tracks_distance: 0.5
+    type: marv_odom_controller/OdomController
+    wheel_base: 0.51
+    wheel_radius: 0.123
+    wheel_steering_y_offset: 5
+  odrive:
+    axis_status_update_ms: 250
+    buffer_len: 1000
+    calibration_timeout: 30
+    can_timeout_ms: 1000
+    connect_timeout: 5
+    data_update_ms: 250
+    dev_name: can0
+  odrive_reset_duration_nsec: 0
+  odrive_reset_duration_sec: 1
+  rear_left_flipper: rear_left_flipper_j
+  rear_left_flipper_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: true
+    ticks_per_unit_denominator: 312
+    ticks_per_unit_numerator: 114075
+    type: flipper
+    wheel_radius: 0.1
+  rear_left_flipper_wheel1_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: true
+    ticks_per_unit_denominator: 12
+    ticks_per_unit_numerator: 637
+    type: track
+    wheel_radius: 0.12187
+  rear_left_tracks: rear_left_flipper_wheel1_j
+  rear_right_flipper: rear_right_flipper_j
+  rear_right_flipper_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: false
+    ticks_per_unit_denominator: 312
+    ticks_per_unit_numerator: 114075
+    type: flipper
+    wheel_radius: 0.1
+  rear_right_flipper_wheel1_j_limits:
+    motor_torque_constant: 0.0525
+    reversed: false
+    ticks_per_unit_denominator: 12
+    ticks_per_unit_numerator: 637
+    type: track
+    wheel_radius: 0.12187
+  rear_right_tracks: rear_right_flipper_wheel1_j
+  robot_description: "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- ===================================================================================\
+    \ -->\n<!-- |    This document was autogenerated by xacro from /home/robot/marv_ws/src/marv_common/marv_description/scripts/../urdf/marv.xacro\
+    \ | -->\n<!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED              \
+    \                   | -->\n<!-- ===================================================================================\
+    \ -->\n<robot name=\"marv_description\">\n  <!--\n    This file is the single\
+    \ source of all URDF and SDF models of MARV. Do not edit those files\n    manually.\
+    \ Update the SDF using scripts/update_robot_sdf_ign. The URDF is generated dynamically\n\
+    \    when launching the robot.\n\n    This Xacro file contains the information\
+    \ needed to build models of all sensor configs of MARV.\n    Which particular\
+    \ sensor config is built, depends on which files from config/* are loaded in the\n\
+    \    update script.\n    -->\n  <!-- https://flir.netx.net/file/asset/15754/original/attachment\
+    \ -->\n  <!-- curvature of the front and rear bottom edges -->\n  <!-- height\
+    \ of base_link above ground -->\n  <!-- w.r.t. referential frame -->\n  <!-- coords\
+    \ of body center in referential frame -->\n  <!-- Number of small wheels that\
+    \ approximate each flipper -->\n  <!-- Pass \"urdf\" or \"ign\" of \"gz\" to tell\
+    \ the parser what is the desired target format. -->\n  <!-- MASS CONSTANTS -->\n\
+    \  <!-- MACRO SPECIFICATIONS -->\n  <!-- SPECIAL LINKS -->\n  <link name=\"rear_right_box\"\
+    >\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"\
+    1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"\
+    1e-6\" izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n\
+    \  </link>\n  <joint name=\"rear_right_box_j\" type=\"fixed\">\n    <parent link=\"\
+    base_link\"/>\n    <child link=\"rear_right_box\"/>\n    <origin rpy=\"0 0 0\"\
+    \ xyz=\"-0.3025 -0.18 0.1921\"/>\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"rear_right_box_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <!-- PAYLOAD INCLUDES -->\n  <!-- https://flir.netx.net/file/asset/15754/original/attachment\
+    \ -->\n  <!-- MARV ROBOT LINKS AND JOINTS SPECIFICATION -->\n  <link name=\"base_link\"\
+    >\n    <visual name=\"chassis\">\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n\
+    \      <geometry>\n        <!-- The origin of the mesh is exactly in base_link\
+    \ -->\n        <mesh filename=\"package://marv_description/meshes/chassis.dae\"\
+    />\n        <!-- This visual also has an emissive texture, but it cannot be added\
+    \ from here. It is added in update_robot_sdf_ign script. -->\n      </geometry>\n\
+    \    </visual>\n    <visual>\n      <!-- deck thickness is 16 mm and is normally\
+    \ counted in rover_bodyHeight -->\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0.1841\"\
+    />\n      <geometry>\n        <box size=\"0.6050 0.3600 0.016\"/>\n      </geometry>\n\
+    \      <material name=\"deck_color\">\n        <color rgba=\"0.6307576 0.6653874\
+    \ 0.708376 1\"/>\n      </material>\n    </visual>\n    <visual>\n      <origin\
+    \ xyz=\"0.2560 0.18 0.0000\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/motor_housing.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <origin xyz=\"0.2560\
+    \ -0.18 0.0000\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/motor_housing_mirrored.dae\"\
+    \ scale=\"1 1 1\"/>\n      </geometry>\n    </visual>\n    <visual>\n      <origin\
+    \ xyz=\"-0.256 0.18 0.0000\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/motor_housing_mirrored.dae\"\
+    \ scale=\"-1 -1 1\"/>\n      </geometry>\n    </visual>\n    <visual>\n      <origin\
+    \ xyz=\"-0.256 -0.18 0.0000\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/motor_housing.dae\"\
+    \ scale=\"-1 -1 1\"/>\n      </geometry>\n    </visual>\n    <collision>\n   \
+    \   <origin rpy=\"0 0 0\" xyz=\"0 0 0.0961\"/>\n      <geometry>\n        <box\
+    \ size=\"0.6050 0.3600 0.192\"/>\n      </geometry>\n    </collision>\n    <collision>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 -0.0219\"/>\n      <geometry>\n       \
+    \ <box size=\"0.517 0.3600 0.0440\"/>\n      </geometry>\n    </collision>\n \
+    \   <collision>\n      <!-- We enlarge the radius a tiny bit to avoid wrong contact\
+    \ forces on the interface between the bottom plate and the cylinder -->\n    \
+    \  <origin rpy=\"1.57079632679 0 0\" xyz=\"0.2585 0 0.000144\"/>\n      <geometry>\n\
+    \        <cylinder length=\"0.3600\" radius=\"0.044044\"/>\n      </geometry>\n\
+    \    </collision>\n    <collision>\n      <!-- We enlarge the radius a tiny bit\
+    \ to avoid wrong contact forces on the interface between the bottom plate and\
+    \ the cylinder -->\n      <origin rpy=\"1.57079632679 0 0\" xyz=\"-0.2585 0 0.000144\"\
+    />\n      <geometry>\n        <cylinder length=\"0.3600\" radius=\"0.044044\"\
+    />\n      </geometry>\n    </collision>\n    <inertial>\n      <mass value=\"\
+    8.7\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0.0661\"/>\n      <inertia ixx=\"\
+    0.12905\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.300458125\" iyz=\"0.0\" izz=\"0.359328125\"\
+    />\n    </inertial>\n  </link>\n  <link name=\"deck\">\n    <inertial>\n     \
+    \ <mass value=\"3.4\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0.1921\"/>\n  \
+    \    <inertia ixx=\"0.0367925333333\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.103779616667\"\
+    \ iyz=\"0.0\" izz=\"0.140427083333\"/>\n    </inertial>\n  </link>\n  <joint name=\"\
+    deck_j\" type=\"fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"\
+    deck\"/>\n    <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    deck_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n  <link\
+    \ name=\"bottom_plate\">\n    <inertial>\n      <mass value=\"1.09\"/>\n     \
+    \ <origin rpy=\"0 0 0\" xyz=\"0 0 -0.0439\"/>\n      <inertia ixx=\"0.0117742708333\"\
+    \ ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.0332495416667\" iyz=\"0.0\" izz=\"0.0450192708333\"\
+    />\n    </inertial>\n  </link>\n  <joint name=\"bottom_plate_j\" type=\"fixed\"\
+    >\n    <parent link=\"base_link\"/>\n    <child link=\"bottom_plate\"/>\n    <origin\
+    \ rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"bottom_plate_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"front_left_motor\">\n    <inertial>\n      <mass\
+    \ value=\"4.06\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.22 -0.09 0.02\"/>\n  \
+    \    <inertia ixx=\"0.0151492133333\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.01298388\"\
+    \ iyz=\"0.0\" izz=\"0.0173903333333\"/>\n    </inertial>\n  </link>\n  <joint\
+    \ name=\"front_left_motor_j\" type=\"fixed\">\n    <parent link=\"base_link\"\
+    />\n    <child link=\"front_left_motor\"/>\n    <origin rpy=\"0 0 0\" xyz=\"0\
+    \ 0 0\"/>\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"front_left_motor_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"front_right_motor\">\n    <inertial>\n      <mass\
+    \ value=\"4.06\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.22 0.09 0.02\"/>\n   \
+    \   <inertia ixx=\"0.0151492133333\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.01298388\"\
+    \ iyz=\"0.0\" izz=\"0.0173903333333\"/>\n    </inertial>\n  </link>\n  <joint\
+    \ name=\"front_right_motor_j\" type=\"fixed\">\n    <parent link=\"base_link\"\
+    />\n    <child link=\"front_right_motor\"/>\n    <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0\"/>\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"front_right_motor_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"rear_left_motor\">\n    <inertial>\n      <mass value=\"\
+    4.06\"/>\n      <origin rpy=\"0 0 0\" xyz=\"-0.22 -0.09 0.02\"/>\n      <inertia\
+    \ ixx=\"0.0151492133333\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.01298388\" iyz=\"0.0\"\
+    \ izz=\"0.0173903333333\"/>\n    </inertial>\n  </link>\n  <joint name=\"rear_left_motor_j\"\
+    \ type=\"fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"rear_left_motor\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n  </joint>\n  <!-- workaround for\
+    \ https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"rear_left_motor_j\"\
+    >\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n  <link name=\"\
+    rear_right_motor\">\n    <inertial>\n      <mass value=\"4.06\"/>\n      <origin\
+    \ rpy=\"0 0 0\" xyz=\"-0.22 0.09 0.02\"/>\n      <inertia ixx=\"0.0151492133333\"\
+    \ ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.01298388\" iyz=\"0.0\" izz=\"0.0173903333333\"\
+    />\n    </inertial>\n  </link>\n  <joint name=\"rear_right_motor_j\" type=\"fixed\"\
+    >\n    <parent link=\"base_link\"/>\n    <child link=\"rear_right_motor\"/>\n\
+    \    <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n  </joint>\n  <!-- workaround for\
+    \ https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"rear_right_motor_j\"\
+    >\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n  <link name=\"\
+    top_box\">\n    <visual>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/marv_top_box.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision>\n      <origin xyz=\"0 0\
+    \ 0.05\"/>\n      <geometry>\n        <box size=\"0.214 0.304 0.1\"/>\n      </geometry>\n\
+    \    </collision>\n    <collision>\n      <origin xyz=\"0 -0.015 0.12\"/>\n  \
+    \    <geometry>\n        <box size=\"0.088 0.17 0.039\"/>\n      </geometry>\n\
+    \    </collision>\n    <collision>\n      <origin xyz=\"0 0.015 0.132\"/>\n  \
+    \    <geometry>\n        <box size=\"0.088 0.105 0.064\"/>\n      </geometry>\n\
+    \    </collision>\n    <collision>\n      <origin xyz=\"0 0 0.1725\"/>\n     \
+    \ <geometry>\n        <box size=\"0.088 0.088 0.015\"/>\n      </geometry>\n \
+    \   </collision>\n    <inertial>\n      <mass value=\"2.0\"/>\n      <origin rpy=\"\
+    0 0 0\" xyz=\"0 0 0\"/>\n      <inertia ixx=\"0.0182666666667\" ixy=\"0.0\" ixz=\"\
+    0.0\" iyy=\"0.00993333333333\" iyz=\"0.0\" izz=\"0.0216666666667\"/>\n    </inertial>\n\
+    \  </link>\n  <joint name=\"top_box_j\" type=\"fixed\">\n    <parent link=\"base_link\"\
+    />\n    <child link=\"top_box\"/>\n    <origin rpy=\"0 0 0\" xyz=\"0.065 0 0.1921\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"top_box_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"battery1\">\n    <visual>\n      <geometry>\n   \
+    \     <mesh filename=\"package://marv_description/meshes/battery.dae\"/>\n   \
+    \   </geometry>\n    </visual>\n    <collision>\n      <geometry>\n        <box\
+    \ size=\"0.126 0.36 0.13\"/>\n      </geometry>\n    </collision>\n    <inertial>\n\
+    \      <mass value=\"6.0\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n  \
+    \    <inertia ixx=\"0.07325\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.016388\" iyz=\"\
+    0.0\" izz=\"0.072738\"/>\n    </inertial>\n  </link>\n  <joint name=\"battery1_j\"\
+    \ type=\"fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"battery1\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.06 0.005 0.0251\"/>\n  </joint>\n  <!--\
+    \ workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    battery1_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"battery2\">\n    <visual>\n      <geometry>\n        <mesh filename=\"\
+    package://marv_description/meshes/battery.dae\"/>\n      </geometry>\n    </visual>\n\
+    \    <collision>\n      <geometry>\n        <box size=\"0.126 0.36 0.13\"/>\n\
+    \      </geometry>\n    </collision>\n    <inertial>\n      <mass value=\"6.0\"\
+    />\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <inertia ixx=\"0.07325\"\
+    \ ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.016388\" iyz=\"0.0\" izz=\"0.072738\"/>\n  \
+    \  </inertial>\n  </link>\n  <joint name=\"battery2_j\" type=\"fixed\">\n    <parent\
+    \ link=\"base_link\"/>\n    <child link=\"battery2\"/>\n    <origin rpy=\"0 0\
+    \ 0\" xyz=\"-0.06 0.005 0.0251\"/>\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"battery2_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"antenna\">\n    <visual>\n      <origin rpy=\"0 0\
+    \ 0\" xyz=\"0 0 0.1\"/>\n      <geometry>\n        <cylinder length=\"0.2\" radius=\"\
+    0.01\"/>\n      </geometry>\n    </visual>\n    <collision>\n      <origin rpy=\"\
+    0 0 0\" xyz=\"0 0 0.1\"/>\n      <geometry>\n        <cylinder length=\"0.2\"\
+    \ radius=\"0.01\"/>\n      </geometry>\n    </collision>\n    <inertial>\n   \
+    \   <mass value=\"0.08\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0.1\"/>\n  \
+    \    <inertia ixx=\"0.000268666666667\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.000268666666667\"\
+    \ iyz=\"0.0\" izz=\"4e-06\"/>\n    </inertial>\n  </link>\n  <joint name=\"antenna_j\"\
+    \ type=\"fixed\">\n    <parent link=\"top_box\"/>\n    <child link=\"antenna\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"-0.1 0.11 0.07\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    antenna_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <!--\n    <xacro:unless value=\"${'$(arg rendering_target)' == 'urdf'}\">\n\
+    \        <xacro:flipper_fake_wheels prefix1=\"${prefix1}\" prefix2=\"${prefix2}\"\
+    \ reflect_y=\"${reflect_y}\" wheel_num=\"$(arg num_wheels)\" />\n    </xacro:unless>\n\
+    \    -->\n  <link name=\"front_left_flipper\">\n    <visual>\n      <origin rpy=\"\
+    0 0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/big_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\"\
+    \ xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/flipper_arm.dae\"\
+    \ scale=\"-1 -1 1\"/>\n      </geometry>\n    </visual>\n    <visual>\n      <origin\
+    \ rpy=\"0 0.0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"\
+    package://marv_description/meshes/belt.dae\" scale=\"1 1 1\"/>\n      </geometry>\n\
+    \    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"0.3035 0 0\"/>\n\
+    \      <geometry>\n        <mesh filename=\"package://marv_description/meshes/small_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision>\n      <origin xyz=\"0.15175\
+    \ -0.0 0\"/>\n      <geometry>\n        <box size=\"0.3035 0.075 0.078\"/>\n \
+    \     </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"0 0.12617944012\
+    \ 0\" xyz=\"0.15175 -0.0 0.05825\"/>\n      <geometry>\n        <box size=\"0.3035\
+    \ 0.075 0.078\"/>\n      </geometry>\n    </collision>\n    <collision>\n    \
+    \  <origin rpy=\"0 -0.12617944012 0\" xyz=\"0.15175 -0.0 -0.05825\"/>\n      <geometry>\n\
+    \        <box size=\"0.3035 0.075 0.078\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision>\n      <origin rpy=\"1.57079632679 0 0\" xyz=\"0.3035 -0.0 0\"\
+    />\n      <geometry>\n        <cylinder length=\"0.075\" radius=\"0.078\"/>\n\
+    \      </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"1.57079632679\
+    \ 0 0\" xyz=\"0 -0.0 0\"/>\n      <geometry>\n        <cylinder length=\"0.075\"\
+    \ radius=\"0.1165\"/>\n      </geometry>\n    </collision>\n    <inertial>\n \
+    \     <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n  \
+    \    <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n  </link>\n  <joint name=\"front_left_flipper_j\"\
+    \ type=\"revolute\">\n    <parent link=\"base_link\"/>\n    <child link=\"front_left_flipper\"\
+    />\n    <axis xyz=\"0 1 0\"/>\n    <origin rpy=\"0 0.0 0\" xyz=\"0.256 0.248 0.0000\"\
+    />\n    <limit effort=\"120\" lower=\"-1e+16\" upper=\"1e+16\" velocity=\"3.14\"\
+    />\n  </joint>\n  <link name=\"front_left_flipper_end_point\">\n    <inertial>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n \
+    \     <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n\
+    \  <joint name=\"front_left_flipper_end_point_j\" type=\"fixed\">\n    <parent\
+    \ link=\"front_left_flipper\"/>\n    <child link=\"front_left_flipper_end_point\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    front_left_flipper_end_point_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"front_left_flipper_end_point_inflated\">\n    <inertial>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n \
+    \     <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n\
+    \  <joint name=\"front_left_flipper_end_point_inflated_j\" type=\"fixed\">\n \
+    \   <parent link=\"front_left_flipper\"/>\n    <child link=\"front_left_flipper_end_point_inflated\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    front_left_flipper_end_point_inflated_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"front_right_flipper\">\n    <visual>\n      <origin\
+    \ rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/big_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\"\
+    \ xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/flipper_arm.dae\"\
+    \ scale=\"1 1 1\"/>\n      </geometry>\n    </visual>\n    <visual>\n      <origin\
+    \ rpy=\"0 3.14159265359 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"\
+    package://marv_description/meshes/belt.dae\" scale=\"1 1 1\"/>\n      </geometry>\n\
+    \    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"-0.3035 0 0\"\
+    />\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/small_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision>\n      <origin xyz=\"-0.15175\
+    \ 0.0 0\"/>\n      <geometry>\n        <box size=\"0.3035 0.075 0.078\"/>\n  \
+    \    </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"0 -0.12617944012\
+    \ 0\" xyz=\"-0.15175 0.0 0.05825\"/>\n      <geometry>\n        <box size=\"0.3035\
+    \ 0.075 0.078\"/>\n      </geometry>\n    </collision>\n    <collision>\n    \
+    \  <origin rpy=\"0 0.12617944012 0\" xyz=\"-0.15175 0.0 -0.05825\"/>\n      <geometry>\n\
+    \        <box size=\"0.3035 0.075 0.078\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision>\n      <origin rpy=\"1.57079632679 0 0\" xyz=\"-0.3035 0.0 0\"\
+    />\n      <geometry>\n        <cylinder length=\"0.075\" radius=\"0.078\"/>\n\
+    \      </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"1.57079632679\
+    \ 0 0\" xyz=\"0 0.0 0\"/>\n      <geometry>\n        <cylinder length=\"0.075\"\
+    \ radius=\"0.1165\"/>\n      </geometry>\n    </collision>\n    <inertial>\n \
+    \     <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n  \
+    \    <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n  </link>\n  <joint name=\"front_right_flipper_j\"\
+    \ type=\"revolute\">\n    <parent link=\"base_link\"/>\n    <child link=\"front_right_flipper\"\
+    />\n    <axis xyz=\"0 1 0\"/>\n    <origin rpy=\"0 3.14159265359 0\" xyz=\"0.256\
+    \ -0.248 0.0000\"/>\n    <limit effort=\"120\" lower=\"-1e+16\" upper=\"1e+16\"\
+    \ velocity=\"3.14\"/>\n  </joint>\n  <link name=\"front_right_flipper_end_point\"\
+    >\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"\
+    1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"\
+    1e-6\" izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n\
+    \  </link>\n  <joint name=\"front_right_flipper_end_point_j\" type=\"fixed\">\n\
+    \    <parent link=\"front_right_flipper\"/>\n    <child link=\"front_right_flipper_end_point\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"-0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    front_right_flipper_end_point_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"front_right_flipper_end_point_inflated\">\n    <inertial>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n \
+    \     <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n\
+    \  <joint name=\"front_right_flipper_end_point_inflated_j\" type=\"fixed\">\n\
+    \    <parent link=\"front_right_flipper\"/>\n    <child link=\"front_right_flipper_end_point_inflated\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"-0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    front_right_flipper_end_point_inflated_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"rear_left_flipper\">\n    <visual>\n      <origin\
+    \ rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/big_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\"\
+    \ xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/flipper_arm.dae\"\
+    \ scale=\"-1 -1 1\"/>\n      </geometry>\n    </visual>\n    <visual>\n      <origin\
+    \ rpy=\"0 0.0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"\
+    package://marv_description/meshes/belt.dae\" scale=\"1 1 1\"/>\n      </geometry>\n\
+    \    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"0.3035 0 0\"/>\n\
+    \      <geometry>\n        <mesh filename=\"package://marv_description/meshes/small_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision>\n      <origin xyz=\"0.15175\
+    \ -0.0 0\"/>\n      <geometry>\n        <box size=\"0.3035 0.075 0.078\"/>\n \
+    \     </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"0 0.12617944012\
+    \ 0\" xyz=\"0.15175 -0.0 0.05825\"/>\n      <geometry>\n        <box size=\"0.3035\
+    \ 0.075 0.078\"/>\n      </geometry>\n    </collision>\n    <collision>\n    \
+    \  <origin rpy=\"0 -0.12617944012 0\" xyz=\"0.15175 -0.0 -0.05825\"/>\n      <geometry>\n\
+    \        <box size=\"0.3035 0.075 0.078\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision>\n      <origin rpy=\"1.57079632679 0 0\" xyz=\"0.3035 -0.0 0\"\
+    />\n      <geometry>\n        <cylinder length=\"0.075\" radius=\"0.078\"/>\n\
+    \      </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"1.57079632679\
+    \ 0 0\" xyz=\"0 -0.0 0\"/>\n      <geometry>\n        <cylinder length=\"0.075\"\
+    \ radius=\"0.1165\"/>\n      </geometry>\n    </collision>\n    <inertial>\n \
+    \     <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n  \
+    \    <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n  </link>\n  <joint name=\"rear_left_flipper_j\"\
+    \ type=\"revolute\">\n    <parent link=\"base_link\"/>\n    <child link=\"rear_left_flipper\"\
+    />\n    <axis xyz=\"0 1 0\"/>\n    <origin rpy=\"0 3.14159265359 0\" xyz=\"-0.256\
+    \ 0.248 0.0000\"/>\n    <limit effort=\"120\" lower=\"-1e+16\" upper=\"1e+16\"\
+    \ velocity=\"3.14\"/>\n  </joint>\n  <link name=\"rear_left_flipper_end_point\"\
+    >\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"\
+    1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"\
+    1e-6\" izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n\
+    \  </link>\n  <joint name=\"rear_left_flipper_end_point_j\" type=\"fixed\">\n\
+    \    <parent link=\"rear_left_flipper\"/>\n    <child link=\"rear_left_flipper_end_point\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    rear_left_flipper_end_point_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"rear_left_flipper_end_point_inflated\">\n    <inertial>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n \
+    \     <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n\
+    \  <joint name=\"rear_left_flipper_end_point_inflated_j\" type=\"fixed\">\n  \
+    \  <parent link=\"rear_left_flipper\"/>\n    <child link=\"rear_left_flipper_end_point_inflated\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    rear_left_flipper_end_point_inflated_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"rear_right_flipper\">\n    <visual>\n      <origin\
+    \ rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/big_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\"\
+    \ xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/flipper_arm.dae\"\
+    \ scale=\"1 1 1\"/>\n      </geometry>\n    </visual>\n    <visual>\n      <origin\
+    \ rpy=\"0 3.14159265359 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"\
+    package://marv_description/meshes/belt.dae\" scale=\"1 1 1\"/>\n      </geometry>\n\
+    \    </visual>\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"-0.3035 0 0\"\
+    />\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/small_wheel.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision>\n      <origin xyz=\"-0.15175\
+    \ 0.0 0\"/>\n      <geometry>\n        <box size=\"0.3035 0.075 0.078\"/>\n  \
+    \    </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"0 -0.12617944012\
+    \ 0\" xyz=\"-0.15175 0.0 0.05825\"/>\n      <geometry>\n        <box size=\"0.3035\
+    \ 0.075 0.078\"/>\n      </geometry>\n    </collision>\n    <collision>\n    \
+    \  <origin rpy=\"0 0.12617944012 0\" xyz=\"-0.15175 0.0 -0.05825\"/>\n      <geometry>\n\
+    \        <box size=\"0.3035 0.075 0.078\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision>\n      <origin rpy=\"1.57079632679 0 0\" xyz=\"-0.3035 0.0 0\"\
+    />\n      <geometry>\n        <cylinder length=\"0.075\" radius=\"0.078\"/>\n\
+    \      </geometry>\n    </collision>\n    <collision>\n      <origin rpy=\"1.57079632679\
+    \ 0 0\" xyz=\"0 0.0 0\"/>\n      <geometry>\n        <cylinder length=\"0.075\"\
+    \ radius=\"0.1165\"/>\n      </geometry>\n    </collision>\n    <inertial>\n \
+    \     <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n  \
+    \    <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n  </link>\n  <joint name=\"rear_right_flipper_j\"\
+    \ type=\"revolute\">\n    <parent link=\"base_link\"/>\n    <child link=\"rear_right_flipper\"\
+    />\n    <axis xyz=\"0 1 0\"/>\n    <origin rpy=\"0 0.0 0\" xyz=\"-0.256 -0.248\
+    \ 0.0000\"/>\n    <limit effort=\"120\" lower=\"-1e+16\" upper=\"1e+16\" velocity=\"\
+    3.14\"/>\n  </joint>\n  <link name=\"rear_right_flipper_end_point\">\n    <inertial>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n \
+    \     <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n\
+    \  <joint name=\"rear_right_flipper_end_point_j\" type=\"fixed\">\n    <parent\
+    \ link=\"rear_right_flipper\"/>\n    <child link=\"rear_right_flipper_end_point\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"-0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    rear_right_flipper_end_point_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"rear_right_flipper_end_point_inflated\">\n    <inertial>\n\
+    \      <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n \
+    \     <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\"\
+    \ izz=\"1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n\
+    \  <joint name=\"rear_right_flipper_end_point_inflated_j\" type=\"fixed\">\n \
+    \   <parent link=\"rear_right_flipper\"/>\n    <child link=\"rear_right_flipper_end_point_inflated\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"-0.3815 0 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    rear_right_flipper_end_point_inflated_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <!-- SENSORS -->\n  <link name=\"camera_fisheye_front\">\n   \
+    \ <visual>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0.0145\"/>\n      <geometry>\n\
+    \        <!-- The origin of the mesh is center above tripod screw -->\n      \
+    \  <mesh filename=\"package://marv_description/meshes/basler_ace.dae\"/>\n   \
+    \   </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the mesh\
+    \ is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.029024 0\
+    \ 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_fisheye_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_fisheye_front_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.0117 0 0.0145\"/>\n      <geometry>\n \
+    \       <box size=\"0.054 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_fisheye_front_lens_collision\">\n      <origin rpy=\"\
+    0 1.57079632679 0\" xyz=\"0.042024 0 0.0145\"/>\n      <geometry>\n        <cylinder\
+    \ length=\"0.026\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n\
+    \    <inertial>\n      <mass value=\"0.14\"/>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0.019862 0 0.0145\"/>\n      <inertia ixx=\"1.96233333333e-05\" ixy=\"0.0\" ixz=\"\
+    0.0\" iyy=\"6.75087580533e-05\" iyz=\"0.0\" izz=\"6.75087580533e-05\"/>\n    </inertial>\n\
+    \  </link>\n  <link name=\"pylon_camera_fisheye_front\">\n    <inertial>\n   \
+    \   <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n    \
+    \  <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"\
+    1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n \
+    \ <joint name=\"camera_fisheye_front_optical_j\" type=\"fixed\">\n    <parent\
+    \ link=\"camera_fisheye_front\"/>\n    <child link=\"pylon_camera_fisheye_front\"\
+    />\n    <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.051574 0 0.0145\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_fisheye_front_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_fisheye_front\">\n    <sensor name=\"\
+    camera_fisheye_front\" type=\"wideanglecamera\">\n      <!-- I think the simulated\
+    \ sensor should be placed in the middle of the entrance pupil. -->\n      <pose>0.051574\
+    \ 0 0.0145 0 0 0</pose>\n      <update_rate>15</update_rate>\n      <visualize>0</visualize>\n\
+    \      <camera>\n        <horizontal_fov>2.40855436775</horizontal_fov>\n    \
+    \    <image>\n          <width>2048</width>\n          <height>1536</height>\n\
+    \          <format>R8G8B8</format>\n        </image>\n        <clip>\n       \
+    \   <near>0.025</near>\n          <far>300</far>\n        </clip>\n        <noise>\n\
+    \          <type>gaussian</type>\n          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n\
+    \        </noise>\n        <lens>\n          <intrinsics>\n            <fx>393.076771876</fx>\n\
+    \            <fy>393.076771876</fy>\n            <cx>1023.5</cx>\n           \
+    \ <cy>767.5</cy>\n            <s>0</s>\n          </intrinsics>\n        </lens>\n\
+    \      </camera>\n    </sensor>\n  </gazebo>\n  <joint name=\"front_fisheye_cam_j\"\
+    \ type=\"fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"camera_fisheye_front\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.2465 0 0.1321\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    front_fisheye_cam_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"camera_fisheye_rear\">\n    <visual>\n      <origin rpy=\"0 0\
+    \ 0\" xyz=\"0 0 0.0145\"/>\n      <geometry>\n        <!-- The origin of the mesh\
+    \ is center above tripod screw -->\n        <mesh filename=\"package://marv_description/meshes/basler_ace.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the\
+    \ mesh is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.029024\
+    \ 0 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_fisheye_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_fisheye_rear_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.0117 0 0.0145\"/>\n      <geometry>\n \
+    \       <box size=\"0.054 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_fisheye_rear_lens_collision\">\n      <origin rpy=\"\
+    0 1.57079632679 0\" xyz=\"0.042024 0 0.0145\"/>\n      <geometry>\n        <cylinder\
+    \ length=\"0.026\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n\
+    \    <inertial>\n      <mass value=\"0.14\"/>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0.019862 0 0.0145\"/>\n      <inertia ixx=\"1.96233333333e-05\" ixy=\"0.0\" ixz=\"\
+    0.0\" iyy=\"6.75087580533e-05\" iyz=\"0.0\" izz=\"6.75087580533e-05\"/>\n    </inertial>\n\
+    \  </link>\n  <link name=\"pylon_camera_fisheye_rear\">\n    <inertial>\n    \
+    \  <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n     \
+    \ <inertia ixx=\"1e-3\" ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"\
+    1e-3\"/>\n    </inertial>\n    <selfCollide>false</selfCollide>\n  </link>\n \
+    \ <joint name=\"camera_fisheye_rear_optical_j\" type=\"fixed\">\n    <parent link=\"\
+    camera_fisheye_rear\"/>\n    <child link=\"pylon_camera_fisheye_rear\"/>\n   \
+    \ <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.051574 0 0.0145\"/>\n\
+    \  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_fisheye_rear_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_fisheye_rear\">\n    <sensor name=\"\
+    camera_fisheye_rear\" type=\"wideanglecamera\">\n      <!-- I think the simulated\
+    \ sensor should be placed in the middle of the entrance pupil. -->\n      <pose>0.051574\
+    \ 0 0.0145 0 0 0</pose>\n      <update_rate>15</update_rate>\n      <visualize>0</visualize>\n\
+    \      <camera>\n        <horizontal_fov>2.40855436775</horizontal_fov>\n    \
+    \    <image>\n          <width>2048</width>\n          <height>1536</height>\n\
+    \          <format>R8G8B8</format>\n        </image>\n        <clip>\n       \
+    \   <near>0.025</near>\n          <far>300</far>\n        </clip>\n        <noise>\n\
+    \          <type>gaussian</type>\n          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n\
+    \        </noise>\n        <lens>\n          <intrinsics>\n            <fx>393.076771876</fx>\n\
+    \            <fy>393.076771876</fy>\n            <cx>1023.5</cx>\n           \
+    \ <cy>767.5</cy>\n            <s>0</s>\n          </intrinsics>\n        </lens>\n\
+    \      </camera>\n    </sensor>\n  </gazebo>\n  <joint name=\"rear_fisheye_cam_j\"\
+    \ type=\"fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"camera_fisheye_rear\"\
+    />\n    <origin rpy=\"0 0 3.14159265359\" xyz=\"-0.2465 0 0.1321\"/>\n  </joint>\n\
+    \  <!-- workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo\
+    \ reference=\"rear_fisheye_cam_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"camera_front\">\n    <visual>\n      <origin rpy=\"\
+    0 0 0\" xyz=\"0 0 0.0145\"/>\n      <geometry>\n        <!-- The origin of the\
+    \ mesh is center above tripod screw -->\n        <mesh filename=\"package://marv_description/meshes/basler_ace2_pro.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the\
+    \ mesh is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.042964\
+    \ 0 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_front_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.02465 0 0.0145\"/>\n      <geometry>\n\
+    \        <box size=\"0.0555 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_front_lens_collision\">\n      <origin rpy=\"0 1.57079632679\
+    \ 0\" xyz=\"0.062834 0 0.0145\"/>\n      <geometry>\n        <cylinder length=\"\
+    0.03974\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n    <inertial>\n\
+    \      <mass value=\"0.232\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.039802 0 0.0145\"\
+    />\n      <inertia ixx=\"3.25186666667e-05\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.000158597644043\"\
+    \ iyz=\"0.0\" izz=\"0.000158597644043\"/>\n    </inertial>\n  </link>\n  <link\
+    \ name=\"pylon_camera_front\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"camera_front_optical_j\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_front\"/>\n    <child link=\"pylon_camera_front\"\
+    />\n    <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.072044 0 0.0145\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_front_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_front\">\n    <sensor name=\"camera_front\"\
+    \ type=\"camera\">\n      <!-- I think the simulated sensor should be placed in\
+    \ the middle of the entrance pupil. -->\n      <pose>0.072044 0 0.0145 0 0 0</pose>\n\
+    \      <update_rate>9</update_rate>\n      <visualize>0</visualize>\n      <camera>\n\
+    \        <horizontal_fov>1.50970980298</horizontal_fov>\n        <image>\n   \
+    \       <width>1920</width>\n          <height>1200</height>\n          <format>R8G8B8</format>\n\
+    \        </image>\n        <clip>\n          <near>0.011726</near>\n         \
+    \ <far>300</far>\n        </clip>\n        <noise>\n          <type>gaussian</type>\n\
+    \          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n        </noise>\n\
+    \        <lens>\n          <intrinsics>\n            <fx>1020.51005492</fx>\n\
+    \            <fy>1020.51005492</fy>\n            <cx>959.5</cx>\n            <cy>599.5</cy>\n\
+    \            <s>0</s>\n          </intrinsics>\n        </lens>\n      </camera>\n\
+    \    </sensor>\n  </gazebo>\n  <joint name=\"camera_front_j\" type=\"fixed\">\n\
+    \    <parent link=\"rear_right_box\"/>\n    <child link=\"camera_front\"/>\n \
+    \   <origin rpy=\"0 0 0\" xyz=\"0.515 0.18 0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    camera_front_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"camera_right\">\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0.0145\"/>\n      <geometry>\n        <!-- The origin of the mesh is center\
+    \ above tripod screw -->\n        <mesh filename=\"package://marv_description/meshes/basler_ace2_pro.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the\
+    \ mesh is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.042964\
+    \ 0 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_right_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.02465 0 0.0145\"/>\n      <geometry>\n\
+    \        <box size=\"0.0555 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_right_lens_collision\">\n      <origin rpy=\"0 1.57079632679\
+    \ 0\" xyz=\"0.062834 0 0.0145\"/>\n      <geometry>\n        <cylinder length=\"\
+    0.03974\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n    <inertial>\n\
+    \      <mass value=\"0.232\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.039802 0 0.0145\"\
+    />\n      <inertia ixx=\"3.25186666667e-05\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.000158597644043\"\
+    \ iyz=\"0.0\" izz=\"0.000158597644043\"/>\n    </inertial>\n  </link>\n  <link\
+    \ name=\"pylon_camera_right\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"camera_right_optical_j\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_right\"/>\n    <child link=\"pylon_camera_right\"\
+    />\n    <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.072044 0 0.0145\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_right_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_right\">\n    <sensor name=\"camera_right\"\
+    \ type=\"camera\">\n      <!-- I think the simulated sensor should be placed in\
+    \ the middle of the entrance pupil. -->\n      <pose>0.072044 0 0.0145 0 0 0</pose>\n\
+    \      <update_rate>9</update_rate>\n      <visualize>0</visualize>\n      <camera>\n\
+    \        <horizontal_fov>1.50970980298</horizontal_fov>\n        <image>\n   \
+    \       <width>1920</width>\n          <height>1200</height>\n          <format>R8G8B8</format>\n\
+    \        </image>\n        <clip>\n          <near>0.011726</near>\n         \
+    \ <far>300</far>\n        </clip>\n        <noise>\n          <type>gaussian</type>\n\
+    \          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n        </noise>\n\
+    \        <lens>\n          <intrinsics>\n            <fx>1020.51005492</fx>\n\
+    \            <fy>1020.51005492</fy>\n            <cx>959.5</cx>\n            <cy>599.5</cy>\n\
+    \            <s>0</s>\n          </intrinsics>\n        </lens>\n      </camera>\n\
+    \    </sensor>\n  </gazebo>\n  <joint name=\"camera_right_j\" type=\"fixed\">\n\
+    \    <parent link=\"top_box\"/>\n    <child link=\"camera_right\"/>\n    <origin\
+    \ rpy=\"0 0 -1.57079632679\" xyz=\"0 -0.067 0.0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    camera_right_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"camera_rear\">\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0.0145\"/>\n      <geometry>\n        <!-- The origin of the mesh is center\
+    \ above tripod screw -->\n        <mesh filename=\"package://marv_description/meshes/basler_ace2_pro.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the\
+    \ mesh is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.042964\
+    \ 0 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_rear_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.02465 0 0.0145\"/>\n      <geometry>\n\
+    \        <box size=\"0.0555 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_rear_lens_collision\">\n      <origin rpy=\"0 1.57079632679\
+    \ 0\" xyz=\"0.062834 0 0.0145\"/>\n      <geometry>\n        <cylinder length=\"\
+    0.03974\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n    <inertial>\n\
+    \      <mass value=\"0.232\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.039802 0 0.0145\"\
+    />\n      <inertia ixx=\"3.25186666667e-05\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.000158597644043\"\
+    \ iyz=\"0.0\" izz=\"0.000158597644043\"/>\n    </inertial>\n  </link>\n  <link\
+    \ name=\"pylon_camera_rear\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"camera_rear_optical_j\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_rear\"/>\n    <child link=\"pylon_camera_rear\"\
+    />\n    <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.072044 0 0.0145\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_rear_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_rear\">\n    <sensor name=\"camera_rear\"\
+    \ type=\"camera\">\n      <!-- I think the simulated sensor should be placed in\
+    \ the middle of the entrance pupil. -->\n      <pose>0.072044 0 0.0145 0 0 0</pose>\n\
+    \      <update_rate>9</update_rate>\n      <visualize>0</visualize>\n      <camera>\n\
+    \        <horizontal_fov>1.50970980298</horizontal_fov>\n        <image>\n   \
+    \       <width>1920</width>\n          <height>1200</height>\n          <format>R8G8B8</format>\n\
+    \        </image>\n        <clip>\n          <near>0.011726</near>\n         \
+    \ <far>300</far>\n        </clip>\n        <noise>\n          <type>gaussian</type>\n\
+    \          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n        </noise>\n\
+    \        <lens>\n          <intrinsics>\n            <fx>1020.51005492</fx>\n\
+    \            <fy>1020.51005492</fy>\n            <cx>959.5</cx>\n            <cy>599.5</cy>\n\
+    \            <s>0</s>\n          </intrinsics>\n        </lens>\n      </camera>\n\
+    \    </sensor>\n  </gazebo>\n  <joint name=\"camera_rear_j\" type=\"fixed\">\n\
+    \    <parent link=\"rear_right_box\"/>\n    <child link=\"camera_rear\"/>\n  \
+    \  <origin rpy=\"0 0 -3.14159265359\" xyz=\"0.09 0.18 0\"/>\n  </joint>\n  <!--\
+    \ workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    camera_rear_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"camera_left\">\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0.0145\"/>\n      <geometry>\n        <!-- The origin of the mesh is center\
+    \ above tripod screw -->\n        <mesh filename=\"package://marv_description/meshes/basler_ace2_pro.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the\
+    \ mesh is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.042964\
+    \ 0 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_left_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.02465 0 0.0145\"/>\n      <geometry>\n\
+    \        <box size=\"0.0555 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_left_lens_collision\">\n      <origin rpy=\"0 1.57079632679\
+    \ 0\" xyz=\"0.062834 0 0.0145\"/>\n      <geometry>\n        <cylinder length=\"\
+    0.03974\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n    <inertial>\n\
+    \      <mass value=\"0.232\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.039802 0 0.0145\"\
+    />\n      <inertia ixx=\"3.25186666667e-05\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.000158597644043\"\
+    \ iyz=\"0.0\" izz=\"0.000158597644043\"/>\n    </inertial>\n  </link>\n  <link\
+    \ name=\"pylon_camera_left\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"camera_left_optical_j\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_left\"/>\n    <child link=\"pylon_camera_left\"\
+    />\n    <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.072044 0 0.0145\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_left_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_left\">\n    <sensor name=\"camera_left\"\
+    \ type=\"camera\">\n      <!-- I think the simulated sensor should be placed in\
+    \ the middle of the entrance pupil. -->\n      <pose>0.072044 0 0.0145 0 0 0</pose>\n\
+    \      <update_rate>9</update_rate>\n      <visualize>0</visualize>\n      <camera>\n\
+    \        <horizontal_fov>1.50970980298</horizontal_fov>\n        <image>\n   \
+    \       <width>1920</width>\n          <height>1200</height>\n          <format>R8G8B8</format>\n\
+    \        </image>\n        <clip>\n          <near>0.011726</near>\n         \
+    \ <far>300</far>\n        </clip>\n        <noise>\n          <type>gaussian</type>\n\
+    \          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n        </noise>\n\
+    \        <lens>\n          <intrinsics>\n            <fx>1020.51005492</fx>\n\
+    \            <fy>1020.51005492</fy>\n            <cx>959.5</cx>\n            <cy>599.5</cy>\n\
+    \            <s>0</s>\n          </intrinsics>\n        </lens>\n      </camera>\n\
+    \    </sensor>\n  </gazebo>\n  <joint name=\"camera_left_j\" type=\"fixed\">\n\
+    \    <parent link=\"top_box\"/>\n    <child link=\"camera_left\"/>\n    <origin\
+    \ rpy=\"0 0 -4.71238898038\" xyz=\"0 0.067 0.0\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    camera_left_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"camera_up\">\n    <visual>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0.0145\"/>\n      <geometry>\n        <!-- The origin of the mesh is center\
+    \ above tripod screw -->\n        <mesh filename=\"package://marv_description/meshes/basler_ace2_pro.dae\"\
+    />\n      </geometry>\n    </visual>\n    <visual>\n      <!-- The origin of the\
+    \ mesh is at the back of the lens -->\n      <origin rpy=\"0 0 0\" xyz=\"0.042964\
+    \ 0 0.0145\"/>\n      <geometry>\n        <mesh filename=\"package://marv_description/meshes/evetar_lens.dae\"\
+    />\n      </geometry>\n    </visual>\n    <collision name=\"camera_up_collision\"\
+    >\n      <origin rpy=\"0 0 0\" xyz=\"0.02465 0 0.0145\"/>\n      <geometry>\n\
+    \        <box size=\"0.0555 0.029 0.029\"/>\n      </geometry>\n    </collision>\n\
+    \    <collision name=\"camera_up_lens_collision\">\n      <origin rpy=\"0 1.57079632679\
+    \ 0\" xyz=\"0.062834 0 0.0145\"/>\n      <geometry>\n        <cylinder length=\"\
+    0.03974\" radius=\"0.0125\"/>\n      </geometry>\n    </collision>\n    <inertial>\n\
+    \      <mass value=\"0.232\"/>\n      <origin rpy=\"0 0 0\" xyz=\"0.039802 0 0.0145\"\
+    />\n      <inertia ixx=\"3.25186666667e-05\" ixy=\"0.0\" ixz=\"0.0\" iyy=\"0.000158597644043\"\
+    \ iyz=\"0.0\" izz=\"0.000158597644043\"/>\n    </inertial>\n  </link>\n  <link\
+    \ name=\"pylon_camera_up\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"\
+    0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"camera_up_optical_j\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_up\"/>\n    <child link=\"pylon_camera_up\"\
+    />\n    <origin rpy=\"-1.57079632679 0 -1.57079632679\" xyz=\"0.072044 0 0.0145\"\
+    />\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"camera_up_optical_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"camera_up\">\n    <sensor name=\"camera_up\"\
+    \ type=\"camera\">\n      <!-- I think the simulated sensor should be placed in\
+    \ the middle of the entrance pupil. -->\n      <pose>0.072044 0 0.0145 0 0 0</pose>\n\
+    \      <update_rate>9</update_rate>\n      <visualize>0</visualize>\n      <camera>\n\
+    \        <horizontal_fov>1.50970980298</horizontal_fov>\n        <image>\n   \
+    \       <width>1920</width>\n          <height>1200</height>\n          <format>R8G8B8</format>\n\
+    \        </image>\n        <clip>\n          <near>0.011726</near>\n         \
+    \ <far>300</far>\n        </clip>\n        <noise>\n          <type>gaussian</type>\n\
+    \          <mean>0.0</mean>\n          <stddev>0.007</stddev>\n        </noise>\n\
+    \        <lens>\n          <intrinsics>\n            <fx>1020.51005492</fx>\n\
+    \            <fy>1020.51005492</fy>\n            <cx>959.5</cx>\n            <cy>599.5</cy>\n\
+    \            <s>0</s>\n          </intrinsics>\n        </lens>\n      </camera>\n\
+    \    </sensor>\n  </gazebo>\n  <joint name=\"camera_up_j\" type=\"fixed\">\n \
+    \   <parent link=\"top_box\"/>\n    <child link=\"camera_up\"/>\n    <origin rpy=\"\
+    3.14159265359 -1.57079632679 -1.57079632679\" xyz=\"0 -0.07 0.058\"/>\n  </joint>\n\
+    \  <!-- workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo\
+    \ reference=\"camera_up_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <link name=\"ouster_calib\">\n    <inertial>\n      <origin rpy=\"\
+    0 0 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\"\
+    \ ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n\
+    \    <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"ouster_calib_j\"\
+    \ type=\"fixed\">\n    <parent link=\"ouster_calib\"/>\n    <child link=\"os_sensor\"\
+    />\n    <origin rpy=\"0 0 -0.785398163397\" xyz=\"0 0 0\"/>\n  </joint>\n  <!--\
+    \ workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    ouster_calib_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"os_sensor\">\n    <visual>\n      <geometry>\n        <mesh filename=\"\
+    package://marv_description/meshes/ouster-os0.dae\"/>\n      </geometry>\n    </visual>\n\
+    \    <collision>\n      <origin rpy=\"0 0 0\" xyz=\"0 0 0.03675\"/>\n      <geometry>\n\
+    \        <cylinder length=\"0.0735\" radius=\"0.0435\"/>\n      </geometry>\n\
+    \    </collision>\n    <inertial>\n      <mass value=\"0.5\"/>\n      <origin\
+    \ rpy=\"0 0 0\" xyz=\"0 0 0.03675\"/>\n      <inertia ixx=\"0.000461625\" ixy=\"\
+    0.0\" ixz=\"0.0\" iyy=\"0.000461625\" iyz=\"0.0\" izz=\"0.0004730625\"/>\n   \
+    \ </inertial>\n  </link>\n  <gazebo reference=\"os_sensor\">\n  </gazebo>\n  <joint\
+    \ name=\"laser_j\" type=\"fixed\">\n    <parent link=\"top_box\"/>\n    <child\
+    \ link=\"ouster_calib\"/>\n    <origin rpy=\"0 0 0\" xyz=\"0 0 0.18\"/>\n  </joint>\n\
+    \  <!-- workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo\
+    \ reference=\"laser_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <!--\n    <xacro:if value=\"$(arg has_ouster_lidar)\">\n     \
+    \   <xacro:empty_link name=\"$(arg prefix)direction_sensor_calib_front\" />\n\
+    \        <xacro:fixed_joint name=\"$(arg prefix)direction_sensor_calib_front_j\"\
+    \ parent=\"$(arg prefix)direction_sensor_calib_front\" child=\"$(arg prefix)front_lidar\"\
+    \ xyz=\"0 0 0\" rpy=\"0 0 ${-pi/4}\" />\n        <xacro:direction_lidar name=\"\
+    front_lidar\" simulate=\"$(arg simulate_ouster_lidar)\" visualize=\"$(arg visualize_sensors)\"\
+    \ />\n        <xacro:fixed_joint name=\"laser_front_j\" parent=\"$(arg prefix)top_box\"\
+    \ child=\"$(arg prefix)direction_sensor_calib_front\" xyz=\"0.5 0 1\" rpy=\"0\
+    \ 0 0\" />\n    </xacro:if>\n    -->\n  <!-- Compute total mass -->\n  <link mass=\"\
+    60.006\" name=\"total_mass_60_006\"/>\n  <joint name=\"total_mass_j\" type=\"\
+    fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"total_mass_60_006\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n  </joint>\n  <!-- workaround for\
+    \ https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"total_mass_j\"\
+    >\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n  <!-- Gazebo-specific\
+    \ stuff - no link specification beyond this point (so that all are counted in\
+    \ the total mass) -->\n  <gazebo>\n  </gazebo>\n  <gazebo reference=\"base_link\"\
+    >\n    <selfCollide>false</selfCollide>\n  </gazebo>\n  <gazebo reference=\"front_left_flipper_j\"\
+    >\n    <selfCollide>false</selfCollide>\n    <!--<kinematic>false</kinematic>-->\n\
+    \    <selfCollide>true</selfCollide>\n    <collision>\n      <surface>\n     \
+    \   <friction>\n          <ode>\n            <mu>1</mu>\n            <mu2>150</mu2>\n\
+    \            <fdir1>0 0 1</fdir1>\n          </ode>\n        </friction>\n   \
+    \   </surface>\n    </collision>\n  </gazebo>\n  <gazebo reference=\"front_right_flipper_j\"\
+    >\n    <selfCollide>false</selfCollide>\n    <!--<kinematic>false</kinematic>-->\n\
+    \    <selfCollide>true</selfCollide>\n    <collision>\n      <surface>\n     \
+    \   <friction>\n          <ode>\n            <mu>1</mu>\n            <mu2>150</mu2>\n\
+    \            <fdir1>0 0 1</fdir1>\n          </ode>\n        </friction>\n   \
+    \   </surface>\n    </collision>\n  </gazebo>\n  <gazebo reference=\"rear_left_flipper_j\"\
+    >\n    <selfCollide>false</selfCollide>\n    <!--<kinematic>false</kinematic>-->\n\
+    \    <selfCollide>true</selfCollide>\n    <collision>\n      <surface>\n     \
+    \   <friction>\n          <ode>\n            <mu>1</mu>\n            <mu2>150</mu2>\n\
+    \            <fdir1>0 0 1</fdir1>\n          </ode>\n        </friction>\n   \
+    \   </surface>\n    </collision>\n  </gazebo>\n  <gazebo reference=\"rear_right_flipper_j\"\
+    >\n    <selfCollide>false</selfCollide>\n    <!--<kinematic>false</kinematic>-->\n\
+    \    <selfCollide>true</selfCollide>\n    <collision>\n      <surface>\n     \
+    \   <friction>\n          <ode>\n            <mu>1</mu>\n            <mu2>150</mu2>\n\
+    \            <fdir1>0 0 1</fdir1>\n          </ode>\n        </friction>\n   \
+    \   </surface>\n    </collision>\n  </gazebo>\n  <gazebo>\n    <!--          \
+    \  TODO: this should be set to true but it slows down rotation of the robot -->\n\
+    \    <!--            <self_collide>true</self_collide>-->\n  </gazebo>\n  <gazebo\
+    \ reference=\"front_left_flipper_j\">\n    <stopCfm value=\"0\"/>\n    <stopErp\
+    \ value=\"0.2\"/>\n    <implicitSpringDamper value=\"1\"/>\n  </gazebo>\n  <gazebo\
+    \ reference=\"front_right_flipper_j\">\n    <stopCfm value=\"0\"/>\n    <stopErp\
+    \ value=\"0.2\"/>\n    <implicitSpringDamper value=\"1\"/>\n  </gazebo>\n  <gazebo\
+    \ reference=\"rear_left_flipper_j\">\n    <stopCfm value=\"0\"/>\n    <stopErp\
+    \ value=\"0.2\"/>\n    <implicitSpringDamper value=\"1\"/>\n  </gazebo>\n  <gazebo\
+    \ reference=\"rear_right_flipper_j\">\n    <stopCfm value=\"0\"/>\n    <stopErp\
+    \ value=\"0.2\"/>\n    <implicitSpringDamper value=\"1\"/>\n  </gazebo>\n  <!--\
+    \ LIGHTS -->\n  <gazebo reference=\"base_link\">\n    <light name=\"light_left\"\
+    \ type=\"spot\">\n      <pose>0 0.19 0.1621 1.57079632679 1.57079632679 0</pose>\n\
+    \      <cast_shadows>1</cast_shadows>\n      <attenuation>\n        <range>30</range>\n\
+    \        <linear>0.2</linear>\n        <constant>0.1</constant>\n        <quadratic>0.0025</quadratic>\n\
+    \      </attenuation>\n      <diffuse>0.8 0.8 0.5 1</diffuse>\n      <specular>0.8\
+    \ 0.8 0.5 1</specular>\n      <spot>\n        <inner_angle>2.8</inner_angle>\n\
+    \        <outer_angle>2.9</outer_angle>\n        <falloff>1</falloff>\n      </spot>\n\
+    \      <direction>0 0 -1</direction>\n    </light>\n    <light name=\"light_right\"\
+    \ type=\"spot\">\n      <pose>0 -0.19 0.1621 4.71238898038 1.57079632679 0</pose>\n\
+    \      <cast_shadows>1</cast_shadows>\n      <attenuation>\n        <range>30</range>\n\
+    \        <linear>0.2</linear>\n        <constant>0.1</constant>\n        <quadratic>0.0025</quadratic>\n\
+    \      </attenuation>\n      <diffuse>0.8 0.8 0.5 1</diffuse>\n      <specular>0.8\
+    \ 0.8 0.5 1</specular>\n      <spot>\n        <inner_angle>2.8</inner_angle>\n\
+    \        <outer_angle>2.9</outer_angle>\n        <falloff>1</falloff>\n      </spot>\n\
+    \      <direction>0 0 -1</direction>\n    </light>\n    <light name=\"light_front\"\
+    \ type=\"spot\">\n      <pose>0.3125 0 0.1621 3.14159265359 1.57079632679 0</pose>\n\
+    \      <cast_shadows>1</cast_shadows>\n      <attenuation>\n        <range>30</range>\n\
+    \        <linear>0.2</linear>\n        <constant>0.1</constant>\n        <quadratic>0.0025</quadratic>\n\
+    \      </attenuation>\n      <diffuse>0.8 0.8 0.5 1</diffuse>\n      <specular>0.8\
+    \ 0.8 0.5 1</specular>\n      <spot>\n        <inner_angle>2.8</inner_angle>\n\
+    \        <outer_angle>2.9</outer_angle>\n        <falloff>1</falloff>\n      </spot>\n\
+    \      <direction>0 0 -1</direction>\n    </light>\n    <light name=\"light_rear\"\
+    \ type=\"spot\">\n      <pose>-0.3125 0 0.1621 0 1.57079632679 0</pose>\n    \
+    \  <cast_shadows>1</cast_shadows>\n      <attenuation>\n        <range>40</range>\n\
+    \        <linear>0</linear>\n        <constant>0.2</constant>\n        <quadratic>0.0025</quadratic>\n\
+    \      </attenuation>\n      <diffuse>0.8 0.8 0.5 1</diffuse>\n      <specular>0.8\
+    \ 0.8 0.5 1</specular>\n      <spot>\n        <inner_angle>2.8</inner_angle>\n\
+    \        <outer_angle>2.9</outer_angle>\n        <falloff>1</falloff>\n      </spot>\n\
+    \      <direction>0 0 -1</direction>\n    </light>\n  </gazebo>\n  <gazebo reference=\"\
+    top_box\">\n    <light name=\"light_up\" type=\"spot\">\n      <pose>0.001 -0.116\
+    \ 0.101 0 3.14159265359 0</pose>\n      <attenuation>\n        <range>60</range>\n\
+    \        <linear>0</linear>\n        <constant>0.1</constant>\n        <quadratic>0.0025</quadratic>\n\
+    \      </attenuation>\n      <diffuse>0.8 0.8 0.5 1</diffuse>\n      <specular>0.8\
+    \ 0.8 0.5 1</specular>\n      <spot>\n        <inner_angle>1.0471975512</inner_angle>\n\
+    \        <outer_angle>1.57079632679</outer_angle>\n        <falloff>1</falloff>\n\
+    \      </spot>\n      <direction>0 0 -1</direction>\n    </light>\n  </gazebo>\n\
+    \  <link name=\"imu\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"0 0\
+    \ 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"imu_j\" type=\"\
+    fixed\">\n    <parent link=\"base_link\"/>\n    <child link=\"imu\"/>\n    <origin\
+    \ rpy=\"3.14159265359 0 -1.57079632679\" xyz=\"0 0 0.1500\"/>\n  </joint>\n  <!--\
+    \ workaround for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    imu_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n  <link\
+    \ name=\"gps_antenna\">\n    <inertial>\n      <origin rpy=\"0 0 0\" xyz=\"0 0\
+    \ 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\" ixy=\"1e-6\"\
+    \ ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n   \
+    \ <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"gps_antenna_j\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_rear\"/>\n    <child link=\"gps_antenna\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.03 0 0.03\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    gps_antenna_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"dgps_main_antenna\">\n    <inertial>\n      <origin rpy=\"0 0\
+    \ 0\" xyz=\"0 0 0\"/>\n      <mass value=\"1e-5\"/>\n      <inertia ixx=\"1e-3\"\
+    \ ixy=\"1e-6\" ixz=\"1e-6\" iyy=\"1e-3\" iyz=\"1e-6\" izz=\"1e-3\"/>\n    </inertial>\n\
+    \    <selfCollide>false</selfCollide>\n  </link>\n  <joint name=\"dgps_main_antenna_j\"\
+    \ type=\"fixed\">\n    <parent link=\"os_sensor\"/>\n    <child link=\"dgps_main_antenna\"\
+    />\n    <origin rpy=\"0 0 0\" xyz=\"0.0 0.0 0.159\"/>\n  </joint>\n  <!-- workaround\
+    \ for https://github.com/osrf/sdformat/issues/378 -->\n  <gazebo reference=\"\
+    dgps_main_antenna_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n  </gazebo>\n\
+    \  <link name=\"dgps_aux_antenna\">\n    <visual>\n      <origin xyz=\"0 0 -0.1415\"\
+    />\n      <geometry>\n        <box size=\"0.04 0.04 0.323\"/>\n      </geometry>\n\
+    \    </visual>\n    <collision>\n      <origin xyz=\"0 0 -0.1415\"/>\n      <geometry>\n\
+    \        <box size=\"0.04 0.04 0.323\"/>\n      </geometry>\n    </collision>\n\
+    \  </link>\n  <joint name=\"dgps_aux_antenna_j\" type=\"fixed\">\n    <parent\
+    \ link=\"rear_right_box\"/>\n    <child link=\"dgps_aux_antenna\"/>\n    <origin\
+    \ rpy=\"0 0 0\" xyz=\"0.05 0.34 0.283\"/>\n  </joint>\n  <!-- workaround for https://github.com/osrf/sdformat/issues/378\
+    \ -->\n  <gazebo reference=\"dgps_aux_antenna_j\">\n    <preserveFixedJoint>true</preserveFixedJoint>\n\
+    \  </gazebo>\n  <gazebo reference=\"imu\">\n    <selfCollide>false</selfCollide>\n\
+    \    <!--        <material>Gazebo/GreenTransparent</material>-->\n    <sensor\
+    \ name=\"imu\" type=\"imu\">\n      <always_on>1</always_on>\n      <update_rate>50</update_rate>\n\
+    \      <imu>\n        <angular_velocity>\n          <x>\n            <noise type=\"\
+    gaussian\">\n              <mean>0</mean>\n              <stddev>0.009</stddev>\n\
+    \              <bias_mean>0.00075</bias_mean>\n              <bias_stddev>0.005</bias_stddev>\n\
+    \              <precision>0.00025</precision>\n            </noise>\n        \
+    \  </x>\n          <y>\n            <noise type=\"gaussian\">\n              <mean>0</mean>\n\
+    \              <stddev>0.009</stddev>\n              <bias_mean>0.00075</bias_mean>\n\
+    \              <bias_stddev>0.005</bias_stddev>\n              <precision>0.00025</precision>\n\
+    \            </noise>\n          </y>\n          <z>\n            <noise type=\"\
+    gaussian\">\n              <mean>0</mean>\n              <stddev>0.009</stddev>\n\
+    \              <bias_mean>0.00075</bias_mean>\n              <bias_stddev>0.005</bias_stddev>\n\
+    \              <precision>0.00025</precision>\n            </noise>\n        \
+    \  </z>\n        </angular_velocity>\n        <linear_acceleration>\n        \
+    \  <x>\n            <noise type=\"gaussian\">\n              <mean>0</mean>\n\
+    \              <stddev>0.021</stddev>\n              <bias_mean>0.05</bias_mean>\n\
+    \              <bias_stddev>0.0075</bias_stddev>\n              <precision>0.005</precision>\n\
+    \            </noise>\n          </x>\n          <y>\n            <noise type=\"\
+    gaussian\">\n              <mean>0</mean>\n              <stddev>0.021</stddev>\n\
+    \              <bias_mean>0.05</bias_mean>\n              <bias_stddev>0.0075</bias_stddev>\n\
+    \              <precision>0.005</precision>\n            </noise>\n          </y>\n\
+    \          <z>\n            <noise type=\"gaussian\">\n              <mean>0</mean>\n\
+    \              <stddev>0.021</stddev>\n              <bias_mean>0.05</bias_mean>\n\
+    \              <bias_stddev>0.0075</bias_stddev>\n              <precision>0.005</precision>\n\
+    \            </noise>\n          </z>\n        </linear_acceleration>\n      </imu>\n\
+    \    </sensor>\n  </gazebo>\n</robot>\n\n"
+  simulated: false
+  teleop:
+    brake_duration: 1
+    clear_fault_button:
+      bit: 6
+      type: Button
+    clear_fault_enabled: true
+    clear_fault_service_name: /marv/clear_errors
+    deadman_button:
+      bit: 0
+      type: Button
+    flipper_move:
+      bit: 4
+      type: Axis
+    flippers_deadzone_vel: 0.05
+    flippers_max_vel: 1.57
+    front_button:
+      bit: 7
+      inverted: true
+      threshold: 0.8
+      type: Axis
+    front_left_flipper:
+      inverted: true
+      name: front_left_flipper_j
+      topic: /marv/flippers_position_controller/front_left_flipper_j/cmd_pos_rel
+    front_light_service_name: /marv/lights/front_cmd
+    front_right_flipper:
+      inverted: true
+      name: front_right_flipper_j
+      topic: /marv/flippers_position_controller/front_right_flipper_j/cmd_pos_rel
+    joy_debug: false
+    joy_node:
+      autorepeat_rate: 10
+      dev: /dev/input/js0
+    left_button:
+      bit: 6
+      inverted: true
+      threshold: 0.8
+      type: Axis
+    left_front_flipper_button:
+      bit: 4
+      type: Button
+    left_light_service_name: /marv/lights/left_cmd
+    left_rear_flipper_button:
+      bit: 2
+      threshold: -0.8
+      type: Axis
+    light_intensity: 50
+    move_deadzone_vel: 0.05
+    move_max_vel: 1
+    move_robot:
+      bit: 1
+      type: Axis
+    rear_button:
+      bit: 7
+      inverted: false
+      threshold: -0.8
+      type: Axis
+    rear_left_flipper:
+      inverted: false
+      name: rear_left_flipper_j
+      topic: /marv/flippers_position_controller/rear_left_flipper_j/cmd_pos_rel
+    rear_light_service_name: /marv/lights/rear_cmd
+    rear_right_flipper:
+      inverted: false
+      name: rear_right_flipper_j
+      topic: /marv/flippers_position_controller/rear_right_flipper_j/cmd_pos_rel
+    reboot_button:
+      bit: 7
+      type: Button
+    reboot_enabled: false
+    reboot_service_name: reboot_odrive
+    right_button:
+      bit: 6
+      inverted: false
+      threshold: -0.8
+      type: Axis
+    right_front_flipper_button:
+      bit: 5
+      type: Button
+    right_light_service_name: /marv/lights/right_cmd
+    right_rear_flipper_button:
+      bit: 5
+      threshold: -0.8
+      type: Axis
+    robot_move: /joy/cmd_vel
+    set_12V_button:
+      bit: 3
+      type: Button
+    set_12V_service_name: /marv/driver/out_12V_cmd
+    set_24V_button:
+      bit: 1
+      type: Button
+    set_24V_service_name: /marv/driver/out_24V_cmd
+    set_5V_button:
+      bit: 2
+      type: Button
+    set_5V_service_name: /marv/driver/out_5V_cmd
+    top_button:
+      bit: 7
+      type: Button
+    top_light_service_name: /marv/driver/top_light_cmd
+    turn_robot:
+      bit: 0
+      type: Axis
+    turning_deadzone_vel: 0.05
+    turning_max_vel: 1.5
+    twist_mux:
+      default_out_topic: /marv/cartesian_controller/cmd_vel
+      locks:
+      - name: estop
+        priority: 255
+        timeout: 0.0
+        topic: /marv/estop
+      topics:
+      - name: autonomy cmd_vel
+        priority: 10
+        timeout: 0.5
+        topic: /nav/cmd_vel
+      - name: autonomy cmd_pos
+        out_topic: /marv/tracks_position_controller/cmd_pos
+        priority: 10
+        timeout: 0.5
+        topic: /nav/cmd_pos
+      - name: autonomy cmd_pos_rel
+        out_topic: /marv/tracks_position_controller/cmd_pos_rel
+        priority: 10
+        timeout: 0.5
+        topic: /nav/cmd_pos_rel
+      - disable_topic: /marv/teleop/deadman
+        disable_topic_inverted: true
+        name: gamepad cmd_vel
+        priority: 40
+        timeout: 0.2
+        topic: /joy/cmd_vel
+      - name: gamepad cmd_pos
+        out_topic: /marv/tracks_position_controller/cmd_pos
+        priority: 40
+        timeout: 0.2
+        topic: /joy/cmd_pos
+      - name: gamepad cmd_pos_rel
+        out_topic: /marv/tracks_position_controller/cmd_pos_rel
+        priority: 40
+        timeout: 0.2
+        topic: /joy/cmd_pos_rel
+      - name: safety_controller cmd_vel
+        priority: 100
+        timeout: 1.0
+        topic: /safety/cmd_vel
+      - name: safety_controller cmd_pos
+        out_topic: /marv/tracks_position_controller/cmd_pos
+        priority: 100
+        timeout: 1.0
+        topic: /safety/cmd_pos
+      - name: safety_controller cmd_pos_rel
+        out_topic: /marv/tracks_position_controller/cmd_pos_rel
+        priority: 100
+        timeout: 1.0
+        topic: /safety/cmd_pos_rel
+      - name: estop cmd_vel
+        priority: 254
+        timeout: 1.0
+        topic: /emergency_stop/cmd_vel
+      - name: estop cmd_pos
+        out_topic: /marv/tracks_position_controller/cmd_pos
+        priority: 254
+        timeout: 1.0
+        topic: /emergency_stop/cmd_pos
+      - name: estop cmd_pos_rel
+        out_topic: /marv/tracks_position_controller/cmd_pos_rel
+        priority: 254
+        timeout: 1.0
+        topic: /emergency_stop/cmd_pos_rel
+  tracks_effort_controller:
+    cmd_timeout: 0.12
+    joints:
+    - front_left_flipper_wheel1_j
+    - front_right_flipper_wheel1_j
+    - rear_left_flipper_wheel1_j
+    - rear_right_flipper_wheel1_j
+    type: marv_effort_controller/EffortController
+  tracks_max_current: 20.0
+  tracks_max_vel: 1.0
+  tracks_position_controller:
+    cmd_timeout: 0.12
+    command_wrap: false
+    deadzone_enabled: false
+    joints:
+    - front_left_flipper_wheel1_j
+    - front_right_flipper_wheel1_j
+    - rear_left_flipper_wheel1_j
+    - rear_right_flipper_wheel1_j
+    joints_reversed:
+    - false
+    - false
+    - false
+    - false
+    type: marv_position_controller/PositionController
+  tracks_velocity_controller:
+    cmd_timeout: 0.12
+    default_max_vel: 1.05
+    joints:
+    - front_left_flipper_wheel1_j
+    - front_right_flipper_wheel1_j
+    - rear_left_flipper_wheel1_j
+    - rear_right_flipper_wheel1_j
+    max_vel: 1.05
+    type: marv_velocity_controller/VelocityController
+ntrip_relay:
+  host: ntrip.pecny.cz
+  num_threads: 2
+  port: 2101
+  sigkill_on_stream_stop: true
+  sigkill_timeout: 30
+oak:
+  camera_i_base_frame: oak
+  camera_i_calibration_dump: false
+  camera_i_cam_pitch: 0.0
+  camera_i_cam_pos_x: 0.0
+  camera_i_cam_pos_y: 0.0
+  camera_i_cam_pos_z: 0.0
+  camera_i_cam_roll: 0.0
+  camera_i_cam_yaw: 0.0
+  camera_i_enable_imu: true
+  camera_i_enable_ir: true
+  camera_i_enable_sync: true
+  camera_i_external_calibration_path: ''
+  camera_i_floodlight_brightness: 0.0
+  camera_i_imu_from_descr: false
+  camera_i_ip: ''
+  camera_i_laser_dot_brightness: 800.0
+  camera_i_mx_id: ''
+  camera_i_nn_type: none
+  camera_i_parent_frame: oak-d-base-frame
+  camera_i_pipeline_dump: false
+  camera_i_pipeline_type: RGBD
+  camera_i_publish_tf_from_calibration: true
+  camera_i_restart_on_diagnostics_error: false
+  camera_i_tf_base_frame: oak
+  camera_i_tf_cam_pitch: '0.47'
+  camera_i_tf_cam_pos_x: '0.0'
+  camera_i_tf_cam_pos_y: '0.0'
+  camera_i_tf_cam_pos_z: '0.1'
+  camera_i_tf_cam_roll: '0.0'
+  camera_i_tf_cam_yaw: '0.0'
+  camera_i_tf_camera_model: ''
+  camera_i_tf_camera_name: oak
+  camera_i_tf_custom_urdf_location: ''
+  camera_i_tf_custom_xacro_args: ''
+  camera_i_tf_imu_from_descr: 'false'
+  camera_i_tf_parent_frame: camera_front
+  camera_i_usb_port_id: ''
+  camera_i_usb_speed: SUPER_PLUS
+  imu_i_acc_cov: 0.004
+  imu_i_acc_freq: 400
+  imu_i_batch_report_threshold: 5
+  imu_i_enable_rotation: false
+  imu_i_get_base_device_timestamp: false
+  imu_i_gyro_cov: 0.004
+  imu_i_gyro_freq: 100
+  imu_i_mag_cov: 0.0
+  imu_i_max_batch_reports: 10
+  imu_i_max_q_size: 30
+  imu_i_message_type: IMU_WITH_MAG_SPLIT
+  imu_i_rot_cov: -1.0
+  imu_i_sync_method: LINEAR_INTERPOLATE_GYRO
+  imu_i_update_ros_base_time_on_ros_msg: false
+  left_i_add_exposure_offset: false
+  left_i_board_socket_id: 1
+  left_i_calibration_file: ''
+  left_i_disable_node: false
+  left_i_enable_feature_tracker: false
+  left_i_enable_lazy_publisher: true
+  left_i_enable_nn: false
+  left_i_exposure_offset: 0
+  left_i_fps: 30.0
+  left_i_fsync_continuous: false
+  left_i_fsync_trigger: false
+  left_i_get_base_device_timestamp: false
+  left_i_height: 720
+  left_i_low_bandwidth: false
+  left_i_low_bandwidth_quality: 50
+  left_i_max_q_size: 30
+  left_i_publish_topic: false
+  left_i_resolution: 720P
+  left_i_reverse_stereo_socket_order: false
+  left_i_sensor_img_orientation: AUTO
+  left_i_set_isp3a_fps: false
+  left_i_simulate_from_topic: false
+  left_i_simulated_topic_name: ''
+  left_i_update_ros_base_time_on_ros_msg: false
+  left_i_width: 1280
+  left_r_exposure: 1000
+  left_r_focus: 1
+  left_r_iso: 800
+  left_r_keep_preview_aspect_ratio: true
+  left_r_set_man_exposure: false
+  left_r_set_man_focus: false
+  left_r_set_man_whitebalance: false
+  left_r_whitebalance: 3300
+  pipeline_gen_i_enable_sync: true
+  rgb:
+    image_raw:
+      compressed:
+        format: jpeg
+        jpeg_optimize: false
+        jpeg_progressive: false
+        jpeg_quality: 80
+        jpeg_restart_interval: 0
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        format: png
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  rgb_i_add_exposure_offset: false
+  rgb_i_board_socket_id: 0
+  rgb_i_calibration_file: ''
+  rgb_i_disable_node: false
+  rgb_i_enable_feature_tracker: false
+  rgb_i_enable_lazy_publisher: true
+  rgb_i_enable_nn: false
+  rgb_i_enable_preview: false
+  rgb_i_exposure_offset: 0
+  rgb_i_fps: 30.0
+  rgb_i_fsync_continuous: false
+  rgb_i_fsync_trigger: false
+  rgb_i_get_base_device_timestamp: false
+  rgb_i_height: 720
+  rgb_i_interleaved: false
+  rgb_i_isp_den: 3
+  rgb_i_isp_num: 2
+  rgb_i_keep_preview_aspect_ratio: true
+  rgb_i_low_bandwidth: false
+  rgb_i_low_bandwidth_quality: 50
+  rgb_i_max_q_size: 30
+  rgb_i_output_isp: true
+  rgb_i_preview_height: 300
+  rgb_i_preview_size: 300
+  rgb_i_preview_width: 300
+  rgb_i_publish_compressed: false
+  rgb_i_publish_topic: true
+  rgb_i_resolution: 1080P
+  rgb_i_reverse_stereo_socket_order: false
+  rgb_i_sensor_img_orientation: AUTO
+  rgb_i_set_isp3a_fps: false
+  rgb_i_set_isp_scale: true
+  rgb_i_simulate_from_topic: false
+  rgb_i_simulated_topic_name: ''
+  rgb_i_synced: true
+  rgb_i_update_ros_base_time_on_ros_msg: false
+  rgb_i_width: 1280
+  rgb_r_exposure: 1000
+  rgb_r_focus: 1
+  rgb_r_iso: 800
+  rgb_r_keep_preview_aspect_ratio: true
+  rgb_r_set_man_exposure: false
+  rgb_r_set_man_focus: false
+  rgb_r_set_man_whitebalance: false
+  rgb_r_whitebalance: 3300
+  right_i_add_exposure_offset: false
+  right_i_board_socket_id: 2
+  right_i_calibration_file: ''
+  right_i_disable_node: false
+  right_i_enable_feature_tracker: false
+  right_i_enable_lazy_publisher: true
+  right_i_enable_nn: false
+  right_i_exposure_offset: 0
+  right_i_fps: 30.0
+  right_i_fsync_continuous: false
+  right_i_fsync_trigger: false
+  right_i_get_base_device_timestamp: false
+  right_i_height: 720
+  right_i_low_bandwidth: false
+  right_i_low_bandwidth_quality: 50
+  right_i_max_q_size: 30
+  right_i_publish_topic: false
+  right_i_resolution: 720P
+  right_i_reverse_stereo_socket_order: false
+  right_i_sensor_img_orientation: AUTO
+  right_i_set_isp3a_fps: false
+  right_i_simulate_from_topic: false
+  right_i_simulated_topic_name: ''
+  right_i_update_ros_base_time_on_ros_msg: false
+  right_i_width: 1280
+  right_r_exposure: 1000
+  right_r_focus: 1
+  right_r_iso: 800
+  right_r_keep_preview_aspect_ratio: true
+  right_r_set_man_exposure: false
+  right_r_set_man_focus: false
+  right_r_set_man_whitebalance: false
+  right_r_whitebalance: 3300
+  robot_description: "<?xml version=\"1.0\" ?>\n<!-- ===================================================================================\
+    \ -->\n<!-- |    This document was autogenerated by xacro from /opt/ros/noetic/share/depthai_descriptions/urdf/base_descr.urdf.xacro\
+    \ | -->\n<!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED              \
+    \                   | -->\n<!-- ===================================================================================\
+    \ -->\n<robot name=\"depthai_camera\">\n  <link name=\"camera_front\"/>\n  <!--\
+    \ base_link of the sensor-->\n  <link name=\"oak\"/>\n  <joint name=\"oak_center_joint\"\
+    \ type=\"fixed\">\n    <parent link=\"camera_front\"/>\n    <child link=\"oak\"\
+    />\n    <origin rpy=\"0.0 0.47 0.0\" xyz=\"0.0 0.0 0.1\"/>\n  </joint>\n  <!--\
+    \ device Center -->\n  <link name=\"oak_model_origin\">\n    <visual>\n      <origin\
+    \ rpy=\"0 0 0\" xyz=\"0 0 0\"/>\n      <geometry>\n        <mesh filename=\"package://depthai_descriptions/urdf/models/OAK-D-PRO.stl\"\
+    />\n      </geometry>\n      <material name=\"mat\">\n        <color rgba=\"0.8\
+    \ 0.8 0.8 0.8\"/>\n      </material>\n    </visual>\n  </link>\n  <joint name=\"\
+    oak_model_origin_joint\" type=\"fixed\">\n    <parent link=\"oak\"/>\n    <child\
+    \ link=\"oak_model_origin\"/>\n    <origin rpy=\"1.5708 0 1.5708\" xyz=\"0 0 0\"\
+    />\n  </joint>\n  <!-- IMU -->\n</robot>\n\n"
+  stereo:
+    image_raw:
+      compressed:
+        format: jpeg
+        jpeg_optimize: false
+        jpeg_progressive: false
+        jpeg_quality: 80
+        jpeg_restart_interval: 0
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        format: rvl
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  stereo_i_add_exposure_offset: false
+  stereo_i_align_depth: true
+  stereo_i_bilateral_sigma: 0
+  stereo_i_board_socket_id: 0
+  stereo_i_depth_filter_size: 5
+  stereo_i_depth_preset: HIGH_ACCURACY
+  stereo_i_disparity_width: DISPARITY_96
+  stereo_i_enable_alpha_scaling: false
+  stereo_i_enable_brightness_filter: false
+  stereo_i_enable_companding: false
+  stereo_i_enable_decimation_filter: false
+  stereo_i_enable_disparity_shift: false
+  stereo_i_enable_distortion_correction: false
+  stereo_i_enable_lazy_publisher: true
+  stereo_i_enable_spatial_filter: false
+  stereo_i_enable_spatial_nn: false
+  stereo_i_enable_speckle_filter: false
+  stereo_i_enable_temporal_filter: false
+  stereo_i_enable_threshold_filter: false
+  stereo_i_exposure_offset: 0
+  stereo_i_extended_disp: false
+  stereo_i_get_base_device_timestamp: false
+  stereo_i_height: 720
+  stereo_i_left_rect_add_exposure_offset: false
+  stereo_i_left_rect_enable_feature_tracker: false
+  stereo_i_left_rect_exposure_offset: 0
+  stereo_i_left_rect_low_bandwidth: false
+  stereo_i_left_rect_low_bandwidth_quality: 50
+  stereo_i_left_socket_id: 1
+  stereo_i_low_bandwidth: false
+  stereo_i_low_bandwidth_quality: 50
+  stereo_i_lr_check: true
+  stereo_i_lrc_threshold: 10
+  stereo_i_max_q_size: 30
+  stereo_i_output_disparity: false
+  stereo_i_publish_left_rect: false
+  stereo_i_publish_right_rect: false
+  stereo_i_publish_synced_rect_pair: false
+  stereo_i_publish_topic: true
+  stereo_i_rectify_edge_fill_color: 0
+  stereo_i_reverse_stereo_socket_order: false
+  stereo_i_right_rect_add_exposure_offset: false
+  stereo_i_right_rect_enable_feature_tracker: false
+  stereo_i_right_rect_exposure_offset: 0
+  stereo_i_right_rect_low_bandwidth: false
+  stereo_i_right_rect_low_bandwidth_quality: 50
+  stereo_i_right_socket_id: 2
+  stereo_i_set_disparity_to_depth_use_spec_translation: false
+  stereo_i_set_input_size: false
+  stereo_i_socket_name: rgb
+  stereo_i_spatial_nn_source: right
+  stereo_i_stereo_conf_threshold: 240
+  stereo_i_subpixel: true
+  stereo_i_subpixel_fractional_bits: 3
+  stereo_i_synced: true
+  stereo_i_update_ros_base_time_on_ros_msg: false
+  stereo_i_width: 1280
+os_cloud_node:
+  fields_to_publish:
+  - t
+  - intensity
+  - ambient
+  - reflectivity
+  keep_organized: true
+  max_range: 50.0
+  publish_2nd_cloud: false
+  publish_2nd_invalid: false
+  publish_2nd_scans: false
+  publish_cloud: true
+  publish_invalid: false
+  publish_scans: false
+  standardize_invalid_measurements: false
+  tf_prefix: ''
+  unalign_fields: false
+os_node:
+  allow_automotive_slave_resync: true
+  allow_local_timestamping: true
+  imu_port: 0
+  lidar_mode: 1024x10
+  lidar_port: 0
+  max_ptp_offset: 0.002
+  max_secs_without_data: 0
+  multipurpose_io_mode: OUTPUT_FROM_ENCODER_ANGLE
+  publish_every_nth: 1
+  sensor_hostname: os-992039000764.local
+  sync_pulse_out_polarity: ACTIVE_LOW
+  timestamp_mode: TIME_FROM_PTP_1588
+  udp_profile_lidar: RNG19_RFL8_SIG16_NIR16
+points_filtered_throttle:
+  frequency: 2.0
+points_throttle:
+  frequency: 2.0
+rosdistro: 'melodic
+
+  '
+roslaunch:
+  uris:
+    host_marv_robot__32891: http://marv-robot:32891/
+    host_marv_robot__35715: http://marv-robot:35715/
+    host_marv_robot__35749: http://marv-robot:35749/
+    host_marv_robot__36689: http://marv-robot:36689/
+    host_marv_robot__37087: http://marv-robot:37087/
+    host_marv_robot__37713: http://marv-robot:37713/
+    host_marv_robot__38131: http://marv-robot:38131/
+    host_marv_robot__38251: http://marv-robot:38251/
+    host_marv_robot__38261: http://marv-robot:38261/
+    host_marv_robot__40399: http://marv-robot:40399/
+    host_marv_robot__40593: http://marv-robot:40593/
+    host_marv_robot__41087: http://marv-robot:41087/
+    host_marv_robot__42365: http://marv-robot:42365/
+    host_marv_robot__42437: http://marv-robot:42437/
+    host_marv_robot__44305: http://marv-robot:44305/
+    host_marv_robot__45105: http://marv-robot:45105/
+    host_marv_robot__45369: http://marv-robot:45369/
+    host_marv_robot__45463: http://marv-robot:45463/
+rosversion: '1.14.13
+
+  '
+run_id: b7cec0b2-7bf3-11ef-ae57-d646c8acde28
+soundplay_node:
+  default_voice: ''
+  device: ''
+  loop_rate: 100
+  plugin: sound_play/festival_plugin
+xsens_driver:
+  baudrate: 115200
+  device: /dev/ttyUSB_imu
+  frame_id: imu
+zyxel_snmp_agent:
+  address: http://switch
+  password: tradrtradr
+  port_info:
+    GigabitEthernet5:
+      name: Bullet
+    GigabitEthernet6:
+      name: Cam 6
+    GigabitEthernet7:
+      name: Cam 7
+    GigabitEthernet8:
+      name: Top Box
+    TenGigabitEthernet1:
+      name: Jetson
+    TwoPointFiveGigabitEthernet1:
+      name: IEI
+    TwoPointFiveGigabitEthernet2:
+      name: NUC
+  snmp_port: 1161
+zyxel_snmp_diag:
+  agent_port: 1161
+  modules:
+    if_mib:
+      num_ports: 12
+      ports:
+        Bullet:
+          connected: true
+          speed: 1000
+        Cam 6:
+          connected: true
+          speed: 1000
+        Cam 7:
+          connected: true
+          speed: 1000
+        IEI:
+          connected: true
+          speed: 1000
+        Jetson:
+          connected: true
+          speed: 10000
+        NUC:
+          connected: true
+          speed: 1000
+        Top Box:
+          dummy: true

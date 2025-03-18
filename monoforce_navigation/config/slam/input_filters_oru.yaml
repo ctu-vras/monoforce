@@ -1,0 +1,4 @@
+- RandomSamplingDataPointsFilter:
+    prob: 0.8
+
+- ObservationDirectionDataPointsFilter

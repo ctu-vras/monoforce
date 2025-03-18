@@ -1,0 +1,2288 @@
+actor_name: Charlie
+base_link_leveller:
+  child_frame: base_link
+  parent_frame: odom
+battery_max_voltage: 50.4
+battery_min_voltage: 40.0
+battery_warn_voltage: 42.0
+body_tracks_alignment: -0.0025
+bullet_api:
+  address: https://ctu-robot-bullet
+  compute_rates: true
+  password: tradrtradr
+  rate: 0.1
+  type: bullet_ac
+  username: robot
+calibrated_joints:
+  d435:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.015
+  - -0.005
+  - 0.0
+  - realsense_holder_part2
+  - camera_back_mounting_plane
+  ouster:
+  - 0.0
+  - 0.0
+  - 0.006
+  - 0.01
+  - 0.01
+  - 0.75
+  - ouster_base
+  - os_sensor
+  ouster_base:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.175
+  - 0.0
+  - ouster_holder
+  - ouster_base
+  ouster_holder:
+  - 0.08
+  - 0.0
+  - 0.005
+  - 0.0
+  - 0.0
+  - 0.0
+  - omnicam_top
+  - ouster_holder
+  t265:
+  - -0.01101015
+  - -0.00626623
+  - 0.2895825
+  - 0.0
+  - 0.0
+  - -1.5758
+  - rear_sensor_item
+  - t265_pose_frame
+cloud_range_filter_max:
+  field: x
+  max: 5.0
+cloud_segmentation:
+  cloud_in: max_points_125mm
+  cloud_out: cloud_segmentation/points
+  debug: false
+  device: cuda
+  lidar_beams: 256
+  lidar_channels: 64
+  lidar_fov_down: -45.0
+  lidar_fov_up: 45.0
+  max_age: 0.5
+  range_projection: true
+  soft_label_ind: 1
+  weights: deeplabv3_resnet101_lr_0.0001_bs_8_epoch_90_TraversabilityClouds_depth_labels_traversability_iou_0.972.pth
+cloud_to_cloud_filtering:
+  cloud_filter_chain:
+  - name: body_filter
+    params:
+      body_model/inflation/padding: 0.01
+      body_model/inflation/per_link/padding:
+        antenna::contains: 0.08
+        base_link::0::contains: 0.07
+        front_left_flipper::contains: 0.05
+        front_right_flipper::contains: 0.05
+        mobilicom_antenna_l::contains: 0.07
+        mobilicom_antenna_r::contains: 0.07
+        rear_left_flipper::contains: 0.03
+        rear_right_flipper::contains: 0.03
+      body_model/inflation/scale: 1.01
+      body_model/robot_description_param: /nifti_robot_description
+      bounding_box/compute: true
+      bounding_box/debug: true
+      bounding_box/marker: true
+      bounding_box/publish_cut_out_pointcloud: true
+      bounding_sphere/compute: true
+      bounding_sphere/debug: true
+      bounding_sphere/marker: true
+      bounding_sphere/publish_cut_out_pointcloud: true
+      debug/marker/bounding_box: true
+      debug/marker/bounding_sphere: true
+      debug/marker/contains: true
+      debug/marker/shadow: true
+      debug/pcl/clip: true
+      debug/pcl/inside: true
+      debug/pcl/shadow: true
+      filter/do_clipping: true
+      filter/do_shadow_test: true
+      filter/max_shadow_distance: 1.0
+      frames/filtering: os_lidar
+      frames/sensor: os_lidar
+      ignored_links/contains_test:
+      - battery
+      ignored_links/shadow_test:
+      - os_sensor
+      - ouster_holder
+      - base_link::big_collision_box
+      - battery
+      - battery_cover
+      - base_link::1
+      - base_link::2
+      - base_link::3
+      - base_link::4
+      - base_link::5
+      - base_link::6
+      - base_link::7
+      sensor/max_distance: 50.0
+      sensor/min_distance: 0.07
+      sensor/point_by_point: false
+    type: robot_body_filter/RobotBodyFilterPointCloud2
+  disabled_filters: ''
+  max_age: 3600.0
+  publish_each_filter: false
+cloud_voxel_filter_max:
+  field: x
+  grid: 0.125
+  zero_valid: false
+co2:
+  baud: 57600
+  port: /dev/ttyUSBCO2
+co2_stamp:
+  frame: base_link
+display:
+  device: /dev/ttyS0
+dynamic_robot_model_server:
+  axis_x_offset: 0.059
+  axis_y_offset: 0.08
+  battery_cover_height: 0.067
+  battery_cover_x: 0.225
+  battery_mass: 2.7
+  big_collision_box_height: 0.35
+  big_collision_box_length: 0.6
+  big_collision_box_on_top: true
+  big_collision_box_width: 0.5
+  big_collision_box_x: 0.0
+  body_mass: 10.0
+  camera_0_pos_x: 0.042087
+  camera_0_pos_y: -0.001706
+  camera_0_pos_z: -0.000359
+  camera_0_quat_w: 0.49984
+  camera_0_quat_x: -0.500706
+  camera_0_quat_y: 0.499767
+  camera_0_quat_z: -0.499686
+  camera_0_rpy_p: -0.0007844824059132055
+  camera_0_rpy_r: -1.5717437560632597
+  camera_0_rpy_y: -1.5697029547363661
+  camera_1_pos_x: 0.011469
+  camera_1_pos_y: -0.040128
+  camera_1_pos_z: -8.6e-05
+  camera_1_quat_w: 0.111021
+  camera_1_quat_x: -0.110544
+  camera_1_quat_y: 0.698795
+  camera_1_quat_z: -0.697954
+  camera_1_rpy_p: 0.0008525856465700664
+  camera_1_rpy_r: -1.5718653069230086
+  camera_1_rpy_y: -2.8269565685229905
+  camera_2_pos_x: -0.034854
+  camera_2_pos_y: -0.022887
+  camera_2_pos_z: 0.000521
+  camera_2_quat_w: 0.319768
+  camera_2_quat_x: -0.32293
+  camera_2_quat_y: -0.629737
+  camera_2_quat_z: 0.629997
+  camera_2_rpy_p: 0.0041503911916930475
+  camera_2_rpy_r: -1.5725010220821427
+  camera_2_rpy_y: 2.198063607332636
+  camera_3_pos_x: -0.033204
+  camera_3_pos_y: 0.025729
+  camera_3_pos_z: 0.000217
+  camera_3_quat_w: 0.629027
+  camera_3_quat_x: -0.631192
+  camera_3_quat_y: -0.319196
+  camera_3_quat_z: 0.322546
+  camera_3_rpy_p: 0.005611132750385732
+  camera_3_rpy_r: -1.5713748741869842
+  camera_3_rpy_y: 0.9420078617362798
+  camera_4_pos_x: 0.014502
+  camera_4_pos_y: 0.038991
+  camera_4_pos_z: -0.000301
+  camera_4_quat_w: 0.694637
+  camera_4_quat_x: -0.702075
+  camera_4_quat_y: 0.111793
+  camera_4_quat_z: -0.109872
+  camera_4_rpy_p: 0.0010343402884573788
+  camera_4_rpy_r: -1.5816111122187593
+  camera_4_rpy_y: -0.31479000897956244
+  camera_5_pos_x: 0.000402
+  camera_5_pos_y: -0.000922
+  camera_5_pos_z: 0.062128
+  camera_5_quat_w: 0.706711
+  camera_5_quat_x: 0.001613
+  camera_5_quat_y: -0.001059
+  camera_5_quat_z: -0.707499
+  camera_5_rpy_p: 0.0007855787457013103
+  camera_5_rpy_r: 0.003778346518059264
+  camera_5_rpy_y: -1.5719092456776718
+  d435_pos_x: 0.0
+  d435_pos_y: 0.0
+  d435_pos_z: 0.0
+  d435_quat_w: 0.9999687502213535
+  d435_quat_x: 0.007499906250429686
+  d435_quat_y: -0.002499927083736978
+  d435_quat_z: 1.8749804688183592e-05
+  d435_rpy_p: -0.005
+  d435_rpy_r: 0.015
+  d435_rpy_y: 0.0
+  flipper_inflation_ratio: 1.5
+  flipper_inward_enlargement: 0.0
+  gps_antenna_disc_radius: 0.05
+  gps_antenna_height: 0.4
+  gps_antenna_radius: 0.03
+  has_axis_camera: false
+  has_battery_cover: true
+  has_flipper_touch_sensors: false
+  has_gps_antenna: true
+  has_jetson: false
+  has_mobilicom: false
+  has_mote_deployer: false
+  has_new_realsense: false
+  has_omnicam: true
+  has_omnicam_sensor_mount: false
+  has_omnicam_vras: false
+  has_ouster_lidar: true
+  has_ptuxthermo: false
+  has_realsense: false
+  has_realsense_d435: false
+  has_realsense_t265: false
+  has_rear_sensor_item: false
+  has_sick_lidar: false
+  has_top_box: true
+  has_velodyne: false
+  jetson_shift_x: 0.515
+  jetson_shift_y: 0.145
+  jetson_version: 1
+  jetson_yaw: 0.0
+  laser_pitch: 0.0
+  mobilicom_antenna_l_rotation: -0.5
+  mobilicom_antenna_l_tilt: 1.0
+  mobilicom_antenna_r_rotation: 0.0
+  mobilicom_antenna_r_tilt: 1.5758
+  mobilicom_antennas_length: 0.17
+  mobilicom_has_antenna_box: false
+  mobilicom_is_lite: true
+  mobilicom_parent_link: rear_right_box
+  mobilicom_pitch: 4.0
+  mobilicom_roll: 1.5758
+  mobilicom_shift_x: 0.0
+  mobilicom_shift_y: 0.01
+  mobilicom_shift_z: 0.2
+  mobilicom_yaw: 3.14152
+  ouster_base_pos_x: 0.0
+  ouster_base_pos_y: 0.0
+  ouster_base_pos_z: 0.0
+  ouster_base_quat_w: 0.996174316800261
+  ouster_base_quat_x: 0.0
+  ouster_base_quat_y: 0.0873883890887872
+  ouster_base_quat_z: 0.0
+  ouster_base_rpy_p: 0.175
+  ouster_base_rpy_r: 0.0
+  ouster_base_rpy_y: 0.0
+  ouster_holder_pos_x: 0.08
+  ouster_holder_pos_y: 0.0
+  ouster_holder_pos_z: 0.005
+  ouster_holder_quat_w: 1.0
+  ouster_holder_quat_x: 0.0
+  ouster_holder_quat_y: 0.0
+  ouster_holder_quat_z: 0.0
+  ouster_holder_rpy_p: 0.0
+  ouster_holder_rpy_r: 0.0
+  ouster_holder_rpy_y: 0.0
+  ouster_pos_x: 0.0
+  ouster_pos_y: 0.0
+  ouster_pos_z: 0.006
+  ouster_quat_w: 0.9304935161525422
+  ouster_quat_x: 0.002821128444775362
+  ouster_quat_y: 0.00648379269051955
+  ouster_quat_z: 0.3662401098524342
+  ouster_rpy_p: 0.01
+  ouster_rpy_r: 0.01
+  ouster_rpy_y: 0.75
+  ptuxthermo_x_offset: 0.2
+  ptuxthermo_y_offset: 0.18
+  realsense_holder_version: 1
+  realsense_parent_link: omnicam
+  realsense_roll: 0.0
+  realsense_shift_x: 0.0
+  realsense_shift_y: 0.0
+  realsense_shift_z: 0.0
+  realsense_tilt: -1.15
+  realsense_yaw: 0.62831853
+  revision: 2021
+  robot_description: <?xml version="1.0" ?><robot name="NIFTi"><link name="rear_right_box"/><joint
+    name="rear_right_box_j" type="fixed"><parent link="base_link"/><child link="rear_right_box"/><origin
+    rpy="0 0 0" xyz="-0.3175 -0.1215 0.185"/></joint><link name="os_sensor"><visual><geometry><mesh
+    filename="package://cras_ouster_description/meshes/ouster-os0.dae"/></geometry></visual><collision><origin
+    rpy="0 0 0" xyz="0 0 0.03675"/><geometry><cylinder length="0.0735" radius="0.0435"/></geometry></collision><inertial><mass
+    value="0.5"/><origin xyz="0 0 0.03675"/><inertia ixx="0.000461625" ixy="0.0" ixz="0.0"
+    iyy="0.000461625" iyz="0.0" izz="0.0004730625"/></inertial></link><joint name="ouster_holder_j"
+    type="fixed"><parent link="omnicam_top"/><child link="ouster_holder"/><origin
+    rpy="0.0 0.0 0.0" xyz="0.08 0.0 0.005"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+    --><gazebo reference="ouster_holder_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><joint
+    name="ouster_base_j" type="fixed"><parent link="ouster_holder"/><child link="ouster_base"/><origin
+    rpy="0.0 0.175 0.0" xyz="0.0 0.0 0.0"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+    --><gazebo reference="ouster_base_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><joint
+    name="ouster_j" type="fixed"><parent link="ouster_base"/><child link="os_sensor"/><origin
+    rpy="0.01 0.01 0.75" xyz="0.0 0.0 0.006"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+    --><gazebo reference="ouster_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><link
+    name="ouster_base"><inertial><origin rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia
+    ixx="1e-3" ixy="1e-6" ixz="1e-6" iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><link
+    name="ouster_holder"><visual><origin xyz="0 0 0"/><geometry><mesh filename="package://cras_ouster_description/meshes/ouster_holder_ladybug.dae"/></geometry></visual><inertial><mass
+    value="0.2"/><origin xyz="0 0 -0.01"/><inertia ixx="0.000251666666667" ixy="0.0"
+    ixz="0.0" iyy="0.000251666666667" iyz="0.0" izz="0.00049"/></inertial></link><link
+    name="base_link"><visual><origin rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/body_2021.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0.000000
+    0 0.1395"/><geometry><box size="0.635000 0.243000 0.108"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0.135 0.09"/><geometry><box size="0.055 0.040 0.08"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0.155 0.013"/><geometry><box size="0.055 0.020 0.075"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 -0.135 0.09"/><geometry><box size="0.055 0.040 0.08"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 -0.155 0.013"/><geometry><box size="0.055 0.020 0.075"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0 0.0655"/><geometry><box size="0.565 0.243000 0.035000"/></geometry></collision><collision><origin
+    rpy="1.57079632679 0 0" xyz="0.2825 0 0.083"/><geometry><cylinder length="0.243000"
+    radius="0.035035"/></geometry></collision><collision><origin rpy="1.57079632679
+    0 0" xyz="-0.2825 0 0.083"/><geometry><cylinder length="0.243000" radius="0.035035"/></geometry></collision><collision
+    name="big_collision_box"><origin rpy="0 0 0" xyz="0.0 0 0.255"/><geometry><box
+    size="0.6 0.5 0.35"/></geometry></collision><inertial><origin rpy="0 0 0" xyz="-0.034
+    0 0.142"/><mass value="6.746"/><inertia ixx="0.0069904" ixy="0.00012271" ixz="-4.2725e-05"
+    iyy="0.02129" iyz="-0.00010522" izz="0.025519"/></inertial></link><link name="battery"><visual><origin
+    rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/battery.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0
+    0 0.0410"/><geometry><box size="0.1450 0.1350 0.0820"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.041"/><mass value="3.18"/><inertia ixx="0.0020793" ixy="0.0"
+    ixz="0.0" iyy="0.0023127" iyz="0.0" izz="0.0032712"/></inertial></link><joint
+    name="battery_j" type="fixed"><parent link="base_link"/><child link="battery"/><origin
+    rpy="0 1.57079632679 0" xyz="-0.105 0 0.12"/></joint><link name="battery_cover"><visual><origin
+    xyz="0 0 0.0335"/><geometry><box size="0.13 0.185 0.067"/></geometry><material
+    name="body_color"><color rgba="0 0.36862745098 0.721568627451 1.0"/></material></visual><collision><origin
+    xyz="0 0 0.0335"/><geometry><box size="0.13 0.185 0.067"/></geometry></collision></link><joint
+    name="battery_cover_j" type="fixed"><parent link="rear_right_box"/><child link="battery_cover"/><origin
+    rpy="0 0 0" xyz="0.225 0.1215 0.0"/></joint><link name="top_box"><visual><origin
+    rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/top_box_2021_ladybug.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0
+    0 0.0485"/><geometry><box size="0.18 0.233 0.097"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="-0.04 0.09 0.0690"/><geometry><box size="0.0440 0.0440 0.01303"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0.01474 -0.08352 0.07996"/><geometry><box size="0.03732 0.03523
+    0.03489"/></geometry></collision><visual><origin rpy="0.0 0 0" xyz="-0.1 -0.1
+    0.135"/><geometry><cylinder length="0.11" radius="0.01"/></geometry><material
+    name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+    rpy="0.0 0 0" xyz="-0.1 -0.1 0.135"/><geometry><cylinder length="0.11" radius="0.01"/></geometry></collision><visual><origin
+    rpy="0.0 0 0" xyz="0.1 0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry><material
+    name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+    rpy="0.0 0 0" xyz="0.1 0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry></collision><visual><origin
+    rpy="0.0 0 0" xyz="0.1 -0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry><material
+    name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+    rpy="0.0 0 0" xyz="0.1 -0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.041"/><mass value="0.24"/><inertia ixx="0.0026136" ixy="0.0"
+    ixz="0.0" iyy="0.0049426" iyz="0.0" izz="0.0070334"/></inertial></link><joint
+    name="top_box_j" type="fixed"><parent link="rear_right_box"/><child link="top_box"/><origin
+    rpy="0 0 0" xyz="0.414 0.1215 0.0"/></joint><link name="antenna"><visual><origin
+    rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/antenna.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 1.57079632679
+    0" xyz="-0.01864 0 0"/><geometry><cylinder length="0.03718" radius="0.008"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="-0.030 0 0.19053"/><geometry><cylinder length="0.38107" radius="0.008"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.022 0.0203 0.02917"/><mass value="0.56"/><inertia ixx="0.004878"
+    ixy="-6.2341e-07" ixz="-7.4538e-07" iyy="0.00090164" iyz="-0.00014394" izz="0.0042946"/></inertial></link><joint
+    name="antenna_j" type="fixed"><parent link="rear_right_box"/><child link="antenna"/><origin
+    rpy="0 0 0" xyz="0.055 0.215 0.0"/></joint><link name="gps_antenna"><visual><origin
+    rpy="0 0 0" xyz="0 0 0.4"/><geometry><cylinder length="0.01" radius="0.05"/></geometry><material
+    name="aluminium"><color rgba="0.8 0.8 0.8 1"/></material></visual><visual><origin
+    rpy="0 0 0" xyz="0 0 0.2"/><geometry><cylinder length="0.4" radius="0.03"/></geometry><material
+    name="aluminium"><color rgba="0.8 0.8 0.8 1"/></material></visual><collision><origin
+    rpy="0 0 0" xyz="0 0 0.4"/><geometry><cylinder length="0.01" radius="0.1"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0 0.2"/><geometry><cylinder length="0.4" radius="0.09"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.022 0.0203 0.02917"/><mass value="0.1"/><inertia ixx="0.004878"
+    ixy="-6.2341e-07" ixz="-7.4538e-07" iyy="0.00090164" iyz="-0.00014394" izz="0.0042946"/></inertial></link><joint
+    name="gps_antenna_j" type="fixed"><parent link="rear_right_box"/><child link="gps_antenna"/><origin
+    rpy="0 0 0" xyz="0.055 0.1 0.0"/></joint><link name="left_track"><visual><origin
+    rpy="1.57 0 1.57" xyz="0 0 -0.0705"/><geometry><mesh filename="package://nifti_robot_description/meshes/bogie.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="1.57079632679
+    0 1.57079632679" xyz="0 0 0.01855"/><geometry><box size="0.097000 0.178 0.500000"/></geometry></collision><collision><origin
+    rpy="1.57079632679 0 0" xyz="0.25 -0.015 0.01855"/><geometry><cylinder length="0.112"
+    radius="0.089000"/></geometry></collision><collision><origin rpy="1.57079632679
+    0 0" xyz="-0.25 0 0.01855"/><geometry><cylinder length="0.097000" radius="0.089000"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.0141"/><mass value="6.06"/><inertia ixx="0.002731" ixy="0.0"
+    ixz="0.0" iyy="0.032554" iyz="1.5e-05" izz="0.031391"/></inertial></link><joint
+    name="left_track_j" type="revolute"><parent link="base_link"/><child link="left_track"/><axis
+    xyz="0 1 0"/><origin rpy="0 0.0 0" xyz="0 0.1985 0"/><limit effort="0" lower="-0.7"
+    upper="0.7" velocity="4"/></joint><link name="right_track"><visual><origin rpy="1.57
+    0 -1.57" xyz="0 0 -0.0705"/><geometry><mesh filename="package://nifti_robot_description/meshes/bogie.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="1.57079632679
+    0 1.57079632679" xyz="0 0 0.01855"/><geometry><box size="0.097000 0.178 0.500000"/></geometry></collision><collision><origin
+    rpy="1.57079632679 0 0" xyz="0.25 0.015 0.01855"/><geometry><cylinder length="0.112"
+    radius="0.089000"/></geometry></collision><collision><origin rpy="1.57079632679
+    0 0" xyz="-0.25 0 0.01855"/><geometry><cylinder length="0.097000" radius="0.089000"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.0141"/><mass value="6.06"/><inertia ixx="0.002731" ixy="0.0"
+    ixz="0.0" iyy="0.032554" iyz="1.5e-05" izz="0.031391"/></inertial></link><joint
+    name="right_track_j" type="revolute"><parent link="base_link"/><child link="right_track"/><axis
+    xyz="0 1 0"/><origin rpy="0 0.0 0" xyz="0 -0.1985 0"/><mimic joint="left_track_j"
+    multiplier="-1"/><limit effort="0" lower="-0.7" upper="0.7" velocity="4"/></joint><link
+    name="front_left_flipper"><visual><origin rpy="3.32575 0 1.57079632679" xyz="0
+    0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="front_left_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 -0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="front_left_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+    xyz="0.33 -0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.0435"/></geometry></collision><collision
+    name="front_left_flipper_collision_top_bar"><origin rpy="0 0.184162095 0.0" xyz="0.165
+    -0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_left_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 0.0"
+    xyz="0.165 -0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_left_flipper_collision_middle_bar"><origin rpy="0 -0.02 0.0" xyz="0.166
+    -0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="front_left_flipper_contact" type="contact"><contact><collision>front_left_flipper_collision</collision><collision>front_left_flipper_collision_large_wheel</collision><collision>front_left_flipper_collision_small_wheel</collision><collision>front_left_flipper_collision_top_bar</collision><collision>front_left_flipper_collision_bottom_bar</collision><collision>front_left_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="front_left_flipper_j" type="continuous"><parent link="left_track"/><child
+    link="front_left_flipper"/><axis xyz="0 1 0"/><origin rpy="0 0.193732 0" xyz="0.25
+    0.0735 0.0195"/></joint><link name="front_left_flipper_end_point"/><joint name="front_left_flipper_end_point_j"
+    type="fixed"><parent link="front_left_flipper"/><child link="front_left_flipper_end_point"/><origin
+    rpy="0 0.193732 0" xyz="0.3476 0 0"/></joint><link name="front_right_flipper"><visual><origin
+    rpy="3.32575 0 -1.57079632679" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="front_right_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="front_right_flipper_collision_small_wheel"><origin rpy="1.57079632679 0
+    0" xyz="-0.33 0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.0435"/></geometry></collision><collision
+    name="front_right_flipper_collision_top_bar"><origin rpy="0 0.184162095 3.14159265359"
+    xyz="-0.165 0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_right_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 3.14159265359"
+    xyz="-0.165 0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_right_flipper_collision_middle_bar"><origin rpy="0 -0.02 3.14159265359"
+    xyz="-0.166 0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="front_right_flipper_contact" type="contact"><contact><collision>front_right_flipper_collision</collision><collision>front_right_flipper_collision_large_wheel</collision><collision>front_right_flipper_collision_small_wheel</collision><collision>front_right_flipper_collision_top_bar</collision><collision>front_right_flipper_collision_bottom_bar</collision><collision>front_right_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="front_right_flipper_j" type="continuous"><parent link="right_track"/><child
+    link="front_right_flipper"/><axis xyz="0 1 0"/><origin rpy="0 -2.94786065359 0"
+    xyz="0.25 -0.0735 0.0195"/></joint><link name="front_right_flipper_end_point"/><joint
+    name="front_right_flipper_end_point_j" type="fixed"><parent link="front_right_flipper"/><child
+    link="front_right_flipper_end_point"/><origin rpy="0 0.193732 0" xyz="-0.3476
+    0 0"/></joint><link name="rear_left_flipper"><visual><origin rpy="3.32575 0 1.57079632679"
+    xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="rear_left_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 -0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="rear_left_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+    xyz="0.33 -0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.029"/></geometry></collision><collision
+    name="rear_left_flipper_collision_top_bar"><origin rpy="0 0.184162095 0.0" xyz="0.165
+    -0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_left_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 0.0"
+    xyz="0.165 -0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_left_flipper_collision_middle_bar"><origin rpy="0 -0.02 0.0" xyz="0.166
+    -0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="rear_left_flipper_contact" type="contact"><contact><collision>rear_left_flipper_collision</collision><collision>rear_left_flipper_collision_large_wheel</collision><collision>rear_left_flipper_collision_small_wheel</collision><collision>rear_left_flipper_collision_top_bar</collision><collision>rear_left_flipper_collision_bottom_bar</collision><collision>rear_left_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="rear_left_flipper_j" type="continuous"><parent link="left_track"/><child
+    link="rear_left_flipper"/><axis xyz="0 1 0"/><origin rpy="0 2.94786065359 0" xyz="-0.25
+    0.0735 0.0195"/></joint><link name="rear_left_flipper_end_point"/><joint name="rear_left_flipper_end_point_j"
+    type="fixed"><parent link="rear_left_flipper"/><child link="rear_left_flipper_end_point"/><origin
+    rpy="0 0.193732 0" xyz="0.3476 0 0"/></joint><link name="rear_right_flipper"><visual><origin
+    rpy="3.32575 0 -1.57079632679" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="rear_right_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="rear_right_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+    xyz="-0.33 0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.029"/></geometry></collision><collision
+    name="rear_right_flipper_collision_top_bar"><origin rpy="0 0.184162095 3.14159265359"
+    xyz="-0.165 0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_right_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 3.14159265359"
+    xyz="-0.165 0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_right_flipper_collision_middle_bar"><origin rpy="0 -0.02 3.14159265359"
+    xyz="-0.166 0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="rear_right_flipper_contact" type="contact"><contact><collision>rear_right_flipper_collision</collision><collision>rear_right_flipper_collision_large_wheel</collision><collision>rear_right_flipper_collision_small_wheel</collision><collision>rear_right_flipper_collision_top_bar</collision><collision>rear_right_flipper_collision_bottom_bar</collision><collision>rear_right_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="rear_right_flipper_j" type="continuous"><parent link="right_track"/><child
+    link="rear_right_flipper"/><axis xyz="0 1 0"/><origin rpy="0 -0.193732 0" xyz="-0.25
+    -0.0735 0.0195"/></joint><link name="rear_right_flipper_end_point"/><joint name="rear_right_flipper_end_point_j"
+    type="fixed"><parent link="rear_right_flipper"/><child link="rear_right_flipper_end_point"/><origin
+    rpy="0 0.193732 0" xyz="-0.3476 0 0"/></joint><link name="imu"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="imu_j" type="fixed"><parent
+    link="base_link"/><child link="imu"/><origin rpy="3.14159265359 0 -1.57079632679"
+    xyz="0 0 0.1500"/></joint><link name="omnicam"><visual><origin rpy="0 0 0" xyz="0
+    0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/omnicam.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="-0.003
+    -0.0015 0.003"/><geometry><cylinder length="0.137" radius="0.068"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="2.414"/><inertia ixx="0.0023726" ixy="-3.0562e-06"
+    ixz="-2.3418e-06" iyy="0.0023716" iyz="5.1202e-06" izz="0.0016667"/></inertial></link><link
+    name="omnicam_forward"><inertial><origin rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia
+    ixx="1e-3" ixy="1e-6" ixz="1e-6" iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint
+    name="omnicam_j" type="fixed"><parent link="top_box"/><child link="omnicam"/><origin
+    rpy="0 0 -1.25663706144" xyz="-0.0065 0 0.1655"/></joint><joint name="omnicam_forward_j"
+    type="fixed"><parent link="omnicam"/><child link="omnicam_forward"/><origin rpy="0
+    0 1.25663706144" xyz="0 0 0"/></joint><link name="omnicam_top"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="omnicam_top_j"
+    type="fixed"><parent link="omnicam_forward"/><child link="omnicam_top"/><origin
+    rpy="0 0 0" xyz="0 0 0.0685"/></joint><link name="omnicam_bottom"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="omnicam_bottom_j"
+    type="fixed"><parent link="omnicam_forward"/><child link="omnicam_bottom"/><origin
+    rpy="0 0 0" xyz="0 0 -0.0685"/></joint><link name="camera_0"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_0_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_0"/><origin rpy="-1.57174375606 -0.000784482405913
+    -1.56970295474" xyz="0.042087 -0.001706 -0.000359"/></joint><link name="camera_1"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_1_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_1"/><origin rpy="-1.57186530692 0.00085258564657
+    -2.82695656852" xyz="0.011469 -0.040128 -8.6e-05"/></joint><link name="camera_2"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_2_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_2"/><origin rpy="-1.57250102208 0.00415039119169
+    2.19806360733" xyz="-0.034854 -0.022887 0.000521"/></joint><link name="camera_3"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_3_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_3"/><origin rpy="-1.57137487419 0.00561113275039
+    0.942007861736" xyz="-0.033204 0.025729 0.000217"/></joint><link name="camera_4"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_4_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_4"/><origin rpy="-1.58161111222 0.00103434028846
+    -0.31479000898" xyz="0.014502 0.038991 -0.000301"/></joint><link name="camera_5"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_5_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_5"/><origin rpy="0.00377834651806 0.000785578745701
+    -1.57190924568" xyz="0.000402 -0.000922 0.062128"/></joint></robot>
+  robot_type: nifti
+  t265_parent_link: rear_sensor_item
+  t265_pos_x: -0.01101015
+  t265_pos_y: -0.00626623
+  t265_pos_z: 0.2895825
+  t265_quat_w: 0.7053355044495323
+  t265_quat_x: 0.0
+  t265_quat_y: 0.0
+  t265_quat_z: -0.7088736320127331
+  t265_rpy_p: 0.0
+  t265_rpy_r: 0.0
+  t265_rpy_y: -1.5758
+  top_box_ant_l_wifi_angle: 0.0
+  top_box_ant_l_wifi_length: 0.13
+  top_box_ant_l_wifi_y: 0.047
+  top_box_ant_l_wifi_z: 0.02
+  top_box_ant_lora_angle: 0.0
+  top_box_ant_lora_length: 0.11
+  top_box_ant_lora_y: -0.1
+  top_box_ant_lora_z: 0.08
+  top_box_ant_r_wifi_angle: 0.0
+  top_box_ant_r_wifi_length: 0.13
+  top_box_ant_r_wifi_y: -0.047
+  top_box_ant_r_wifi_z: 0.02
+  top_box_j_x: 0.504
+  velodyne_x_offset: 0.41
+  velodyne_yaw: -1.84
+ekf_odom:
+  base_link_frame: base_link
+  frequency: 20
+  imu0: imu_filtered/data
+  imu0_config:
+  - false
+  - false
+  - false
+  - true
+  - true
+  - false
+  - false
+  - false
+  - false
+  - true
+  - true
+  - true
+  - false
+  - false
+  - false
+  imu0_differential: false
+  imu0_nodelay: true
+  imu0_queue_size: 10
+  imu0_remove_gravitational_acceleration: true
+  odom0: odom_2d
+  odom0_config:
+  - true
+  - true
+  - true
+  - false
+  - false
+  - true
+  - false
+  - false
+  - false
+  - false
+  - false
+  - false
+  - false
+  - false
+  - false
+  odom0_differential: true
+  odom0_nodelay: true
+  odom0_queue_size: 10
+  odom_frame: odom
+  print_diagnostics: false
+  publish_tf: true
+  reset_on_time_jump: true
+  sensor_timeout: 0.03
+  two_d_mode: false
+  use_control: false
+  world_frame: odom
+error_recovery:
+  allow_hard_reset: true
+  allow_soft_reset: true
+  allow_tipover_protection: false
+  dangerous_pitch: 0.7853981633974483
+  dangerous_pose_ang_limit: 0.08726646259971647
+  dangerous_pose_lin_limit: 0.1
+  dangerous_roll: 0.6108652381980153
+  max_safe_pitch: 0.8726646259971648
+  max_safe_roll: 0.6981317007977318
+  stop_on_error: true
+flipper_postures:
+- - 0.0
+  - 0.0
+- - -2.8797932657906435
+  - 2.007128639793479
+- - -0.7853981633974483
+  - 0.17453292519943295
+- - -0.17453292519943295
+  - 0.7853981633974483
+- - 0.6981317007977318
+  - -0.6981317007977318
+- - -2.356194490192345
+  - 2.356194490192345
+- - -2.0943951023931953
+  - 2.0943951023931953
+geometric_traversability_manager:
+  num_worker_threads: 16
+get_mag_shift:
+  measuring_time: 30
+gyro_bias_remover:
+  initial_calibration_duration: 15
+  min_calibration_samples: 500
+  skip_calibration: false
+imu_filter:
+  constant_dt: 0.01
+  gain: 0.01
+  mag_bias_x: 0.0
+  mag_bias_y: 0.0
+  mag_bias_z: 0.0
+  orientation_stddev: 0.1
+  publish_tf: false
+  time_jump_threshold: 10.0
+  use_mag: false
+  zeta: 0.0
+imu_manager:
+  num_threads: 16
+imu_realign:
+  frame_id: imu_aligned
+  in_queue_size: 100
+  out_queue_size: 100
+initial_altitude: 100.0
+initial_heading: 5.235987755982989
+initial_lat: 0.8986162889567008
+initial_lon: 0.130652862559011
+inso_GyroscopeSF: '[1.0, 0, 0; 0, 1.0, 0; 0, 0, 1.0]'
+inso_SamplingPeriod: 0.01
+joy_node_ctu_robot_19973_5391724396023117949:
+  autorepeat_rate: 10.0
+  coalesce_interval: 0.033
+  deadzone: 0.1
+  dev: /dev/input/js_primary
+joy_node_ctu_robot_19973_5810910001912593689:
+  autorepeat_rate: 10.0
+  coalesce_interval: 0.033
+  deadzone: 0.1
+  dev: /dev/input/js_secondary
+joy_node_ctu_robot_2489_3704418795113143248:
+  autorepeat_rate: 10.0
+  coalesce_interval: 0.033
+  deadzone: 0.1
+  dev: /dev/input/js_secondary
+joy_node_ctu_robot_2489_4855320294774632767:
+  autorepeat_rate: 10.0
+  coalesce_interval: 0.033
+  deadzone: 0.1
+  dev: /dev/input/js_primary
+joy_node_ctu_robot_6882_4180512866915901235:
+  autorepeat_rate: 10.0
+  coalesce_interval: 0.033
+  deadzone: 0.1
+  dev: /dev/input/js_secondary
+joy_node_ctu_robot_6882_7630116361229124349:
+  autorepeat_rate: 10.0
+  coalesce_interval: 0.033
+  deadzone: 0.1
+  dev: /dev/input/js_primary
+joy_translator_ctu_robot_19973_2813395285715733679:
+  dev: /dev/input/js_secondary
+joy_translator_ctu_robot_19973_6490702166387729206:
+  dev: /dev/input/js_primary
+joy_translator_ctu_robot_2489_436779803892731627:
+  dev: /dev/input/js_primary
+joy_translator_ctu_robot_2489_7943604545038787179:
+  dev: /dev/input/js_secondary
+joy_translator_ctu_robot_6882_3914927620560814351:
+  dev: /dev/input/js_secondary
+joy_translator_ctu_robot_6882_7210917377764323707:
+  dev: /dev/input/js_primary
+joy_waypoint_control:
+  decrement_buttons:
+  - 3
+  - 2
+  increment_buttons:
+  - 3
+  - 1
+  max_age: 1.0
+  step: 1
+laser_angle_offset: 0.05759586531581287
+laser_nodelet_manager_nuc:
+  num_worker_threads: 16
+laser_time_offset: -0.021
+llh_publisher:
+  baud: 115200
+  port: /dev/ttyACM_gps
+magnetometer_bias_x: 0.013948783278465271
+magnetometer_bias_y: -0.6786500960588455
+magnetometer_bias_z: 0.0
+magnetometer_compass:
+  publish_mag_azimuth_ned_deg: true
+  publish_mag_unbiased: true
+  publish_true_azimuth_enu_imu: true
+  publish_true_azimuth_enu_rad: true
+mapper_node:
+  alpha: 0.8
+  backup_in_ram: false
+  beam_half_angle: 0.003054326
+  beta: 0.99
+  compute_prob_dynamic: true
+  epsilon_a: 0.01
+  epsilon_d: 0.01
+  icp_config: /home/robot/workspace/mapper_ws/src/ctu_mapping/params/realtime_icp_config.yaml
+  input_filters_config: /home/robot/workspace/mapper_ws/src/ctu_mapping/params/realtime_input_filters.yaml
+  map_post_filters_config: /home/robot/workspace/mapper_ws/src/ctu_mapping/params/realtime_post_filters.yaml
+  map_tf_publish_rate: 100
+  map_update_condition: overlap
+  map_update_overlap: 0.95
+  min_dist_new_point: 0.11
+  odom_frame: odom
+  prior_dynamic: 0.5
+  publish_tfs_between_registrations: false
+  robot_frame: base_link
+  save_map_cells_on_hard_drive: false
+  sensor_max_range: 50
+  threshold_dynamic: 0.75
+max_filter_cloud_to_depth:
+  negative: true
+max_filter_projection:
+  azimuth_only: false
+  fov_elevation: 1.57075
+  height: 64
+  keep: 3
+  width: 256
+mikrotik_switch:
+  address: http://192.168.1.1/
+  password: nifti
+  username: admin
+mtig_node:
+  device: /dev/tty_IMU
+  frame_id: imu
+  frame_local: ENU
+  frame_local_imu: NWU
+mux_cmd_vel:
+  initial_topic: __none
+mux_flipper_cmd:
+  initial_topic: __none
+mux_flippers_cmd:
+  initial_topic: __none
+mux_flippers_cmd_vel:
+  initial_topic: __none
+mux_laser_center:
+  initial_topic: __none
+mux_posture_cmd:
+  initial_topic: __none
+mux_posture_cmd_stamped:
+  initial_topic: __none
+mux_scanning_speed_cmd:
+  initial_topic: __none
+mux_tracks_vel_cmd:
+  initial_topic: __none
+navsat_transform_node:
+  broadcast_cartesian_transform: true
+  broadcast_local_cartesian_transform: true
+  publish_filtered_gps: true
+nifti_diagnostic_aggregator:
+  analyzers:
+    cpu:
+      path: System Status
+      startswith: CPU
+      type: diagnostic_aggregator/GenericAnalyzer
+    darpa_estop:
+      find_and_remove_prefix: estop_driver
+      num_items: 6
+      path: DARPA E-Stop
+      type: diagnostic_aggregator/GenericAnalyzer
+    hdd:
+      path: System Status
+      startswith: HDD
+      type: diagnostic_aggregator/GenericAnalyzer
+    inso:
+      find_and_remove_prefix: inso
+      path: INSO Gyro-odometry
+      type: diagnostic_aggregator/GenericAnalyzer
+    joystick:
+      num_items: 1
+      path: Joystick
+      regex: 'joy_node_.*: Joystick Driver Status'
+      type: diagnostic_aggregator/GenericAnalyzer
+    memory:
+      path: System Status
+      startswith: Memory
+      type: diagnostic_aggregator/GenericAnalyzer
+    network:
+      path: System Status
+      startswith: Network
+      type: diagnostic_aggregator/GenericAnalyzer
+    nifti_robot_node:
+      find_and_remove_prefix: nifti_robot_node
+      num_items: 8
+      path: Robot
+      type: diagnostic_aggregator/GenericAnalyzer
+    ntp:
+      path: System Status
+      startswith: NTP offset
+      type: diagnostic_aggregator/DiscardAnalyzer
+    omnicamera:
+      find_and_remove_prefix: viz/omnicamera_nodelet_manager
+      num_items: 1
+      path: Omnicamera
+      type: diagnostic_aggregator/GenericAnalyzer
+    sound_play:
+      find_and_remove_prefix: sound_play
+      num_items: 1
+      path: Vocal Feedback
+      type: diagnostic_aggregator/GenericAnalyzer
+    tf:
+      find_and_remove_prefix: tf_monitor
+      path: TF
+      type: diagnostic_aggregator/GenericAnalyzer
+    xsens_mtig:
+      contains:
+      - Self Test
+      path: IMU
+      remove_prefix: mtnode
+      type: diagnostic_aggregator/GenericAnalyzer
+    xsens_mtig_ignored:
+      contains:
+      - XKF Valid
+      - GPS Fix
+      path: IMU
+      remove_prefix: mtnode
+      type: diagnostic_aggregator/DiscardAnalyzer
+nifti_robot_description: <?xml version="1.0" ?><robot name="NIFTi"><link name="rear_right_box"/><joint
+  name="rear_right_box_j" type="fixed"><parent link="base_link"/><child link="rear_right_box"/><origin
+  rpy="0 0 0" xyz="-0.3175 -0.1215 0.185"/></joint><link name="os_sensor"><visual><geometry><mesh
+  filename="package://cras_ouster_description/meshes/ouster-os0.dae"/></geometry></visual><collision><origin
+  rpy="0 0 0" xyz="0 0 0.03675"/><geometry><cylinder length="0.0735" radius="0.0435"/></geometry></collision><inertial><mass
+  value="0.5"/><origin xyz="0 0 0.03675"/><inertia ixx="0.000461625" ixy="0.0" ixz="0.0"
+  iyy="0.000461625" iyz="0.0" izz="0.0004730625"/></inertial></link><joint name="ouster_holder_j"
+  type="fixed"><parent link="omnicam_top"/><child link="ouster_holder"/><origin rpy="0.0
+  0.0 0.0" xyz="0.08 0.0 0.005"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+  --><gazebo reference="ouster_holder_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><joint
+  name="ouster_base_j" type="fixed"><parent link="ouster_holder"/><child link="ouster_base"/><origin
+  rpy="0.0 0.175 0.0" xyz="0.0 0.0 0.0"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+  --><gazebo reference="ouster_base_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><joint
+  name="ouster_j" type="fixed"><parent link="ouster_base"/><child link="os_sensor"/><origin
+  rpy="0.01 0.01 0.75" xyz="0.0 0.0 0.006"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+  --><gazebo reference="ouster_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><link
+  name="ouster_base"><inertial><origin rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia
+  ixx="1e-3" ixy="1e-6" ixz="1e-6" iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><link
+  name="ouster_holder"><visual><origin xyz="0 0 0"/><geometry><mesh filename="package://cras_ouster_description/meshes/ouster_holder_ladybug.dae"/></geometry></visual><inertial><mass
+  value="0.2"/><origin xyz="0 0 -0.01"/><inertia ixx="0.000251666666667" ixy="0.0"
+  ixz="0.0" iyy="0.000251666666667" iyz="0.0" izz="0.00049"/></inertial></link><link
+  name="base_link"><visual><origin rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/body_2021.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0.000000
+  0 0.1395"/><geometry><box size="0.635000 0.243000 0.108"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0 0.135 0.09"/><geometry><box size="0.055 0.040 0.08"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0 0.155 0.013"/><geometry><box size="0.055 0.020 0.075"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0 -0.135 0.09"/><geometry><box size="0.055 0.040 0.08"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0 -0.155 0.013"/><geometry><box size="0.055 0.020 0.075"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0 0 0.0655"/><geometry><box size="0.565 0.243000 0.035000"/></geometry></collision><collision><origin
+  rpy="1.57079632679 0 0" xyz="0.2825 0 0.083"/><geometry><cylinder length="0.243000"
+  radius="0.035035"/></geometry></collision><collision><origin rpy="1.57079632679
+  0 0" xyz="-0.2825 0 0.083"/><geometry><cylinder length="0.243000" radius="0.035035"/></geometry></collision><collision
+  name="big_collision_box"><origin rpy="0 0 0" xyz="0.0 0 0.255"/><geometry><box size="0.6
+  0.5 0.35"/></geometry></collision><inertial><origin rpy="0 0 0" xyz="-0.034 0 0.142"/><mass
+  value="6.746"/><inertia ixx="0.0069904" ixy="0.00012271" ixz="-4.2725e-05" iyy="0.02129"
+  iyz="-0.00010522" izz="0.025519"/></inertial></link><link name="battery"><visual><origin
+  rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/battery.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0 0
+  0.0410"/><geometry><box size="0.1450 0.1350 0.0820"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0 0 0.041"/><mass value="3.18"/><inertia ixx="0.0020793" ixy="0.0"
+  ixz="0.0" iyy="0.0023127" iyz="0.0" izz="0.0032712"/></inertial></link><joint name="battery_j"
+  type="fixed"><parent link="base_link"/><child link="battery"/><origin rpy="0 1.57079632679
+  0" xyz="-0.105 0 0.12"/></joint><link name="battery_cover"><visual><origin xyz="0
+  0 0.0335"/><geometry><box size="0.13 0.185 0.067"/></geometry><material name="body_color"><color
+  rgba="0 0.36862745098 0.721568627451 1.0"/></material></visual><collision><origin
+  xyz="0 0 0.0335"/><geometry><box size="0.13 0.185 0.067"/></geometry></collision></link><joint
+  name="battery_cover_j" type="fixed"><parent link="rear_right_box"/><child link="battery_cover"/><origin
+  rpy="0 0 0" xyz="0.225 0.1215 0.0"/></joint><link name="top_box"><visual><origin
+  rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/top_box_2021_ladybug.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0 0
+  0.0485"/><geometry><box size="0.18 0.233 0.097"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="-0.04 0.09 0.0690"/><geometry><box size="0.0440 0.0440 0.01303"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0.01474 -0.08352 0.07996"/><geometry><box size="0.03732 0.03523
+  0.03489"/></geometry></collision><visual><origin rpy="0.0 0 0" xyz="-0.1 -0.1 0.135"/><geometry><cylinder
+  length="0.11" radius="0.01"/></geometry><material name="black_color"><color rgba="0.0
+  0.0 0.0 1.0"/></material></visual><collision><origin rpy="0.0 0 0" xyz="-0.1 -0.1
+  0.135"/><geometry><cylinder length="0.11" radius="0.01"/></geometry></collision><visual><origin
+  rpy="0.0 0 0" xyz="0.1 0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry><material
+  name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+  rpy="0.0 0 0" xyz="0.1 0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry></collision><visual><origin
+  rpy="0.0 0 0" xyz="0.1 -0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry><material
+  name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+  rpy="0.0 0 0" xyz="0.1 -0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0 0 0.041"/><mass value="0.24"/><inertia ixx="0.0026136" ixy="0.0"
+  ixz="0.0" iyy="0.0049426" iyz="0.0" izz="0.0070334"/></inertial></link><joint name="top_box_j"
+  type="fixed"><parent link="rear_right_box"/><child link="top_box"/><origin rpy="0
+  0 0" xyz="0.414 0.1215 0.0"/></joint><link name="antenna"><visual><origin rpy="0
+  0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/antenna.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 1.57079632679
+  0" xyz="-0.01864 0 0"/><geometry><cylinder length="0.03718" radius="0.008"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="-0.030 0 0.19053"/><geometry><cylinder length="0.38107" radius="0.008"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="-0.022 0.0203 0.02917"/><mass value="0.56"/><inertia ixx="0.004878"
+  ixy="-6.2341e-07" ixz="-7.4538e-07" iyy="0.00090164" iyz="-0.00014394" izz="0.0042946"/></inertial></link><joint
+  name="antenna_j" type="fixed"><parent link="rear_right_box"/><child link="antenna"/><origin
+  rpy="0 0 0" xyz="0.055 0.215 0.0"/></joint><link name="gps_antenna"><visual><origin
+  rpy="0 0 0" xyz="0 0 0.4"/><geometry><cylinder length="0.01" radius="0.05"/></geometry><material
+  name="aluminium"><color rgba="0.8 0.8 0.8 1"/></material></visual><visual><origin
+  rpy="0 0 0" xyz="0 0 0.2"/><geometry><cylinder length="0.4" radius="0.03"/></geometry><material
+  name="aluminium"><color rgba="0.8 0.8 0.8 1"/></material></visual><collision><origin
+  rpy="0 0 0" xyz="0 0 0.4"/><geometry><cylinder length="0.01" radius="0.1"/></geometry></collision><collision><origin
+  rpy="0 0 0" xyz="0 0 0.2"/><geometry><cylinder length="0.4" radius="0.09"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="-0.022 0.0203 0.02917"/><mass value="0.1"/><inertia ixx="0.004878"
+  ixy="-6.2341e-07" ixz="-7.4538e-07" iyy="0.00090164" iyz="-0.00014394" izz="0.0042946"/></inertial></link><joint
+  name="gps_antenna_j" type="fixed"><parent link="rear_right_box"/><child link="gps_antenna"/><origin
+  rpy="0 0 0" xyz="0.055 0.1 0.0"/></joint><link name="left_track"><visual><origin
+  rpy="1.57 0 1.57" xyz="0 0 -0.0705"/><geometry><mesh filename="package://nifti_robot_description/meshes/bogie.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="1.57079632679 0
+  1.57079632679" xyz="0 0 0.01855"/><geometry><box size="0.097000 0.178 0.500000"/></geometry></collision><collision><origin
+  rpy="1.57079632679 0 0" xyz="0.25 -0.015 0.01855"/><geometry><cylinder length="0.112"
+  radius="0.089000"/></geometry></collision><collision><origin rpy="1.57079632679
+  0 0" xyz="-0.25 0 0.01855"/><geometry><cylinder length="0.097000" radius="0.089000"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0 0 0.0141"/><mass value="6.06"/><inertia ixx="0.002731" ixy="0.0"
+  ixz="0.0" iyy="0.032554" iyz="1.5e-05" izz="0.031391"/></inertial></link><joint
+  name="left_track_j" type="revolute"><parent link="base_link"/><child link="left_track"/><axis
+  xyz="0 1 0"/><origin rpy="0 0.0 0" xyz="0 0.1985 0"/><limit effort="0" lower="-0.7"
+  upper="0.7" velocity="4"/></joint><link name="right_track"><visual><origin rpy="1.57
+  0 -1.57" xyz="0 0 -0.0705"/><geometry><mesh filename="package://nifti_robot_description/meshes/bogie.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="1.57079632679 0
+  1.57079632679" xyz="0 0 0.01855"/><geometry><box size="0.097000 0.178 0.500000"/></geometry></collision><collision><origin
+  rpy="1.57079632679 0 0" xyz="0.25 0.015 0.01855"/><geometry><cylinder length="0.112"
+  radius="0.089000"/></geometry></collision><collision><origin rpy="1.57079632679
+  0 0" xyz="-0.25 0 0.01855"/><geometry><cylinder length="0.097000" radius="0.089000"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0 0 0.0141"/><mass value="6.06"/><inertia ixx="0.002731" ixy="0.0"
+  ixz="0.0" iyy="0.032554" iyz="1.5e-05" izz="0.031391"/></inertial></link><joint
+  name="right_track_j" type="revolute"><parent link="base_link"/><child link="right_track"/><axis
+  xyz="0 1 0"/><origin rpy="0 0.0 0" xyz="0 -0.1985 0"/><mimic joint="left_track_j"
+  multiplier="-1"/><limit effort="0" lower="-0.7" upper="0.7" velocity="4"/></joint><link
+  name="front_left_flipper"><visual><origin rpy="3.32575 0 1.57079632679" xyz="0 0
+  0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision name="front_left_flipper_collision_large_wheel"><origin
+  rpy="1.57079632679 0 0" xyz="0 -0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+  name="front_left_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+  xyz="0.33 -0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.0435"/></geometry></collision><collision
+  name="front_left_flipper_collision_top_bar"><origin rpy="0 0.184162095 0.0" xyz="0.165
+  -0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+  name="front_left_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 0.0"
+  xyz="0.165 -0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+  name="front_left_flipper_collision_middle_bar"><origin rpy="0 -0.02 0.0" xyz="0.166
+  -0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+  ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+  name="front_left_flipper_contact" type="contact"><contact><collision>front_left_flipper_collision</collision><collision>front_left_flipper_collision_large_wheel</collision><collision>front_left_flipper_collision_small_wheel</collision><collision>front_left_flipper_collision_top_bar</collision><collision>front_left_flipper_collision_bottom_bar</collision><collision>front_left_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+  name="front_left_flipper_j" type="continuous"><parent link="left_track"/><child
+  link="front_left_flipper"/><axis xyz="0 1 0"/><origin rpy="0 0.193732 0" xyz="0.25
+  0.0735 0.0195"/></joint><link name="front_left_flipper_end_point"/><joint name="front_left_flipper_end_point_j"
+  type="fixed"><parent link="front_left_flipper"/><child link="front_left_flipper_end_point"/><origin
+  rpy="0 0.193732 0" xyz="0.3476 0 0"/></joint><link name="front_right_flipper"><visual><origin
+  rpy="3.32575 0 -1.57079632679" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision name="front_right_flipper_collision_large_wheel"><origin
+  rpy="1.57079632679 0 0" xyz="0 0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+  name="front_right_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+  xyz="-0.33 0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.0435"/></geometry></collision><collision
+  name="front_right_flipper_collision_top_bar"><origin rpy="0 0.184162095 3.14159265359"
+  xyz="-0.165 0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+  name="front_right_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 3.14159265359"
+  xyz="-0.165 0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+  name="front_right_flipper_collision_middle_bar"><origin rpy="0 -0.02 3.14159265359"
+  xyz="-0.166 0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="-0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+  ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+  name="front_right_flipper_contact" type="contact"><contact><collision>front_right_flipper_collision</collision><collision>front_right_flipper_collision_large_wheel</collision><collision>front_right_flipper_collision_small_wheel</collision><collision>front_right_flipper_collision_top_bar</collision><collision>front_right_flipper_collision_bottom_bar</collision><collision>front_right_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+  name="front_right_flipper_j" type="continuous"><parent link="right_track"/><child
+  link="front_right_flipper"/><axis xyz="0 1 0"/><origin rpy="0 -2.94786065359 0"
+  xyz="0.25 -0.0735 0.0195"/></joint><link name="front_right_flipper_end_point"/><joint
+  name="front_right_flipper_end_point_j" type="fixed"><parent link="front_right_flipper"/><child
+  link="front_right_flipper_end_point"/><origin rpy="0 0.193732 0" xyz="-0.3476 0
+  0"/></joint><link name="rear_left_flipper"><visual><origin rpy="3.32575 0 1.57079632679"
+  xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision name="rear_left_flipper_collision_large_wheel"><origin
+  rpy="1.57079632679 0 0" xyz="0 -0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+  name="rear_left_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0" xyz="0.33
+  -0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.029"/></geometry></collision><collision
+  name="rear_left_flipper_collision_top_bar"><origin rpy="0 0.184162095 0.0" xyz="0.165
+  -0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+  name="rear_left_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 0.0" xyz="0.165
+  -0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+  name="rear_left_flipper_collision_middle_bar"><origin rpy="0 -0.02 0.0" xyz="0.166
+  -0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+  ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+  name="rear_left_flipper_contact" type="contact"><contact><collision>rear_left_flipper_collision</collision><collision>rear_left_flipper_collision_large_wheel</collision><collision>rear_left_flipper_collision_small_wheel</collision><collision>rear_left_flipper_collision_top_bar</collision><collision>rear_left_flipper_collision_bottom_bar</collision><collision>rear_left_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+  name="rear_left_flipper_j" type="continuous"><parent link="left_track"/><child link="rear_left_flipper"/><axis
+  xyz="0 1 0"/><origin rpy="0 2.94786065359 0" xyz="-0.25 0.0735 0.0195"/></joint><link
+  name="rear_left_flipper_end_point"/><joint name="rear_left_flipper_end_point_j"
+  type="fixed"><parent link="rear_left_flipper"/><child link="rear_left_flipper_end_point"/><origin
+  rpy="0 0.193732 0" xyz="0.3476 0 0"/></joint><link name="rear_right_flipper"><visual><origin
+  rpy="3.32575 0 -1.57079632679" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision name="rear_right_flipper_collision_large_wheel"><origin
+  rpy="1.57079632679 0 0" xyz="0 0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+  name="rear_right_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+  xyz="-0.33 0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.029"/></geometry></collision><collision
+  name="rear_right_flipper_collision_top_bar"><origin rpy="0 0.184162095 3.14159265359"
+  xyz="-0.165 0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+  name="rear_right_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 3.14159265359"
+  xyz="-0.165 0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+  name="rear_right_flipper_collision_middle_bar"><origin rpy="0 -0.02 3.14159265359"
+  xyz="-0.166 0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="-0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+  ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+  name="rear_right_flipper_contact" type="contact"><contact><collision>rear_right_flipper_collision</collision><collision>rear_right_flipper_collision_large_wheel</collision><collision>rear_right_flipper_collision_small_wheel</collision><collision>rear_right_flipper_collision_top_bar</collision><collision>rear_right_flipper_collision_bottom_bar</collision><collision>rear_right_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+  name="rear_right_flipper_j" type="continuous"><parent link="right_track"/><child
+  link="rear_right_flipper"/><axis xyz="0 1 0"/><origin rpy="0 -0.193732 0" xyz="-0.25
+  -0.0735 0.0195"/></joint><link name="rear_right_flipper_end_point"/><joint name="rear_right_flipper_end_point_j"
+  type="fixed"><parent link="rear_right_flipper"/><child link="rear_right_flipper_end_point"/><origin
+  rpy="0 0.193732 0" xyz="-0.3476 0 0"/></joint><link name="imu"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="imu_j" type="fixed"><parent
+  link="base_link"/><child link="imu"/><origin rpy="3.14159265359 0 -1.57079632679"
+  xyz="0 0 0.1500"/></joint><link name="omnicam"><visual><origin rpy="0 0 0" xyz="0
+  0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/omnicam.dae"
+  scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="-0.003
+  -0.0015 0.003"/><geometry><cylinder length="0.137" radius="0.068"/></geometry></collision><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="2.414"/><inertia ixx="0.0023726" ixy="-3.0562e-06"
+  ixz="-2.3418e-06" iyy="0.0023716" iyz="5.1202e-06" izz="0.0016667"/></inertial></link><link
+  name="omnicam_forward"><inertial><origin rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia
+  ixx="1e-3" ixy="1e-6" ixz="1e-6" iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint
+  name="omnicam_j" type="fixed"><parent link="top_box"/><child link="omnicam"/><origin
+  rpy="0 0 -1.25663706144" xyz="-0.0065 0 0.1655"/></joint><joint name="omnicam_forward_j"
+  type="fixed"><parent link="omnicam"/><child link="omnicam_forward"/><origin rpy="0
+  0 1.25663706144" xyz="0 0 0"/></joint><link name="omnicam_top"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="omnicam_top_j"
+  type="fixed"><parent link="omnicam_forward"/><child link="omnicam_top"/><origin
+  rpy="0 0 0" xyz="0 0 0.0685"/></joint><link name="omnicam_bottom"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="omnicam_bottom_j"
+  type="fixed"><parent link="omnicam_forward"/><child link="omnicam_bottom"/><origin
+  rpy="0 0 0" xyz="0 0 -0.0685"/></joint><link name="camera_0"><inertial><origin rpy="0
+  0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_0_j" type="fixed"><parent
+  link="omnicam"/><child link="camera_0"/><origin rpy="-1.57174375606 -0.000784482405913
+  -1.56970295474" xyz="0.042087 -0.001706 -0.000359"/></joint><link name="camera_1"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_1_j" type="fixed"><parent
+  link="omnicam"/><child link="camera_1"/><origin rpy="-1.57186530692 0.00085258564657
+  -2.82695656852" xyz="0.011469 -0.040128 -8.6e-05"/></joint><link name="camera_2"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_2_j" type="fixed"><parent
+  link="omnicam"/><child link="camera_2"/><origin rpy="-1.57250102208 0.00415039119169
+  2.19806360733" xyz="-0.034854 -0.022887 0.000521"/></joint><link name="camera_3"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_3_j" type="fixed"><parent
+  link="omnicam"/><child link="camera_3"/><origin rpy="-1.57137487419 0.00561113275039
+  0.942007861736" xyz="-0.033204 0.025729 0.000217"/></joint><link name="camera_4"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_4_j" type="fixed"><parent
+  link="omnicam"/><child link="camera_4"/><origin rpy="-1.58161111222 0.00103434028846
+  -0.31479000898" xyz="0.014502 0.038991 -0.000301"/></joint><link name="camera_5"><inertial><origin
+  rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+  iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_5_j" type="fixed"><parent
+  link="omnicam"/><child link="camera_5"/><origin rpy="0.00377834651806 0.000785578745701
+  -1.57190924568" xyz="0.000402 -0.000922 0.062128"/></joint></robot>
+nifti_robot_node:
+  CAN_device: /dev/usb/cpc_usb_robot
+  initial_current_limit: 4.0
+nifti_tf_publisher:
+  robot_description: <?xml version="1.0" ?><robot name="NIFTi"><link name="rear_right_box"/><joint
+    name="rear_right_box_j" type="fixed"><parent link="base_link"/><child link="rear_right_box"/><origin
+    rpy="0 0 0" xyz="-0.3175 -0.1215 0.185"/></joint><link name="os_sensor"><visual><geometry><mesh
+    filename="package://cras_ouster_description/meshes/ouster-os0.dae"/></geometry></visual><collision><origin
+    rpy="0 0 0" xyz="0 0 0.03675"/><geometry><cylinder length="0.0735" radius="0.0435"/></geometry></collision><inertial><mass
+    value="0.5"/><origin xyz="0 0 0.03675"/><inertia ixx="0.000461625" ixy="0.0" ixz="0.0"
+    iyy="0.000461625" iyz="0.0" izz="0.0004730625"/></inertial></link><joint name="ouster_holder_j"
+    type="fixed"><parent link="omnicam_top"/><child link="ouster_holder"/><origin
+    rpy="0.0 0.0 0.0" xyz="0.08 0.0 0.005"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+    --><gazebo reference="ouster_holder_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><joint
+    name="ouster_base_j" type="fixed"><parent link="ouster_holder"/><child link="ouster_base"/><origin
+    rpy="0.0 0.175 0.0" xyz="0.0 0.0 0.0"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+    --><gazebo reference="ouster_base_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><joint
+    name="ouster_j" type="fixed"><parent link="ouster_base"/><child link="os_sensor"/><origin
+    rpy="0.01 0.01 0.75" xyz="0.0 0.0 0.006"/></joint><!-- workaround for https://github.com/osrf/sdformat/issues/378
+    --><gazebo reference="ouster_j"><preserveFixedJoint>true</preserveFixedJoint></gazebo><link
+    name="ouster_base"><inertial><origin rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia
+    ixx="1e-3" ixy="1e-6" ixz="1e-6" iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><link
+    name="ouster_holder"><visual><origin xyz="0 0 0"/><geometry><mesh filename="package://cras_ouster_description/meshes/ouster_holder_ladybug.dae"/></geometry></visual><inertial><mass
+    value="0.2"/><origin xyz="0 0 -0.01"/><inertia ixx="0.000251666666667" ixy="0.0"
+    ixz="0.0" iyy="0.000251666666667" iyz="0.0" izz="0.00049"/></inertial></link><link
+    name="base_link"><visual><origin rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/body_2021.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0.000000
+    0 0.1395"/><geometry><box size="0.635000 0.243000 0.108"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0.135 0.09"/><geometry><box size="0.055 0.040 0.08"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0.155 0.013"/><geometry><box size="0.055 0.020 0.075"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 -0.135 0.09"/><geometry><box size="0.055 0.040 0.08"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 -0.155 0.013"/><geometry><box size="0.055 0.020 0.075"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0 0.0655"/><geometry><box size="0.565 0.243000 0.035000"/></geometry></collision><collision><origin
+    rpy="1.57079632679 0 0" xyz="0.2825 0 0.083"/><geometry><cylinder length="0.243000"
+    radius="0.035035"/></geometry></collision><collision><origin rpy="1.57079632679
+    0 0" xyz="-0.2825 0 0.083"/><geometry><cylinder length="0.243000" radius="0.035035"/></geometry></collision><collision
+    name="big_collision_box"><origin rpy="0 0 0" xyz="0.0 0 0.255"/><geometry><box
+    size="0.6 0.5 0.35"/></geometry></collision><inertial><origin rpy="0 0 0" xyz="-0.034
+    0 0.142"/><mass value="6.746"/><inertia ixx="0.0069904" ixy="0.00012271" ixz="-4.2725e-05"
+    iyy="0.02129" iyz="-0.00010522" izz="0.025519"/></inertial></link><link name="battery"><visual><origin
+    rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/battery.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0
+    0 0.0410"/><geometry><box size="0.1450 0.1350 0.0820"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.041"/><mass value="3.18"/><inertia ixx="0.0020793" ixy="0.0"
+    ixz="0.0" iyy="0.0023127" iyz="0.0" izz="0.0032712"/></inertial></link><joint
+    name="battery_j" type="fixed"><parent link="base_link"/><child link="battery"/><origin
+    rpy="0 1.57079632679 0" xyz="-0.105 0 0.12"/></joint><link name="battery_cover"><visual><origin
+    xyz="0 0 0.0335"/><geometry><box size="0.13 0.185 0.067"/></geometry><material
+    name="body_color"><color rgba="0 0.36862745098 0.721568627451 1.0"/></material></visual><collision><origin
+    xyz="0 0 0.0335"/><geometry><box size="0.13 0.185 0.067"/></geometry></collision></link><joint
+    name="battery_cover_j" type="fixed"><parent link="rear_right_box"/><child link="battery_cover"/><origin
+    rpy="0 0 0" xyz="0.225 0.1215 0.0"/></joint><link name="top_box"><visual><origin
+    rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/top_box_2021_ladybug.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="0
+    0 0.0485"/><geometry><box size="0.18 0.233 0.097"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="-0.04 0.09 0.0690"/><geometry><box size="0.0440 0.0440 0.01303"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0.01474 -0.08352 0.07996"/><geometry><box size="0.03732 0.03523
+    0.03489"/></geometry></collision><visual><origin rpy="0.0 0 0" xyz="-0.1 -0.1
+    0.135"/><geometry><cylinder length="0.11" radius="0.01"/></geometry><material
+    name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+    rpy="0.0 0 0" xyz="-0.1 -0.1 0.135"/><geometry><cylinder length="0.11" radius="0.01"/></geometry></collision><visual><origin
+    rpy="0.0 0 0" xyz="0.1 0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry><material
+    name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+    rpy="0.0 0 0" xyz="0.1 0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry></collision><visual><origin
+    rpy="0.0 0 0" xyz="0.1 -0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry><material
+    name="black_color"><color rgba="0.0 0.0 0.0 1.0"/></material></visual><collision><origin
+    rpy="0.0 0 0" xyz="0.1 -0.047 0.085"/><geometry><cylinder length="0.13" radius="0.01"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.041"/><mass value="0.24"/><inertia ixx="0.0026136" ixy="0.0"
+    ixz="0.0" iyy="0.0049426" iyz="0.0" izz="0.0070334"/></inertial></link><joint
+    name="top_box_j" type="fixed"><parent link="rear_right_box"/><child link="top_box"/><origin
+    rpy="0 0 0" xyz="0.414 0.1215 0.0"/></joint><link name="antenna"><visual><origin
+    rpy="0 0 0" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/antenna.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 1.57079632679
+    0" xyz="-0.01864 0 0"/><geometry><cylinder length="0.03718" radius="0.008"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="-0.030 0 0.19053"/><geometry><cylinder length="0.38107" radius="0.008"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.022 0.0203 0.02917"/><mass value="0.56"/><inertia ixx="0.004878"
+    ixy="-6.2341e-07" ixz="-7.4538e-07" iyy="0.00090164" iyz="-0.00014394" izz="0.0042946"/></inertial></link><joint
+    name="antenna_j" type="fixed"><parent link="rear_right_box"/><child link="antenna"/><origin
+    rpy="0 0 0" xyz="0.055 0.215 0.0"/></joint><link name="gps_antenna"><visual><origin
+    rpy="0 0 0" xyz="0 0 0.4"/><geometry><cylinder length="0.01" radius="0.05"/></geometry><material
+    name="aluminium"><color rgba="0.8 0.8 0.8 1"/></material></visual><visual><origin
+    rpy="0 0 0" xyz="0 0 0.2"/><geometry><cylinder length="0.4" radius="0.03"/></geometry><material
+    name="aluminium"><color rgba="0.8 0.8 0.8 1"/></material></visual><collision><origin
+    rpy="0 0 0" xyz="0 0 0.4"/><geometry><cylinder length="0.01" radius="0.1"/></geometry></collision><collision><origin
+    rpy="0 0 0" xyz="0 0 0.2"/><geometry><cylinder length="0.4" radius="0.09"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.022 0.0203 0.02917"/><mass value="0.1"/><inertia ixx="0.004878"
+    ixy="-6.2341e-07" ixz="-7.4538e-07" iyy="0.00090164" iyz="-0.00014394" izz="0.0042946"/></inertial></link><joint
+    name="gps_antenna_j" type="fixed"><parent link="rear_right_box"/><child link="gps_antenna"/><origin
+    rpy="0 0 0" xyz="0.055 0.1 0.0"/></joint><link name="left_track"><visual><origin
+    rpy="1.57 0 1.57" xyz="0 0 -0.0705"/><geometry><mesh filename="package://nifti_robot_description/meshes/bogie.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="1.57079632679
+    0 1.57079632679" xyz="0 0 0.01855"/><geometry><box size="0.097000 0.178 0.500000"/></geometry></collision><collision><origin
+    rpy="1.57079632679 0 0" xyz="0.25 -0.015 0.01855"/><geometry><cylinder length="0.112"
+    radius="0.089000"/></geometry></collision><collision><origin rpy="1.57079632679
+    0 0" xyz="-0.25 0 0.01855"/><geometry><cylinder length="0.097000" radius="0.089000"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.0141"/><mass value="6.06"/><inertia ixx="0.002731" ixy="0.0"
+    ixz="0.0" iyy="0.032554" iyz="1.5e-05" izz="0.031391"/></inertial></link><joint
+    name="left_track_j" type="revolute"><parent link="base_link"/><child link="left_track"/><axis
+    xyz="0 1 0"/><origin rpy="0 0.0 0" xyz="0 0.1985 0"/><limit effort="0" lower="-0.7"
+    upper="0.7" velocity="4"/></joint><link name="right_track"><visual><origin rpy="1.57
+    0 -1.57" xyz="0 0 -0.0705"/><geometry><mesh filename="package://nifti_robot_description/meshes/bogie.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="1.57079632679
+    0 1.57079632679" xyz="0 0 0.01855"/><geometry><box size="0.097000 0.178 0.500000"/></geometry></collision><collision><origin
+    rpy="1.57079632679 0 0" xyz="0.25 0.015 0.01855"/><geometry><cylinder length="0.112"
+    radius="0.089000"/></geometry></collision><collision><origin rpy="1.57079632679
+    0 0" xyz="-0.25 0 0.01855"/><geometry><cylinder length="0.097000" radius="0.089000"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0.0141"/><mass value="6.06"/><inertia ixx="0.002731" ixy="0.0"
+    ixz="0.0" iyy="0.032554" iyz="1.5e-05" izz="0.031391"/></inertial></link><joint
+    name="right_track_j" type="revolute"><parent link="base_link"/><child link="right_track"/><axis
+    xyz="0 1 0"/><origin rpy="0 0.0 0" xyz="0 -0.1985 0"/><mimic joint="left_track_j"
+    multiplier="-1"/><limit effort="0" lower="-0.7" upper="0.7" velocity="4"/></joint><link
+    name="front_left_flipper"><visual><origin rpy="3.32575 0 1.57079632679" xyz="0
+    0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="front_left_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 -0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="front_left_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+    xyz="0.33 -0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.0435"/></geometry></collision><collision
+    name="front_left_flipper_collision_top_bar"><origin rpy="0 0.184162095 0.0" xyz="0.165
+    -0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_left_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 0.0"
+    xyz="0.165 -0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_left_flipper_collision_middle_bar"><origin rpy="0 -0.02 0.0" xyz="0.166
+    -0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="front_left_flipper_contact" type="contact"><contact><collision>front_left_flipper_collision</collision><collision>front_left_flipper_collision_large_wheel</collision><collision>front_left_flipper_collision_small_wheel</collision><collision>front_left_flipper_collision_top_bar</collision><collision>front_left_flipper_collision_bottom_bar</collision><collision>front_left_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="front_left_flipper_j" type="continuous"><parent link="left_track"/><child
+    link="front_left_flipper"/><axis xyz="0 1 0"/><origin rpy="0 0.193732 0" xyz="0.25
+    0.0735 0.0195"/></joint><link name="front_left_flipper_end_point"/><joint name="front_left_flipper_end_point_j"
+    type="fixed"><parent link="front_left_flipper"/><child link="front_left_flipper_end_point"/><origin
+    rpy="0 0.193732 0" xyz="0.3476 0 0"/></joint><link name="front_right_flipper"><visual><origin
+    rpy="3.32575 0 -1.57079632679" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="front_right_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="front_right_flipper_collision_small_wheel"><origin rpy="1.57079632679 0
+    0" xyz="-0.33 0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.0435"/></geometry></collision><collision
+    name="front_right_flipper_collision_top_bar"><origin rpy="0 0.184162095 3.14159265359"
+    xyz="-0.165 0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_right_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 3.14159265359"
+    xyz="-0.165 0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.0825"/></geometry></collision><collision
+    name="front_right_flipper_collision_middle_bar"><origin rpy="0 -0.02 3.14159265359"
+    xyz="-0.166 0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="front_right_flipper_contact" type="contact"><contact><collision>front_right_flipper_collision</collision><collision>front_right_flipper_collision_large_wheel</collision><collision>front_right_flipper_collision_small_wheel</collision><collision>front_right_flipper_collision_top_bar</collision><collision>front_right_flipper_collision_bottom_bar</collision><collision>front_right_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="front_right_flipper_j" type="continuous"><parent link="right_track"/><child
+    link="front_right_flipper"/><axis xyz="0 1 0"/><origin rpy="0 -2.94786065359 0"
+    xyz="0.25 -0.0735 0.0195"/></joint><link name="front_right_flipper_end_point"/><joint
+    name="front_right_flipper_end_point_j" type="fixed"><parent link="front_right_flipper"/><child
+    link="front_right_flipper_end_point"/><origin rpy="0 0.193732 0" xyz="-0.3476
+    0 0"/></joint><link name="rear_left_flipper"><visual><origin rpy="3.32575 0 1.57079632679"
+    xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="rear_left_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 -0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="rear_left_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+    xyz="0.33 -0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.029"/></geometry></collision><collision
+    name="rear_left_flipper_collision_top_bar"><origin rpy="0 0.184162095 0.0" xyz="0.165
+    -0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_left_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 0.0"
+    xyz="0.165 -0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_left_flipper_collision_middle_bar"><origin rpy="0 -0.02 0.0" xyz="0.166
+    -0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="rear_left_flipper_contact" type="contact"><contact><collision>rear_left_flipper_collision</collision><collision>rear_left_flipper_collision_large_wheel</collision><collision>rear_left_flipper_collision_small_wheel</collision><collision>rear_left_flipper_collision_top_bar</collision><collision>rear_left_flipper_collision_bottom_bar</collision><collision>rear_left_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="rear_left_flipper_j" type="continuous"><parent link="left_track"/><child
+    link="rear_left_flipper"/><axis xyz="0 1 0"/><origin rpy="0 2.94786065359 0" xyz="-0.25
+    0.0735 0.0195"/></joint><link name="rear_left_flipper_end_point"/><joint name="rear_left_flipper_end_point_j"
+    type="fixed"><parent link="rear_left_flipper"/><child link="rear_left_flipper_end_point"/><origin
+    rpy="0 0.193732 0" xyz="0.3476 0 0"/></joint><link name="rear_right_flipper"><visual><origin
+    rpy="3.32575 0 -1.57079632679" xyz="0 0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/flipper.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision name="rear_right_flipper_collision_large_wheel"><origin
+    rpy="1.57079632679 0 0" xyz="0 0.0 0"/><geometry><cylinder length="0.04981" radius="0.089000"/></geometry></collision><collision
+    name="rear_right_flipper_collision_small_wheel"><origin rpy="1.57079632679 0 0"
+    xyz="-0.33 0.0 0.0"/><geometry><cylinder length="0.04981" radius="0.029"/></geometry></collision><collision
+    name="rear_right_flipper_collision_top_bar"><origin rpy="0 0.184162095 3.14159265359"
+    xyz="-0.165 0.0 0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_right_flipper_collision_bottom_bar"><origin rpy="0 -0.184162095 3.14159265359"
+    xyz="-0.165 0.0 -0.0325"/><geometry><box size="0.330000 0.04981 0.055"/></geometry></collision><collision
+    name="rear_right_flipper_collision_middle_bar"><origin rpy="0 -0.02 3.14159265359"
+    xyz="-0.166 0.0 0.004"/><geometry><box size="0.20 0.04981 0.07"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="-0.08 0 0.0"/><mass value="0.75"/><inertia ixx="0.0017491" ixy="2.8512e-07"
+    ixz="0.0018277" iyy="0.012277" iyz="-3.6288e-07" izz="0.010941"/></inertial><sensor
+    name="rear_right_flipper_contact" type="contact"><contact><collision>rear_right_flipper_collision</collision><collision>rear_right_flipper_collision_large_wheel</collision><collision>rear_right_flipper_collision_small_wheel</collision><collision>rear_right_flipper_collision_top_bar</collision><collision>rear_right_flipper_collision_bottom_bar</collision><collision>rear_right_flipper_collision_middle_bar</collision></contact></sensor></link><joint
+    name="rear_right_flipper_j" type="continuous"><parent link="right_track"/><child
+    link="rear_right_flipper"/><axis xyz="0 1 0"/><origin rpy="0 -0.193732 0" xyz="-0.25
+    -0.0735 0.0195"/></joint><link name="rear_right_flipper_end_point"/><joint name="rear_right_flipper_end_point_j"
+    type="fixed"><parent link="rear_right_flipper"/><child link="rear_right_flipper_end_point"/><origin
+    rpy="0 0.193732 0" xyz="-0.3476 0 0"/></joint><link name="imu"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="imu_j" type="fixed"><parent
+    link="base_link"/><child link="imu"/><origin rpy="3.14159265359 0 -1.57079632679"
+    xyz="0 0 0.1500"/></joint><link name="omnicam"><visual><origin rpy="0 0 0" xyz="0
+    0 0"/><geometry><mesh filename="package://nifti_robot_description/meshes/omnicam.dae"
+    scale="1.0 1.0 1.0"/></geometry></visual><collision><origin rpy="0 0 0" xyz="-0.003
+    -0.0015 0.003"/><geometry><cylinder length="0.137" radius="0.068"/></geometry></collision><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="2.414"/><inertia ixx="0.0023726" ixy="-3.0562e-06"
+    ixz="-2.3418e-06" iyy="0.0023716" iyz="5.1202e-06" izz="0.0016667"/></inertial></link><link
+    name="omnicam_forward"><inertial><origin rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia
+    ixx="1e-3" ixy="1e-6" ixz="1e-6" iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint
+    name="omnicam_j" type="fixed"><parent link="top_box"/><child link="omnicam"/><origin
+    rpy="0 0 -1.25663706144" xyz="-0.0065 0 0.1655"/></joint><joint name="omnicam_forward_j"
+    type="fixed"><parent link="omnicam"/><child link="omnicam_forward"/><origin rpy="0
+    0 1.25663706144" xyz="0 0 0"/></joint><link name="omnicam_top"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="omnicam_top_j"
+    type="fixed"><parent link="omnicam_forward"/><child link="omnicam_top"/><origin
+    rpy="0 0 0" xyz="0 0 0.0685"/></joint><link name="omnicam_bottom"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="omnicam_bottom_j"
+    type="fixed"><parent link="omnicam_forward"/><child link="omnicam_bottom"/><origin
+    rpy="0 0 0" xyz="0 0 -0.0685"/></joint><link name="camera_0"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_0_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_0"/><origin rpy="-1.57174375606 -0.000784482405913
+    -1.56970295474" xyz="0.042087 -0.001706 -0.000359"/></joint><link name="camera_1"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_1_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_1"/><origin rpy="-1.57186530692 0.00085258564657
+    -2.82695656852" xyz="0.011469 -0.040128 -8.6e-05"/></joint><link name="camera_2"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_2_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_2"/><origin rpy="-1.57250102208 0.00415039119169
+    2.19806360733" xyz="-0.034854 -0.022887 0.000521"/></joint><link name="camera_3"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_3_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_3"/><origin rpy="-1.57137487419 0.00561113275039
+    0.942007861736" xyz="-0.033204 0.025729 0.000217"/></joint><link name="camera_4"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_4_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_4"/><origin rpy="-1.58161111222 0.00103434028846
+    -0.31479000898" xyz="0.014502 0.038991 -0.000301"/></joint><link name="camera_5"><inertial><origin
+    rpy="0 0 0" xyz="0 0 0"/><mass value="1e-5"/><inertia ixx="1e-3" ixy="1e-6" ixz="1e-6"
+    iyy="1e-3" iyz="1e-6" izz="1e-3"/></inertial></link><joint name="camera_5_j" type="fixed"><parent
+    link="omnicam"/><child link="camera_5"/><origin rpy="0.00377834651806 0.000785578745701
+    -1.57190924568" xyz="0.000402 -0.000922 0.062128"/></joint></robot>
+ntrip_relay:
+  host: ntrip.pecny.cz
+  num_threads: 2
+  port: 2101
+  sigkill_on_stream_stop: true
+  sigkill_timeout: 30
+odom2d:
+  integration_method: EulerIMU
+  odom_frame: odom
+omnicam_sensors_calib:
+  transforms:
+  - - 0.042087
+    - -0.001706
+    - -0.000359
+    - -0.500706
+    - 0.499767
+    - -0.499686
+    - 0.49984
+    - omnicam
+    - camera_0
+  - - 0.011469
+    - -0.040128
+    - -8.6e-05
+    - -0.110544
+    - 0.698795
+    - -0.697954
+    - 0.111021
+    - omnicam
+    - camera_1
+  - - -0.034854
+    - -0.022887
+    - 0.000521
+    - -0.32293
+    - -0.629737
+    - 0.629997
+    - 0.319768
+    - omnicam
+    - camera_2
+  - - -0.033204
+    - 0.025729
+    - 0.000217
+    - -0.631192
+    - -0.319196
+    - 0.322546
+    - 0.629027
+    - omnicam
+    - camera_3
+  - - 0.014502
+    - 0.038991
+    - -0.000301
+    - -0.702075
+    - 0.111793
+    - -0.109872
+    - 0.694637
+    - omnicam
+    - camera_4
+  - - 0.000402
+    - -0.000922
+    - 0.062128
+    - 0.001613
+    - -0.001059
+    - -0.707499
+    - 0.706711
+    - omnicam
+    - camera_5
+os_cloud_node:
+  fields_to_publish:
+  - t
+  - intensity
+  keep_organized: true
+  max_range: 50.0
+  publish_cloud: true
+  publish_invalid: true
+  publish_scans: false
+  standardize_invalid_measurements: false
+  tf_prefix: ''
+  unalign_fields: false
+os_node:
+  allow_automotive_slave_resync: true
+  allow_local_timestamping: true
+  imu_port: 0
+  lidar_port: 0
+  max_ptp_offset: 0.002
+  max_secs_without_data: 0
+  publish_every_nth: 1
+  sensor_hostname: os-992107000226.local
+  timestamp_mode: TIME_FROM_PTP_1588
+osm_to_pcd_for_path_planner:
+  odom_frame: gps_odom
+parts_config:
+  axis_x_offset: 0.059
+  axis_y_offset: 0.08
+  battery_cover_height: 0.067
+  battery_cover_x: 0.225
+  battery_mass: 2.7
+  big_collision_box_height: 0.35
+  big_collision_box_length: 0.6
+  big_collision_box_on_top: true
+  big_collision_box_width: 0.5
+  big_collision_box_x: 0.0
+  body_mass: 10.0
+  flipper_inflation_ratio: 1.5
+  flipper_inward_enlargement: 0.0
+  gps_antenna_disc_radius: 0.05
+  gps_antenna_height: 0.4
+  gps_antenna_radius: 0.03
+  has_axis_camera: false
+  has_battery_cover: true
+  has_flipper_touch_sensors: false
+  has_gps_antenna: true
+  has_jetson: false
+  has_mobilicom: false
+  has_mote_deployer: false
+  has_new_realsense: false
+  has_omnicam: true
+  has_omnicam_sensor_mount: false
+  has_omnicam_vras: false
+  has_ouster_lidar: true
+  has_ptuxthermo: false
+  has_realsense: false
+  has_realsense_d435: false
+  has_realsense_t265: false
+  has_rear_sensor_item: false
+  has_sick_lidar: false
+  has_top_box: true
+  has_velodyne: false
+  jetson_shift_x: 0.515
+  jetson_shift_y: 0.145
+  jetson_version: 1
+  jetson_yaw: 0.0
+  laser_pitch: 0.0
+  mobilicom_antenna_l_rotation: -0.5
+  mobilicom_antenna_l_tilt: 1.0
+  mobilicom_antenna_r_rotation: 0.0
+  mobilicom_antenna_r_tilt: 1.5758
+  mobilicom_antennas_length: 0.17
+  mobilicom_has_antenna_box: false
+  mobilicom_is_lite: true
+  mobilicom_parent_link: rear_right_box
+  mobilicom_pitch: 4.0
+  mobilicom_roll: 1.5758
+  mobilicom_shift_x: 0.0
+  mobilicom_shift_y: 0.01
+  mobilicom_shift_z: 0.2
+  mobilicom_yaw: 3.14152
+  ptuxthermo_x_offset: 0.2
+  ptuxthermo_y_offset: 0.18
+  realsense_holder_version: 1
+  realsense_parent_link: omnicam
+  realsense_roll: 0.0
+  realsense_shift_x: 0.0
+  realsense_shift_y: 0.0
+  realsense_shift_z: 0.0
+  realsense_tilt: -1.15
+  realsense_yaw: 0.62831853
+  revision: 2021
+  robot_type: nifti
+  t265_parent_link: rear_sensor_item
+  top_box_ant_l_wifi_angle: 0.0
+  top_box_ant_l_wifi_length: 0.13
+  top_box_ant_l_wifi_y: 0.047
+  top_box_ant_l_wifi_z: 0.02
+  top_box_ant_lora_angle: 0.0
+  top_box_ant_lora_length: 0.11
+  top_box_ant_lora_y: -0.1
+  top_box_ant_lora_z: 0.08
+  top_box_ant_r_wifi_angle: 0.0
+  top_box_ant_r_wifi_length: 0.13
+  top_box_ant_r_wifi_y: -0.047
+  top_box_ant_r_wifi_z: 0.02
+  top_box_j_x: 0.504
+  velodyne_x_offset: 0.41
+  velodyne_yaw: -1.84
+path_follower:
+  allow_backward: false
+  backtrack_after: .inf
+  clearance_box:
+  - - -0.5
+    - 0.5
+  - - -0.4
+    - 0.4
+  - - 0.2
+    - 0.6
+  control_freq: 10.0
+  force_through_after: 10.0
+  goal_reached_angle: .inf
+  goal_reached_dist: 1.0
+  increasing_waypoint_index: true
+  keep_cloud_box:
+  - - -3.0
+    - 3.0
+  - - -3.0
+    - 3.0
+  - - -2.0
+    - 2.0
+  keep_path: 4.0
+  look_ahead: 1.0
+  map_frame: gps_odom
+  max_age: 1.0
+  max_angular_rate: 0.5
+  max_force_through_speed: 0.2
+  max_path_dist: 100
+  max_speed: 0.5
+  min_points_obstacle: 0
+  odom_frame: gps_odom
+  robot_frame: base_link
+  show_clearance_pos:
+  - -2
+  - 2
+  turn_on_spot_angle: 1.0
+  use_path_theta: none
+path_planner_igraph:
+  absence_cost: 200.0
+  flip: false
+  goal_reached_distance: 2.0
+  gpx_assignment: /home/robot/gps_ws/src/gps-navigation/gps_to_path/data/old/unhost_easy.gpx
+  long_term_memory_longevity: 0.997
+  max_age: 1.0
+  max_goal_untrav_cost: 100.0
+  max_height: 1.0
+  max_relative_path_cost_change: 5.0
+  max_subgraph_time: 1200.0
+  max_traversable_cost: 100.0
+  min_height: -1.0
+  min_time_near_goal: 0.5
+  next_waypoint_proximity_switch: true
+  odom_frame: gps_odom
+  osm_use_solitary_nodes: false
+  points_absence_radius: 2.0
+  publish_pcd: true
+  repeat: false
+  robot_base_frame: base_link
+  short_term_memory_longevity: 0.9
+  trav_inheritance_radius: 0.71
+  trav_max_dist: 20.0
+  trav_obstacle_field: cost
+  trav_radius: 0.25
+  trav_topic: geometric_traversability_raw
+  untrav_cost: 100.0
+  use_osm: false
+points_filtered_throttle:
+  frequency: 2.0
+points_throttle:
+  frequency: 2.0
+remote_teleop_joy_ctu_robot_19973_181633356471936866:
+  at_red_button: 2
+  at_right_axis_button_id: 11
+  at_yellow_button: 3
+  axis_angular: 0
+  axis_linear: 1
+  deadman_buttons:
+  - 1
+  - 10
+  differential_brake_button: 8
+  enable_button: 9
+  estop_button: 8
+  flipper_axis: 5
+  flipper_increment: 0.3490658503988659
+  flipper_reset_button: 3
+  front_left_flipper_button: 4
+  front_light_button_1: 4
+  front_light_button_2: 9
+  front_right_flipper_button: 5
+  plugin_pkg: nifti_teleop_joy
+  priority: secondary_joy
+  rear_left_flipper_button: 6
+  rear_right_flipper_button: 7
+  run_button: 0
+  scanning_speed_axis: 4
+  scanning_speed_increment: 0.2
+  servo_reset_button_1: 6
+  servo_reset_button_2: 7
+  servo_reset_button_3: 8
+  servo_reset_button_4: 9
+  side_light_button_1: 5
+  side_light_button_2: 9
+remote_teleop_joy_ctu_robot_19973_5651681653482832782:
+  at_red_button: 2
+  at_right_axis_button_id: 11
+  at_yellow_button: 3
+  axis_angular: 0
+  axis_linear: 1
+  deadman_buttons:
+  - 1
+  - 10
+  differential_brake_button: 8
+  enable_button: 9
+  estop_button: 8
+  flipper_axis: 5
+  flipper_increment: 0.3490658503988659
+  flipper_reset_button: 3
+  front_left_flipper_button: 4
+  front_light_button_1: 4
+  front_light_button_2: 9
+  front_right_flipper_button: 5
+  plugin_pkg: nifti_teleop_joy
+  priority: local_joy
+  rear_left_flipper_button: 6
+  rear_right_flipper_button: 7
+  run_button: 0
+  scanning_speed_axis: 4
+  scanning_speed_increment: 0.2
+  servo_reset_button_1: 6
+  servo_reset_button_2: 7
+  servo_reset_button_3: 8
+  servo_reset_button_4: 9
+  side_light_button_1: 5
+  side_light_button_2: 9
+remote_teleop_joy_ctu_robot_2489_1497706064488953799:
+  at_red_button: 2
+  at_right_axis_button_id: 11
+  at_yellow_button: 3
+  axis_angular: 0
+  axis_linear: 1
+  deadman_buttons:
+  - 1
+  - 10
+  differential_brake_button: 8
+  enable_button: 9
+  estop_button: 8
+  flipper_axis: 5
+  flipper_increment: 0.3490658503988659
+  flipper_reset_button: 3
+  front_left_flipper_button: 4
+  front_light_button_1: 4
+  front_light_button_2: 9
+  front_right_flipper_button: 5
+  plugin_pkg: nifti_teleop_joy
+  priority: local_joy
+  rear_left_flipper_button: 6
+  rear_right_flipper_button: 7
+  run_button: 0
+  scanning_speed_axis: 4
+  scanning_speed_increment: 0.2
+  servo_reset_button_1: 6
+  servo_reset_button_2: 7
+  servo_reset_button_3: 8
+  servo_reset_button_4: 9
+  side_light_button_1: 5
+  side_light_button_2: 9
+remote_teleop_joy_ctu_robot_2489_8665153861114946958:
+  at_red_button: 2
+  at_right_axis_button_id: 11
+  at_yellow_button: 3
+  axis_angular: 0
+  axis_linear: 1
+  deadman_buttons:
+  - 1
+  - 10
+  differential_brake_button: 8
+  enable_button: 9
+  estop_button: 8
+  flipper_axis: 5
+  flipper_increment: 0.3490658503988659
+  flipper_reset_button: 3
+  front_left_flipper_button: 4
+  front_light_button_1: 4
+  front_light_button_2: 9
+  front_right_flipper_button: 5
+  plugin_pkg: nifti_teleop_joy
+  priority: secondary_joy
+  rear_left_flipper_button: 6
+  rear_right_flipper_button: 7
+  run_button: 0
+  scanning_speed_axis: 4
+  scanning_speed_increment: 0.2
+  servo_reset_button_1: 6
+  servo_reset_button_2: 7
+  servo_reset_button_3: 8
+  servo_reset_button_4: 9
+  side_light_button_1: 5
+  side_light_button_2: 9
+remote_teleop_joy_ctu_robot_6882_2188805241406001644:
+  at_red_button: 2
+  at_right_axis_button_id: 11
+  at_yellow_button: 3
+  axis_angular: 0
+  axis_linear: 1
+  deadman_buttons:
+  - 1
+  - 10
+  differential_brake_button: 8
+  enable_button: 9
+  estop_button: 8
+  flipper_axis: 5
+  flipper_increment: 0.3490658503988659
+  flipper_reset_button: 3
+  front_left_flipper_button: 4
+  front_light_button_1: 4
+  front_light_button_2: 9
+  front_right_flipper_button: 5
+  plugin_pkg: nifti_teleop_joy
+  priority: secondary_joy
+  rear_left_flipper_button: 6
+  rear_right_flipper_button: 7
+  run_button: 0
+  scanning_speed_axis: 4
+  scanning_speed_increment: 0.2
+  servo_reset_button_1: 6
+  servo_reset_button_2: 7
+  servo_reset_button_3: 8
+  servo_reset_button_4: 9
+  side_light_button_1: 5
+  side_light_button_2: 9
+remote_teleop_joy_ctu_robot_6882_3986316965883585556:
+  at_red_button: 2
+  at_right_axis_button_id: 11
+  at_yellow_button: 3
+  axis_angular: 0
+  axis_linear: 1
+  deadman_buttons:
+  - 1
+  - 10
+  differential_brake_button: 8
+  enable_button: 9
+  estop_button: 8
+  flipper_axis: 5
+  flipper_increment: 0.3490658503988659
+  flipper_reset_button: 3
+  front_left_flipper_button: 4
+  front_light_button_1: 4
+  front_light_button_2: 9
+  front_right_flipper_button: 5
+  plugin_pkg: nifti_teleop_joy
+  priority: local_joy
+  rear_left_flipper_button: 6
+  rear_right_flipper_button: 7
+  run_button: 0
+  scanning_speed_axis: 4
+  scanning_speed_increment: 0.2
+  servo_reset_button_1: 6
+  servo_reset_button_2: 7
+  servo_reset_button_3: 8
+  servo_reset_button_4: 9
+  side_light_button_1: 5
+  side_light_button_2: 9
+rosdistro: 'melodic
+
+  '
+roslaunch:
+  uris:
+    host_ctu_robot__32859: http://ctu-robot:32859/
+    host_ctu_robot__33035: http://ctu-robot:33035/
+    host_ctu_robot__33633: http://ctu-robot:33633/
+    host_ctu_robot__33977: http://ctu-robot:33977/
+    host_ctu_robot__34005: http://ctu-robot:34005/
+    host_ctu_robot__34243: http://ctu-robot:34243/
+    host_ctu_robot__34261: http://ctu-robot:34261/
+    host_ctu_robot__34401: http://ctu-robot:34401/
+    host_ctu_robot__34537: http://ctu-robot:34537/
+    host_ctu_robot__34751: http://ctu-robot:34751/
+    host_ctu_robot__35243: http://ctu-robot:35243/
+    host_ctu_robot__35549: http://ctu-robot:35549/
+    host_ctu_robot__35833: http://ctu-robot:35833/
+    host_ctu_robot__36487: http://ctu-robot:36487/
+    host_ctu_robot__36951: http://ctu-robot:36951/
+    host_ctu_robot__37209: http://ctu-robot:37209/
+    host_ctu_robot__37689: http://ctu-robot:37689/
+    host_ctu_robot__38157: http://ctu-robot:38157/
+    host_ctu_robot__38311: http://ctu-robot:38311/
+    host_ctu_robot__38465: http://ctu-robot:38465/
+    host_ctu_robot__38519: http://ctu-robot:38519/
+    host_ctu_robot__38625: http://ctu-robot:38625/
+    host_ctu_robot__39043: http://ctu-robot:39043/
+    host_ctu_robot__39097: http://ctu-robot:39097/
+    host_ctu_robot__39657: http://ctu-robot:39657/
+    host_ctu_robot__40131: http://ctu-robot:40131/
+    host_ctu_robot__40411: http://ctu-robot:40411/
+    host_ctu_robot__40805: http://ctu-robot:40805/
+    host_ctu_robot__41525: http://ctu-robot:41525/
+    host_ctu_robot__41855: http://ctu-robot:41855/
+    host_ctu_robot__42029: http://ctu-robot:42029/
+    host_ctu_robot__42051: http://ctu-robot:42051/
+    host_ctu_robot__42617: http://ctu-robot:42617/
+    host_ctu_robot__42809: http://ctu-robot:42809/
+    host_ctu_robot__42829: http://ctu-robot:42829/
+    host_ctu_robot__43097: http://ctu-robot:43097/
+    host_ctu_robot__43215: http://ctu-robot:43215/
+    host_ctu_robot__43429: http://ctu-robot:43429/
+    host_ctu_robot__43899: http://ctu-robot:43899/
+    host_ctu_robot__43905: http://ctu-robot:43905/
+    host_ctu_robot__44927: http://ctu-robot:44927/
+    host_ctu_robot__45657: http://ctu-robot:45657/
+    host_ctu_robot__46193: http://ctu-robot:46193/
+    host_ctu_robot__46433: http://ctu-robot:46433/
+    host_ctu_robot_jetson__32867: http://ctu-robot-jetson:32867/
+    host_ctu_robot_jetson__33061: http://ctu-robot-jetson:33061/
+    host_ctu_robot_jetson__33073: http://ctu-robot-jetson:33073/
+    host_ctu_robot_jetson__34111: http://ctu-robot-jetson:34111/
+    host_ctu_robot_jetson__36107: http://ctu-robot-jetson:36107/
+    host_ctu_robot_jetson__36457: http://ctu-robot-jetson:36457/
+    host_ctu_robot_jetson__37145: http://ctu-robot-jetson:37145/
+    host_ctu_robot_jetson__37835: http://ctu-robot-jetson:37835/
+    host_ctu_robot_jetson__37921: http://ctu-robot-jetson:37921/
+    host_ctu_robot_jetson__39407: http://ctu-robot-jetson:39407/
+    host_ctu_robot_jetson__40231: http://ctu-robot-jetson:40231/
+    host_ctu_robot_jetson__41101: http://ctu-robot-jetson:41101/
+    host_ctu_robot_jetson__43517: http://ctu-robot-jetson:43517/
+    host_ctu_robot_jetson__43689: http://ctu-robot-jetson:43689/
+    host_ctu_robot_jetson__45739: http://ctu-robot-jetson:45739/
+    host_ctu_robot_jetson__46077: http://ctu-robot-jetson:46077/
+    host_ctu_robot_jetson__46855: http://ctu-robot-jetson:46855/
+rosversion: '1.14.13
+
+  '
+rover:
+  bodyEdgeCurvature: 0.035
+  flipperBeltThickness: 0.03
+  flipperLength: 0.33
+  flipperOffset: 0.193731547
+  flipperWidth: 0.04981
+  maxScanningSpeed: 1.2
+  referentialZ: 0.0705
+  robotBodyShift: 0
+  robotLengthBody: 0.635
+  robotWidthBody: 0.243
+  robotWidthFlippers: 0.594
+  robotWidthTracks: 0.494
+  trackDistance: 0.397
+  trackLength: 0.5
+  trackWheelRadius: 0.089
+  trackWidth: 0.097
+  vMax: 0.6
+  vMaxRun: 0.6
+  vMaxTravel: 0.3
+  wMax: 3.02
+  wMaxRun: 1.24
+  wMaxTravel: 0.6
+run_id: e15f34ee-504d-11ed-b960-968c41c51a75
+semantic_traversability_manager:
+  num_worker_threads: 16
+sound_fix_cov:
+  sound_period: 30
+static_transforms: []
+steering_efficiency: 0.5
+system_monitor:
+  ntp_monitor:
+    reference_host: ntp.nic.cz
+  test:
+    cpu_monitor:
+      check_core_temps: true
+      cpu_load1_warn: 0.9
+      cpu_load5_warn: 0.8
+      cpu_load_error: 1.0
+      cpu_load_warn: 0.9
+      cpu_temp_error: 90.0
+      cpu_temp_warn: 85.0
+    hdd_monitor:
+      hdd_level_error: 0.99
+      hdd_level_warn: 0.95
+      hdd_temp_error: 70.0
+      hdd_temp_warn: 55.0
+      no_hdd_temp: true
+      no_hdd_temp_warn: false
+    mem_monitor:
+      mem_level_error: 0.99
+      mem_level_warn: 0.95
+    net_capacity: 128.0
+    net_monitor:
+      net_level_warn: 0.95
+    ntp_monitor:
+      error_offset_tolerance: 5000000.0
+      offset_tolerance: 500.0
+      reference_host: ntp.nic.cz
+tf:
+  buffer_size: 30.0
+  publish_frame_service: true
+  server:
+    streams:
+      body:
+        allow_transforms_update: true
+        child_frames: []
+        intermediate_frames: true
+        parent_frame: base_link
+        publication_period: 0.02
+        publisher_queue_size: 100
+      laser:
+        allow_transforms_update: true
+        child_frames:
+        - laser
+        intermediate_frames: true
+        parent_frame: odom
+        publication_period: 0.02
+        publisher_queue_size: 10
+      odom:
+        allow_transforms_update: true
+        child_frames:
+        - base_link
+        intermediate_frames: true
+        parent_frame: odom
+        publication_period: 0.02
+        publisher_queue_size: 10
+    supports_transform_streams: true
+    transforms_update_period: 10.0
+  use_node_namespace: true
+tf_static_publisher:
+  reload_frequency: 0.03
+  transforms:
+  - - -0.216
+    - 0.035
+    - 0.231
+    - -0.259
+    - -0.141
+    - 0.904
+    - 0.31
+    - base_link
+    - markers
+tracks_reset_service_name: gpio_set_sw_2
+traversability_estimation_max:
+  clearance_high: 0.6
+  clearance_low: 0.1
+  clearance_radius: 0.4
+  fixed_frame: odom
+  inclination_radius: 0.4
+  inclination_weight: 1.0
+  max_dist: 0.4
+  max_z: 0.5
+  min_support: 3
+  min_z: -1.5
+  normal_std_weight: 0.5
+  obstacle_weight: 0.2
+  radius: 0.4
+  remove_low_support: true
+  support_radius: 0.25
+  timeout: 1.0
+traversability_fusion:
+  flat_cost_th: 0.6
+  geometric_trav: geometric_traversability_raw
+  geometric_weight: 0.5
+  max_time_diff: 0.6
+  obstacle_cost_th: 0.8
+  semantic_trav: cloud_segmentation/points
+  semantic_weight: 0.5
+traversability_manager:
+  num_worker_threads: 16
+viz:
+  back_view:
+    in_height: 7392
+    in_width: 1616
+  camera1394_driver:
+    auto_brightness: 3
+    auto_exposure: 3
+    auto_focus: 5
+    auto_gain: 2
+    auto_gamma: 0
+    auto_hue: 5
+    auto_iris: 5
+    auto_pan: 3
+    auto_saturation: 5
+    auto_sharpness: 5
+    auto_shutter: 2
+    auto_trigger: 0
+    auto_white_balance: 0
+    auto_zoom: 5
+    bayer_method: ''
+    bayer_pattern: rggb
+    binning_x: 1
+    binning_y: 1
+    brightness: 0.0
+    camera_info_url: ''
+    exposure: 384.0
+    external_trigger: false
+    focus: 0.0
+    format7_color_coding: raw8
+    format7_packet_size: 8160
+    frame_id: omnicam
+    frame_rate: 5.25
+    gain: 0.0
+    gamma: 10.0
+    guid: 00b09d01009a0a69
+    hue: 0.0
+    iris: 8.0
+    iso_speed: 800
+    max_consecutive_errors: 0
+    num_dma_buffers: 2
+    pan: 0.0
+    reset_bus_on_open: false
+    reset_on_open: false
+    roi_height: 7392
+    roi_width: 1616
+    saturation: 1.0
+    sharpness: 1.0
+    shutter: 1.0
+    software_trigger: false
+    time_offset: 0.0
+    trigger: 0.0
+    trigger_mode: mode_0
+    trigger_polarity: active_low
+    trigger_source: source_0
+    use_ros_time: false
+    video_mode: format7_mode0
+    white_balance_BU: 0.0
+    white_balance_RV: 0.0
+    x_offset: 0
+    y_offset: 0
+    zoom: 0.0
+  camera_0:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  camera_1:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  camera_2:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  camera_3:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  camera_4:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  camera_5:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  front_view:
+    in_height: 7392
+    in_width: 1616
+  image_proc_debayer:
+    debayer: 0
+  lady_saw:
+    camera_info_url_format: package://omnicamera/res/camera_info/%s.yaml
+    camera_name_format: 00b09d01009a0a69_1232x1616_c%i
+    frame_id_format: camera_%i
+    height: 1616
+    rotate: true
+    width: 1232
+  ladybug_pano:
+    approxDistance: 20
+    encoding: bgr8
+    frameId: pano
+    frameRate: 6.0
+    horizontalFov: 90
+    in_height: 7392
+    in_width: 1616
+    model: spherical
+    name: pano
+    pan: -31.8
+    parentFrameId: omnicam
+    posX: 0
+    posY: 0
+    posZ: 0
+    realCameraFrame1: camera_0
+    realCameraFrame2: camera_1
+    realCameraFrame3: camera_2
+    realCameraFrame4: camera_3
+    realCameraFrame5: camera_4
+    realCameraFrame6: camera_5
+    realCameraTopic1: camera_0
+    realCameraTopic2: camera_1
+    realCameraTopic3: camera_2
+    realCameraTopic4: camera_3
+    realCameraTopic5: camera_4
+    realCameraTopic6: camera_5
+    synchronize: 1
+    tilt: 90
+    verticalFov: 67.5
+    viewportHeight: 480
+    viewportWidth: 960
+  left_view:
+    in_height: 7392
+    in_width: 1616
+  omnicam:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+    image_mono:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+    image_raw:
+      compressed:
+        format: jpeg
+        jpeg_quality: 80
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  omnicamera_nodelet_manager:
+    num_worker_threads: 24
+  pano:
+    image:
+      compressed:
+        format: jpeg
+        jpeg_quality: 50
+        png_level: 9
+      compressedDepth:
+        depth_max: 10.0
+        depth_quantization: 100.0
+        png_level: 9
+      h264:
+        crf: 30
+        max_rate: 60.0
+        width: 640
+      theora:
+        keyframe_frequency: 64
+        optimize_for: 1
+        quality: 31
+        target_bitrate: 800000
+  panolut_virtual_camera:
+    in_height: 7392
+    in_width: 1616
+  right_view:
+    in_height: 7392
+    in_width: 1616
+  up_view:
+    in_height: 7392
+    in_width: 1616
+waypoints_to_path:
+  odom_frame: gps_odom
