@@ -19,6 +19,8 @@
     <include file="$(find monoforce)/launch/monoforce.launch">
         <arg name="robot" value="$(arg robot)"/>
         <arg if="$(arg resize_imgs)" name="lss_config_path" value="$(dirname)/../../monoforce/config/lss_cfg_resize.yaml"/>
+        <arg unless="$(arg resize_imgs)" name="lss_config_path" value="$(dirname)/../../monoforce/config/lss_cfg.yaml"/>
+
         <arg if="$(arg resize_imgs)" name="img_topics" value="['/img_preproc_left/image/compressed',
                                                                '/img_preproc_front/image/compressed',
                                                                '/img_preproc_right/image/compressed',
@@ -27,6 +29,7 @@
                                                                        '/img_preproc_front/camera_info',
                                                                        '/img_preproc_right/camera_info',
                                                                        '/img_preproc_rear/camera_info']"/>
+
         <arg unless="$(arg resize_imgs)" name="img_topics" value="['/camera_front/image_color/compressed',
                                                                    '/camera_left/image_color/compressed',
                                                                    '/camera_rear/image_color/compressed',
