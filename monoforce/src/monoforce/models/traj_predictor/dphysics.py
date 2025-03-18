@@ -213,8 +213,8 @@ class DPhysics(torch.nn.Module):
         assert z_points.shape == (B, N_pts, 1)
         assert n.shape == (B, N_pts, 3)
 
-        friction_points = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
-        assert friction_points.shape == (B, N_pts, 1)
+        friction_ceofs = self.interpolate_grid(self.friction, x_points[..., 0], x_points[..., 1]).unsqueeze(-1)
+        assert friction_ceofs.shape == (B, N_pts, 1)
 
         # check if the rigid body is in contact with the terrain
         dh_points = x_points[..., 2:3] - z_points
@@ -227,14 +227,15 @@ class DPhysics(torch.nn.Module):
         m, g = self.dphys_cfg.robot_mass, self.dphys_cfg.gravity
         xd_points_n = (xd_points * n).sum(dim=2).unsqueeze(2)  # normal velocity
         assert xd_points_n.shape == (B, N_pts, 1)
-        F_spring = -torch.mul((self.stiffness * dh_points + self.damping * xd_points_n), n)  # F_s = -k * dh - b * v_n
-        F_spring = torch.mul(F_spring, in_contact) / N_pts  # apply forces only at the contact points
-        F_spring = torch.clamp(F_spring, min=-m*g, max=m*g)
-        assert F_spring.shape == (B, N_pts, 3)
+        F_reaction = -torch.mul((self.stiffness * dh_points + self.damping * xd_points_n), n)  # F_s = -k * dh - b * v_n
+        n_contact_pts = torch.sum(in_contact, dim=1, keepdim=True)
+        F_reaction = torch.mul(F_reaction, in_contact) / n_contact_pts  # apply forces only at the contact points
+        F_reaction = torch.clamp(F_reaction, min=-m*g, max=m*g)
+        assert F_reaction.shape == (B, N_pts, 3)
 
         # static and dynamic friction forces: https://en.wikipedia.org/wiki/Friction
         thrust_dir = normalized(R[..., 0])  # direction of the thrust
-        N = torch.norm(F_spring, dim=2)  # normal force magnitude at the contact points
+        N = torch.norm(F_reaction, dim=2)  # normal force magnitude at the contact points
         track_vels = vw_to_track_vels(v=controls_t[:, 0], w=controls_t[:, 1],
                                       robot_size=self.dphys_cfg.robot_size, n_tracks=len(self.dphys_cfg.driving_parts))
         assert track_vels.shape == (B, len(self.dphys_cfg.driving_parts))
@@ -243,9 +244,7 @@ class DPhysics(torch.nn.Module):
             mask = self.dphys_cfg.driving_parts[i]
             u = track_vels[:, i].unsqueeze(1) * thrust_dir
             cmd_vels[:, mask] = u.unsqueeze(1)
-        mu_cmd_vels = friction_points * cmd_vels
-        # mu_cmd_vels = torch.clamp(mu_cmd_vels, min=-self.dphys_cfg.vel_max, max=self.dphys_cfg.vel_max)
-        slip_vel = mu_cmd_vels - xd_points
+        slip_vel = friction_ceofs * (cmd_vels - xd_points)
         slip_vel_n = (slip_vel * n).sum(dim=2).unsqueeze(2)  # normal velocity difference
         slip_vel_tau = slip_vel - slip_vel_n * n  # tangential velocity difference
         F_friction = N.unsqueeze(2) * slip_vel_tau  # F_f = mu * N * v_slip
@@ -253,7 +252,7 @@ class DPhysics(torch.nn.Module):
         assert F_friction.shape == (B, N_pts, 3)
 
         # rigid body rotation: M = sum(r_i x F_i)
-        torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_spring + F_friction), dim=1)
+        torque = torch.sum(torch.linalg.cross(x_points - x.unsqueeze(1), F_reaction + F_friction), dim=1)
         omega_d = (self.I_inv @ torque.unsqueeze(2)).squeeze(2)  # omega_d = I^(-1) M
         omega_d = torch.clamp(omega_d, min=-self.dphys_cfg.omega_max, max=self.dphys_cfg.omega_max)
         Omega_skew = skew_symmetric(omega)  # Omega_skew = [omega]_x
@@ -263,12 +262,12 @@ class DPhysics(torch.nn.Module):
 
         # motion of the cog
         F_grav = m * g * torch.as_tensor(self.dphys_cfg.gravity_direction, device=self.device).unsqueeze(0)  # F_grav = [0, 0, -m * g]
-        F_cog = F_grav + F_spring.sum(dim=1) + F_friction.sum(dim=1)  # ma = sum(F_i)
+        F_cog = F_grav + F_reaction.sum(dim=1) + F_friction.sum(dim=1)  # ma = sum(F_i)
         xdd = F_cog / m  # a = F / m
         assert xdd.shape == (B, 3)
 
         dstate = (xd, xdd, dR, omega_d)
-        forces = (F_spring, F_friction)
+        forces = (F_reaction, F_friction)
 
         return dstate, forces
 
