@@ -228,7 +228,8 @@ class DPhysics(torch.nn.Module):
         xd_points_n = (xd_points * n).sum(dim=2).unsqueeze(2)  # normal velocity
         assert xd_points_n.shape == (B, N_pts, 1)
         F_spring = -torch.mul((self.stiffness * dh_points + self.damping * xd_points_n), n)  # F_s = -k * dh - b * v_n
-        F_spring = torch.mul(F_spring, in_contact) / N_pts  # apply forces only at the contact points
+        n_contact_pts = torch.sum(in_contact, dim=1, keepdim=True)
+        F_spring = torch.mul(F_spring, in_contact) / n_contact_pts  # apply forces only at the contact points
         F_spring = torch.clamp(F_spring, min=-m*g, max=m*g)
         assert F_spring.shape == (B, N_pts, 3)
 
