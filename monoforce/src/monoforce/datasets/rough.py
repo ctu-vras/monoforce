@@ -67,14 +67,13 @@ class ROUGH(Dataset):
         self.path = path
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
-        self.traj_path = os.path.join(path, 'trajectories')
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
         self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
         self.dphys_cfg = dphys_cfg if dphys_cfg is not None else DPhysConfig()
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
-        self.poses_ts, self.poses = self.get_poses(return_stamps=True)
+        self.poses_ts, self.poses = self.get_all_poses(return_stamps=True)
         self.camera_names = self.get_camera_names()
 
         self.is_train = is_train
@@ -115,11 +114,12 @@ class ROUGH(Dataset):
         T[:3, :4] = pose.reshape((3, 4))
         return T
 
-    def get_poses(self, return_stamps=False):
+    def get_all_poses(self, return_stamps=False):
         if not os.path.exists(self.poses_path):
             print(f'Poses file {self.poses_path} does not exist')
-            return None
+            return None, None if return_stamps else None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
+        assert len(data) > 0, f'No poses found in {self.poses_path}'
         stamps, Ts = data[:, 0], data[:, 1:13]
         lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
@@ -151,13 +151,18 @@ class ROUGH(Dataset):
         pose_gravity_aligned[:3, :3] = R
         return pose_gravity_aligned
 
-    def get_controls(self, i):
+    def get_all_controls(self):
         if not os.path.exists(self.controls_path):
             print(f'Controls file {self.controls_path} does not exist')
             return None, None
-
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
+        assert len(data) > 0, f'No controls found in {self.controls_path}'
         all_control_stamps, all_controls = data[:, 0], data[:, 1:]
+        return all_control_stamps, all_controls
+
+    def get_controls(self, i):
+        all_control_stamps, all_controls = self.get_all_controls()
+        # assert all_controls is not None, f'Controls are not available'
         time_left = self.ind_to_stamp(i)
         # start time from 0
         time_left -= all_control_stamps[0]
@@ -364,7 +369,7 @@ class ROUGH(Dataset):
             # create global cloud
             global_cloud = None
             for i in tqdm(range(len(self))[::step]):
-                cloud = self.get_cloud(i)
+                cloud = self.get_cloud(i, gravity_aligned=False)
                 T = self.get_pose(i)
                 cloud = transform_cloud(cloud, T)
                 points = position(cloud)
@@ -391,7 +396,7 @@ class ROUGH(Dataset):
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(global_cloud_vis)
 
-            poses = self.get_poses()
+            poses = self.get_all_poses()
             pcd_poses = o3d.geometry.PointCloud()
             pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
             pcd_poses.paint_uniform_color([0.8, 0.1, 0.1])
