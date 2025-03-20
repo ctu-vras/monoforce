@@ -23,7 +23,10 @@ Examples of predicted trajectories and autonomous traversal through vegetation:
 
 <p>
   <a href="https://www.youtube.com/watch?v=JGi-OzTBG1k">
-  <img src="./monoforce/docs/imgs/demo_oru.png" alt="video link" width="400">
+    <img src="./monoforce/docs/imgs/demo_oru.png" alt="video link" width="400">
+  </a>
+  <a href="https://drive.google.com/file/d/1TTNTyqZnObtdE_PdCc2GprszphnE3hxS/view?usp=drive_link">
+    <img src="./monoforce/docs/imgs/park_navigation_video_teaser.jpg" alt="video link" width="400">
   </a>
 </p>
 
