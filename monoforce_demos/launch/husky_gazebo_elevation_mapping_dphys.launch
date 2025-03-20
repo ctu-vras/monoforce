@@ -4,7 +4,6 @@
   <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
   <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
   <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
-  <arg name="engine" default="torch" doc="Using NVIDIA Warp- or Pytorch-based differentiable physics"/>
   <arg name="device" default="cuda" doc="Device to run the differentiable physics"/>
   <arg name="robot" default="marv" doc="Robot name"/>
 
@@ -31,7 +30,6 @@
 
   <!-- Differentiable Physics -->
   <include if="1" file="$(find monoforce)/launch/dphysics.launch">
-    <arg name="engine" value="$(arg engine)"/>
     <arg name="robot" value="$(arg robot)"/>
     <arg name="gridmap_topic" value="grid_map/terrain"/>
     <arg name="gridmap_layer" value="elevation_inpainted"/>
