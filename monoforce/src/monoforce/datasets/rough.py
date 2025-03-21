@@ -39,6 +39,12 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
 
+        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-14-47-44'),
+        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-22-35'),
+        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-24-35'),
+        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-35-24'),
+        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-36-49'),
+
         # TRADR robot
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-12-12'),
@@ -133,8 +139,7 @@ class ROUGH(Dataset):
 
     def ind_to_stamp(self, i):
         ind = self.ids[i]
-        sec, nsec = ind.split('_')
-        stamp = float(sec) + float(nsec) / 1e9
+        stamp = float(ind.replace('_', '.'))
         return stamp
 
     def get_pose(self, i):
@@ -526,6 +531,15 @@ class ROUGH(Dataset):
         size = self.get_raw_img_size(i, camera)
         transform = torchvision.transforms.Resize(size)
         seg = transform(seg)
+        return seg
+
+    def get_seg_vis(self, i, camera=None):
+        if camera is None:
+            camera = self.camera_names[0]
+        id = self.ids[i]
+        seg_path = os.path.join(self.path, 'images/wildscenes_seg/vis/', '%s_%s.png' % (id, camera))
+        assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
+        seg = Image.open(seg_path)
         return seg
 
     def get_semantic_cloud(self, i, classes=None, vis=False):
