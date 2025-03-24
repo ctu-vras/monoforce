@@ -32,7 +32,7 @@
   </node>
 
   <!-- Publish robot tf as pose.-->
-  <node pkg="elevation_mapping_demos" type="tf_to_pose_publisher.py" name="robot_pose_publisher">
+  <node pkg="monoforce_navigation" type="tf_to_pose_publisher" name="robot_pose_publisher">
     <param name="from_frame" type="string" value="$(arg fixed_frame)"/>
     <param name="to_frame" type="string" value="$(arg robot_frame)"/>
   </node>

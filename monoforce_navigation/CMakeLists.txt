@@ -11,5 +11,6 @@ install(
         path_to_map
         path_selector
         publish_gt_gridmap
+        tf_to_pose_publisher
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}/nodes
 )
