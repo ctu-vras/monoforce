@@ -2,7 +2,6 @@
 
 import sys
 sys.path.append('../src/')
-from datetime import datetime
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import os
@@ -18,9 +17,6 @@ from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_m
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv, compile_data, str2bool
 from monoforce.losses import physics_loss, hm_loss
 from monoforce.datasets import ROUGH, rough_seq_paths
-
-np.random.seed(42)
-torch.manual_seed(42)
 
 
 def arg_parser():

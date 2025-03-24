@@ -1,5 +1,4 @@
 import os
-import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from numpy.lib.recfunctions import structured_to_unstructured
@@ -137,6 +136,9 @@ def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None, dphys
 
     :return: train_ds, val_ds
     """
+    np.random.seed(42)
+    torch.manual_seed(42)
+
     train_datasets = []
     val_datasets = []
     print('Data paths:', rough_seq_paths)
