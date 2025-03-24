@@ -3,7 +3,7 @@
 <launch>
   <arg name="input" default="points" doc="Input point cloud topic."/>
   <arg name="output" default="grid_map/terrain" doc="Output elevation map topic."/>
-  <arg name="robot_frame" default="base_footprint" doc="Robot frame."/>
+  <arg name="robot_frame" default="base_link" doc="Robot frame."/>
   <arg name="fixed_frame" default="odom" doc="Fixed frame."/>
 
   <!-- Launch cloud filter nodelet. -->
@@ -39,7 +39,7 @@
 
   <!-- Launch elevation mapping node. -->
   <node pkg="elevation_mapping" type="elevation_mapping" name="elevation_mapping" output="screen">
-    <rosparam command="load" file="$(dirname)/../config/elevation_mapping/robots/husky.yaml"/>
+    <rosparam command="load" file="$(dirname)/../config/elevation_mapping/robots/marv.yaml"/>
     <rosparam command="load" file="$(dirname)/../config/elevation_mapping/postprocessing/postprocessor_pipeline.yaml"/>
 
     <remap from="elevation_mapping/elevation_map_raw" to="$(arg output)"/>
