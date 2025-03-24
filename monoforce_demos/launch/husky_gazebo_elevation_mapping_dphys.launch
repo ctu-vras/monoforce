@@ -48,8 +48,8 @@
                                        [0, -5, 0, 0, 0, 0, 1],
                                        [0, 0, 0, 0, 0, 0, 1],
                                        ]"/>
-    <arg name="waypoint_weight" default="1.0"/>
-    <arg name="path_force_weight" default="1.0"/>
+    <arg name="waypoint_weight" default="2.0"/>
+    <arg name="path_weight" default="1.0"/>
 <!--     <arg name="map_frame" value="map"/> -->
     <arg name="map_frame" value="odom"/>
   </include>

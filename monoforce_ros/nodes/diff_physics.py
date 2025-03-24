@@ -2,7 +2,6 @@
 
 from time import time
 import torch
-import warp as wp
 import numpy as np
 from scipy.spatial.transform import Rotation
 import rospy
@@ -251,16 +250,20 @@ class DPhysEngine(DiffPhysBase):
         poses[:, :, 3, 3] = 1.0
         assert not torch.any(torch.isnan(poses))
 
-        # compute path costs
-        # TODO: think about a better way to compute path costs
-        #  (maybe normal forces should be aligned with Z axis or be consistent)
-        F_springs, F_frictions = forces
-        assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
-        assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
-        path_costs = torch.norm(F_springs, dim=-1).std(dim=-1).std(dim=-1)
-        assert not torch.any(torch.isnan(path_costs))
-        assert poses.shape == (self.n_sim_trajs, self.n_sim_steps, 4, 4)
-        assert path_costs.shape == (self.n_sim_trajs,)
+        # compute path costs: interaction forces-based
+        # F_normals, F_frictions = forces
+        # assert F_normals.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
+        # assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
+        # path_costs = F_normals.norm(dim=-1).std(dim=-1).std(dim=-1)
+        # assert not torch.any(torch.isnan(path_costs))
+        # assert poses.shape == (self.n_sim_trajs, self.n_sim_steps, 4, 4)
+        # assert path_costs.shape == (self.n_sim_trajs,)
+
+        # compute path costs: inclination-based
+        Rs_pred = states[2].cpu().reshape(-1, 3, 3)  # (n_trajs * time_horizon, 3, 3)
+        rpy = torch.as_tensor(Rotation.from_matrix(Rs_pred).as_euler('xyz'))  # (n_trajs * time_horizon, 3)
+        roll, pitch = rpy[:, 0].reshape(self.n_sim_trajs, -1), rpy[:, 1].reshape(self.n_sim_trajs, -1)  # (n_trajs, time_horizon)
+        path_costs = roll.abs().mean(dim=-1) + pitch.abs().mean(dim=-1)  # (n_trajs,)
 
         return poses, path_costs
 

@@ -6,10 +6,10 @@
     <arg name="input_path_costs" default="path_costs"/>
     <arg name="output_path" default="selected_path"/>
     <arg name="waypoint_weight" default="1.0"/>
-    <arg name="path_force_weight" default="1.0"/>
+    <arg name="path_weight" default="1.0"/>
     <arg name="waypoints_list" default="[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]]"/>
 
-    <node name="path_selector" pkg="monoforce_navigation" type="path_selector">
+    <node name="path_selector" pkg="monoforce_navigation" type="path_selector" output="screen">
         <rosparam subst_value="true">
             robot_frame: $(arg robot_frame)
             map_frame: $(arg map_frame)
@@ -17,7 +17,7 @@
             path_costs_topic: $(arg input_path_costs)
             selected_path_topic: $(arg output_path)
             waypoint_weight: $(arg waypoint_weight)
-            path_force_weight: $(arg path_force_weight)
+            path_weight: $(arg path_weight)
             waypoints_list: $(arg waypoints_list)
             wp_lookahead_dist: 10.0
             waypoint_reached_dist: 1.0

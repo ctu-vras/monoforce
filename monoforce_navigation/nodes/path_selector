@@ -30,7 +30,7 @@ class PathSelector:
                  waypoint_reached_dist,
                  wp_lookahead_dist=10.0,
                  waypoint_weight=1.0,
-                 path_force_weight=1.0,
+                 path_weight=1.0,
                  robot_frame='base_link',
                  map_frame='map',
                  max_msgs_delay=0.5,
@@ -52,7 +52,7 @@ class PathSelector:
         self.rate = rospy.Rate(1.0 / proc_time_period)
         self.wp_i = 0
         self.waypoint_weight = waypoint_weight
-        self.path_force_weight = path_force_weight
+        self.path_weight = path_weight
         self.subs = []
         self.wp_pub = rospy.Publisher('waypoint', PoseStamped, queue_size=1)
         self.route_pub = rospy.Publisher('waypoints_route', Path, queue_size=1)
@@ -246,7 +246,7 @@ class PathSelector:
         assert np.all(path_costs >= 0)
 
         # select path with minimum distance to waypoint and cost
-        costs = self.waypoint_weight * normalize(path_dists_to_wp) + self.path_force_weight * normalize(path_costs)
+        costs = self.waypoint_weight * normalize(path_dists_to_wp) + self.path_weight * normalize(path_costs)
         selected_path_id = np.argmin(costs)
         selected_path_closest_point_id = closest_point_ids[selected_path_id]
         if self.waypoint_weight <= 0.0:
@@ -282,13 +282,13 @@ def main():
     waypoint_reached_dist = rospy.get_param('~waypoint_reached_dist', 1.0)
     wp_lookahead_dist = rospy.get_param('~wp_lookahead_dist', 10.0)
     waypoint_weight = rospy.get_param('~waypoint_weight', 1.0)
-    path_force_weight = rospy.get_param('~path_force_weight', 1.0)
+    path_weight = rospy.get_param('~path_weight', 1.0)
 
     node = PathSelector(paths_topic=paths_topic, path_costs_topic=path_costs_topic,
                         waypoints_list=waypoints_list, selected_path_topic=selected_path_topic,
                         waypoint_reached_dist=waypoint_reached_dist,
                         wp_lookahead_dist=wp_lookahead_dist,
-                        waypoint_weight=waypoint_weight, path_force_weight=path_force_weight,
+                        waypoint_weight=waypoint_weight, path_weight=path_weight,
                         robot_frame=robot_frame, map_frame=map_frame,
                         max_msgs_delay=max_msgs_delay,
                         proc_time_period=proc_time_period)

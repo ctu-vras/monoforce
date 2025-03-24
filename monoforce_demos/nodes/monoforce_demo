@@ -7,11 +7,11 @@ import rospy
 from numpy.lib.recfunctions import unstructured_to_structured
 from monoforce.datasets import ROUGH, rough_seq_paths
 from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from monoforce.models.traj_predictor.dphysics import DPhysics, generate_control_inputs
+from monoforce.models.traj_predictor.dphysics import DPhysics, generate_controls
 from monoforce.ros import height_map_to_gridmap_msg, poses_to_path, to_tf, xyz_to_point
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
-from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2, Image, CameraInfo
+from nav_msgs.msg import Path
 from grid_map_msgs.msg import GridMap
 from ros_numpy import msgify
 from monoforce.utils import read_yaml, position
@@ -222,10 +222,10 @@ class MonoForce:
                 # if robot has more than one (front-facing) camera, randomly change commanded linear velocity direction
                 if len(self.camera_frames) > 1 and np.random.random() > 0.5:
                     v_range = (-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2.)
-                controls, _ = generate_control_inputs(n_trajs=1,
-                                                      v_range=v_range,
-                                                      w_range=w_range,
-                                                      time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
+                controls, _ = generate_controls(n_trajs=1,
+                                                v_range=v_range,
+                                                w_range=w_range,
+                                                time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dphys_cfg.dt)
 
                 states, forces = self.predict_states(z_grid=terrain_pred.squeeze(1), controls=controls, friction=friction_pred.squeeze(1))
                 poses = self.poses_from_states(states)

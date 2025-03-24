@@ -16,6 +16,8 @@
   <depend>joint_state_publisher</depend>
   <depend>husky_description</depend>
   <depend>realsense2_description</depend>
+  <depend>monoforce_gazebo</depend>
+  <depend>monoforce_navigation</depend>
 
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
