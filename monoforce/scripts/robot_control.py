@@ -2,158 +2,104 @@
 
 import sys
 sys.path.append('../src')
-import torch
 import numpy as np
-from scipy.spatial.transform import Rotation
-from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from monoforce.models.traj_predictor.dphysics import DPhysics, generate_controls
-import matplotlib.pyplot as plt
-
-
-# simulation parameters
-dphys_cfg = DPhysConfig()
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+import torch
+from monoforce.models.physics_engine.configs import (
+    WorldConfig,
+    RobotModelConfig,
+    PhysicsEngineConfig,
+)
+from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
+from monoforce.models.physics_engine.utils.geometry import unit_quaternion, euler_to_quaternion
+from monoforce.models.physics_engine.engine.engine_state import (
+    vectorize_iter_of_states as vectorize_states,
+)
+from collections import deque
 
 
 def motion():
-    # instantiate the simulator
-    dphysics = DPhysics(dphys_cfg, device=device)
+    num_robots = 1
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # control inputs: linear velocity and angular velocity, v in m/s, w in rad/s
-    controls = torch.stack([
-        torch.tensor([[1.0, 0.6]] * int(dphys_cfg.traj_sim_time / dphys_cfg.dt)),  # [v] m/s, [w] rad/s for each time step
-    ]).to(device)
-    B, N_ts, _ = controls.shape
-    assert controls.shape == (B, N_ts, 2), f'controls shape: {controls.shape}'
+    # Heightmap setup - use torch's XY indexing !!!!!
+    grid_res = 0.1  # 5cm per grid cell
+    max_coord = 6.4  # meters
+    DIM = int(2 * max_coord / grid_res)
+    xint = torch.linspace(-max_coord, max_coord, DIM)
+    yint = torch.linspace(-max_coord, max_coord, DIM)
+    x, y = torch.meshgrid(xint, yint, indexing="xy")
 
-    # joint angles: [theta_fl, theta_fr, theta_rl, theta_rr]
-    joint_angles = torch.stack([
-        torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # front left
-        torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # front right
-        -torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # rear left
-        -torch.linspace(-np.pi, np.pi, N_ts).repeat(B, 1),  # rear right
-    ], dim=-1).to(device)
-    assert joint_angles.shape == (B, N_ts, 4), f'joint_angles shape: {joint_angles.shape}'
+    # block hm
+    z = torch.zeros_like(x)
+    # for thresh in [1.0, 0, -1.0, -2]:
+    #     z[torch.logical_and(x > -thresh, y < thresh)] += 0.2
+    x_grid = x.repeat(num_robots, 1, 1)
+    y_grid = y.repeat(num_robots, 1, 1)
+    z_grid = z.repeat(num_robots, 1, 1)
 
-    # initial state
-    x = torch.tensor([[-1.0, 0.0, 0.0]], device=device).repeat(B, 1)
-    assert x.shape == (B, 3)
-    xd = torch.zeros_like(x)
-    assert xd.shape == (B, 3)
-    rs = torch.tensor(Rotation.from_euler('z', [0.0]).as_matrix(), dtype=torch.float32, device=device)
-    assert rs.shape == (B, 3, 3)
-    omega = torch.zeros_like(x)
-    assert omega.shape == (B, 3)
-    state0 = (x, xd, rs, omega)
+    # Instatiate the physics config
+    robot_model = RobotModelConfig(kind="marv")
+    world_config = WorldConfig(
+        x_grid=x_grid,
+        y_grid=y_grid,
+        z_grid=z_grid,
+        grid_res=grid_res,
+        max_coord=max_coord,
+        k_stiffness=40000,
+    )
+    physics_config = PhysicsEngineConfig(num_robots=num_robots)
 
-    # heightmap defining the terrain
-    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
-    # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
-    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    # z_grid = torch.zeros_like(x_grid)
-    # z_grid[80:81, 0:100] = 1.0  # add a wall
-    z_grid += 0.02 * torch.randn_like(z_grid)  # add noise
+    # Controls
+    traj_length = 4.0  # seconds
+    n_iters = int(traj_length / physics_config.dt)
+    speed = 1.0  # m/s forward
+    omega = 0.0  # rad/s yaw
+    controls = robot_model.vw_to_vels(speed, omega)
+    flipper_controls = torch.zeros_like(controls)
 
-    x_grid, y_grid, z_grid = x_grid.to(device), y_grid.to(device), z_grid.to(device)
-    friction = dphys_cfg.friction
-    friction = friction.to(device)
+    for cfg in [robot_model, world_config, physics_config]:
+        cfg.to(device)
 
-    # repeat the heightmap for each rigid body
-    x_grid = x_grid.repeat(x.shape[0], 1, 1)
-    y_grid = y_grid.repeat(x.shape[0], 1, 1)
-    z_grid = z_grid.repeat(x.shape[0], 1, 1)
-    friction = friction.repeat(x.shape[0], 1, 1)
-    H, W = int(2 * dphys_cfg.d_max / dphys_cfg.grid_res), int(2 * dphys_cfg.d_max / dphys_cfg.grid_res)
-    assert x_grid.shape == (B, H, W)
-    assert y_grid.shape == (B, H, W)
-    assert z_grid.shape == (B, H, W)
-    assert friction.shape == (B, H, W)
+    engine = DPhysicsEngine(physics_config, robot_model, device)
 
-    # simulate the rigid body dynamics
-    states, forces = dphysics(z_grid=z_grid,
-                              controls=controls,
-                              joint_angles=joint_angles,
-                              state=state0,
-                              friction=friction, vis=True)
+    x0 = torch.tensor([0.0, 0.0, 0.1]).to(device).repeat(num_robots, 1)
+    xd0 = torch.zeros_like(x0)
+    q0 = euler_to_quaternion(*torch.tensor([0, 0, 0.0 * torch.pi])).to(device).repeat(num_robots, 1)
+    omega0 = torch.zeros_like(x0)
+    thetas0 = torch.zeros(num_robots, robot_model.num_driving_parts).to(device)
+    controls_all = torch.cat((controls, flipper_controls), dim=-1).repeat(n_iters, num_robots, 1).to(device)
 
-def shoot_multiple():
-    from time import time
-    from monoforce.vis import set_axes_equal
+    # Set joint rotational velocities, we want to follow a sine wave, so we set the joint velocities to the derivative of the sine wave
+    # We want to go +- pi/6 5 times in 10 seconds
+    amplitude = 0 * torch.pi / 4
+    periods = traj_length / 10.0
+    rot_vels = torch.cos(torch.linspace(0, periods * 2 * np.pi, n_iters)) * amplitude
+    rot_vels = rot_vels.unsqueeze(-1).repeat(1, num_robots)
+    controls_all[:, :, robot_model.num_driving_parts] = rot_vels
+    controls_all[:, :, robot_model.num_driving_parts + 1] = rot_vels
+    controls_all[:, :, robot_model.num_driving_parts + 2] = -rot_vels
+    controls_all[:, :, robot_model.num_driving_parts + 3] = -rot_vels
 
-    # simulation parameters
-    dt = dphys_cfg.dt
-    T = dphys_cfg.traj_sim_time
-    num_trajs = dphys_cfg.n_sim_trajs
-    vel_max, omega_max = dphys_cfg.vel_max, dphys_cfg.omega_max
+    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0)
 
-    # instantiate the simulator
-    dphysics = DPhysics(dphys_cfg, device=device)
+    states = deque(maxlen=n_iters)
+    dstates = deque(maxlen=n_iters)
+    auxs = deque(maxlen=n_iters)
 
-    # initial state
-    x = torch.tensor([[0.0, 0.0, 0.0]], device=device).repeat(num_trajs, 1)
-    xd = torch.zeros_like(x)
-    R = torch.eye(3, device=device).repeat(x.shape[0], 1, 1)
-    # R = torch.tensor(Rotation.from_euler('z', np.pi/6).as_matrix(), dtype=torch.float32, device=device).repeat(num_trajs, 1, 1)
-    omega = torch.zeros_like(x)
+    state = init_state
+    for i in range(n_iters):
+        state, der, aux = engine(state, controls_all[i], world_config)
+        states.append(state)
+        dstates.append(der)
+        auxs.append(aux)
 
-    # terrain properties
-    x_grid, y_grid = dphys_cfg.x_grid, dphys_cfg.y_grid
-    z_grid = torch.exp(-(x_grid - 2) ** 2 / 4) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    # z_grid = torch.sin(x_grid) * torch.cos(y_grid)
-    # z_grid = torch.zeros_like(x_grid)
-
-    # repeat the heightmap for each rigid body
-    x_grid = x_grid.repeat(num_trajs, 1, 1)
-    y_grid = y_grid.repeat(num_trajs, 1, 1)
-    z_grid = z_grid.repeat(num_trajs, 1, 1)
-
-    # control inputs in m/s and rad/s
-    controls_front, _ = generate_controls(n_trajs=num_trajs // 2,
-                                          v_range=(vel_max / 2, vel_max), w_range=(-omega_max, omega_max),
-                                          time_horizon=T, dt=dt)
-    controls_back, _ = generate_controls(n_trajs=num_trajs // 2,
-                                         v_range=(-vel_max, -vel_max / 2), w_range=(-omega_max, omega_max),
-                                         time_horizon=T, dt=dt)
-    controls = torch.cat([controls_front, controls_back], dim=0)
-    # controls = torch.ones_like(controls)
-    controls = torch.as_tensor(controls, dtype=torch.float32, device=device)
-
-    # initial state
-    state0 = (x, xd, R, omega)
-
-    # put tensors to device
-    state0 = tuple([s.to(device) for s in state0])
-    z_grid = z_grid.to(device)
-    controls = controls.to(device)
-
-    # simulate the rigid body dynamics
-    with torch.no_grad():
-        t0 = time()
-        states, forces = dphysics(z_grid=z_grid, controls=controls, state=state0, vis=False)
-        t1 = time()
-        Xs, Xds, Rs, Omegas = states
-        print(f'Simulation took {(t1-t0):.3f} [sec] on device: {device}')
-
-    # visualize
-    with torch.no_grad():
-        fig = plt.figure(figsize=(10, 10))
-        ax = fig.add_subplot(111, projection='3d')
-        # plot heightmap
-        ax.plot_surface(x_grid[0].cpu().numpy(), y_grid[0].cpu().numpy(), z_grid[0].cpu().numpy(), alpha=0.6, cmap='terrain')
-        set_axes_equal(ax)
-        for i in range(num_trajs):
-            X = Xs[i].cpu().numpy()
-            ax.plot(X[:, 0], X[:, 1], X[:, 2], label=f'Traj {i}', c='g')
-        ax.set_title(f'Simulation of {num_trajs} trajs (T={T} [sec] long) took {(t1-t0):.3f} [sec] on device: {device}')
-        ax.set_xlabel('X [m]')
-        ax.set_ylabel('Y [m]')
-        ax.set_zlabel('Z [m]')
-        plt.show()
+    states_vec = vectorize_states(states)
+    dstates_vec = vectorize_states(dstates)
+    aux_vec = vectorize_states(auxs)
 
 
 def main():
     motion()
-    shoot_multiple()
 
 
 if __name__ == '__main__':

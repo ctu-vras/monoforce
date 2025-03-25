@@ -2,7 +2,6 @@
 
 from time import time
 import torch
-import warp as wp
 import numpy as np
 from scipy.spatial.transform import Rotation
 import rospy
