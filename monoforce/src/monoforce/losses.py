@@ -99,7 +99,7 @@ def hm_loss(height_pred, height_gt, weights=None, h_max=None):
     return loss
 
 
-def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0.9, rotation_loss=False):
+def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0.9):
     """
     Compute the physics loss between predicted and ground truth states.
     :param states_pred: predicted states [N x T1 x 3]
@@ -125,14 +125,5 @@ def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0.9, rotation_los
 
     # trajectory position (xyz) MSE loss
     loss = ((pred - gt) ** 2).mean()
-
-    if rotation_loss:
-        # add trajectories rotation difference to loss
-        R = states_gt[2]
-        R_pred_gt_ts = states_pred[2][torch.arange(R.shape[0]).unsqueeze(1), ts_ids]
-        loss_rot = rotation_difference(R_pred_gt_ts, R, reduction='none')
-        loss_rot = (loss_rot * time_weights).mean()
-
-        return loss, loss_rot
 
     return loss

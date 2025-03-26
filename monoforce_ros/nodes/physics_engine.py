@@ -1,9 +1,9 @@
 #!/usr/bin/env python
+
 from collections import deque
 from time import time
 import torch
 import numpy as np
-from scipy.spatial.transform import Rotation
 import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
@@ -74,15 +74,6 @@ class DiffPhysEngineNode:
         grid_map_tf.transform.translation.z = gridmap_msg.info.pose.position.z
         grid_map_tf.transform.rotation = gridmap_msg.info.pose.orientation
         self.tf_broadcaster.sendTransform(grid_map_tf)
-
-    def init_poses(self):
-        """
-        Initialize robot poses.
-        """
-        xyz_q = np.zeros((self.num_robots, 7))
-        xyz_q[:, 2] = 0.2  # robot's initial z coordinate
-        xyz_q[:, 6] = 1.0  # quaternion w
-        return xyz_q
 
     def init_controls(self):
         speed = 1. * torch.ones(self.num_robots, device=self.device)  # m/s forward
@@ -209,9 +200,8 @@ class DiffPhysEngineNode:
         assert len(grid_maps) == len(xyz_qs_init) == self.num_robots
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
         assert grid_maps.shape[0] == self.num_robots
-        controls = self.controls
-        assert controls.shape == (self.num_robots, self.n_sim_steps, 8), \
-            f'controls shape: {controls.shape} != {(self.num_robots, self.n_sim_steps, 8)}'
+        assert self.controls.shape == (self.num_robots, self.n_sim_steps, 8), \
+            f'controls shape: {self.controls.shape} != {(self.num_robots, self.n_sim_steps, 8)}'
 
         # initial state
         x0 = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)

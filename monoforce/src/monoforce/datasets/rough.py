@@ -7,16 +7,12 @@ from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset
 from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
 from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
-from ..models.traj_predictor.dphys_config import DPhysConfig
 from ..transformations import transform_cloud, position
-from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..cloudproc import estimate_heightmap
 from ..utils import position, read_yaml
-from ..cloudproc import filter_grid
-from ..utils import normalize, load_calib
+from ..utils import load_calib
 from .wildscenes import METAINFO as WILDSCENES_METAINFO
 from PIL import Image
-from tqdm import tqdm
-import open3d as o3d
 
 
 __all__ = [
@@ -67,7 +63,6 @@ class ROUGH(Dataset):
 
     def __init__(self, path,
                  lss_cfg=None,
-                 dphys_cfg=None,
                  is_train=False):
         super(Dataset, self).__init__()
         self.path = path
@@ -76,7 +71,6 @@ class ROUGH(Dataset):
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
         self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
-        self.dphys_cfg = dphys_cfg if dphys_cfg is not None else DPhysConfig()
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.poses_ts, self.poses = self.get_all_poses(return_stamps=True)
@@ -172,7 +166,7 @@ class ROUGH(Dataset):
         # start time from 0
         time_left -= all_control_stamps[0]
         all_control_stamps -= all_control_stamps[0]
-        T_horizon, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
+        T_horizon, dt = 5.0, 0.01
         time_right = time_left + T_horizon
 
         # check if the trajectory is out of the control time stamps
@@ -206,14 +200,12 @@ class ROUGH(Dataset):
     @staticmethod
     def get_camera_names():
         # cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
-        # cams = sorted([cam.replace('.yaml', '') for cam in cams_yaml])
+        # cams = [cam.replace('.yaml', '') for cam in cams_yaml]
         cams = ['camera_left', 'camera_front', 'camera_right', 'camera_rear']
         return cams
 
-    def get_traj(self, i, T_horizon=None):
+    def get_traj(self, i, T_horizon=5.0):
         # n_frames equals to the number of future poses (trajectory length)
-        if T_horizon is None:
-            T_horizon = self.dphys_cfg.traj_sim_time
         dt = 0.1  # lidar frequency is 10 Hz
 
         # get trajectory as sequence of `n_frames` future poses
@@ -331,10 +323,10 @@ class ROUGH(Dataset):
             lidar_hm = np.load(file_path)
         else:
             points = torch.as_tensor(position(self.get_cloud(i)))
-            lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+            lidar_hm = estimate_heightmap(points, d_max=6.4,
                                           grid_res=self.grid_res,
-                                          h_max=self.dphys_cfg.h_max,
-                                          r_min=self.dphys_cfg.r_min)
+                                          h_max=1.0,
+                                          r_min=0.6)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, lidar_hm.cpu().numpy())
         heightmap = torch.as_tensor(lidar_hm)
@@ -363,52 +355,6 @@ class ROUGH(Dataset):
             trajectory_points.append(footprint)
         trajectory_points = np.concatenate(trajectory_points, axis=0)
         return trajectory_points
-
-    def get_global_cloud(self, vis=False, cached=True, save=False, step=1):
-        path = os.path.join(self.path, 'map', 'map.pcd')
-        if cached and os.path.exists(path):
-            # print('Loading global cloud from file...')
-            pcd = o3d.io.read_point_cloud(path)
-            global_cloud = np.asarray(pcd.points, dtype=np.float32)
-        else:
-            # create global cloud
-            global_cloud = None
-            for i in tqdm(range(len(self))[::step]):
-                cloud = self.get_cloud(i, gravity_aligned=False)
-                T = self.get_pose(i)
-                cloud = transform_cloud(cloud, T)
-                points = position(cloud)
-                points = filter_grid(points, self.grid_res, keep='first', log=False)
-                if i == 0:
-                    global_cloud = points
-                else:
-                    global_cloud = np.vstack((global_cloud, points))
-            # save global cloud to file
-            if save:
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(global_cloud)
-                o3d.io.write_point_cloud(path, pcd)
-
-        if vis:
-            # remove nans
-            global_cloud_vis = global_cloud[~np.isnan(global_cloud).any(axis=1)]
-            # remove height outliers
-            heights = global_cloud_vis[:, 2]
-            h_min = np.quantile(heights, 0.001)
-            h_max = np.quantile(heights, 0.999)
-            global_cloud_vis = global_cloud_vis[(global_cloud_vis[:, 2] > h_min) & (global_cloud_vis[:, 2] < h_max)]
-
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(global_cloud_vis)
-
-            poses = self.get_all_poses()
-            pcd_poses = o3d.geometry.PointCloud()
-            pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
-            pcd_poses.paint_uniform_color([0.8, 0.1, 0.1])
-
-            # o3d.visualization.draw_geometries([pcd_poses])
-            o3d.visualization.draw_geometries([pcd, pcd_poses])
-        return global_cloud
 
     def get_raw_image(self, i, camera=None):
         if camera is None:
@@ -542,7 +488,7 @@ class ROUGH(Dataset):
         seg = Image.open(seg_path)
         return seg
 
-    def get_semantic_cloud(self, i, classes=None, vis=False):
+    def get_semantic_cloud(self, i, classes=None):
         mi = WILDSCENES_METAINFO
         if classes is None:
             classes = mi['classes']
@@ -591,32 +537,7 @@ class ROUGH(Dataset):
         pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
         points = transform_cloud(points, pose_grav_aligned)
 
-        if vis:
-            colors = normalize(colors)
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(points)
-            pcd.colors = o3d.utility.Vector3dVector(colors)
-            o3d.visualization.draw_geometries([pcd])
-
         return points, colors
-
-    def global_hm_cloud(self, vis=False):
-        # create global heightmap cloud
-        global_hm_cloud = []
-        for i in tqdm(range(len(self))):
-            hm = self.get_geom_height_map(i)
-            pose = self.get_pose(i)
-            hm_cloud = hm_to_cloud(hm[0], self.dphys_cfg, mask=hm[1])
-            hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), pose)
-            global_hm_cloud.append(hm_cloud)
-        global_hm_cloud = np.concatenate(global_hm_cloud, axis=0)
-
-        if vis:
-            # plot global cloud with open3d
-            hm_pcd = o3d.geometry.PointCloud()
-            hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud)
-            o3d.visualization.draw_geometries([hm_pcd])
-        return global_hm_cloud
 
     def get_terrain_height_map(self, i, cached=True, dir_name=None):
         """
@@ -637,12 +558,12 @@ class ROUGH(Dataset):
             traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
+            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
-            hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+            hm_rigid = estimate_heightmap(points, d_max=6.4,
                                           grid_res=self.grid_res,
-                                          h_max=self.dphys_cfg.h_max)
+                                          h_max=1.0)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, hm_rigid.cpu().numpy())
         heightmap = torch.as_tensor(hm_rigid)

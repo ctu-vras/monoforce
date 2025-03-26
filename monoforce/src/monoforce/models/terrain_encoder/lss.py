@@ -9,13 +9,10 @@ from torch import nn
 from efficientnet_pytorch import EfficientNet
 from torchvision.models.resnet import resnet18
 from .utils import gen_dx_bx, cumsum_trick, QuickCumsum
-from ..traj_predictor.dphys_config import DPhysConfig
 
-
-cfg = DPhysConfig()
 
 class ScaledTanh(nn.Module):
-    def __init__(self, min_val=-cfg.h_max, max_val=cfg.h_max):
+    def __init__(self, min_val=-1., max_val=1.):
         super(ScaledTanh, self).__init__()
         self.min_val = min_val
         self.max_val = max_val
