@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+from collections import deque
 from time import time
 import torch
 import numpy as np
@@ -7,8 +7,9 @@ from scipy.spatial.transform import Rotation
 import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
-from monoforce.models.traj_predictor.dphys_config import DPhysConfig
-from monoforce.models.traj_predictor.dphysics import DPhysics, generate_controls
+from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
+from monoforce.models.physics_engine.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
+from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
 from nav_msgs.msg import Path
@@ -19,25 +20,28 @@ from visualization_msgs.msg import MarkerArray
 from tf2_ros import TransformBroadcaster
 
 
-class DiffPhysBase:
+class DiffPhysEngineNode:
     def __init__(self,
+                 robot_config: RobotModelConfig,
+                 world_config: WorldConfig,
+                 physics_config: PhysicsEngineConfig,
                  gridmap_topic='/grid_map/terrain',
                  gridmap_layer='elevation',
                  robot_frame='base_link',
-                 dphys_cfg: DPhysConfig = None,
                  max_age=0.5,
                  device='cpu',
-                 dt=0.01):
+                 traj_sim_time=5.0):
         self.robot_frame = robot_frame
-        self.dphys_cfg = dphys_cfg
+        self.robot_config = robot_config.to(device)
+        self.world_config = world_config.to(device)
+        self.physics_cfg = physics_config.to(device)
         self.gridmap_layer = gridmap_layer
         self.gridmap_frame = None
-        self.gridmap_center_frame = 'grid_map_link'
-        self.dt = dt
-        self.n_sim_steps = int(dphys_cfg.traj_sim_time / self.dt)
+        self.dt = self.physics_cfg.dt
+        self.n_sim_steps = int(traj_sim_time / self.dt)
         self.max_age = max_age
         self.device = device
-        self.n_sim_trajs = dphys_cfg.n_sim_trajs
+        self.num_robots = self.physics_cfg.num_robots
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
@@ -54,12 +58,17 @@ class DiffPhysBase:
         # grid map subscriber to publish grid map tf
         self.gridmap_tf_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_tf_callback)
 
+        self.dphysics = DPhysicsEngine(config=self.physics_cfg, robot_model=self.robot_config, device=self.device)
+        self.controls = self.init_controls()
+        # grid map subscriber
+        self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
+
     def gridmap_tf_callback(self, gridmap_msg):
         # publish grid map pose tf frame: create tf message from grid map pose
         grid_map_tf = TransformStamped()
         grid_map_tf.header.stamp = gridmap_msg.info.header.stamp
         grid_map_tf.header.frame_id = gridmap_msg.info.header.frame_id
-        grid_map_tf.child_frame_id = self.gridmap_center_frame
+        grid_map_tf.child_frame_id = 'grid_map_link'
         grid_map_tf.transform.translation.x = gridmap_msg.info.pose.position.x
         grid_map_tf.transform.translation.y = gridmap_msg.info.pose.position.y
         grid_map_tf.transform.translation.z = gridmap_msg.info.pose.position.z
@@ -70,22 +79,19 @@ class DiffPhysBase:
         """
         Initialize robot poses.
         """
-        xyz_q = np.zeros((self.n_sim_trajs, 7))
+        xyz_q = np.zeros((self.num_robots, 7))
         xyz_q[:, 2] = 0.2  # robot's initial z coordinate
         xyz_q[:, 6] = 1.0  # quaternion w
         return xyz_q
 
     def init_controls(self):
-        controls_front, _ = generate_controls(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                              v_range=(self.dphys_cfg.vel_max / 2, self.dphys_cfg.vel_max),
-                                              w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                              time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
-        controls_back, _ = generate_controls(n_trajs=self.dphys_cfg.n_sim_trajs // 2,
-                                             v_range=(-self.dphys_cfg.vel_max, -self.dphys_cfg.vel_max / 2),
-                                             w_range=(-self.dphys_cfg.omega_max, self.dphys_cfg.omega_max),
-                                             time_horizon=self.dphys_cfg.traj_sim_time, dt=self.dt)
-        controls = torch.cat([controls_front, controls_back], dim=0)
-        return controls
+        speed = 1. * torch.ones(self.num_robots, device=self.device)  # m/s forward
+        speed[::2] = -speed[::2]
+        omega = torch.linspace(-1., 1., self.num_robots).to(self.device)  # rad/s yaw
+        controls = self.robot_config.vw_to_vels(speed, omega)
+        flipper_controls = torch.zeros_like(controls)
+        controls_all = torch.cat((controls, flipper_controls), dim=-1).to(self.device).repeat(self.n_sim_steps, 1, 1).permute(1, 0, 2)
+        return controls_all
 
     def get_pose(self, target_frame, source_frame, stamp=None):
         if stamp is None:
@@ -143,7 +149,7 @@ class DiffPhysBase:
         # if message is stale do not process it
         dt = rospy.Time.now() - gridmap_msg.info.header.stamp
         if dt.to_sec() > self.max_age:
-            rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
+            # rospy.logwarn(f'Stale grid map message received ({dt.to_sec():.1f} > {self.max_age} [sec]), skipping')
             return
 
         t0 = time()
@@ -152,9 +158,9 @@ class DiffPhysBase:
 
         # convert grid map to height map
         grid_map = gridmap_msg_to_numpy(gridmap_msg, self.gridmap_layer)
-        assert not np.all(np.isnan(grid_map)) and np.all(np.isfinite(grid_map))
+        # assert not np.all(np.isnan(grid_map)) and np.all(np.isfinite(grid_map))
         assert grid_map.ndim == 2, 'Height map must be 2D'
-        rospy.loginfo('Received height map of shape: %s' % str(grid_map.shape))
+        rospy.logdebug('Received height map of shape: %s' % str(grid_map.shape))
 
         grid_map_pose = numpify(gridmap_msg.info.pose).reshape((4, 4))
         robot_pose = self.get_pose(target_frame=self.gridmap_frame, source_frame=self.robot_frame,
@@ -168,13 +174,12 @@ class DiffPhysBase:
         rospy.logdebug('Grid map preprocessing took %.3f [sec]' % (t1 - t0))
 
         # predict path
-        grid_maps = [grid_map for _ in range(self.n_sim_trajs)]
-        xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None, :], self.n_sim_trajs, axis=0)
-        with torch.no_grad():
-            t2 = time()
-            xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
-            t3 = time()
-            rospy.loginfo('Path prediction took %.3f [sec]' % (t3 - t2))
+        grid_maps = np.repeat(grid_map[None], self.num_robots, axis=0)
+        xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None], self.num_robots, axis=0)
+        t2 = time()
+        xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
+        t3 = time()
+        rospy.loginfo('Path prediction took %.3f [sec]' % (t3 - t2))
 
         # update path cost bounds
         if path_costs is not None:
@@ -189,7 +194,7 @@ class DiffPhysBase:
             xyz_qs_np = xyz_qs.cpu().numpy()
             path_costs_np = path_costs.cpu().numpy()
             self.publish_paths_and_costs(xyz_qs_np, path_costs_np, stamp=gridmap_msg.info.header.stamp,
-                                         frame=self.gridmap_center_frame, pose_step=self.pose_step)
+                                         frame=self.robot_frame, pose_step=self.pose_step)
             rospy.logdebug('Paths publishing took %.3f [sec]' % (time() - t4))
 
     @staticmethod
@@ -199,88 +204,89 @@ class DiffPhysBase:
         except rospy.ROSInterruptException:
             pass
 
+    @torch.inference_mode()
     def predict_paths(self, grid_maps, xyz_qs_init):
-        raise NotImplementedError
-
-class DPhysEngine(DiffPhysBase):
-    def __init__(self,
-                 dphys_cfg: DPhysConfig,
-                 gridmap_topic='/grid_map/terrain',
-                 gridmap_layer='elevation',
-                 robot_frame='base_link',
-                 max_age=0.5,
-                 dt=0.01,
-                 device='cpu'):
-        super().__init__(dphys_cfg=dphys_cfg, gridmap_topic=gridmap_topic, gridmap_layer=gridmap_layer, robot_frame=robot_frame,
-                         max_age=max_age, device=device, dt=dt)
-        self.dphysics = DPhysics(dphys_cfg, device=device)
-        self.track_vels = self.init_controls()
-        # grid map subscriber
-        self.gridmap_sub = rospy.Subscriber(gridmap_topic, GridMap, self.gridmap_callback)
-
-    def predict_paths(self, grid_maps, xyz_qs_init):
-        assert len(grid_maps) == len(xyz_qs_init) == self.n_sim_trajs
-        # for grid_map in grid_maps:
-        #     assert isinstance(grid_map, np.ndarray)
-        #     assert grid_map.shape[0] == grid_map.shape[1]
+        assert len(grid_maps) == len(xyz_qs_init) == self.num_robots
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
-        assert grid_maps.shape[0] == self.n_sim_trajs
-        controls = torch.as_tensor(self.track_vels, dtype=torch.float32, device=self.device)
-        assert controls.shape == (self.n_sim_trajs, self.n_sim_steps, 2), \
-            f'controls shape: {controls.shape} != {(self.n_sim_trajs, self.n_sim_steps, 2)}'
+        assert grid_maps.shape[0] == self.num_robots
+        controls = self.controls
+        assert controls.shape == (self.num_robots, self.n_sim_steps, 8), \
+            f'controls shape: {controls.shape} != {(self.num_robots, self.n_sim_steps, 8)}'
 
         # initial state
-        x = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)
-        xd = torch.zeros_like(x)
-        R = torch.as_tensor(Rotation.from_quat(xyz_qs_init[:, 3:]).as_matrix(), dtype=torch.float32, device=self.device)
-        R.repeat(x.shape[0], 1, 1)
-        omega = torch.zeros_like(x)
-        state0 = (x, xd, R, omega)
+        x0 = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)
+        xd0 = torch.zeros_like(x0)
+        q0 = torch.as_tensor(xyz_qs_init[:, 3:7], dtype=torch.float32, device=self.device)
+        omega0 = torch.zeros_like(x0)
+        thetas0 = torch.zeros(self.num_robots, self.robot_config.num_driving_parts).to(self.device)
+        state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
 
         # simulate trajectories
-        states, forces = self.dphysics(grid_maps, controls=controls, state=state0)
-        Xs, Xds, Rs, Omegas = states
-        assert Xs.shape == (self.n_sim_trajs, self.n_sim_steps, 3)
-        assert Rs.shape == (self.n_sim_trajs, self.n_sim_steps, 3, 3)
+        states = deque(maxlen=self.n_sim_steps)
+        auxs = deque(maxlen=self.n_sim_steps)
+        state = state0
+        # update grid maps
+        self.world_config.z_grid = grid_maps
+        for i in range(self.n_sim_steps):
+            state, der, aux = self.dphysics(state, self.controls[:, i], self.world_config)
+            states.append(state)
+            auxs.append(aux)
+        states = vectorize_states(states)
+        auxs = vectorize_states(auxs)
 
-        # convert rotation matrices to quaternions
-        poses = torch.zeros((self.n_sim_trajs, self.n_sim_steps, 4, 4), device=self.device)
-        poses[:, :, :3, 3] = Xs
-        poses[:, :, :3, :3] = Rs
-        poses[:, :, 3, 3] = 1.0
-        assert not torch.any(torch.isnan(poses))
+        # path poses from states
+        xyz = states.x.permute(1, 0, 2)  # (num_robots, n_sim_steps, 3)
+        q = states.q.permute(1, 0, 2)  # (num_robots, n_sim_steps, 4)
+        xyz_q = torch.cat((xyz, q), dim=-1)
+        assert xyz_q.shape == (self.num_robots, self.n_sim_steps, 7)
 
         # compute path costs
-        # TODO: think about a better way to compute path costs
-        #  (maybe normal forces should be aligned with Z axis or be consistent)
-        F_springs, F_frictions = forces
-        assert F_springs.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
-        assert F_frictions.shape == (self.n_sim_trajs, self.n_sim_steps, len(self.dphys_cfg.robot_points), 3)
-        path_costs = torch.norm(F_springs, dim=-1).std(dim=-1).std(dim=-1)
-        assert not torch.any(torch.isnan(path_costs))
-        assert poses.shape == (self.n_sim_trajs, self.n_sim_steps, 4, 4)
-        assert path_costs.shape == (self.n_sim_trajs,)
+        F_springs, F_frictions = auxs.F_spring, auxs.F_friction
+        n_robot_points = self.robot_config.num_driving_parts * self.robot_config.points_per_driving_part + self.robot_config.points_per_body
+        assert F_springs.shape == (self.n_sim_steps, self.num_robots, n_robot_points, 3)
+        assert F_frictions.shape == (self.n_sim_steps, self.num_robots, n_robot_points, 3)
+        path_costs = F_springs.norm(dim=-1).mean(dim=-1).std(dim=0)
+        assert xyz_q.shape == (self.num_robots, self.n_sim_steps, 7), f'xyz_q shape: {xyz_q.shape}'
+        assert path_costs.shape == (self.num_robots,)
 
-        return poses, path_costs
+        return xyz_q, path_costs
 
 
 def main():
     rospy.init_node('diff_physics', anonymous=True, log_level=rospy.DEBUG)
 
-    robot = rospy.get_param('~robot', 'tradr')
-    dphys_cfg = DPhysConfig(robot=robot)
+    robot = rospy.get_param('~robot', 'marv')
+    device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
+    robot_config = RobotModelConfig(kind=robot)
+    grid_res = 0.1  # 10cm per grid cell
+    max_coord = 6.4  # meters
+    num_robots = rospy.get_param('~num_robots', 32)
+    DIM = int(2 * max_coord / grid_res)
+    xint = torch.linspace(-max_coord, max_coord, DIM)
+    yint = torch.linspace(-max_coord, max_coord, DIM)
+    x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")
+    z_grid = torch.zeros_like(x_grid)
+    world_config = WorldConfig(
+        x_grid=x_grid.repeat(num_robots, 1, 1),
+        y_grid=y_grid.repeat(num_robots, 1, 1),
+        z_grid=z_grid.repeat(num_robots, 1, 1),
+        grid_res=grid_res,
+        max_coord=max_coord,
+    )
+    physics_config = PhysicsEngineConfig(num_robots=num_robots)
     robot_frame = rospy.get_param('~robot_frame', 'base_link')
     gridmap_topic = rospy.get_param('~gridmap_topic')
     gridmap_layer = rospy.get_param('~gridmap_layer', 'elevation')
     max_age = rospy.get_param('~max_age', 0.5)
-    device = rospy.get_param('~device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
-    node = DPhysEngine(dphys_cfg=dphys_cfg,
-                       robot_frame=robot_frame,
-                       gridmap_topic=gridmap_topic,
-                       gridmap_layer=gridmap_layer,
-                       max_age=max_age,
-                       device=device)
+    node = DiffPhysEngineNode(robot_config=robot_config,
+                              world_config=world_config,
+                              physics_config=physics_config,
+                              robot_frame=robot_frame,
+                              gridmap_topic=gridmap_topic,
+                              gridmap_layer=gridmap_layer,
+                              max_age=max_age,
+                              device=device)
     node.spin()
 
 

@@ -144,7 +144,7 @@ class RobotModelConfig(BaseConfig):
         joint_dist_non_driving = (
             joint_positions_2d - torch.sum(joint_positions_2d * driving_direction_2d, dim=-1, keepdim=True) * driving_direction_2d
         )
-        joint_dist_non_driving *= self.driving_direction[None, [1, 0]] * torch.tensor([1, -1])  # normal of the driving direction
+        joint_dist_non_driving *= self.driving_direction[None, [1, 0]] * torch.tensor([1, -1], device=self.driving_direction.device)  # normal of the driving direction
         joint_dist_non_driving = joint_dist_non_driving.sum(dim=-1)
         vels = v.repeat(1, self.num_driving_parts)  # shape (batch_size, num_driving_parts)
         vels += w * joint_dist_non_driving  # shape (batch_size, num_driving_parts)

@@ -2,15 +2,16 @@
 <launch>
     <arg name="robot" default="marv" doc="Robot name"/>
     <arg name="gridmap_topic" default="grid_map/terrain" doc="Input height map topic"/>
-    <arg name="gridmap_frame" default="base_link" doc="Height map tf frame"/>
+    <arg name="robot_frame" default="base_link" doc="Height map tf frame"/>
     <arg name="gridmap_layer" default="elevation" doc="Height map layer name"/>
-    <arg name="device" default="cpu" doc="Device to run the differentiable physics on"/>
+    <arg name="device" default="cuda" doc="Device to run the differentiable physics on"/>
     <arg name="max_age" default="2.0"/>
 
-    <!-- Diff Physics node -->
-    <node name="diff_physics" pkg="monoforce" type="diff_physics.py" output="screen">
+    <!-- Physics Engine node -->
+    <node name="physics_engine" pkg="monoforce" type="physics_engine.py" output="screen">
         <rosparam subst_value="true">
             robot: $(arg robot)
+            robot_frame: $(arg robot_frame)
             gridmap_topic: $(arg gridmap_topic)
             gridmap_layer: $(arg gridmap_layer)
             max_age: $(arg max_age)

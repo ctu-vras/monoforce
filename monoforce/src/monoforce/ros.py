@@ -250,7 +250,6 @@ def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
     grid_map = np.roll(grid_map, shift=-outer_start_index, axis=1)
     grid_map = np.roll(grid_map, shift=-inner_start_index, axis=0)
 
-    grid_map = grid_map.T
     grid_map = rotate(grid_map, 180)
 
     return grid_map

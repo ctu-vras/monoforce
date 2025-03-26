@@ -41,8 +41,9 @@ def plot_and_save(results, device, compiled):
 
 
 def main(args):
-    device = set_device(args.device, high_performance=args.hperf)
+    device = set_device(args.device)
     robot_model = RobotModelConfig("marv")
+    robot_model.to(device)
     results = {}
     B = 1
     bar = tqdm.tqdm(total=args.max_num_robots)
@@ -56,7 +57,7 @@ def main(args):
         physics_engine_config = PhysicsEngineConfig(B)
         state = PhysicsState.dummy(batch_size=B, robot_model=robot_model).to(device)
         engine = DPhysicsEngine(physics_engine_config, robot_model, device)
-        controls = torch.zeros((B, 2 * robot_model.num_joints), device=device)
+        controls = torch.zeros((B, 2 * robot_model.num_driving_parts), device=device)
         if args.compile:
             engine = torch.compile(engine, options=compile_opts)
             _ = engine(deepcopy(state), controls, world_config)
