@@ -50,7 +50,6 @@ def animate_trajectory(
     show_non_contacts = vis_opts.get("show_non_contacts", True)
     show_thrust_vectors = vis_opts.get("show_thrust_vectors", True)
     show_friction_forces = vis_opts.get("show_friction_forces", True)
-    show_act_forces = vis_opts.get("show_act_forces", True)
 
     # camera config
     cam_cfg = vis_opts.get("camera", None)
@@ -61,9 +60,9 @@ def animate_trajectory(
     # static terrain
     if show_terrain:
         mlab.mesh(
-            world_config.x_grid[robot_index],
-            world_config.y_grid[robot_index],
-            world_config.z_grid[robot_index],
+            world_config.x_grid[robot_index].cpu().numpy(),
+            world_config.y_grid[robot_index].cpu().numpy(),
+            world_config.z_grid[robot_index].cpu().numpy(),
             colormap="terrain",
             opacity=0.8,
         )
@@ -75,7 +74,6 @@ def animate_trajectory(
     ffriction = aux_info_vec.F_friction[:, robot_index].cpu().numpy()
     contact_masks = aux_info_vec.in_contact[:, robot_index].squeeze(-1).cpu().numpy() > 1e-3
     thrust_vectors = aux_info_vec.global_thrust_vectors[:, robot_index].cpu().numpy()
-    act_forces = aux_info_vec.act_forces[:, robot_index].cpu().numpy()
 
     # trajectory
     traj_vis = mlab.plot3d(xs[:, 0], xs[:, 1], xs[:, 2], color=(0, 1, 0), line_width=0.2)
@@ -127,19 +125,6 @@ def animate_trajectory(
 
     friction_forces_vis.visible = show_friction_forces
 
-    act_forces_vis = mlab.quiver3d(
-        robot_points[0, :, 0],
-        robot_points[0, :, 1],
-        robot_points[0, :, 2],
-        act_forces[0, :, 0],
-        act_forces[0, :, 1],
-        act_forces[0, :, 2],
-        line_width=3.0,
-        scale_factor=0.1,
-        color=(1, 0.5, 0),
-    )
-    act_forces_vis.visible = show_act_forces
-
     # optionally set camera
     if cam_cfg is not None:
         mlab.view(
@@ -157,7 +142,6 @@ def animate_trajectory(
         tvec = thrust_vectors[i]
         ffr = ffriction[i]
         contact_mask = contact_masks[i]
-        act_fs = act_forces[i]
         non_contact_points = robot_point.copy()
         contact_points = robot_point.copy()
         non_contact_points[contact_mask] = 0
@@ -185,11 +169,6 @@ def animate_trajectory(
 
         if show_friction_forces:
             friction_forces_vis.mlab_source.set(x=robot_point[:, 0], y=robot_point[:, 1], z=robot_point[:, 2], u=ffr[:, 0], v=ffr[:, 1], w=ffr[:, 2])
-
-        if show_act_forces:
-            act_forces_vis.mlab_source.set(
-                x=robot_point[:, 0], y=robot_point[:, 1], z=robot_point[:, 2], u=act_fs[:, 0], v=act_fs[:, 1], w=act_fs[:, 2]
-            )
 
         traj_vis.mlab_source.reset(x=xs[: i + 1, 0], y=xs[: i + 1, 1], z=xs[: i + 1, 2])
 

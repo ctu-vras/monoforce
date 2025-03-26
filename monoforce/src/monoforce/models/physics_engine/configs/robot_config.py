@@ -57,7 +57,7 @@ class RobotModelConfig(BaseConfig):
         self.load_robot_params_from_yaml()
         self.create_robot_geometry()
         self.disable_grads()
-        print(self)
+        # print(self)
 
     def disable_grads(self):
         """
@@ -116,7 +116,7 @@ class RobotModelConfig(BaseConfig):
         s += f"\nWheel assignment margin: {self.wheel_assignment_margin}"
         s += f"\nLinear track assignment margin: {self.linear_track_assignment_margin}"
         s += f"\nTotal number of points: {self.points_per_body + self.points_per_driving_part * self.num_driving_parts}"
-        self._print_tensor_info()
+        # self._print_tensor_info()
         return s
 
     @property
@@ -328,7 +328,7 @@ class RobotModelConfig(BaseConfig):
         )
         plotter.add_mesh(driving_direction_arrow, color="green")
         # show
-        print(self)
+        # print(self)
         plotter.show_axes()
         if not return_plotter:
             plotter.show()
