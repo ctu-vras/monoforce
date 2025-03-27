@@ -107,8 +107,6 @@ class Eval:
         controls = batch[9]
         # state0 = tuple([s[:, 0] for s in [Xs, Xds, qs, Omegas]])
         height, friction = terrain['terrain'], terrain['friction']
-
-        # add dummy flipper controls
         n_trajs, n_iters = controls.shape[:2]
 
         # Initial state
@@ -243,11 +241,13 @@ class Eval:
             axes[1, 3].axis('off')
 
             # plot control inputs
-            axes[2, 0].plot(control_ts[0], controls[0, :, 0], c='g', label='v(t)')
-            axes[2, 0].plot(control_ts[0], controls[0, :, 1], c='b', label='w(t)')
+            axes[2, 0].plot(control_ts[0], controls[0, :, 0], 'g', label='v_(t)')
+            axes[2, 0].plot(control_ts[0], controls[0, :, 1], 'b', label='v_(t)')
+            axes[2, 0].plot(control_ts[0], controls[0, :, 2], 'g--', label='v_(t)')
+            axes[2, 0].plot(control_ts[0], controls[0, :, 3], 'b--', label='v_(t)')
             axes[2, 0].grid()
             axes[2, 0].set_xlabel('Time [s]')
-            axes[2, 0].set_ylabel('Control [m/s]')
+            axes[2, 0].set_ylabel('Flipper Vels [m/s]')
             axes[2, 0].legend()
 
             # plot trajectories: Roll, Pitch, Yaw

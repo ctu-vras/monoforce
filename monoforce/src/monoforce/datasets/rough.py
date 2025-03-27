@@ -26,7 +26,6 @@ monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '
 data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
 rough_seq_paths = [
-        # MARV robot
         os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-long_drive'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-54-43'),
@@ -40,19 +39,6 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-24-35'),
         os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-35-24'),
         os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-36-49'),
-
-        # TRADR robot
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-12-12'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-54-18'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-08-30'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-24-48'),
 ]
 
 
@@ -159,7 +145,8 @@ class ROUGH(Dataset):
         stamps, vws = data[:, 0], data[:, 1:]
         vs = torch.as_tensor(vws[:, 0])
         ws = torch.as_tensor(vws[:, 1])
-        flipper_vels = self.robot_cfg.vw_to_vels(v=vs, w=ws).numpy()
+        # TODO: not sure why need to have oposite linear velocity direction
+        flipper_vels = self.robot_cfg.vw_to_vels(v=-vs, w=ws).numpy()
         flipper_angles = np.zeros_like(flipper_vels)
         controls = np.concatenate([flipper_vels, flipper_angles], axis=1)
         assert controls.shape[1] == 8, f'Controls have wrong shape {controls.shape}'

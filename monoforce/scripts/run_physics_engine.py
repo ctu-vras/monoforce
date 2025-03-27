@@ -13,7 +13,9 @@ from monoforce.models.physics_engine.utils.geometry import euler_to_quaternion
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.models.physics_engine.vis.animator import animate_trajectory
 from collections import deque
+from scipy.spatial.transform import Rotation
 import pyvista as pv
+import numpy as np
 
 
 def motion():
@@ -109,5 +111,75 @@ def motion():
     plotter.show()
 
 
+def motion_rough():
+    from monoforce.datasets.rough import ROUGH, rough_seq_paths
+    from monoforce.utils import explore_data
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    seq = rough_seq_paths[0]
+    ds = ROUGH(seq)
+    sample_i = np.random.randint(0, len(ds))
+    sample = ds[sample_i]
+    explore_data(ds, sample_range=[sample_i])
+    (imgs, rots, trans, intrins, post_rots, post_trans,
+     hm_geom, hm_terrain,
+     control_ts, controls,
+     pose0,
+     traj_ts, Xs, Xds, qs, Omegas) = sample
+
+    n_iters = len(control_ts)
+    d_max, grid_res = 6.4, 0.1
+    xint = torch.linspace(-d_max, d_max, int(2 * d_max / grid_res))
+    yint = torch.linspace(-d_max, d_max, int(2 * d_max / grid_res))
+    x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")
+    z_grid = hm_geom[0]
+
+    # Instantiate the configs
+    n_robots = 1
+    robot_model = RobotModelConfig(kind="marv")
+    world_config = WorldConfig(
+        x_grid=x_grid.repeat(n_robots, 1, 1),
+        y_grid=y_grid.repeat(n_robots, 1, 1),
+        z_grid=z_grid.repeat(n_robots, 1, 1),
+        grid_res=grid_res,
+        max_coord=d_max,
+    )
+    physics_config = PhysicsEngineConfig(num_robots=n_robots)
+    for cfg in [robot_model, world_config, physics_config]:
+        cfg.to(device)
+
+    # Instantiate the physics engine
+    engine = DPhysicsEngine(physics_config, robot_model, device)
+
+    # Initial state
+    x0 = torch.as_tensor(pose0[:3, 3]).to(device).repeat(n_robots, 1)
+    xd0 = torch.zeros_like(x0)
+    q0 = torch.as_tensor(Rotation.from_matrix(pose0[:3, :3]).as_quat(), dtype=x0.dtype).to(device).repeat(n_robots, 1)
+    omega0 = torch.zeros_like(x0)
+    thetas0 = torch.as_tensor(controls[0, 4:]).to(device).repeat(n_robots, 1)
+    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0)
+
+    states = deque(maxlen=n_iters)
+    auxs = deque(maxlen=n_iters)
+    state = init_state
+    controls = controls.repeat(n_robots, 1, 1).to(device)
+    for i in range(n_iters):
+        u = controls[:, i]
+        state, der, aux = engine(state, u, world_config)
+        states.append(state)
+        auxs.append(aux)
+
+    # visualization
+    animate_trajectory(
+        world_config,
+        physics_config,
+        states,
+        auxs,
+    )
+
+
+
 if __name__ == '__main__':
     motion()
+    # motion_rough()

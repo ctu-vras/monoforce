@@ -1,7 +1,7 @@
 import time
 from typing import Iterable
 from ..engine.engine_state import PhysicsState, AuxEngineInfo, vectorize_iter_of_states
-from monoforce.configs import WorldConfig, PhysicsEngineConfig
+from ....configs import WorldConfig, PhysicsEngineConfig
 import mayavi.mlab as mlab
 
 
