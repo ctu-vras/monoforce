@@ -195,10 +195,16 @@ def explore_data(ds, sample_range='random', save=False):
 
     lss_cfg = ds.lss_cfg
     d_max = lss_cfg['grid_conf']['xbound'][1]
+    grid_res = lss_cfg['grid_conf']['xbound'][2]
     model = LiftSplatShoot(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
 
     H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
     cams = ds.camera_names
+
+    DIM = int(2 * d_max / grid_res)
+    xint = torch.linspace(-d_max, d_max, DIM)
+    yint = torch.linspace(-d_max, d_max, DIM)
+    x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")
 
     if sample_range == 'random':
         sample_range = [np.random.choice(range(len(ds)))]
@@ -211,8 +217,10 @@ def explore_data(ds, sample_range='random', save=False):
     for sample_i in tqdm(sample_range):
         imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
         height_geom = ds.get_geom_height_map(sample_i)[0]
-        height_terrain = ds.get_terrain_height_map(sample_i)[0]
-        pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
+        terrain = ds.get_terrain_height_map(sample_i)
+        height_terrain, mask_terrain = terrain[0], terrain[1].bool()
+        # pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
+        pts = torch.stack([x_grid, y_grid, height_terrain])[:, mask_terrain]
         traj_poses = torch.as_tensor(ds.get_traj(sample_i)['poses'])
         control_ts, controls = ds.get_controls(sample_i)
 
@@ -234,7 +242,7 @@ def explore_data(ds, sample_range='random', save=False):
             mask = get_only_in_img_mask(cam_pts, H, W)
             plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
             ax.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[2, mask],
-                       s=1, alpha=0.2, cmap='jet', vmin=-1., vmax=1.)
+                       s=3, alpha=0.5, cmap='jet', vmin=-1., vmax=1.)
 
             traj_cam_pts = ego_to_cam(xyz.T, rots[imgi], trans[imgi], intrins[imgi])
             mask = get_only_in_img_mask(traj_cam_pts, H, W)
@@ -262,7 +270,7 @@ def explore_data(ds, sample_range='random', save=False):
         final_ax.set_ylim((-d_max, d_max))
 
         # plot geom heightmap
-        axes[2, 0].imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        axes[2, 0].imshow(height_geom, origin='lower', cmap='jet', vmin=-1., vmax=1.)
         axes[2, 0].set_title('Geom HM')
         axes[2, 0].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
         axes[2, 0].set_xlabel('X [m]')
@@ -270,7 +278,7 @@ def explore_data(ds, sample_range='random', save=False):
         axes[2, 0].legend()
 
         # plot terrain heightmap
-        axes[2, 1].imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        axes[2, 1].imshow(height_terrain, origin='lower', cmap='jet', vmin=-1., vmax=1.)
         axes[2, 1].set_title('Terrain HM')
         axes[2, 1].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
         axes[2, 1].set_xlabel('X [m]')

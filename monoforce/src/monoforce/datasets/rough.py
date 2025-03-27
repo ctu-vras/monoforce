@@ -35,11 +35,11 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
 
-        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-14-47-44'),
-        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-22-35'),
-        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-24-35'),
-        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-35-24'),
-        # os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-36-49'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-14-47-44'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-22-35'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-24-35'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-35-24'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-36-49'),
 
         # TRADR robot
         os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
@@ -332,7 +332,7 @@ class ROUGH(Dataset):
         heightmap = torch.as_tensor(lidar_hm)
         return heightmap
 
-    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0), T_horizon=None):
+    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0), T_horizon=5.0):
         # robot footprint points grid
         width, length = robot_size
         x = np.arange(-length / 2, length / 2, self.grid_res)

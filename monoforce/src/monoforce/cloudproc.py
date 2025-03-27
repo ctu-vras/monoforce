@@ -139,16 +139,12 @@ def estimate_heightmap(points, grid_res, d_max, h_max, r_min=None, h_min=None):
     heightmap = torch.nan_to_num(heightmap, nan=0.0)
     # heightmap = torch.nan_to_num(heightmap, nan=(h_max + h_min) / 2.)
 
-    # TODO: fix that bug, not sure why need to do that
-    heightmap = heightmap.T
-    measurements_mask = measurements_mask.T
-
     hm = torch.stack([heightmap, measurements_mask], dim=0)  # (2, H, W)
 
     return hm
 
 
-def hm_to_cloud(height, cfg, mask=None):
+def hm_to_cloud(height, d_max, mask=None):
     assert isinstance(height, np.ndarray) or isinstance(height, torch.Tensor)
     assert height.ndim == 2
     if mask is not None:
@@ -158,14 +154,14 @@ def hm_to_cloud(height, cfg, mask=None):
         mask = mask.bool() if isinstance(mask, torch.Tensor) else mask.astype(bool)
     z_grid = height
     if isinstance(height, np.ndarray):
-        x_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[0])
-        y_grid = np.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[1])
-        x_grid, y_grid = np.meshgrid(x_grid, y_grid)
+        x_grid = np.linspace(-d_max, d_max, z_grid.shape[0])
+        y_grid = np.linspace(-d_max, d_max, z_grid.shape[1])
+        x_grid, y_grid = np.meshgrid(x_grid, y_grid, indexing='xy')
         hm_cloud = np.stack([x_grid, y_grid, z_grid], axis=2)
     else:
-        x_grid = torch.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[0]).to(z_grid.device)
-        y_grid = torch.linspace(-cfg.d_max, cfg.d_max, z_grid.shape[1]).to(z_grid.device)
-        x_grid, y_grid = torch.meshgrid(x_grid, y_grid)
+        x_grid = torch.linspace(-d_max, d_max, z_grid.shape[0]).to(z_grid.device)
+        y_grid = torch.linspace(-d_max, d_max, z_grid.shape[1]).to(z_grid.device)
+        x_grid, y_grid = torch.meshgrid(x_grid, y_grid, indexing='xy')
         hm_cloud = torch.stack([x_grid, y_grid, z_grid], dim=2)
     if mask is not None:
         hm_cloud = hm_cloud[mask]

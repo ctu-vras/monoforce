@@ -36,8 +36,7 @@ class Eval:
                  seq='val',
                  batch_size=1,
                  terrain_encoder='lss',
-                 terrain_encoder_path=None,
-                 traj_predictor='dphysics'):
+                 terrain_encoder_path=None):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # load DPhys config
@@ -63,7 +62,7 @@ class Eval:
             max_coord=max_coord,
         ).to(self.device)
         self.physics_config = PhysicsEngineConfig(num_robots=batch_size).to(self.device)
-        self.physics_engine = self.get_physics_engine(model=traj_predictor)
+        self.physics_engine = self.get_physics_engine()
 
         # load LSS config
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
@@ -97,47 +96,41 @@ class Eval:
             raise ValueError(f'Invalid terrain encoder model: {model}. Supported: LiftSplatShoot')
         return terrain
 
-    def get_physics_engine(self, model='dphysics'):
-        if model == 'dphysics':
-            traj_predictor = DPhysicsEngine(self.physics_config, self.robot_model, self.device)
-        else:
-            raise ValueError(f'Invalid trajectory predictor model: {model}. Supported: dphysics')
-        traj_predictor.to(self.device)
-        traj_predictor.eval()
-        return traj_predictor
+    def get_physics_engine(self):
+        enine = DPhysicsEngine(self.physics_config, self.robot_model, self.device)
+        enine.to(self.device)
+        enine.eval()
+        return enine
 
     def predict_states(self, terrain, batch):
-        model = self.physics_engine.__class__.__name__
-        if model == 'DPhysicsEngine':
-            Xs, Xds, Rs, Omegas = batch[12:16]
-            vws = batch[9]
-            # state0 = tuple([s[:, 0] for s in [Xs, Xds, Rs, Omegas]])
-            height, friction = terrain['terrain'], terrain['friction']
+        Xs, Xds, Rs, Omegas = batch[12:16]
+        vws = batch[9]
+        # state0 = tuple([s[:, 0] for s in [Xs, Xds, Rs, Omegas]])
+        height, friction = terrain['terrain'], terrain['friction']
 
-            # convert vws to controls and add flipper controls
-            n_trajs, n_iters = vws.shape[:2]
-            track_vels = self.robot_model.vw_to_vels(v=vws[..., 0].view(-1,), w=vws[..., 1].view(-1,))
-            track_vels = track_vels.reshape(n_trajs, n_iters, -1)
-            flipper_controls = torch.zeros_like(track_vels)
-            controls = torch.cat((track_vels, flipper_controls), dim=-1)
+        # convert vws to controls and add flipper controls
+        n_trajs, n_iters = vws.shape[:2]
+        track_vels = self.robot_model.vw_to_vels(v=vws[..., 0].view(-1,), w=vws[..., 1].view(-1,))
+        track_vels = track_vels.reshape(n_trajs, n_iters, -1)
+        flipper_controls = torch.zeros_like(track_vels)
+        controls = torch.cat((track_vels, flipper_controls), dim=-1)
 
-            # Initial state
-            x0 = Xs[:, 0]
-            xd0 = Xds[:, 0]
-            q0 = torch.as_tensor(Rotation.from_matrix(Rs[:, 0].cpu()).as_quat(), dtype=torch.float32).to(self.device)
-            omega0 = Omegas[:, 0]
-            thetas0 = torch.zeros(n_trajs, self.robot_model.num_driving_parts).to(self.device)
-            state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
+        # Initial state
+        x0 = Xs[:, 0]
+        xd0 = Xds[:, 0]
+        q0 = torch.as_tensor(Rotation.from_matrix(Rs[:, 0].cpu()).as_quat(), dtype=torch.float32).to(self.device)
+        omega0 = Omegas[:, 0]
+        thetas0 = torch.zeros(n_trajs, self.robot_model.num_driving_parts).to(self.device)
+        state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
 
-            self.world_config.z_grid = height.squeeze(1)
-            states_pred = deque(maxlen=n_iters)
-            state = state0
-            for i in range(n_iters):
-                state, der, aux = self.physics_engine(state, controls[:, i], self.world_config)
-                states_pred.append(state)
-            states_pred = vectorize_states(states_pred)
-        else:
-            raise ValueError(f'Invalid model: {model}. Supported: DPhysics')
+        self.world_config.z_grid = height.squeeze(1)
+        states_pred = deque(maxlen=n_iters)
+        state = state0
+        for i in range(n_iters):
+            state, der, aux = self.physics_engine(state, controls[:, i], self.world_config)
+            states_pred.append(state)
+        states_pred = vectorize_states(states_pred)
+
         return states_pred
 
     def get_dataloader(self, batch_size=1, seq='val'):
@@ -236,22 +229,22 @@ class Eval:
 
             # plot geom heightmap
             axes[1, 0].set_title('Geom Height')
-            axes[1, 0].imshow(H_g_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            axes[1, 0].imshow(H_g_pred, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             axes[1, 0].axis('off')
 
             # plot height diff heightmap
             axes[1, 1].set_title('Height Difference')
-            axes[1, 1].imshow(H_diff_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            axes[1, 1].imshow(H_diff_pred, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             axes[1, 1].axis('off')
 
             # plot terrain heightmap
             axes[1, 2].set_title('Terrain Height')
-            axes[1, 2].imshow(H_t_pred.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            axes[1, 2].imshow(H_t_pred, origin='lower', cmap='jet', vmin=-1., vmax=1.)
             axes[1, 2].axis('off')
 
             # plot friction map
             axes[1, 3].set_title('Friction')
-            axes[1, 3].imshow(Friction_pred.T, origin='lower', cmap='jet', vmin=0., vmax=1.)
+            axes[1, 3].imshow(Friction_pred, origin='lower', cmap='jet', vmin=0., vmax=1.)
             axes[1, 3].axis('off')
 
             # plot control inputs
