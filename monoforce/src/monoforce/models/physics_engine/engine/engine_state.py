@@ -7,7 +7,7 @@ from ..utils.geometry import unit_quaternion
 __all__ = ["PhysicsState", "PhysicsStateDer", "AuxEngineInfo", "vectorize_iter_of_states"]
 
 if TYPE_CHECKING:
-    from ..configs.robot_config import RobotModelConfig
+    from monoforce.configs import RobotModelConfig
 
 
 class PhysicsState(TensorClass):

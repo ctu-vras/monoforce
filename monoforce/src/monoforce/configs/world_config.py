@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import torch
-from ..configs.base_config import BaseConfig
-from ..utils.environment import compute_heightmap_gradients
+from .base_config import BaseConfig
+from ..models.physics_engine.utils.environment import compute_heightmap_gradients
 
 
 @dataclass

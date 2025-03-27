@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Tuple
 import torch
-from ..configs.engine_config import PhysicsEngineConfig
-from ..configs.robot_config import RobotModelConfig
-from ..configs.world_config import WorldConfig
+from monoforce.configs.engine_config import PhysicsEngineConfig
+from monoforce.configs import RobotModelConfig
+from monoforce.configs import WorldConfig
 from ..engine.engine_state import AuxEngineInfo, PhysicsState, PhysicsStateDer
 from ..utils.environment import interpolate_grid, surface_normals_from_grads
 from ..utils.geometry import q_to_R, rot_Y, normalized, rotate_vector_by_quaternion

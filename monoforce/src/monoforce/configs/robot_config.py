@@ -6,13 +6,13 @@ import numpy as np
 import pyvista as pv
 import torch
 import yaml
-from ..configs.base_config import BaseConfig
-from ..utils.flipper_modeling import (
+from .base_config import BaseConfig
+from ..models.physics_engine.utils.flipper_modeling import (
     TrackWheels,
     get_track_pointwise_vels,
 )
-from ..utils.geometry import bbox_limits_to_points, points_within_bbox
-from ..utils.meshes import (
+from ..models.physics_engine.utils.geometry import bbox_limits_to_points, points_within_bbox
+from ..models.physics_engine.utils.meshes import (
     extract_submesh_by_mask,
     extract_surface_from_mesh,
     inertia_cog_from_voxelized_mesh,
@@ -21,7 +21,7 @@ from ..utils.meshes import (
 
 np.random.seed(0)
 
-ROOT = Path(__file__).parent.parent.parent.parent.parent.parent / "config"
+ROOT = Path(__file__).parent.parent.parent.parent / "config"
 MESHDIR = ROOT / "meshes"
 YAMLDIR = ROOT / "robots"
 POINTCACHE = ROOT / ".robot_cache"

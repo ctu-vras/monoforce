@@ -234,8 +234,6 @@ def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
     # Extract metadata
     W = int(grid_map_msg.info.length_x / grid_map_msg.info.resolution)
     H = int(grid_map_msg.info.length_y / grid_map_msg.info.resolution)
-    W = int(W)
-    H = int(H)
 
     # Find the index of the layer
     layer_index = grid_map_msg.layers.index(layer_name)
@@ -250,6 +248,7 @@ def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
     grid_map = np.roll(grid_map, shift=-outer_start_index, axis=1)
     grid_map = np.roll(grid_map, shift=-inner_start_index, axis=0)
 
+    # TODO: not sure if this is correct, need to fix
     grid_map = rotate(grid_map, 180)
 
     return grid_map

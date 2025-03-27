@@ -1,4 +1,4 @@
-from ..configs.base_config import BaseConfig
+from .base_config import BaseConfig
 from dataclasses import dataclass
 
 

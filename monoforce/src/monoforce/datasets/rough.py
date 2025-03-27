@@ -12,6 +12,7 @@ from ..cloudproc import estimate_heightmap
 from ..utils import position, read_yaml
 from ..utils import load_calib
 from .wildscenes import METAINFO as WILDSCENES_METAINFO
+from ..configs.robot_config import RobotModelConfig
 from PIL import Image
 
 
@@ -34,7 +35,6 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-35-05'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
-
         os.path.join(data_dir, 'ROUGH/marv_2025-03-19-14-47-44'),
         os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-22-35'),
         os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-24-35'),
@@ -71,23 +71,23 @@ class ROUGH(Dataset):
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
         self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
-        self.calib = load_calib(calib_path=self.calib_path)
-        self.ids = self.get_ids()
-        self.poses_ts, self.poses = self.get_all_poses(return_stamps=True)
-        self.camera_names = self.get_camera_names()
-
         self.is_train = is_train
-
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
         self.grid_res = lss_cfg['grid_conf']['xbound'][2]
+        self.robot_cfg = RobotModelConfig(kind='marv')
+
+        self.calib = load_calib(calib_path=self.calib_path)
+        self.ids = self.get_ids()
+        self.poses_ts, self.poses = self.get_all_poses(return_stamps=True)
+        self.controls_ts, self.controls = self.get_all_controls()
+        self.camera_names = self.get_camera_names()
 
     def __getitem__(self, i):
         if isinstance(i, (int, np.int64)):
             sample = self.get_sample(i)
             return sample
-
         ds = copy.deepcopy(self)
         if isinstance(i, (list, tuple, np.ndarray)):
             ds.ids = [self.ids[k] for k in i]
@@ -156,31 +156,36 @@ class ROUGH(Dataset):
             return None, None
         data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
         assert len(data) > 0, f'No controls found in {self.controls_path}'
-        all_control_stamps, all_controls = data[:, 0], data[:, 1:]
-        return all_control_stamps, all_controls
+        stamps, vws = data[:, 0], data[:, 1:]
+        vs = torch.as_tensor(vws[:, 0])
+        ws = torch.as_tensor(vws[:, 1])
+        flipper_vels = self.robot_cfg.vw_to_vels(v=vs, w=ws).numpy()
+        flipper_angles = np.zeros_like(flipper_vels)
+        controls = np.concatenate([flipper_vels, flipper_angles], axis=1)
+        assert controls.shape[1] == 8, f'Controls have wrong shape {controls.shape}'
+        return stamps, controls
 
-    def get_controls(self, i):
-        all_control_stamps, all_controls = self.get_all_controls()
+    def get_controls(self, i, T_horizon=5.0, dt=0.01):
+        all_controls_stamps, all_controls = copy.copy(self.controls_ts), copy.copy(self.controls)
         # assert all_controls is not None, f'Controls are not available'
         time_left = self.ind_to_stamp(i)
         # start time from 0
-        time_left -= all_control_stamps[0]
-        all_control_stamps -= all_control_stamps[0]
-        T_horizon, dt = 5.0, 0.01
+        time_left -= all_controls_stamps[0]
+        all_controls_stamps -= all_controls_stamps[0]
         time_right = time_left + T_horizon
 
         # check if the trajectory is out of the control time stamps
-        if time_left > all_control_stamps[-1] or time_right < all_control_stamps[0]:
+        if time_left > all_controls_stamps[-1] or time_right < all_controls_stamps[0]:
             # print(f'Trajectory is out of the recorded control time stamps. Using zero controls.')
             control_stamps_horizon = torch.arange(0.0, T_horizon, dt, dtype=torch.float32)
             controls = torch.zeros((len(control_stamps_horizon), all_controls.shape[1]), dtype=torch.float32)
             return control_stamps_horizon, controls
 
         # find the closest index to the left and right in all times
-        il = np.argmin(np.abs(np.asarray(all_control_stamps) - time_left))
-        ir = np.argmin(np.abs(np.asarray(all_control_stamps) - time_right))
-        ir = min(max(il + 1, ir), len(all_control_stamps))
-        control_stamps = np.asarray(all_control_stamps[il:ir])
+        il = np.argmin(np.abs(np.asarray(all_controls_stamps) - time_left))
+        ir = np.argmin(np.abs(np.asarray(all_controls_stamps) - time_right))
+        ir = min(max(il + 1, ir), len(all_controls_stamps))
+        control_stamps = np.asarray(all_controls_stamps[il:ir])
         control_stamps = control_stamps - control_stamps[0]
         controls = all_controls[il:ir]
 
@@ -262,6 +267,7 @@ class ROUGH(Dataset):
 
         xs = np.asarray(poses[:, :3, 3])
         Rs = np.asarray(poses[:, :3, :3])
+        qs = Rotation.from_matrix(Rs).as_quat()
 
         n_states = len(xs)
         ts = np.asarray(tstamps)
@@ -278,7 +284,7 @@ class ROUGH(Dataset):
 
         states = [xs.reshape([n_states, 3]),
                   xds.reshape([n_states, 3]),
-                  Rs.reshape([n_states, 3, 3]),
+                  qs.reshape([n_states, 4]),
                   omegas.reshape([n_states, 3])]
 
         # to torch tensors
@@ -323,7 +329,8 @@ class ROUGH(Dataset):
             lidar_hm = np.load(file_path)
         else:
             points = torch.as_tensor(position(self.get_cloud(i)))
-            lidar_hm = estimate_heightmap(points, d_max=6.4,
+            lidar_hm = estimate_heightmap(points,
+                                          d_max=6.4,
                                           grid_res=self.grid_res,
                                           h_max=1.0,
                                           r_min=0.6)
@@ -561,7 +568,8 @@ class ROUGH(Dataset):
             seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
-            hm_rigid = estimate_heightmap(points, d_max=6.4,
+            hm_rigid = estimate_heightmap(points,
+                                          d_max=6.4,
                                           grid_res=self.grid_res,
                                           h_max=1.0)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -573,7 +581,7 @@ class ROUGH(Dataset):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, Rs, Omegas = states
+        Xs, Xds, qs, Omegas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
         pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
@@ -581,4 +589,4 @@ class ROUGH(Dataset):
                 hm_geom, hm_terrain,
                 control_ts, controls,
                 pose0,
-                traj_ts, Xs, Xds, Rs, Omegas)
+                traj_ts, Xs, Xds, qs, Omegas)

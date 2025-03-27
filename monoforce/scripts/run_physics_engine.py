@@ -2,17 +2,16 @@
 
 import sys
 sys.path.append('../src')
-import numpy as np
 import torch
-from monoforce.models.physics_engine.configs import (
+from monoforce.configs import (
     WorldConfig,
     RobotModelConfig,
     PhysicsEngineConfig,
 )
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
 from monoforce.models.physics_engine.utils.geometry import euler_to_quaternion
-from monoforce.models.physics_engine.vis.animator import animate_trajectory
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
+from monoforce.models.physics_engine.vis.animator import animate_trajectory
 from collections import deque
 import pyvista as pv
 
@@ -89,14 +88,14 @@ def motion():
     states_vec = vectorize_states(states)
     print(states_vec.x.shape)
 
-    # # visualization
-    # animate_trajectory(
-    #     world_config,
-    #     physics_config,
-    #     states,
-    #     auxs,
-    #     robot_index=n_robots // 2,
-    # )
+    # visualization
+    animate_trajectory(
+        world_config,
+        physics_config,
+        states,
+        auxs,
+        robot_index=1,
+    )
 
     # plot terrain surface with pyvista
     plotter = pv.Plotter()

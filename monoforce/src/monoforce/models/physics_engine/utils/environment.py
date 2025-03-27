@@ -1,8 +1,7 @@
 from typing import Tuple
-
 import torch
-
 from .geometry import normalized
+
 
 __all__ = [
     "make_x_y_grids",

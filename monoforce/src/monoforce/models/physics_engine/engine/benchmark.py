@@ -8,7 +8,7 @@ from ..engine.engine import DPhysicsEngine
 from ..engine.engine_state import PhysicsState
 from ..utils.torch_utils import set_device
 from ..utils.environment import make_x_y_grids
-from ..configs import WorldConfig, PhysicsEngineConfig, RobotModelConfig
+from monoforce.configs import WorldConfig, PhysicsEngineConfig, RobotModelConfig
 import matplotlib
 import matplotlib.pyplot as plt
 

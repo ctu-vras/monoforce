@@ -8,7 +8,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
-from monoforce.models.physics_engine.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
+from monoforce.monoforce.config import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q

@@ -6,13 +6,13 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import os
 import numpy as np
+from scipy.spatial.transform import Rotation
 import torch
 from torch.utils.data import DataLoader
-from scipy.spatial.transform import Rotation
 from collections import deque
 import argparse
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
-from monoforce.models.physics_engine.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
+from monoforce.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
@@ -103,22 +103,18 @@ class Eval:
         return enine
 
     def predict_states(self, terrain, batch):
-        Xs, Xds, Rs, Omegas = batch[12:16]
-        vws = batch[9]
-        # state0 = tuple([s[:, 0] for s in [Xs, Xds, Rs, Omegas]])
+        Xs, Xds, qs, Omegas = batch[12:16]
+        controls = batch[9]
+        # state0 = tuple([s[:, 0] for s in [Xs, Xds, qs, Omegas]])
         height, friction = terrain['terrain'], terrain['friction']
 
-        # convert vws to controls and add flipper controls
-        n_trajs, n_iters = vws.shape[:2]
-        track_vels = self.robot_model.vw_to_vels(v=vws[..., 0].view(-1,), w=vws[..., 1].view(-1,))
-        track_vels = track_vels.reshape(n_trajs, n_iters, -1)
-        flipper_controls = torch.zeros_like(track_vels)
-        controls = torch.cat((track_vels, flipper_controls), dim=-1)
+        # add dummy flipper controls
+        n_trajs, n_iters = controls.shape[:2]
 
         # Initial state
         x0 = Xs[:, 0]
         xd0 = Xds[:, 0]
-        q0 = torch.as_tensor(Rotation.from_matrix(Rs[:, 0].cpu()).as_quat(), dtype=torch.float32).to(self.device)
+        q0 = qs[:, 0]
         omega0 = Omegas[:, 0]
         thetas0 = torch.zeros(n_trajs, self.robot_model.num_driving_parts).to(self.device)
         state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
@@ -163,8 +159,8 @@ class Eval:
              hm_geom, hm_terrain,
              control_ts, controls,
              pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = batch
-            states_gt = [Xs, Xds, Rs, Omegas]
+             traj_ts, Xs, Xds, qs, Omegas) = batch
+            states_gt = [Xs, Xds, qs, Omegas]
 
             # terrain prediction
             terrain = self.predict_terrain(batch)
@@ -177,8 +173,7 @@ class Eval:
 
             # trajectory prediction loss: xyz and rotation
             states_pred = self.predict_states(terrain, batch)
-            states_pred = [states_pred.x.permute(1, 0, 2)]
-            loss_xyz = physics_loss(states_pred=states_pred, states_gt=states_gt,
+            loss_xyz = physics_loss(states_pred=[states_pred.x.permute(1, 0, 2)], states_gt=states_gt,
                                     pred_ts=control_ts, gt_ts=traj_ts,
                                     gamma=1.0)
 
@@ -201,8 +196,8 @@ class Eval:
              hm_geom, hm_terrain,
              control_ts, controls,
              pose0,
-             traj_ts, Xs, Xds, Rs, Omegas) = batch
-            states_gt = [Xs, Xds, Rs, Omegas]
+             traj_ts, Xs, Xds, qs, Omegas) = batch
+            states_gt = [Xs, Xds, qs, Omegas]
 
             # clear axis
             for ax in axes.flatten():
@@ -255,33 +250,34 @@ class Eval:
             axes[2, 0].set_ylabel('Control [m/s]')
             axes[2, 0].legend()
 
-            # # plot trajectories: Roll, Pitch, Yaw
-            # rpy = Rotation.from_matrix(states_pred[2][0].cpu()).as_euler('xyz')
-            # rpy_gt = Rotation.from_matrix(states_gt[2][0].cpu()).as_euler('xyz')
-            # axes[2, 1].plot(control_ts[0], rpy[:, 0], 'r', label='Pred Roll')
-            # axes[2, 1].plot(control_ts[0], rpy[:, 1], 'g', label='Pred Pitch')
-            # axes[2, 1].plot(control_ts[0], rpy[:, 2], 'b', label='Pred Yaw')
-            # axes[2, 1].plot(traj_ts[0], rpy_gt[:, 0], 'r--', label='Roll')
-            # axes[2, 1].plot(traj_ts[0], rpy_gt[:, 1], 'g--', label='Pitch')
-            # axes[2, 1].plot(traj_ts[0], rpy_gt[:, 2], 'b--', label='Yaw')
-            # axes[2, 1].grid()
-            # axes[2, 1].set_xlabel('Time [s]')
-            # axes[2, 1].set_ylabel('Angle [rad]')
-            # axes[2, 1].set_ylim(-np.pi / 2., np.pi / 2.)
-            # # axes[2, 1].legend()
+            # plot trajectories: Roll, Pitch, Yaw
+            rpy = Rotation.from_quat(states_pred.q[:, 0].cpu()).as_euler('xyz')
+            rpy_gt = Rotation.from_quat(states_gt[2][0].cpu()).as_euler('xyz')
+            axes[2, 1].plot(control_ts[0], rpy[:, 0], 'r', label='Pred Roll')
+            axes[2, 1].plot(control_ts[0], rpy[:, 1], 'g', label='Pred Pitch')
+            axes[2, 1].plot(control_ts[0], rpy[:, 2], 'b', label='Pred Yaw')
+            axes[2, 1].plot(traj_ts[0], rpy_gt[:, 0], 'r--', label='Roll')
+            axes[2, 1].plot(traj_ts[0], rpy_gt[:, 1], 'g--', label='Pitch')
+            axes[2, 1].plot(traj_ts[0], rpy_gt[:, 2], 'b--', label='Yaw')
+            axes[2, 1].grid()
+            axes[2, 1].set_xlabel('Time [s]')
+            axes[2, 1].set_ylabel('Angle [rad]')
+            axes[2, 1].set_ylim(-np.pi / 2., np.pi / 2.)
+            # axes[2, 1].legend()
 
             # plot trajectories: XY
-            axes[2, 2].plot(states_pred[0][0, :, 0].cpu(), states_pred[0][0, :, 1].cpu(), 'r', label='Pred Traj')
+            axes[2, 2].plot(states_pred.x[:, 0, 0].cpu(), states_pred.x[:, 0, 1].cpu(), 'r', label='Pred Traj')
             axes[2, 2].plot(states_gt[0][0, :, 0], states_gt[0][0, :, 1], 'k', label='GT Traj')
             axes[2, 2].set_xlim(-self.world_config.max_coord, self.world_config.max_coord)
             axes[2, 2].set_ylim(-self.world_config.max_coord, self.world_config.max_coord)
+            # axes[2, 2].set_aspect('equal')
             axes[2, 2].grid()
             axes[2, 2].set_xlabel('x [m]')
             axes[2, 2].set_ylabel('y [m]')
             axes[2, 2].legend()
 
             # plot trajectories: Z
-            axes[2, 3].plot(control_ts[0], states_pred[0][0, :, 2].cpu(), 'r', label='Pred Traj')
+            axes[2, 3].plot(control_ts[0], states_pred.x[:, 0, 2].cpu(), 'r', label='Pred Traj')
             axes[2, 3].plot(traj_ts[0], states_gt[0][0, :, 2], 'k', label='GT Traj')
             axes[2, 3].grid()
             axes[2, 3].set_xlabel('Time [s]')

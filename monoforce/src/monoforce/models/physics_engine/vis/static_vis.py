@@ -5,7 +5,7 @@ from typing import Iterable, Any
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from matplotlib.collections import LineCollection
-from ..configs import WorldConfig
+from monoforce.configs import WorldConfig
 from ..engine.engine_state import (
     PhysicsState,
     vectorize_iter_of_states,
