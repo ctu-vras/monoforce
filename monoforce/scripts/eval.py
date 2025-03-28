@@ -31,7 +31,7 @@ def arg_parser():
     return parser.parse_args()
 
 
-class Eval:
+class Evaluator:
     def __init__(self,
                  seq='val',
                  batch_size=1,
@@ -39,7 +39,7 @@ class Eval:
                  terrain_encoder_path=None):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # load DPhys config
+        # load configs
         if seq in rough_seq_paths:
             robot = os.path.basename(seq).split('_')[0]
             robot = 'tradr' if robot == 'ugv' else 'marv'
@@ -105,7 +105,6 @@ class Eval:
     def predict_states(self, terrain, batch):
         Xs, Xds, qs, Omegas = batch[12:16]
         controls = batch[9]
-        # state0 = tuple([s[:, 0] for s in [Xs, Xds, qs, Omegas]])
         height, friction = terrain['terrain'], terrain['friction']
         n_trajs, n_iters = controls.shape[:2]
 
@@ -295,11 +294,11 @@ class Eval:
 def main():
     args = arg_parser()
     print(args)
-    eval = Eval(seq=args.seq,
-                batch_size=args.batch_size,
-                terrain_encoder=args.terrain_encoder,
-                terrain_encoder_path=args.terrain_encoder_path)
-    eval.run(vis=args.vis)
+    evaluator = Evaluator(seq=args.seq,
+                     batch_size=args.batch_size,
+                     terrain_encoder=args.terrain_encoder,
+                     terrain_encoder_path=args.terrain_encoder_path)
+    evaluator.run(vis=args.vis)
 
 
 if __name__ == '__main__':

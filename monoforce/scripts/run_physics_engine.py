@@ -42,6 +42,7 @@ def motion():
         z_grid=z_grid,
         grid_res=grid_res,
         max_coord=max_coord,
+        k_stiffness=40_000.,
     )
     physics_config = PhysicsEngineConfig(num_robots=n_robots)
 
@@ -96,7 +97,7 @@ def motion():
         physics_config,
         states,
         auxs,
-        robot_index=1,
+        robot_index=np.random.randint(0, n_robots-1),
     )
 
     # plot terrain surface with pyvista
@@ -155,7 +156,7 @@ def motion_rough():
     # Initial state
     x0 = torch.as_tensor(pose0[:3, 3]).to(device).repeat(n_robots, 1)
     xd0 = torch.zeros_like(x0)
-    q0 = torch.as_tensor(Rotation.from_matrix(pose0[:3, :3]).as_quat(), dtype=x0.dtype).to(device).repeat(n_robots, 1)
+    q0 = torch.as_tensor(Rotation.from_matrix(pose0[:3, :3],).as_quat(scalar_first=True), dtype=x0.dtype).to(device).repeat(n_robots, 1)
     omega0 = torch.zeros_like(x0)
     thetas0 = torch.as_tensor(controls[0, 4:]).to(device).repeat(n_robots, 1)
     init_state = PhysicsState(x0, xd0, q0, omega0, thetas0)
@@ -177,7 +178,6 @@ def motion_rough():
         states,
         auxs,
     )
-
 
 
 if __name__ == '__main__':

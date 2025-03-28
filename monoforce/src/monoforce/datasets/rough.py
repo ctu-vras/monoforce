@@ -145,8 +145,7 @@ class ROUGH(Dataset):
         stamps, vws = data[:, 0], data[:, 1:]
         vs = torch.as_tensor(vws[:, 0])
         ws = torch.as_tensor(vws[:, 1])
-        # TODO: not sure why need to have oposite linear velocity direction
-        flipper_vels = self.robot_cfg.vw_to_vels(v=-vs, w=ws).numpy()
+        flipper_vels = self.robot_cfg.vw_to_vels(v=vs, w=ws).numpy()
         flipper_angles = np.zeros_like(flipper_vels)
         controls = np.concatenate([flipper_vels, flipper_angles], axis=1)
         assert controls.shape[1] == 8, f'Controls have wrong shape {controls.shape}'
@@ -254,7 +253,7 @@ class ROUGH(Dataset):
 
         xs = np.asarray(poses[:, :3, 3])
         Rs = np.asarray(poses[:, :3, :3])
-        qs = Rotation.from_matrix(Rs).as_quat()
+        qs = Rotation.from_matrix(Rs).as_quat(scalar_first=True)  # important to have [w, x, y, z] order
 
         n_states = len(xs)
         ts = np.asarray(tstamps)
