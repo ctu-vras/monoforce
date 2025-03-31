@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from typing import Tuple
 import torch
 from monoforce.configs.engine_config import PhysicsEngineConfig

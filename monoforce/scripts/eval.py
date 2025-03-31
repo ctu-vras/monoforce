@@ -14,6 +14,7 @@ import argparse
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
 from monoforce.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
+from monoforce.models.physics_engine.utils.environment import make_x_y_grids
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv, compile_data, str2bool
@@ -40,15 +41,12 @@ class Evaluator:
         self.robot_model = RobotModelConfig(kind='marv').to(self.device)
         grid_res = 0.1  # 10cm per grid cell
         max_coord = 6.4  # meters
-        DIM = int(2 * max_coord / grid_res)
-        xint = torch.linspace(-max_coord, max_coord, DIM)
-        yint = torch.linspace(-max_coord, max_coord, DIM)
-        x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")  # use torch's XY indexing !!!!!
+        x_grid, y_grid = make_x_y_grids(max_coord, grid_res, self.batch_size)
         z_grid = torch.zeros_like(x_grid)
         self.world_config = WorldConfig(
-            x_grid=x_grid.repeat(batch_size, 1, 1),
-            y_grid=y_grid.repeat(batch_size, 1, 1),
-            z_grid=z_grid.repeat(batch_size, 1, 1),
+            x_grid=x_grid,
+            y_grid=y_grid,
+            z_grid=z_grid,
             grid_res=grid_res,
             max_coord=max_coord,
         ).to(self.device)

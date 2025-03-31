@@ -6,15 +6,16 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
-from eval import Evaluator
-from monoforce.utils import read_yaml, write_to_yaml, str2bool, compile_data
-from monoforce.losses import hm_loss, physics_loss
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import matplotlib.pyplot as plt
 import argparse
+from eval import Evaluator
+from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
+from monoforce.models.physics_engine.utils.environment import make_x_y_grids
+from monoforce.utils import str2bool, compile_data
+from monoforce.losses import hm_loss, physics_loss
 
 
 def arg_parser():
@@ -29,7 +30,6 @@ def arg_parser():
     parser.add_argument('--geom_weight', type=float, default=1.0, help='Weight for geometry loss')
     parser.add_argument('--terrain_weight', type=float, default=1.0, help='Weight for terrain heightmap loss')
     parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
-    parser.add_argument('--traj_sim_time', type=float, default=5.0, help='Trajectory simulation time')
     parser.add_argument('--dphys_grid_res', type=float, default=0.4, help='DPhys grid resolution')
 
     return parser.parse_args()
@@ -40,6 +40,7 @@ class Trainer(Evaluator):
                  batch_size=1,
                  n_epochs=1000,
                  lr=1e-3,
+                 weight_decay=1e-7,
                  pretrained_terrain_encoder_path=None,
                  geom_weight=1.0,
                  terrain_weight=1.0,
@@ -60,8 +61,8 @@ class Trainer(Evaluator):
         self.phys_weight = phys_weight
 
         # define optimizer
-        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(),
-                                          lr=lr, betas=(0.8, 0.999), weight_decay=1e-7)
+        self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(), lr=lr, weight_decay=weight_decay)
+
         # load datasets
         self.train_loader, self.val_loader = self.create_dataloaders(debug=debug, vis=vis)
 
@@ -226,11 +227,10 @@ class Trainer(Evaluator):
 
         # get height map points
         z_grid = terrain_pred
-        DIM = int(2 * self.world_config.max_coord / self.world_config.grid_res)
-        xint = torch.linspace(-self.world_config.max_coord, self.world_config.max_coord, DIM)
-        yint = torch.linspace(-self.world_config.max_coord, self.world_config.max_coord, DIM)
-        x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")
-        hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+        x_grid, y_grid = make_x_y_grids(max_coord=self.world_config.max_coord,
+                                        grid_res=self.world_config.grid_res,
+                                        num_robots=1)
+        hm_points = torch.stack([x_grid.squeeze(0), y_grid.squeeze(0), z_grid], dim=-1)
         hm_points = hm_points.view(-1, 3).T
 
         # plot images with projected height map points
