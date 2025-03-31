@@ -52,7 +52,7 @@ def rodrigues_rotation_matrix(axis: torch.Tensor, angle: torch.Tensor) -> torch.
     return torch.eye(3) + torch.sin(angle) * K + (1 - torch.cos(angle)) * (K @ K)
 
 
-def normalized(x, eps=1e-6):
+def normalized(x, eps=1e-8):
     """
     Normalizes the input tensor.
 
@@ -215,41 +215,6 @@ def q_to_R(q: torch.Tensor) -> torch.Tensor:
     Returns: Tensor of shape [B, 3, 3]
     """
     w, x, y, z = q.unbind(-1)
-    B = q.shape[0]
-
-    # Precompute products
-    ww = w * w
-    xx = x * x
-    yy = y * y
-    zz = z * z
-    wx = w * x
-    wy = w * y
-    wz = w * z
-    xy = x * y
-    xz = x * z
-    yz = y * z
-
-    R = torch.zeros(B, 3, 3, device=q.device, dtype=q.dtype)
-    R[:, 0, 0] = ww + xx - yy - zz
-    R[:, 0, 1] = 2 * (xy - wz)
-    R[:, 0, 2] = 2 * (xz + wy)
-    R[:, 1, 0] = 2 * (xy + wz)
-    R[:, 1, 1] = ww - xx + yy - zz
-    R[:, 1, 2] = 2 * (yz - wx)
-    R[:, 2, 0] = 2 * (xz - wy)
-    R[:, 2, 1] = 2 * (yz + wx)
-    R[:, 2, 2] = ww - xx - yy + zz
-
-    return R
-
-
-def quaternion_to_rotation_matrix(q: torch.Tensor):
-    """
-    Converts a quaternion to a rotation matrix.
-    q: Tensor of shape [B, 4]
-    Returns: Tensor of shape [B, 3, 3]
-    """
-    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
     B = q.shape[0]
 
     # Precompute products

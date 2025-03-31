@@ -71,7 +71,7 @@ def integrate_quaternion(q: torch.Tensor, omega: torch.Tensor, dt: float, eps: f
 
     # Compute sin(theta)/theta using a safe expression to avoid division by zero.
     # Where theta is very small, we use the fact that sin(theta)/theta ~ 1.
-    sin_theta_over_theta = torch.where(theta > eps, torch.sin(theta) / theta, 1.0)  # shape: (B, 1)
+    sin_theta_over_theta = torch.where(theta > eps, torch.sin(theta) / theta.clamp(min=eps), 1.0)  # shape: (B, 1)
 
     # The vector part of the rotation delta quaternion.
     delta_q_vector = sin_theta_over_theta * half_dt_omega  # shape: (B, 3)

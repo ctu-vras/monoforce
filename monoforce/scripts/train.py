@@ -17,9 +17,6 @@ import matplotlib.pyplot as plt
 import argparse
 
 
-torch.autograd.set_detect_anomaly(True)
-
-
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
@@ -46,7 +43,9 @@ class Trainer(Evaluator):
                  pretrained_terrain_encoder_path=None,
                  geom_weight=1.0,
                  terrain_weight=1.0,
-                 phys_weight=1.0):
+                 phys_weight=1.0,
+                 debug=False,
+                 vis=False):
         super(Trainer, self).__init__(batch_size=batch_size,
                                       pretrained_terrain_encoder_path=pretrained_terrain_encoder_path)
         self.n_epochs = n_epochs
@@ -64,7 +63,7 @@ class Trainer(Evaluator):
         self.optimizer = torch.optim.Adam(self.terrain_encoder.parameters(),
                                           lr=lr, betas=(0.8, 0.999), weight_decay=1e-7)
         # load datasets
-        self.train_loader, self.val_loader = self.create_dataloaders(debug=False, vis=False)
+        self.train_loader, self.val_loader = self.create_dataloaders(debug=debug, vis=vis)
 
         # tensorboard logging
         self.dataset = 'rough'
@@ -178,8 +177,8 @@ class Trainer(Evaluator):
                     torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'train.pth'))
 
                     # visualize training predictions
-                    # fig = self.vis_pred(self.train_loader)
-                    # self.writer.add_figure('train/prediction', fig, e)
+                    fig = self.vis_pred(self.train_loader)
+                    self.writer.add_figure('train/prediction', fig, e)
 
             # validation epoch
             with torch.inference_mode():
@@ -196,8 +195,121 @@ class Trainer(Evaluator):
                         torch.save(self.terrain_encoder.state_dict(), os.path.join(self.log_dir, 'val.pth'))
 
                         # visualize validation predictions
-                        # fig = self.vis_pred(self.val_loader)
-                        # self.writer.add_figure('val/prediction', fig, e)
+                        fig = self.vis_pred(self.val_loader)
+                        self.writer.add_figure('val/prediction', fig, e)
+    
+    @torch.no_grad()
+    def vis_pred(self, loader):
+        # get a batch from the loader
+        batch = next(iter(loader))
+        batch = [torch.as_tensor(b, dtype=torch.float32, device=self.device) for b in batch]
+
+        # predict height maps and states
+        terrain = self.predict_terrain(batch)
+        states_pred = self.predict_states(terrain, batch)
+
+        # unpack batch
+        sample = [b[0].cpu() for b in batch]
+        (imgs, rots, trans, intrins, post_rots, post_trans,
+         hm_geom, hm_terrain,
+         control_ts, controls,
+         pose0,
+         traj_ts, Xs, Xds, Rs, Omegas) = sample
+
+        geom_pred = terrain['geom'][0, 0].cpu()
+        diff_pred = terrain['diff'][0, 0].cpu()
+        terrain_pred = terrain['terrain'][0, 0].cpu()
+        friction_pred = terrain['friction'][0, 0].cpu()
+        Xs_pred = states_pred.x[:, 0].cpu()
+        Xs_pred_grid = (Xs_pred[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
+        Xs_grid = (Xs[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
+
+        # get height map points
+        z_grid = terrain_pred
+        DIM = int(2 * self.world_config.max_coord / self.world_config.grid_res)
+        xint = torch.linspace(-self.world_config.max_coord, self.world_config.max_coord, DIM)
+        yint = torch.linspace(-self.world_config.max_coord, self.world_config.max_coord, DIM)
+        x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")
+        hm_points = torch.stack([x_grid, y_grid, z_grid], dim=-1)
+        hm_points = hm_points.view(-1, 3).T
+
+        # plot images with projected height map points
+        fig, axes = plt.subplots(3, 4, figsize=(20, 15))
+        img_H, img_W = self.lss_config['data_aug_conf']['H'], self.lss_config['data_aug_conf']['W']
+        for imgi in range(len(imgs))[:4]:
+            ax = axes[0, imgi]
+            img = imgs[imgi]
+            img = denormalize_img(img[:3])
+
+            cam_pts = ego_to_cam(hm_points, rots[imgi], trans[imgi], intrins[imgi])
+            mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
+            plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
+
+            cam_pts_Xs = ego_to_cam(Xs[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
+            mask_img_Xs = get_only_in_img_mask(cam_pts_Xs, img_H, img_W)
+            plot_pts_Xs = post_rots[imgi].matmul(cam_pts_Xs) + post_trans[imgi].unsqueeze(1)
+
+            cam_pts_Xs_pred = ego_to_cam(Xs_pred[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
+            mask_img_Xs_pred = get_only_in_img_mask(cam_pts_Xs_pred, img_H, img_W)
+            plot_pts_Xs_pred = post_rots[imgi].matmul(cam_pts_Xs_pred) + post_trans[imgi].unsqueeze(1)
+
+            ax.imshow(img)
+            ax.scatter(plot_pts[0, mask_img], plot_pts[1, mask_img], s=1, c=hm_points[2, mask_img],
+                       cmap='jet', vmin=-1.0, vmax=1.0)
+            ax.scatter(plot_pts_Xs[0, mask_img_Xs], plot_pts_Xs[1, mask_img_Xs], c='k', s=1)
+            ax.scatter(plot_pts_Xs_pred[0, mask_img_Xs_pred], plot_pts_Xs_pred[1, mask_img_Xs_pred], c='r', s=1)
+            ax.axis('off')
+
+        axes[1, 0].set_title('Prediction: Terrain')
+        axes[1, 0].imshow(terrain_pred, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[1, 0].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 0].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+
+        axes[1, 1].set_title('Label: Terrain')
+        axes[1, 1].imshow(hm_terrain[0], origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[1, 1].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 1].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+
+        axes[1, 2].set_title('Friction')
+        axes[1, 2].imshow(friction_pred, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+        axes[1, 2].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+
+        axes[1, 3].set_title('Trajectories XY')
+        axes[1, 3].plot(Xs[:, 0], Xs[:, 1], c='k', label='GT')
+        axes[1, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], c='r', label='Pred')
+        axes[1, 3].set_xlabel('X [m]')
+        axes[1, 3].set_ylabel('Y [m]')
+        axes[1, 3].set_xlim(-self.world_config.max_coord, self.world_config.max_coord)
+        axes[1, 3].set_ylim(-self.world_config.max_coord, self.world_config.max_coord)
+        axes[1, 3].grid()
+        axes[1, 3].legend()
+
+        axes[2, 0].set_title('Prediction: Geom')
+        axes[2, 0].imshow(geom_pred, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[2, 0].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 0].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+
+        axes[2, 1].set_title('Label: Geom')
+        axes[2, 1].imshow(hm_geom[0], origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
+        axes[2, 1].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 1].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+
+        axes[2, 2].set_title('Height diff')
+        axes[2, 2].imshow(diff_pred, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
+        axes[2, 2].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+
+        axes[2, 3].set_title('Trajectories Z')
+        axes[2, 3].plot(traj_ts, Xs[:, 2], 'k', label='GT')
+        axes[2, 3].plot(control_ts, Xs_pred[:, 2], c='r', label='Pred')
+        axes[2, 3].set_xlabel('Time [s]')
+        axes[2, 3].set_ylabel('Z [m]')
+        axes[2, 3].set_ylim(-1.0, 1.0)
+        axes[2, 3].grid()
+        axes[2, 3].legend()
+
+        return fig
 
 
 def main():
@@ -210,8 +322,9 @@ def main():
                       pretrained_terrain_encoder_path=args.pretrained_terrain_encoder_path,
                       geom_weight=args.geom_weight,
                       terrain_weight=args.terrain_weight,
-                      phys_weight=args.phys_weight
-                      )
+                      phys_weight=args.phys_weight,
+                      debug=args.debug,
+                      vis=args.vis)
     trainer.train()
 
 
