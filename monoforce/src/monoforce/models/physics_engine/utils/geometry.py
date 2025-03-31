@@ -52,7 +52,7 @@ def rodrigues_rotation_matrix(axis: torch.Tensor, angle: torch.Tensor) -> torch.
     return torch.eye(3) + torch.sin(angle) * K + (1 - torch.cos(angle)) * (K @ K)
 
 
-def normalized(x, eps=1e-8):
+def normalized(x, eps=1e-6):
     """
     Normalizes the input tensor.
 
@@ -64,9 +64,9 @@ def normalized(x, eps=1e-8):
     - Normalized tensor.
     """
     norm = torch.norm(x, dim=-1, keepdim=True)
-    norm.clamp_(min=eps)
-    return x / norm
-
+    norm = norm.clamp(min=eps)
+    x = x / norm
+    return x
 
 def unit_quaternion(batch_size: int = 1, device: str | torch.device = "cpu"):
     """

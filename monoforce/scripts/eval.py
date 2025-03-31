@@ -18,35 +18,26 @@ from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv, compile_data, str2bool
 from monoforce.losses import physics_loss, hm_loss
-from monoforce.datasets import ROUGH, rough_seq_paths
 
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Terrain encoder predictor input arguments')
     parser.add_argument('--seq', type=str, default='val', help='Data sequence')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
-    parser.add_argument('--terrain_encoder', type=str, default='lss', help='Terrain encoder model')
-    parser.add_argument('--terrain_encoder_path', type=str, default=None, help='Path to the LSS model')
+    parser.add_argument('--pretrained_terrain_encoder_path', type=str, default=None, help='Path to the trained LSS model')
     parser.add_argument('--vis', type=str2bool, default=True, help='Visualize the results')
     return parser.parse_args()
 
 
 class Evaluator:
     def __init__(self,
-                 seq='val',
                  batch_size=1,
-                 terrain_encoder='lss',
-                 terrain_encoder_path=None):
+                 pretrained_terrain_encoder_path=None):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.batch_size = batch_size
 
         # load configs
-        if seq in rough_seq_paths:
-            robot = os.path.basename(seq).split('_')[0]
-            robot = 'tradr' if robot == 'ugv' else 'marv'
-        else:
-            robot = 'marv'
-        print(f'Robot: {robot}')
-        self.robot_model = RobotModelConfig(kind=robot).to(self.device)
+        self.robot_model = RobotModelConfig(kind='marv').to(self.device)
         grid_res = 0.1  # 10cm per grid cell
         max_coord = 6.4  # meters
         DIM = int(2 * max_coord / grid_res)
@@ -66,40 +57,23 @@ class Evaluator:
 
         # load LSS config
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
-        self.terrain_encoder = self.get_terrain_encoder(terrain_encoder_path, model=terrain_encoder)
+        self.terrain_encoder = self.get_terrain_encoder(pretrained_terrain_encoder_path)
 
-        # load data
-        self.loader = self.get_dataloader(batch_size=batch_size, seq=seq)
-
-        # output folder to write evaluation results
-        self.output_folder = (f'./gen/eval_{os.path.basename(seq)}/'
-                              f'{robot}_{self.terrain_encoder.__class__.__name__}_'
-                              f'{self.physics_engine.__class__.__name__}')
-
-    def get_terrain_encoder(self, path, model='lss'):
-        if model == 'lss':
-            terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
-                                             self.lss_config['data_aug_conf']).from_pretrained(path)
-        else:
-            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: lss')
+    def get_terrain_encoder(self, path):
+        terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
+                                         self.lss_config['data_aug_conf']).from_pretrained(path)
         terrain_encoder.to(self.device)
-        terrain_encoder.eval()
         return terrain_encoder
 
     def predict_terrain(self, batch):
-        model = self.terrain_encoder.__class__.__name__
-        if model == 'LiftSplatShoot':
-            imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
-            img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
-            terrain = self.terrain_encoder(*img_inputs)
-        else:
-            raise ValueError(f'Invalid terrain encoder model: {model}. Supported: LiftSplatShoot')
+        imgs, rots, trans, intrins, post_rots, post_trans = batch[:6]
+        img_inputs = (imgs, rots, trans, intrins, post_rots, post_trans)
+        terrain = self.terrain_encoder(*img_inputs)
         return terrain
 
     def get_physics_engine(self):
         enine = DPhysicsEngine(self.physics_config, self.robot_model, self.device)
         enine.to(self.device)
-        enine.eval()
         return enine
 
     def predict_states(self, terrain, batch):
@@ -126,17 +100,21 @@ class Evaluator:
 
         return states_pred
 
-    def get_dataloader(self, batch_size=1, seq='val'):
-        if seq != 'val':
-            print('Loading dataset from:', seq)
-            val_ds = ROUGH(path=seq, lss_cfg=self.lss_config)
-        else:
-            _, val_ds = compile_data(lss_cfg=self.lss_config)
-        loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-        return loader
-
     @torch.inference_mode()
     def run(self, vis=False):
+        # set models to eval mode
+        self.terrain_encoder.eval()
+        self.physics_engine.eval()
+
+        # output folder to write evaluation results
+        self.output_folder = (f'./gen/eval/'
+                              f'{self.terrain_encoder.__class__.__name__}_'
+                              f'{self.physics_engine.__class__.__name__}')
+
+        # load dataset
+        _, val_ds = compile_data(lss_cfg=self.lss_config)
+        loader = DataLoader(val_ds, batch_size=self.batch_size, shuffle=False)
+
         # create output folder
         os.makedirs(self.output_folder, exist_ok=True)
         # write losses to output csv
@@ -149,7 +127,7 @@ class Evaluator:
         y_grid = self.world_config.y_grid[0].cpu()
 
         fig, axes = plt.subplots(3, 4, figsize=(20, 16))
-        for i, batch in enumerate(tqdm(self.loader)):
+        for i, batch in enumerate(tqdm(loader)):
             batch = [t.to(self.device) for t in batch]
             # get a sample from the dataset
             (imgs, rots, trans, intrins, post_rots, post_trans,
@@ -294,10 +272,8 @@ class Evaluator:
 def main():
     args = arg_parser()
     print(args)
-    evaluator = Evaluator(seq=args.seq,
-                     batch_size=args.batch_size,
-                     terrain_encoder=args.terrain_encoder,
-                     terrain_encoder_path=args.terrain_encoder_path)
+    evaluator = Evaluator(batch_size=args.batch_size,
+                          pretrained_terrain_encoder_path=args.pretrained_terrain_encoder_path)
     evaluator.run(vis=args.vis)
 
 

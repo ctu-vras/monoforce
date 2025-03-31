@@ -255,20 +255,20 @@ class DPhysicsEngine(torch.nn.Module):
             rot_driving_part_cogs * self.robot_model.driving_part_masses.view(1, self.robot_model.num_driving_parts, 1, 1, 1),
             dim=1,
         ) + (self.robot_model.body_mass * self.robot_model.body_cog.view(1, 3, 1)).unsqueeze(1)  # shape (B, 1, 3, 1)
-        cog_overall /= self.robot_model.total_mass  # shape (B, 1, 3, 1)
+        cog_overall = cog_overall / self.robot_model.total_mass  # shape (B, 1, 3, 1)
         # Compute vectors from overall CoG to each part's CoG
         d_driving = rot_driving_part_cogs - cog_overall.unsqueeze(1)  # shape (B, n_joints, 1, 3, 1)
         d_body = self.robot_model.body_cog.view(1, 1, 3, 1) - cog_overall  # shape (B, 1, 3, 1)
         # Compute translation terms for driving parts
         d_driving_sq = torch.sum(d_driving**2, dim=-2, keepdim=True)  # shape (B, n_joints, 1, 1, 1)
         translation_term_driving = d_driving_sq * self._I_3x3 - torch.matmul(d_driving, d_driving.transpose(-1, -2))  # shape (B, n_joints, 1, 3, 3)
-        translation_term_driving *= self.robot_model.driving_part_masses.view(
-            1, self.robot_model.num_driving_parts, 1, 1, 1
-        )  # shape (B, n_joints, 1, 3, 3)
+        translation_term_driving = translation_term_driving * self.robot_model.driving_part_masses.view(
+                                                                  1, self.robot_model.num_driving_parts, 1, 1, 1
+                                                              )  # shape (B, n_joints, 1, 3, 3)
         # Compute translation term for the body
         d_body_sq = torch.sum(d_body**2, dim=-2, keepdim=True)  # shape (B, 1, 1, 1)
         translation_term_body = d_body_sq * self._I_3x3.squeeze(1) - torch.matmul(d_body, d_body.transpose(-1, -2))  # shape (B, 1, 3, 3)
-        translation_term_body *= self.robot_model.body_mass  # shape (B, 1, 3, 3)
+        translation_term_body = translation_term_body * self.robot_model.body_mass  # shape (B, 1, 3, 3)
         # Compute total inertia tensor with respect to overall CoG
         I_overall = torch.sum(rot_driving_part_inertias + translation_term_driving, dim=1) + (
             self.robot_model.body_inertia.unsqueeze(0) + translation_term_body
@@ -301,7 +301,7 @@ class DPhysicsEngine(torch.nn.Module):
         robot_points = torch.cat((driving_parts_world.view(self.config.num_robots, -1, 3), body_world.squeeze(-1)), dim=1)
         # 5. Compute all thrust directions scaled by commanded velocity
         velocity_cmd = controls[:, : self.robot_model.num_driving_parts].clamp(-self.robot_model.v_max, self.robot_model.v_max)  # shape (B, n_joints)
-        thrust_directions_world *= velocity_cmd.view(
+        thrust_directions_world = thrust_directions_world * velocity_cmd.view(
             self.config.num_robots, self.robot_model.num_driving_parts, 1, 1, 1
         )  # shape (B, n_joints, 1, 3, 1)
         thrust_vectors = torch.cat(
