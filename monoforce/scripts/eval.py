@@ -25,7 +25,8 @@ def arg_parser():
     parser = argparse.ArgumentParser(description='Terrain encoder predictor input arguments')
     parser.add_argument('--seq', type=str, default='val', help='Data sequence')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
-    parser.add_argument('--pretrained_terrain_encoder_path', type=str, default=None, help='Path to the trained LSS model')
+    parser.add_argument('--pretrained_terrain_encoder_path', type=str, default=None,
+                        help='Path to the trained LSS model')
     parser.add_argument('--vis', type=str2bool, default=True, help='Visualize the results')
     return parser.parse_args()
 
@@ -75,17 +76,17 @@ class Evaluator:
         return enine
 
     def predict_states(self, terrain, batch):
-        Xs, Xds, qs, Omegas = batch[12:16]
+        xs, xds, qs, omegas, thetas = batch[11:16]
         controls = batch[9]
         height, friction = terrain['terrain'], terrain['friction']
         n_trajs, n_iters = controls.shape[:2]
 
         # Initial state
-        x0 = Xs[:, 0]
-        xd0 = Xds[:, 0]
+        x0 = xs[:, 0]
+        xd0 = xds[:, 0]
         q0 = qs[:, 0]
-        omega0 = Omegas[:, 0]
-        thetas0 = torch.zeros(n_trajs, self.robot_model.num_driving_parts).to(self.device)
+        omega0 = omegas[:, 0]
+        thetas0 = thetas[:, 0]
         state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
 
         self.world_config.z_grid = height.squeeze(1)
@@ -131,9 +132,8 @@ class Evaluator:
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              control_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, qs, Omegas) = batch
-            states_gt = [Xs, Xds, qs, Omegas]
+             traj_ts, xs, xds, qs, omegas, thetas) = batch
+            states_gt = [xs, xds, qs, omegas, thetas]
 
             # terrain prediction
             terrain = self.predict_terrain(batch)
@@ -164,13 +164,11 @@ class Evaluator:
             hm_points = hm_points.view(-1, 3).T
 
             batch = [t.to('cpu') for t in batch]
-            # get a sample from the dataset
             (imgs, rots, trans, intrins, post_rots, post_trans,
              hm_geom, hm_terrain,
              control_ts, controls,
-             pose0,
-             traj_ts, Xs, Xds, qs, Omegas) = batch
-            states_gt = [Xs, Xds, qs, Omegas]
+             traj_ts, xs, xds, qs, omegas, thetas) = batch
+            states_gt = [xs, xds, qs, omegas, thetas]
 
             # clear axis
             for ax in axes.flatten():

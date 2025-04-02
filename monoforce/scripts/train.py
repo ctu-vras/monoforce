@@ -86,8 +86,7 @@ class Trainer(Evaluator):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          control_ts, controls,
-         pose0,
-         traj_ts, Xs, Xds, Rs, Omegas) = batch
+         traj_ts, xs, xds, qs, omegas, thetas) = batch
 
         # terrain encoder forward pass
         terrain = self.predict_terrain(batch)
@@ -107,7 +106,7 @@ class Trainer(Evaluator):
         # physics loss: difference between predicted and ground truth states
         if self.phys_weight > 0:
             # predict trajectory
-            states_gt = [Xs, Xds, Rs, Omegas]
+            states_gt = [xs, xds, qs, omegas, thetas]
             states_pred = self.predict_states(terrain, batch)
             # compute physics loss
             loss_phys = physics_loss(states_pred=[states_pred.x.permute(1, 0, 2)], states_gt=states_gt,
@@ -214,8 +213,7 @@ class Trainer(Evaluator):
         (imgs, rots, trans, intrins, post_rots, post_trans,
          hm_geom, hm_terrain,
          control_ts, controls,
-         pose0,
-         traj_ts, Xs, Xds, Rs, Omegas) = sample
+         traj_ts, xs, xds, qs, omegas, thetas) = sample
 
         geom_pred = terrain['geom'][0, 0].cpu()
         diff_pred = terrain['diff'][0, 0].cpu()
@@ -223,7 +221,7 @@ class Trainer(Evaluator):
         friction_pred = terrain['friction'][0, 0].cpu()
         Xs_pred = states_pred.x[:, 0].cpu()
         Xs_pred_grid = (Xs_pred[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
-        Xs_grid = (Xs[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
+        Xs_grid = (xs[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
 
         # get height map points
         z_grid = terrain_pred
@@ -245,7 +243,7 @@ class Trainer(Evaluator):
             mask_img = get_only_in_img_mask(cam_pts, img_H, img_W)
             plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
 
-            cam_pts_Xs = ego_to_cam(Xs[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
+            cam_pts_Xs = ego_to_cam(xs[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
             mask_img_Xs = get_only_in_img_mask(cam_pts_Xs, img_H, img_W)
             plot_pts_Xs = post_rots[imgi].matmul(cam_pts_Xs) + post_trans[imgi].unsqueeze(1)
 
@@ -276,7 +274,7 @@ class Trainer(Evaluator):
         axes[1, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
 
         axes[1, 3].set_title('Trajectories XY')
-        axes[1, 3].plot(Xs[:, 0], Xs[:, 1], c='k', label='GT')
+        axes[1, 3].plot(xs[:, 0], xs[:, 1], c='k', label='GT')
         axes[1, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], c='r', label='Pred')
         axes[1, 3].set_xlabel('X [m]')
         axes[1, 3].set_ylabel('Y [m]')
@@ -301,7 +299,7 @@ class Trainer(Evaluator):
         axes[2, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
 
         axes[2, 3].set_title('Trajectories Z')
-        axes[2, 3].plot(traj_ts, Xs[:, 2], 'k', label='GT')
+        axes[2, 3].plot(traj_ts, xs[:, 2], 'k', label='GT')
         axes[2, 3].plot(control_ts, Xs_pred[:, 2], c='r', label='Pred')
         axes[2, 3].set_xlabel('Time [s]')
         axes[2, 3].set_ylabel('Z [m]')

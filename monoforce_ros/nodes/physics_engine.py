@@ -8,7 +8,7 @@ import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
-from monoforce.monoforce.config import WorldConfig, RobotModelConfig, PhysicsEngineConfig
+from monoforce.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.ros import poses_to_marker, poses_to_path, gridmap_msg_to_numpy
 from monoforce.transformations import pose_to_xyz_q
@@ -79,10 +79,10 @@ class DiffPhysEngineNode:
         speed = 1. * torch.ones(self.num_robots, device=self.device)  # m/s forward
         speed[::2] = -speed[::2]
         omega = torch.linspace(-1., 1., self.num_robots).to(self.device)  # rad/s yaw
-        controls = self.robot_config.vw_to_vels(speed, omega)
-        flipper_controls = torch.zeros_like(controls)
-        controls_all = torch.cat((controls, flipper_controls), dim=-1).to(self.device).repeat(self.n_sim_steps, 1, 1).permute(1, 0, 2)
-        return controls_all
+        flipper_vs = self.robot_config.vw_to_vels(speed, omega)
+        flipper_ws = torch.zeros_like(flipper_vs)
+        controls = torch.cat((flipper_vs, flipper_ws), dim=-1).to(self.device).repeat(self.n_sim_steps, 1, 1).permute(1, 0, 2)
+        return controls
 
     def get_pose(self, target_frame, source_frame, stamp=None):
         if stamp is None:

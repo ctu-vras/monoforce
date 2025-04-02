@@ -46,7 +46,7 @@ class RobotModelConfig(BaseConfig):
     Configuration of the robot model. Contains the physical constants of the robot, its mass and geometry.
     """
 
-    kind: Literal["tradr", "marv", "husky"]
+    kind: Literal["tradr", "marv", "husky"] = "marv"
     mesh_voxel_size: float = 0.01
     points_per_driving_part: int = 128
     points_per_body: int = 256

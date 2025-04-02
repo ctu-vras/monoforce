@@ -56,7 +56,6 @@ class ROUGH(Dataset):
         self.cloud_path = os.path.join(path, 'clouds')
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
-        self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
         self.is_train = is_train
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
@@ -67,7 +66,6 @@ class ROUGH(Dataset):
         self.calib = load_calib(calib_path=self.calib_path)
         self.ids = self.get_ids()
         self.poses_ts, self.poses = self.get_all_poses(return_stamps=True)
-        self.controls_ts, self.controls = self.get_all_controls()
         self.camera_names = self.get_camera_names()
 
     def __getitem__(self, i):
@@ -136,57 +134,19 @@ class ROUGH(Dataset):
         pose_gravity_aligned[:3, :3] = R
         return pose_gravity_aligned
 
-    def get_all_controls(self):
-        if not os.path.exists(self.controls_path):
-            print(f'Controls file {self.controls_path} does not exist')
-            return None, None
-        data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
-        assert len(data) > 0, f'No controls found in {self.controls_path}'
-        stamps, vws = data[:, 0], data[:, 1:]
-        vs = torch.as_tensor(vws[:, 0])
-        ws = torch.as_tensor(vws[:, 1])
-        flipper_vels = self.robot_cfg.vw_to_vels(v=vs, w=ws).numpy()
-        flipper_angles = np.zeros_like(flipper_vels)
-        controls = np.concatenate([flipper_vels, flipper_angles], axis=1)
-        assert controls.shape[1] == 8, f'Controls have wrong shape {controls.shape}'
+    def get_controls(self, i, T_horizon=5.0):
+        controls_path = os.path.join(self.path, 'controls', f'flipper_vs_ws_{self.ids[i]}.csv')
+        data = np.loadtxt(controls_path, delimiter=',', skiprows=1)
+        stamps, controls = data[:, 0], data[:, 1:]
+
+        # limit stamps and controls to the horizon
+        stamps = stamps - stamps[0]
+        stamps = stamps[stamps <= T_horizon]
+        controls = controls[:len(stamps)]
+
+        stamps = torch.as_tensor(stamps, dtype=torch.float32)
+        controls = torch.as_tensor(controls, dtype=torch.float32)
         return stamps, controls
-
-    def get_controls(self, i, T_horizon=5.0, dt=0.01):
-        all_controls_stamps, all_controls = copy.copy(self.controls_ts), copy.copy(self.controls)
-        # assert all_controls is not None, f'Controls are not available'
-        time_left = self.ind_to_stamp(i)
-        # start time from 0
-        time_left -= all_controls_stamps[0]
-        all_controls_stamps -= all_controls_stamps[0]
-        time_right = time_left + T_horizon
-
-        # check if the trajectory is out of the control time stamps
-        if time_left > all_controls_stamps[-1] or time_right < all_controls_stamps[0]:
-            # print(f'Trajectory is out of the recorded control time stamps. Using zero controls.')
-            control_stamps_horizon = torch.arange(0.0, T_horizon, dt, dtype=torch.float32)
-            controls = torch.zeros((len(control_stamps_horizon), all_controls.shape[1]), dtype=torch.float32)
-            return control_stamps_horizon, controls
-
-        # find the closest index to the left and right in all times
-        il = np.argmin(np.abs(np.asarray(all_controls_stamps) - time_left))
-        ir = np.argmin(np.abs(np.asarray(all_controls_stamps) - time_right))
-        ir = min(max(il + 1, ir), len(all_controls_stamps))
-        control_stamps = np.asarray(all_controls_stamps[il:ir])
-        control_stamps = control_stamps - control_stamps[0]
-        controls = all_controls[il:ir]
-
-        control_stamps_horizon = np.arange(0.0, T_horizon, dt)
-        controls_horizon = np.zeros((len(control_stamps_horizon), controls.shape[1]))
-        # interpolate controls to the trajectory time stamps
-        for j in range(controls.shape[1]):
-            controls_horizon[:, j] = np.interp(control_stamps_horizon, control_stamps, controls[:, j], left=0.0, right=0.0)
-
-        assert len(control_stamps_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
-        assert len(control_stamps_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
-        control_stamps_horizon = torch.as_tensor(control_stamps_horizon, dtype=torch.float32)
-        controls_horizon = torch.as_tensor(controls_horizon, dtype=torch.float32)
-
-        return control_stamps_horizon, controls_horizon
 
     @staticmethod
     def get_camera_names():
@@ -196,18 +156,16 @@ class ROUGH(Dataset):
         return cams
 
     def get_traj(self, i, T_horizon=5.0):
-        # n_frames equals to the number of future poses (trajectory length)
-        dt = 0.1  # lidar frequency is 10 Hz
+        # poses
+        poses_path = os.path.join(self.path, 'trajectories', 'traj_base_link_%s.csv' % self.ids[i])
+        data = np.loadtxt(poses_path, delimiter=',', skiprows=1)
+        stamps, Ts = data[:, 0], data[:, 1:]
+        poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
 
-        # get trajectory as sequence of `n_frames` future poses
-        all_poses = copy.copy(self.poses)
-        all_ts = copy.copy(self.poses_ts)
-        time_left = self.ind_to_stamp(i)
-        il = np.argmin(np.abs(self.poses_ts - time_left))
-        ir = np.argmin(np.abs(all_ts - (self.poses_ts[il] + T_horizon)))
-        ir = min(max(ir, il+1), len(all_ts))
-        poses = all_poses[il:ir]
-        stamps = np.asarray(all_ts[il:ir])
+        # flipper angles
+        theta_path = os.path.join(self.path, 'trajectories', 'traj_flipper_angles_%s.csv' % self.ids[i])
+        data = np.loadtxt(theta_path, delimiter=',', skiprows=1)
+        thetas = np.asarray(data[:, 1:], dtype=np.float32)
 
         # transform poses to the same coordinate frame as the height map
         poses = np.linalg.inv(poses[0]) @ poses
@@ -216,19 +174,9 @@ class ROUGH(Dataset):
         # limit stamps and poses to the horizon
         stamps = stamps[stamps <= T_horizon]
         poses = poses[:len(stamps)]
-
-        # make sure the trajectory has the fixed length
-        n_frames = int(np.ceil(T_horizon / dt))
-        if len(poses) < n_frames:
-            # repeat the last pose to fill the trajectory
-            poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
-            stamps = np.concatenate([stamps, stamps[-1] + np.arange(1, n_frames - len(stamps) + 1) * dt], axis=0)
-            assert len(poses) == n_frames, f'Poses and stamps have different lengths {len(poses)} != {n_frames}'
-        # truncate the trajectory
-        poses = poses[:n_frames]
-        stamps = stamps[:n_frames]
+        thetas = thetas[:len(stamps)]
         assert len(poses) == len(stamps), f'Poses and time stamps have different lengths'
-        assert len(poses) == n_frames
+        assert len(thetas) == len(stamps), f'Flipper angles and time stamps have different lengths'
 
         # gravity-aligned poses
         pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
@@ -236,9 +184,8 @@ class ROUGH(Dataset):
         poses = pose_grav_aligned @ poses
 
         traj = {
-            'stamps': stamps, 'poses': poses,
+            'stamps': stamps, 'poses': poses, 'flipper_angles': thetas,
         }
-
         return traj
 
     def get_states_traj(self, i):
@@ -246,6 +193,7 @@ class ROUGH(Dataset):
         # estimating velocities and angular velocities from the trajectory positions for now
         traj = self.get_traj(i)
         poses = traj['poses']
+        thetas = traj['flipper_angles']
         tstamps = traj['stamps']
 
         # count time from 0
@@ -260,18 +208,19 @@ class ROUGH(Dataset):
 
         dps = np.diff(xs, axis=0)
         dt = np.asarray(np.diff(ts), dtype=np.float32).reshape([-1, 1])
-        theta = np.arctan2(dps[:, 1], dps[:, 0]).reshape([-1, 1])
-        theta = np.concatenate([theta[:1], theta], axis=0)
+        yaw = np.arctan2(dps[:, 1], dps[:, 0]).reshape([-1, 1])
+        yaw = np.concatenate([yaw[:1], yaw], axis=0)
 
         xds = np.zeros_like(xs)
         xds[:-1] = dps / dt
         omegas = np.zeros_like(xs)
-        omegas[:-1, 2:3] = np.diff(theta, axis=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
+        omegas[:-1, 2:3] = np.diff(yaw, axis=0) / dt
 
         states = [xs.reshape([n_states, 3]),
                   xds.reshape([n_states, 3]),
                   qs.reshape([n_states, 4]),
-                  omegas.reshape([n_states, 3])]
+                  omegas.reshape([n_states, 3]),
+                  thetas.reshape([n_states, 4])]
 
         # to torch tensors
         ts = torch.as_tensor(ts, dtype=torch.float32)
@@ -567,12 +516,10 @@ class ROUGH(Dataset):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, qs, Omegas = states
+        xs, xds, qs, omegas, thetas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
-        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
                 hm_geom, hm_terrain,
                 control_ts, controls,
-                pose0,
-                traj_ts, Xs, Xds, qs, Omegas)
+                traj_ts, xs, xds, qs, omegas, thetas)

@@ -52,18 +52,9 @@ def motion():
     speed = 1. * torch.ones(n_robots)  # m/s forward
     speed[::2] = -speed[::2]
     omega = torch.linspace(-1., 1., n_robots)  # rad/s yaw
-    controls = robot_model.vw_to_vels(speed, omega)
-    flipper_controls = torch.zeros_like(controls)
-    controls_all = torch.cat((controls, flipper_controls), dim=-1).repeat(n_iters, 1, 1).to(device)
-    # # Set joint rotational velocities
-    # amplitude = 1. * torch.pi / 4
-    # periods = traj_length / 10.0
-    # rot_vels = torch.cos(torch.linspace(0, periods * 2 * np.pi, n_iters)) * amplitude
-    # rot_vels = rot_vels.unsqueeze(-1).repeat(1, n_robots)
-    # controls_all[:, :, robot_model.num_driving_parts] = rot_vels
-    # controls_all[:, :, robot_model.num_driving_parts + 1] = rot_vels
-    # controls_all[:, :, robot_model.num_driving_parts + 2] = -rot_vels
-    # controls_all[:, :, robot_model.num_driving_parts + 3] = -rot_vels
+    flipper_vels = robot_model.vw_to_vels(speed, omega)
+    flipper_omegas = torch.zeros_like(flipper_vels)
+    controls = torch.cat((flipper_vels, flipper_omegas), dim=-1).repeat(n_iters, 1, 1).to(device)
 
     for cfg in [robot_model, world_config, physics_config]:
         cfg.to(device)
@@ -84,7 +75,7 @@ def motion():
 
     state = init_state
     for i in range(n_iters):
-        state, der, aux = engine(state, controls_all[i], world_config)
+        state, der, aux = engine(state, controls[i], world_config)
         states.append(state)
         auxs.append(aux)
 
@@ -126,8 +117,7 @@ def motion_rough():
     (imgs, rots, trans, intrins, post_rots, post_trans,
      hm_geom, hm_terrain,
      control_ts, controls,
-     pose0,
-     traj_ts, Xs, Xds, qs, Omegas) = sample
+     traj_ts, xs, xds, qs, omegas, thetas) = sample
 
     n_iters = len(control_ts)
     d_max, grid_res = 6.4, 0.1
@@ -154,16 +144,16 @@ def motion_rough():
     engine = DPhysicsEngine(physics_config, robot_model, device)
 
     # Initial state
-    x0 = torch.as_tensor(pose0[:3, 3]).to(device).repeat(n_robots, 1)
+    x0 = xs[0].repeat(n_robots, 1)
     xd0 = torch.zeros_like(x0)
-    q0 = torch.as_tensor(Rotation.from_matrix(pose0[:3, :3],).as_quat(scalar_first=True), dtype=x0.dtype).to(device).repeat(n_robots, 1)
+    q0 = qs[0].repeat(n_robots, 1)
     omega0 = torch.zeros_like(x0)
-    thetas0 = torch.as_tensor(controls[0, 4:]).to(device).repeat(n_robots, 1)
-    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0)
+    thetas0 = thetas[0].repeat(n_robots, 1)
+    state0 = PhysicsState(x0, xd0, q0, omega0, thetas0).to(device)
 
     states = deque(maxlen=n_iters)
     auxs = deque(maxlen=n_iters)
-    state = init_state
+    state = state0
     controls = controls.repeat(n_robots, 1, 1).to(device)
     for i in range(n_iters):
         u = controls[:, i]
@@ -180,6 +170,10 @@ def motion_rough():
     )
 
 
+def main():
+    # motion()
+    motion_rough()
+
+
 if __name__ == '__main__':
-    motion()
-    # motion_rough()
+    main()

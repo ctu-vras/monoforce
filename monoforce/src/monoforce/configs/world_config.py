@@ -31,7 +31,7 @@ class WorldConfig(BaseConfig):
     z_grid: torch.Tensor
     grid_res: float
     max_coord: float
-    k_stiffness: float | torch.Tensor = 20_000.0
+    k_stiffness: float | torch.Tensor = 40_000.0
     k_friction_lon: float | torch.Tensor = 0.5
     k_friction_lat: float | torch.Tensor = 0.2
     suitable_mask: torch.BoolTensor | None = None
