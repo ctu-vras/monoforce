@@ -37,18 +37,20 @@ def arg_parser():
 
 class Trainer(Evaluator):
     def __init__(self,
-                 batch_size=1,
-                 n_epochs=1000,
-                 lr=1e-3,
-                 weight_decay=1e-7,
+                 batch_size: int=1,
+                 n_epochs: int=1000,
+                 lr: float=1e-3,
+                 weight_decay: float=1e-7,
                  pretrained_terrain_encoder_path=None,
-                 geom_weight=1.0,
-                 terrain_weight=1.0,
-                 phys_weight=1.0,
-                 debug=False,
-                 vis=False):
+                 geom_weight: float=1.0,
+                 terrain_weight: float=1.0,
+                 phys_weight: float=1.0,
+                 debug: bool=False,
+                 vis: bool=False,
+                 terrain_simplification_scale=4):
         super(Trainer, self).__init__(batch_size=batch_size,
-                                      pretrained_terrain_encoder_path=pretrained_terrain_encoder_path)
+                                      pretrained_terrain_encoder_path=pretrained_terrain_encoder_path,
+                                      terrain_simplification_scale=terrain_simplification_scale)
         self.n_epochs = n_epochs
         self.min_val_loss = np.inf
         self.min_train_loss = np.inf

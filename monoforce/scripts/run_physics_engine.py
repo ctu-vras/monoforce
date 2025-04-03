@@ -12,6 +12,7 @@ from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, Physic
 from monoforce.models.physics_engine.utils.geometry import euler_to_quaternion
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.models.physics_engine.vis.animator import animate_trajectory
+from monoforce.models.physics_engine.utils.environment import make_x_y_grids
 from collections import deque
 import pyvista as pv
 import numpy as np
@@ -24,17 +25,21 @@ def motion():
     # Heightmap setup
     grid_res = 0.1  # 10cm per grid cell
     max_coord = 6.4  # meters
-    DIM = int(2 * max_coord / grid_res)
-    xint = torch.linspace(-max_coord, max_coord, DIM)
-    yint = torch.linspace(-max_coord, max_coord, DIM)
-    x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")  # use torch's XY indexing !!!!!
+    x_grid, y_grid = make_x_y_grids(max_coord, grid_res, n_robots)
     z_grid = 0.5 * torch.exp(-(x_grid - 2) ** 2 / 1) * torch.exp(-(y_grid - 0) ** 2 / 2)
-    x_grid = x_grid.repeat(n_robots, 1, 1)
-    y_grid = y_grid.repeat(n_robots, 1, 1)
-    z_grid = z_grid.repeat(n_robots, 1, 1)
+
+    # # Gridmap preprocessing: Average polling to reduce the grid size
+    # new_grid_res = 0.2
+    # preproc = torch.nn.AvgPool2d(
+    #     kernel_size=int(new_grid_res / grid_res),
+    #     stride=int(new_grid_res / grid_res),
+    # )
+    # x_grid = preproc(x_grid)
+    # y_grid = preproc(y_grid)
+    # z_grid = preproc(z_grid)
 
     # Instantiate the configs
-    robot_model = RobotModelConfig(kind="marv")
+    robot_model = RobotModelConfig()
     world_config = WorldConfig(
         x_grid=x_grid,
         y_grid=y_grid,
@@ -169,8 +174,8 @@ def motion_rough():
 
 
 def main():
-    # motion()
-    motion_rough()
+    motion()
+    # motion_rough()
 
 
 if __name__ == '__main__':
