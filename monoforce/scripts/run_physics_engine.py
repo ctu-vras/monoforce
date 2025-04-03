@@ -13,7 +13,6 @@ from monoforce.models.physics_engine.utils.geometry import euler_to_quaternion
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.models.physics_engine.vis.animator import animate_trajectory
 from collections import deque
-from scipy.spatial.transform import Rotation
 import pyvista as pv
 import numpy as np
 
@@ -42,7 +41,6 @@ def motion():
         z_grid=z_grid,
         grid_res=grid_res,
         max_coord=max_coord,
-        k_stiffness=40_000.,
     )
     physics_config = PhysicsEngineConfig(num_robots=n_robots)
 
@@ -68,7 +66,7 @@ def motion():
     q0 = euler_to_quaternion(*torch.tensor([0, 0, 0.0 * torch.pi])).to(device).repeat(n_robots, 1)
     omega0 = torch.zeros_like(x0)
     thetas0 = torch.zeros(n_robots, robot_model.num_driving_parts).to(device)
-    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0)
+    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=n_robots)
 
     states = deque(maxlen=n_iters)
     auxs = deque(maxlen=n_iters)
@@ -149,7 +147,7 @@ def motion_rough():
     q0 = qs[0].repeat(n_robots, 1)
     omega0 = torch.zeros_like(x0)
     thetas0 = thetas[0].repeat(n_robots, 1)
-    state0 = PhysicsState(x0, xd0, q0, omega0, thetas0).to(device)
+    state0 = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=n_robots).to(device)
 
     states = deque(maxlen=n_iters)
     auxs = deque(maxlen=n_iters)

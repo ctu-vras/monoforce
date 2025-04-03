@@ -76,18 +76,20 @@ class Evaluator:
         return enine
 
     def predict_states(self, terrain, batch):
-        xs, xds, qs, omegas, thetas = batch[11:16]
-        controls = batch[9]
+        (imgs, rots, trans, intrins, post_rots, post_trans,
+         hm_geom, hm_terrain,
+         control_ts, controls,
+         traj_ts, xs, xds, qs, omegas, thetas) = batch
         height, friction = terrain['terrain'], terrain['friction']
         n_trajs, n_iters = controls.shape[:2]
 
         # Initial state
-        x0 = xs[:, 0]
-        xd0 = xds[:, 0]
-        q0 = qs[:, 0]
-        omega0 = omegas[:, 0]
-        thetas0 = thetas[:, 0]
-        state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
+        x0 = xs[:, 0].contiguous()
+        xd0 = xds[:, 0].contiguous()
+        q0 = qs[:, 0].contiguous()
+        omega0 = omegas[:, 0].contiguous()
+        thetas0 = thetas[:, 0].contiguous()
+        state0 = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=x0.shape[0])
 
         self.world_config.z_grid = height.squeeze(1)
         states_pred = deque(maxlen=n_iters)

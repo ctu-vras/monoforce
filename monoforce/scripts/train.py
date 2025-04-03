@@ -77,8 +77,8 @@ class Trainer(Evaluator):
     def create_dataloaders(self, debug=False, vis=False):
         # create dataset for LSS model training
         train_ds, val_ds = compile_data(small_data=debug, vis=vis)
-        train_loader = DataLoader(train_ds, batch_size=self.batch_size, shuffle=True)
-        val_loader = DataLoader(val_ds, batch_size=self.batch_size, shuffle=False)
+        train_loader = DataLoader(train_ds, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        val_loader = DataLoader(val_ds, batch_size=self.batch_size, shuffle=False, drop_last=True)
         return train_loader, val_loader
 
     def compute_losses(self, batch):

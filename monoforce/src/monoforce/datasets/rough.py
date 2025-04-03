@@ -56,6 +56,7 @@ class ROUGH(Dataset):
         self.cloud_path = os.path.join(path, 'clouds')
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
+        self.controls_path = os.path.join(path, 'controls')
         self.is_train = is_train
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
@@ -88,7 +89,8 @@ class ROUGH(Dataset):
         return len(self.ids)
 
     def get_ids(self):
-        ids = [f[:-4] for f in os.listdir(self.cloud_path)]
+        # ids = [f[:-4] for f in os.listdir(self.cloud_path)]
+        ids = [f[14:-4] for f in os.listdir(self.controls_path) if f.startswith('flipper_vs_ws_')]
         ids = sorted(ids)
         return ids
 
@@ -523,3 +525,17 @@ class ROUGH(Dataset):
                 hm_geom, hm_terrain,
                 control_ts, controls,
                 traj_ts, xs, xds, qs, omegas, thetas)
+
+
+if __name__ == "__main__":
+    from monoforce.utils import explore_data
+    from tqdm import tqdm
+
+    for seq in rough_seq_paths:
+        ds = ROUGH(seq)
+        # sample_i = np.random.randint(0, len(ds))
+        # sample = ds[sample_i]
+        # explore_data(ds, sample_range=[sample_i])
+        for sample in tqdm(ds, total=len(ds)):
+            for s in sample:
+                print(s.shape)
