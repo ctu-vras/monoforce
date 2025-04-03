@@ -1,0 +1,10 @@
+tqdm==4.67.1
+tensorboard==2.19.0
+efficientnet_pytorch==0.7.1
+matplotlib==3.10.1
+scipy==1.15.2
+pyvista==0.44.2
+pyaml
+trimesh==4.6.6
+pyacvd==0.3.2
+tensordict==0.7.2

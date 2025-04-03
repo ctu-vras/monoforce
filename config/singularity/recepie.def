@@ -1,0 +1,43 @@
+Bootstrap: docker
+From: ros:jazzy-perception
+
+%files
+    requirements.txt
+
+%environment
+    # Set environment variables so the virtual environment is automatically activated
+    export VIRTUAL_ENV=/venv
+    export PATH="/venv/bin:$PATH"
+
+%post
+    export XDG_CACHE_HOME=/tmp/singularity-cache # pip cache
+
+    # Install Apt packages
+    packages="
+        gcc
+        g++
+        bridge-utils
+        build-essential
+        htop
+        net-tools
+        tmux
+        vim
+        wget
+        curl
+        git
+        sshfs
+        python3-venv
+        python3-pip
+        "
+    apt update && apt install -y ${packages}
+
+    # Make sure python3 is the default python
+    ln -s /usr/bin/python3 /usr/bin/python
+
+    # Create a virtual environment inside the container
+    python -m venv /venv
+
+    # Activate the virtual environment and install dependencies
+    /venv/bin/pip install --upgrade pip
+    /venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+    /venv/bin/pip install -r ${SINGULARITY_ROOTFS}/requirements.txt
