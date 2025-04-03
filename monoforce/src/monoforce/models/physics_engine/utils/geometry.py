@@ -1,4 +1,5 @@
 import torch
+from typing import Union, Tuple
 
 __all__ = [
     "normalized",
@@ -68,7 +69,7 @@ def normalized(x, eps=1e-8):
     x = x / norm
     return x
 
-def unit_quaternion(batch_size: int = 1, device: str | torch.device = "cpu"):
+def unit_quaternion(batch_size: int = 1, device: Union[str, torch.device] = "cpu"):
     """
     Returns a unit quaternion tensor of shape (batch_size, 4).
 
@@ -454,7 +455,7 @@ def euler_to_quaternion(roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Tens
     return normalized(q)
 
 
-def quaternion_to_euler(q: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def quaternion_to_euler(q: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Convert a quaternion to Euler angles (roll, pitch, yaw).
 
@@ -557,7 +558,7 @@ def pointcloud_bounding_volume(pcd: torch.Tensor, eps: float) -> torch.Tensor:
     )
 
 
-def extract_top_plane_from_box(box: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def extract_top_plane_from_box(box: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Given an axis-aligned bounding box in 3D, extract the top plane of the box.
 

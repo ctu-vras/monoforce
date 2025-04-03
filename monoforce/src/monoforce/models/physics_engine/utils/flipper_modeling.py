@@ -5,6 +5,8 @@ from ..utils.geometry import (
     points_within_circle,
     rodrigues_rotation_matrix,
 )
+from typing import Tuple
+
 
 __all__ = ["get_track_pointwise_vels", "TrackWheels"]
 
@@ -122,7 +124,7 @@ def tangent_vecs_between_wheels(
     wheel_radius_a: float,
     wheel_pos_b: torch.Tensor,
     wheel_radius_b: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute the tangent vectors between two wheels.
 
@@ -133,7 +135,7 @@ def tangent_vecs_between_wheels(
         wheel_radius_b (float): Radius of the second wheel.
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: Tangent vectors between the two wheels.
+        Tuple[torch.Tensor, torch.Tensor]: Tangent vectors between the two wheels.
     """
     center_dist = torch.norm(wheel_pos_a - wheel_pos_b)
     center_diff = wheel_pos_b - wheel_pos_a
@@ -157,7 +159,7 @@ def get_wheel_point_diff_vecs(
     points: torch.Tensor,
     ignored_mask: torch.Tensor,
     wheel_assignment_margin: float = 0.1,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     # Determine which points are within the wheel radius
     within_wheel = points_within_circle(points[:, :2], wheel_position[:2], wheel_radius, wheel_assignment_margin)
     assigned = torch.logical_and(within_wheel, ~ignored_mask)

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import torch
+from typing import Union
 from .base_config import BaseConfig
 from ..models.physics_engine.utils.environment import compute_heightmap_gradients
 
@@ -31,10 +32,10 @@ class WorldConfig(BaseConfig):
     z_grid: torch.Tensor
     grid_res: float
     max_coord: float
-    k_stiffness: float | torch.Tensor = 40_000.0
-    k_friction_lon: float | torch.Tensor = 0.5
-    k_friction_lat: float | torch.Tensor = 0.2
-    suitable_mask: torch.BoolTensor | None = None
+    k_stiffness: Union[float, torch.Tensor] = 40_000.0
+    k_friction_lon: Union[float, torch.Tensor] = 0.5
+    k_friction_lat: Union[float, torch.Tensor] = 0.2
+    suitable_mask: Union[torch.BoolTensor, None] = None
 
     def __post_init__(self):
         self.z_grid_grad = compute_heightmap_gradients(self.z_grid, self.grid_res)  # (B, 2, D, D)
@@ -52,7 +53,7 @@ class WorldConfig(BaseConfig):
         """
         return self.z_grid.shape[-1]
 
-    def ij_to_xyz(self, ij: torch.IntTensor | torch.LongTensor) -> torch.FloatTensor:
+    def ij_to_xyz(self, ij: Union[torch.IntTensor, torch.LongTensor]) -> torch.FloatTensor:
         """
         ij is assumed to have the shape (N, B, 2) where N is the number of points and B is the batch size.
         """
@@ -73,7 +74,7 @@ class WorldConfig(BaseConfig):
         z = self.z_grid[linearized_idx.unbind(-1)]
         return torch.stack((x, y, z), dim=-1).view(N, B, 3)
 
-    def ij_to_suited_mask(self, ij: torch.IntTensor | torch.LongTensor) -> torch.BoolTensor:
+    def ij_to_suited_mask(self, ij: Union[torch.IntTensor, torch.LongTensor]) -> torch.BoolTensor:
         """
         ij is assumed to have the shape (N, B, 2) where N is the number of points and B is the batch size.
         """

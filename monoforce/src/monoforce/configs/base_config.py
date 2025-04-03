@@ -1,5 +1,6 @@
 from abc import ABC
 import torch
+from typing import Union
 
 
 class BaseConfig(ABC):
@@ -7,7 +8,7 @@ class BaseConfig(ABC):
     Base configuration class. This class is used to store the configuration of the simulation.
     """
 
-    def to(self, device: torch.device | str):
+    def to(self, device: Union[torch.device, str]):
         """
         Moves all tensors to the specified device.
 

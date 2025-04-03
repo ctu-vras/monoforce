@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Tuple
+from typing import Tuple, Union
 import torch
 from monoforce.configs.engine_config import PhysicsEngineConfig
 from monoforce.configs import RobotModelConfig
@@ -11,7 +11,7 @@ from ..utils.numerical import integrate_quaternion
 
 
 class DPhysicsEngine(torch.nn.Module):
-    def __init__(self, config: PhysicsEngineConfig, robot_model: RobotModelConfig, device: torch.device | str):
+    def __init__(self, config: PhysicsEngineConfig, robot_model: RobotModelConfig, device: Union[torch.device, str]):
         super().__init__()
         self.config = config
         self.device = device
@@ -146,8 +146,8 @@ class DPhysicsEngine(torch.nn.Module):
         xd_points: torch.Tensor,
         thrust_vectors: torch.Tensor,
         n: torch.Tensor,
-        k_friction_lon: float | torch.Tensor,
-        k_friction_lat: float | torch.Tensor,
+        k_friction_lon: Union[float, torch.Tensor],
+        k_friction_lat: Union[float, torch.Tensor],
     ) -> torch.Tensor:
         """
         Calculate the friction force acting on the robot points.

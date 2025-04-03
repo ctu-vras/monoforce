@@ -50,8 +50,7 @@ class PhysicsState(TensorClass):
             thetas=torch.zeros(batch_size, robot_model.num_driving_parts),
             batch_size=[batch_size],
         )
-        return PhysicsState(**base | kwargs, device=device)
-
+        return PhysicsState(**{**base, **kwargs}, device=device)
 
 class PhysicsStateDer(TensorClass):
     """Physics State Derivative
@@ -93,7 +92,7 @@ class AuxEngineInfo(TensorClass):
 StateLike = Union[PhysicsState, PhysicsStateDer, AuxEngineInfo]
 
 
-def vectorize_iter_of_states(states: Iterable[StateLike], _device: str | None = None) -> StateLike:
+def vectorize_iter_of_states(states: Iterable[StateLike], _device: Union[str, None] = None) -> StateLike:
     """Convert an iterable of state-like objects to a single state-like object.
 
     Args:

@@ -1,3 +1,4 @@
+from typing import Union, List, Tuple
 from pathlib import Path
 import hashlib
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ from ..models.physics_engine.utils.meshes import (
     sample_points_from_convex_hull,
 )
 
-np.random.seed(0)
+# np.random.seed(0)
 
 ROOT = Path(__file__).parent.parent.parent.parent / "config"
 MESHDIR = ROOT / "meshes"
@@ -27,7 +28,7 @@ YAMLDIR = ROOT / "robots"
 POINTCACHE = ROOT / ".robot_cache"
 
 
-def list_of_dicts_to_dict_of_lists(list_of_dicts: list[dict]) -> dict:
+def list_of_dicts_to_dict_of_lists(list_of_dicts: List[dict]) -> dict:
     """
     Converts a list of dictionaries to a dictionary of lists.
 
@@ -128,7 +129,7 @@ class RobotModelConfig(BaseConfig):
             if isinstance(tensor, torch.Tensor):
                 print(f"{name}: {tensor.shape}")
 
-    def vw_to_vels(self, v: float | torch.Tensor, w: float | torch.Tensor) -> torch.Tensor:
+    def vw_to_vels(self, v: Union[float, torch.Tensor], w: Union[float, torch.Tensor]) -> torch.Tensor:
         """
         Linear/angular velocity to track wheel velocities.
         """
@@ -195,13 +196,13 @@ class RobotModelConfig(BaseConfig):
     def _construct_driving_parts(
         self,
         robot_mesh: pv.PolyData,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Constructs the driving parts of the robot
         Args:
             robot_points (torch.Tensor): Points of the robot.
         Returns:
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Points, inertias, center of gravity of the driving parts and masks.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Points, inertias, center of gravity of the driving parts and masks.
         """
         robot_points = torch.tensor(robot_mesh.points)
         driving_part_points = []
@@ -225,7 +226,7 @@ class RobotModelConfig(BaseConfig):
             torch.stack(driving_part_masks).float(),
         )
 
-    def _construct_body(self, mesh: pv.PolyData, driving_part_masks: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _construct_body(self, mesh: pv.PolyData, driving_part_masks: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         robot_points = torch.tensor(mesh.points)
         body_mask = points_within_bbox(robot_points, self.body_bbox) if self.body_bbox is not None else torch.sum(driving_part_masks, dim=0) == 0
         robot_body = extract_submesh_by_mask(mesh, body_mask).extract_surface()

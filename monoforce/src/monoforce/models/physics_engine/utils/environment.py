@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 import torch
 from .geometry import normalized
 
@@ -93,7 +93,7 @@ def interpolate_normals(normals: torch.Tensor, query: torch.Tensor, max_coord: f
     return normalized(interpolated_normals.transpose(1, 2))
 
 
-def interpolate_grid(grid: torch.Tensor, query: torch.Tensor, max_coord: float | torch.Tensor) -> torch.Tensor:
+def interpolate_grid(grid: torch.Tensor, query: torch.Tensor, max_coord: Union[float, torch.Tensor]) -> torch.Tensor:
     """
     Interpolates the height at the desired (query[0], query[1]]) coordinates.
 

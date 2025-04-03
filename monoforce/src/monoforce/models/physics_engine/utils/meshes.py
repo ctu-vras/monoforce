@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Tuple
 import torch
 import trimesh
 import pyvista as pv
@@ -85,7 +85,7 @@ def extract_submesh_by_mask(mesh: pv.PolyData, mask: torch.Tensor) -> pv.PolyDat
     return mesh.extract_points(indices, adjacent_cells=False, include_cells=True)
 
 
-def inertia_cog_from_voxelized_mesh(mesh: pv.PolyData, mass: float, voxel_size: float, fill: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+def inertia_cog_from_voxelized_mesh(mesh: pv.PolyData, mass: float, voxel_size: float, fill: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Computes the inertia tensor and center of gravity from a voxelized mesh.
 
@@ -95,7 +95,7 @@ def inertia_cog_from_voxelized_mesh(mesh: pv.PolyData, mass: float, voxel_size: 
         voxel_size (float): size of the voxel.
         fill (bool, optional): whether to fill the voxels. Defaults to True.
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: inertia tensor and center of gravity.
+        Tuple[torch.Tensor, torch.Tensor]: inertia tensor and center of gravity.
     """
     vertices, faces = mesh.points, mesh.faces.reshape(-1, 4)[:, 1:]
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
