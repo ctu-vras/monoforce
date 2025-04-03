@@ -2,7 +2,7 @@
 
 MODEL=lss
 DEBUG=False
-VIS=Fals32
+VIS=False
 BSZ=32
 WEIGHTS=$HOME/workspaces/traversability_ws/src/monoforce/monoforce/config/weights/${MODEL}/val.pth
 
