@@ -222,9 +222,9 @@ class Trainer(Evaluator):
         diff_pred = terrain['diff'][0, 0].cpu()
         terrain_pred = terrain['terrain'][0, 0].cpu()
         friction_pred = terrain['friction'][0, 0].cpu()
-        Xs_pred = states_pred.x[:, 0].cpu()
-        Xs_pred_grid = (Xs_pred[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
-        Xs_grid = (xs[:, :2] + self.world_config.max_coord) / self.world_config.grid_res
+        xs_pred = states_pred.x[:, 0].cpu()
+        xs_pred_grid = (xs_pred[:, :2] + self.world_config.max_coord) / self.grid_res
+        xs_grid = (xs[:, :2] + self.world_config.max_coord) / self.grid_res
 
         # get height map points
         z_grid = terrain_pred
@@ -250,7 +250,7 @@ class Trainer(Evaluator):
             mask_img_Xs = get_only_in_img_mask(cam_pts_Xs, img_H, img_W)
             plot_pts_Xs = post_rots[imgi].matmul(cam_pts_Xs) + post_trans[imgi].unsqueeze(1)
 
-            cam_pts_Xs_pred = ego_to_cam(Xs_pred[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
+            cam_pts_Xs_pred = ego_to_cam(xs_pred[:, :3].T, rots[imgi], trans[imgi], intrins[imgi])
             mask_img_Xs_pred = get_only_in_img_mask(cam_pts_Xs_pred, img_H, img_W)
             plot_pts_Xs_pred = post_rots[imgi].matmul(cam_pts_Xs_pred) + post_trans[imgi].unsqueeze(1)
 
@@ -263,22 +263,22 @@ class Trainer(Evaluator):
 
         axes[1, 0].set_title('Prediction: Terrain')
         axes[1, 0].imshow(terrain_pred, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-        axes[1, 0].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
-        axes[1, 0].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+        axes[1, 0].scatter(xs_pred_grid[:, 0], xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 0].scatter(xs_grid[:, 0], xs_grid[:, 1], c='k', s=1)
 
         axes[1, 1].set_title('Label: Terrain')
         axes[1, 1].imshow(hm_terrain[0], origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-        axes[1, 1].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
-        axes[1, 1].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+        axes[1, 1].scatter(xs_pred_grid[:, 0], xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 1].scatter(xs_grid[:, 0], xs_grid[:, 1], c='k', s=1)
 
         axes[1, 2].set_title('Friction')
         axes[1, 2].imshow(friction_pred, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-        axes[1, 2].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=1)
-        axes[1, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+        axes[1, 2].scatter(xs_pred_grid[:, 0], xs_pred_grid[:, 1], c='r', s=1)
+        axes[1, 2].scatter(xs_grid[:, 0], xs_grid[:, 1], c='k', s=1)
 
         axes[1, 3].set_title('Trajectories XY')
         axes[1, 3].plot(xs[:, 0], xs[:, 1], c='k', label='GT')
-        axes[1, 3].plot(Xs_pred[:, 0], Xs_pred[:, 1], c='r', label='Pred')
+        axes[1, 3].plot(xs_pred[:, 0], xs_pred[:, 1], c='r', label='Pred')
         axes[1, 3].set_xlabel('X [m]')
         axes[1, 3].set_ylabel('Y [m]')
         axes[1, 3].set_xlim(-self.world_config.max_coord, self.world_config.max_coord)
@@ -288,22 +288,22 @@ class Trainer(Evaluator):
 
         axes[2, 0].set_title('Prediction: Geom')
         axes[2, 0].imshow(geom_pred, origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-        axes[2, 0].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
-        axes[2, 0].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+        axes[2, 0].scatter(xs_pred_grid[:, 0], xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 0].scatter(xs_grid[:, 0], xs_grid[:, 1], c='k', s=1)
 
         axes[2, 1].set_title('Label: Geom')
         axes[2, 1].imshow(hm_geom[0], origin='lower', cmap='jet', vmin=-1.0, vmax=1.0)
-        axes[2, 1].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
-        axes[2, 1].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+        axes[2, 1].scatter(xs_pred_grid[:, 0], xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 1].scatter(xs_grid[:, 0], xs_grid[:, 1], c='k', s=1)
 
         axes[2, 2].set_title('Height diff')
         axes[2, 2].imshow(diff_pred, origin='lower', cmap='jet', vmin=0.0, vmax=1.0)
-        axes[2, 2].scatter(Xs_pred_grid[:, 0], Xs_pred_grid[:, 1], c='r', s=5)
-        axes[2, 2].scatter(Xs_grid[:, 0], Xs_grid[:, 1], c='k', s=1)
+        axes[2, 2].scatter(xs_pred_grid[:, 0], xs_pred_grid[:, 1], c='r', s=5)
+        axes[2, 2].scatter(xs_grid[:, 0], xs_grid[:, 1], c='k', s=1)
 
         axes[2, 3].set_title('Trajectories Z')
         axes[2, 3].plot(traj_ts, xs[:, 2], 'k', label='GT')
-        axes[2, 3].plot(control_ts, Xs_pred[:, 2], c='r', label='Pred')
+        axes[2, 3].plot(control_ts, xs_pred[:, 2], c='r', label='Pred')
         axes[2, 3].set_xlabel('Time [s]')
         axes[2, 3].set_ylabel('Z [m]')
         axes[2, 3].set_ylim(-1.0, 1.0)
