@@ -59,12 +59,12 @@ class Evaluator:
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
         self.terrain_encoder = self.get_terrain_encoder(pretrained_terrain_encoder_path)
 
-        # terrain simplification for faster physics execution
-        self.done_xy_grid_simplification = False  # simplification done only once for x and y grid
+        # # terrain simplification for faster physics execution
+        # self.done_xy_grid_simplification = False  # simplification done only once for x and y grid
         self.grid_res = grid_res
-        self.terrain_simplification_scale = terrain_simplification_scale
-        self.terrain_preproc = torch.nn.AvgPool2d(kernel_size=terrain_simplification_scale,
-                                                  stride=terrain_simplification_scale)
+        # self.terrain_simplification_scale = terrain_simplification_scale
+        # self.terrain_preproc = torch.nn.AvgPool2d(kernel_size=terrain_simplification_scale,
+        #                                           stride=terrain_simplification_scale)
 
     def get_terrain_encoder(self, path):
         terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
@@ -99,13 +99,14 @@ class Evaluator:
         thetas0 = thetas[:, 0].contiguous()
         state0 = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=x0.shape[0])
 
-        if not self.done_xy_grid_simplification:
-            # terrain simplification for faster physics execution
-            self.world_config.x_grid = self.terrain_preproc(self.world_config.x_grid)
-            self.world_config.y_grid = self.terrain_preproc(self.world_config.y_grid)
-            self.world_config.grid_res = self.terrain_simplification_scale * self.grid_res
-            self.done_xy_grid_simplification = True
-        self.world_config.z_grid = self.terrain_preproc(height.squeeze(1))
+        # if not self.done_xy_grid_simplification:
+        #     # terrain simplification for faster physics execution
+        #     self.world_config.x_grid = self.terrain_preproc(self.world_config.x_grid)
+        #     self.world_config.y_grid = self.terrain_preproc(self.world_config.y_grid)
+        #     self.world_config.grid_res = self.terrain_simplification_scale * self.grid_res
+        #     self.done_xy_grid_simplification = True
+        # self.world_config.z_grid = self.terrain_preproc(height.squeeze(1))
+        self.world_config.z_grid = height.squeeze(1)
         states_pred = deque(maxlen=n_iters)
         state = state0
         for i in range(n_iters):
