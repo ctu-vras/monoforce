@@ -33,11 +33,11 @@ def arg_parser():
 
 class Evaluator:
     def __init__(self,
-                 batch_size: int=1,
+                 batch_size: int = 1,
                  pretrained_terrain_encoder_path=None,
-                 grid_res: float=0.1,
-                 max_coord: float=6.4,
-                 terrain_simplification_scale: int=1):
+                 grid_res: float = 0.1,
+                 max_coord: float = 6.4,
+                 terrain_simplification_scale: int = 1):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.batch_size = batch_size
 
@@ -61,6 +61,8 @@ class Evaluator:
 
         # terrain simplification for faster physics execution
         self.done_xy_grid_simplification = False  # simplification done only once for x and y grid
+        self.grid_res = grid_res
+        self.terrain_simplification_scale = terrain_simplification_scale
         self.terrain_preproc = torch.nn.AvgPool2d(kernel_size=terrain_simplification_scale,
                                                   stride=terrain_simplification_scale)
 
@@ -101,8 +103,8 @@ class Evaluator:
             # terrain simplification for faster physics execution
             self.world_config.x_grid = self.terrain_preproc(self.world_config.x_grid)
             self.world_config.y_grid = self.terrain_preproc(self.world_config.y_grid)
+            self.world_config.grid_res = self.terrain_simplification_scale * self.grid_res
             self.done_xy_grid_simplification = True
-        # self.world_config.z_grid = height.squeeze(1)
         self.world_config.z_grid = self.terrain_preproc(height.squeeze(1))
         states_pred = deque(maxlen=n_iters)
         state = state0

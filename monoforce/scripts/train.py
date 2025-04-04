@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import matplotlib.pyplot as plt
 import argparse
+from typing import Union
 from eval import Evaluator
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
@@ -37,16 +38,16 @@ def arg_parser():
 
 class Trainer(Evaluator):
     def __init__(self,
-                 batch_size: int=1,
-                 n_epochs: int=1000,
-                 lr: float=1e-3,
-                 weight_decay: float=1e-7,
-                 pretrained_terrain_encoder_path=None,
-                 geom_weight: float=1.0,
-                 terrain_weight: float=1.0,
-                 phys_weight: float=1.0,
-                 debug: bool=False,
-                 vis: bool=False,
+                 batch_size: int = 1,
+                 n_epochs: int = 1000,
+                 lr: float = 1e-3,
+                 weight_decay: float = 1e-7,
+                 pretrained_terrain_encoder_path: Union[str, None] = None,
+                 geom_weight: float = 1.0,
+                 terrain_weight: float = 1.0,
+                 phys_weight: float = 1.0,
+                 debug: bool = False,
+                 vis: bool = False,
                  terrain_simplification_scale=4):
         super(Trainer, self).__init__(batch_size=batch_size,
                                       pretrained_terrain_encoder_path=pretrained_terrain_encoder_path,
@@ -228,7 +229,7 @@ class Trainer(Evaluator):
         # get height map points
         z_grid = terrain_pred
         x_grid, y_grid = make_x_y_grids(max_coord=self.world_config.max_coord,
-                                        grid_res=self.world_config.grid_res,
+                                        grid_res=self.grid_res,
                                         num_robots=1)
         hm_points = torch.stack([x_grid.squeeze(0), y_grid.squeeze(0), z_grid], dim=-1)
         hm_points = hm_points.view(-1, 3).T

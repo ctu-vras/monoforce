@@ -37,6 +37,7 @@ def motion():
     # x_grid = preproc(x_grid)
     # y_grid = preproc(y_grid)
     # z_grid = preproc(z_grid)
+    # grid_res = new_grid_res
 
     # Instantiate the configs
     robot_model = RobotModelConfig()
