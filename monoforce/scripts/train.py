@@ -23,15 +23,14 @@ def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
     parser.add_argument('--n_epochs', type=int, default=1000, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--pretrained_terrain_encoder_path', type=str, default=None,
                         help='Path to pretrained terrain encoder')
     parser.add_argument('--debug', type=str2bool, default=True, help='Debug mode: use small datasets')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize training samples')
     parser.add_argument('--geom_weight', type=float, default=1.0, help='Weight for geometry loss')
     parser.add_argument('--terrain_weight', type=float, default=1.0, help='Weight for terrain heightmap loss')
-    parser.add_argument('--phys_weight', type=float, default=1.0, help='Weight for physics loss')
-    parser.add_argument('--dphys_grid_res', type=float, default=0.4, help='DPhys grid resolution')
+    parser.add_argument('--phys_weight', type=float, default=0.0, help='Weight for physics loss')
 
     return parser.parse_args()
 
