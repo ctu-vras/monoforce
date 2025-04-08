@@ -18,9 +18,11 @@ import pyvista as pv
 import numpy as np
 
 
+
 def motion():
     n_robots = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    compile_opts = {"max-autotune": True, "triton.cudagraphs": True, "coordinate_descent_tuning": True}
 
     # Heightmap setup
     grid_res = 0.1  # 10cm per grid cell
@@ -28,19 +30,8 @@ def motion():
     x_grid, y_grid = make_x_y_grids(max_coord, grid_res, n_robots)
     z_grid = 0.5 * torch.exp(-(x_grid - 2) ** 2 / 1) * torch.exp(-(y_grid - 0) ** 2 / 2)
 
-    # # Gridmap preprocessing: Average polling to reduce the grid size
-    # new_grid_res = 0.2
-    # preproc = torch.nn.AvgPool2d(
-    #     kernel_size=int(new_grid_res / grid_res),
-    #     stride=int(new_grid_res / grid_res),
-    # )
-    # x_grid = preproc(x_grid)
-    # y_grid = preproc(y_grid)
-    # z_grid = preproc(z_grid)
-    # grid_res = new_grid_res
-
     # Instantiate the configs
-    robot_model = RobotModelConfig()
+    robot_cfg = RobotModelConfig()
     world_config = WorldConfig(
         x_grid=x_grid,
         y_grid=y_grid,
@@ -56,23 +47,27 @@ def motion():
     speed = 1. * torch.ones(n_robots)  # m/s forward
     speed[::2] = -speed[::2]
     omega = torch.linspace(-1., 1., n_robots)  # rad/s yaw
-    flipper_vels = robot_model.vw_to_vels(speed, omega)
+    flipper_vels = robot_cfg.vw_to_vels(speed, omega)
     flipper_omegas = torch.zeros_like(flipper_vels)
     controls = torch.cat((flipper_vels, flipper_omegas), dim=-1).repeat(n_iters, 1, 1).to(device)
 
-    for cfg in [robot_model, world_config, physics_config]:
+    for cfg in [robot_cfg, world_config, physics_config]:
         cfg.to(device)
 
     # Instantiate the physics engine
-    engine = DPhysicsEngine(physics_config, robot_model, device)
+    engine = DPhysicsEngine(physics_config, robot_cfg, device)
 
     # Initial state
-    x0 = torch.tensor([-1.0, 0.0, 0.1]).to(device).repeat(n_robots, 1)
+    x0 = torch.tensor([-1.0, 0.0, 0.1]).repeat(n_robots, 1)
     xd0 = torch.zeros_like(x0)
-    q0 = euler_to_quaternion(*torch.tensor([0, 0, 0.0 * torch.pi])).to(device).repeat(n_robots, 1)
+    q0 = euler_to_quaternion(*torch.tensor([0, 0, 0.0 * torch.pi])).repeat(n_robots, 1)
     omega0 = torch.zeros_like(x0)
-    thetas0 = torch.zeros(n_robots, robot_model.num_driving_parts).to(device)
-    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=n_robots)
+    thetas0 = torch.zeros(n_robots, robot_cfg.num_driving_parts)
+    init_state = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=n_robots).to(device)
+
+    # torch._dynamo.reset()
+    # engine = torch.compile(engine)#, options=compile_opts)
+    # _ = engine(init_state, controls[0], world_config)
 
     states = deque(maxlen=n_iters)
     auxs = deque(maxlen=n_iters)
@@ -92,7 +87,7 @@ def motion():
         physics_config,
         states,
         auxs,
-        robot_index=np.random.randint(0, n_robots-1),
+        # robot_index=np.random.randint(0, n_robots-1),
     )
 
     # plot terrain surface with pyvista
@@ -161,7 +156,7 @@ def motion_rough():
     controls = controls.repeat(n_robots, 1, 1).to(device)
     for i in range(n_iters):
         u = controls[:, i]
-        state, der, aux = engine(state, u, world_config)
+        state, dstate, aux = engine(state, u, world_config)
         states.append(state)
         auxs.append(aux)
 

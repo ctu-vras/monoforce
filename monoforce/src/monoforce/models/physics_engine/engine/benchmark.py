@@ -17,7 +17,7 @@ matplotlib.rcParams["text.usetex"] = True
 grid_res = 0.05  # 5cm per grid cell
 max_coord = 6.4  # meters
 compile_opts = {"max-autotune": True, "triton.cudagraphs": True}
-save_loc = Path(__file__).parent.parent / "engine_benchmark_results"
+save_loc = Path(__file__).parent / "engine_benchmark_results"
 
 
 def plot_and_save(results, device, compiled):
