@@ -18,8 +18,8 @@ setup(
     zip_safe=True,
     maintainer='ruslan',
     maintainer_email='agishrus@fel.cvut.cz',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='MonoForce: Learnable Image-conditioned Physics Engine',
+    license='BSD-3-Clause',
     entry_points={
         'console_scripts': [
             'terrain_encoder = monoforce.nodes.terrain_encoder:main',

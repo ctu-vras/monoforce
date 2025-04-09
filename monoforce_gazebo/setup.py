@@ -20,8 +20,8 @@ setup(
     zip_safe=True,
     maintainer='ruslan',
     maintainer_email='agishrus@fel.cvut.cz',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='Gazebo simulation for MonoForce model deployment experiments',
+    license='BSD-3-Clause',
     entry_points={
         'console_scripts': [
         ],

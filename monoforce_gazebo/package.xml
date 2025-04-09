@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>Gazebo simulation for MonoForce model deployment experiments</description>
   <maintainer email="agishrus@fel.cvut.cz">ruslan</maintainer>
-  <license>BSD</license>
+  <license>BSD-3-Clause</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
