@@ -11,6 +11,7 @@ import tf2_ros
 class CameraPublisher(Node):
     def __init__(self):
         super().__init__('image_publisher')
+
         self.img_pub = self.create_publisher(Image, 'image_raw', 10)
         self.caminfo_pub = self.create_publisher(CameraInfo, 'camera_info', 10)
         self.timer = self.create_timer(0.1, self.publish_cam)
@@ -42,7 +43,7 @@ class CameraPublisher(Node):
 
         self.img_pub.publish(img_msg)
         self.caminfo_pub.publish(caminfo_msg)
-        self.get_logger().debug("Published image and K messages")
+        self.get_logger().debug(f"Published image with shape {frame.shape} and K messages")
 
         # publish tf message: from base_link to camera_frame
         t = tf2_ros.TransformStamped()

@@ -15,7 +15,7 @@ from monoforce.models.terrain_encoder.utils import sample_augmentation, img_tran
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
-from rclpy.impl.logging_severity import LoggingSeverity
+# from rclpy.impl.logging_severity import LoggingSeverity
 from rclpy.node import Node
 
 from cv_bridge import CvBridge
@@ -34,13 +34,13 @@ class TerrainEncoder(Node):
         self.declare_parameter('weights', os.path.join(monoforce_path, 'config/weights/lss/val.pth'))
         self.declare_parameter('robot_frame', 'base_link')
         self.declare_parameter('fixed_frame', 'odom')
-        self.declare_parameter('img_topics', [''])
-        self.declare_parameter('camera_info_topics', [''])
+        self.declare_parameter('img_topics', ['/camera/image_raw'])
+        self.declare_parameter('camera_info_topics', ['/camera/camera_info'])
         self.declare_parameter('max_msgs_delay', 0.1)
         self.declare_parameter('max_age', 0.2)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self._logger.set_level(LoggingSeverity.DEBUG)
+        # self._logger.set_level(LoggingSeverity.DEBUG)
 
         self.lss_cfg = read_yaml(os.path.join(monoforce_path, 'config/lss_cfg.yaml'))
         weights = self.get_parameter('weights').get_parameter_value().string_value
@@ -221,14 +221,15 @@ class TerrainEncoder(Node):
 
 
 def main(args=None):
+    rclpy.init(args=args)
+    terrain_encoder = TerrainEncoder()
+    terrain_encoder.start()
     try:
-        with rclpy.init(args=args):
-            terrain_encoder = TerrainEncoder()
-            terrain_encoder.start()
-
-            rclpy.spin(terrain_encoder)
+        rclpy.spin(terrain_encoder)
     except (KeyboardInterrupt, ExternalShutdownException):
-        pass
+        terrain_encoder.get_logger().info('Keyboard interrupt, shutting down...')
+    terrain_encoder.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':

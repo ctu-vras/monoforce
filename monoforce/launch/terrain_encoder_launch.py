@@ -10,8 +10,10 @@ def generate_launch_description():
             name='terrain_encoder_node',
             output='screen',
             parameters=[
-                {'img_topics': ['/image_raw'], 'camera_info_topics': ['/camera_info'],
-                 'robot_frame': 'base_link', 'fixed_frame': 'odom',}
+                {'img_topics': ['/image_raw'],
+                 'camera_info_topics': ['/camera_info'],
+                 'robot_frame': 'base_link',
+                 'fixed_frame': 'odom',}
             ]),
         # optional: web-cam input data generation
         Node(
