@@ -21,6 +21,8 @@ from rclpy.node import Node
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, CameraInfo, Image
 from message_filters import ApproximateTimeSynchronizer, Subscriber
+from grid_map_msgs.msg import GridMap
+from monoforce.ros import height_map_to_gridmap_msg
 import tf2_ros
 
 
@@ -65,6 +67,9 @@ class TerrainEncoder(Node):
         self.max_msgs_delay = self.get_parameter('max_msgs_delay').get_parameter_value().double_value
         self.max_age = self.get_parameter('max_age').get_parameter_value().double_value
 
+        # grid map publisher
+        self.gridmap_pub = self.create_publisher(GridMap, '/terrain/grid_map', 10)
+
     def start(self):
         self.subs = []
         for topic in self.img_topics:
@@ -107,6 +112,15 @@ class TerrainEncoder(Node):
         out = self.model(*inputs)
         height_terrain, friction = out['terrain'], out['friction']
         self._logger.info('Predicted height map shape: %s' % str(height_terrain.shape))
+
+        # publish height map as grid map
+        stamp = msgs[0].header.stamp
+        height = height_terrain.squeeze().cpu().numpy()
+        grid_msg = height_map_to_gridmap_msg(height, grid_res=self.lss_cfg['grid_conf']['xbound'][2],
+                                             xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        grid_msg.header.stamp = stamp
+        grid_msg.header.frame_id = self.robot_frame
+        self.gridmap_pub.publish(grid_msg)
 
     def get_transform(self, from_frame, to_frame):
         """Retrieve a transformation matrix between two frames using TF2."""

@@ -5,9 +5,9 @@ from scipy.ndimage import rotate
 from cv_bridge import CvBridge
 from monoforce.utils import slots
 from nav_msgs.msg import Path
-from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, PoseArray
+from geometry_msgs.msg import Pose, Point, PoseArray
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
-# from grid_map_msgs.msg import GridMap
+from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import PointCloud2, CompressedImage, Image
 # from ros_numpy import msgify, numpify
 from numpy.lib.recfunctions import unstructured_to_structured
@@ -27,7 +27,7 @@ def numpy_to_gridmap_layer(data):
     data_array.layout.dim[1].label = 'row_index'
     data_array.layout.dim[1].size = data.shape[1]
     data_array.layout.dim[1].stride = data.shape[1]
-    data_array.data = rotate(data.T, 180).flatten().tolist()
+    data_array.data = data.flatten().tolist()
 
     return data_array
 
@@ -47,8 +47,13 @@ def height_map_to_gridmap_msg(height, grid_res,
     map.info.resolution = grid_res
     map.info.length_x = W * grid_res
     map.info.length_y = H * grid_res
-    map.info.pose.position = msgify(Point, xyz)
-    map.info.pose.orientation = msgify(Quaternion, q)
+    map.info.pose.position.x = xyz[0]
+    map.info.pose.position.y = xyz[1]
+    map.info.pose.position.z = xyz[2]
+    map.info.pose.orientation.x = q[0]
+    map.info.pose.orientation.y = q[1]
+    map.info.pose.orientation.z = q[2]
+    map.info.pose.orientation.w = q[3]
 
     map.layers.append(height_layer_name)
     height_array = numpy_to_gridmap_layer(height)
@@ -72,27 +77,6 @@ def to_cloud_msg(cloud, stamp=None, frame_id=None, fields=None):
     cloud_struct = unstructured_to_structured(cloud, names=fields)
     return msgify(PointCloud2, cloud_struct, stamp=stamp, frame_id=frame_id)
 
-
-def to_pose_array(poses, stamp=None, frame_id=None):
-    assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
-    assert poses.shape[1:] == (4, 4)
-    pose_array = PoseArray()
-    pose_array.header.stamp = stamp
-    pose_array.header.frame_id = frame_id
-    for i in range(poses.shape[0]):
-        pose = msgify(Pose, poses[i])
-        pose_array.poses.append(pose)
-    return pose_array
-
-
-def transform_path(path, pose):
-    assert isinstance(path, Path)
-    assert isinstance(pose, np.ndarray)
-    assert pose.shape == (4, 4)
-    for i in range(len(path.poses)):
-        path_pose = np.matmul(pose, numpify(path.poses[i].pose))
-        path.poses[i].pose = msgify(Pose, path_pose)
-    return path
 
 def poses_to_marker(poses, color=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
