@@ -15,7 +15,7 @@ from monoforce.models.terrain_encoder.utils import sample_augmentation, img_tran
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
-# from rclpy.impl.logging_severity import LoggingSeverity
+from rclpy.impl.logging_severity import LoggingSeverity
 from rclpy.node import Node
 
 from cv_bridge import CvBridge
@@ -42,7 +42,7 @@ class TerrainEncoder(Node):
         self.declare_parameter('max_age', 0.2)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        # self._logger.set_level(LoggingSeverity.DEBUG)
+        self._logger.set_level(LoggingSeverity.DEBUG)
 
         self.lss_cfg = read_yaml(os.path.join(monoforce_path, 'config/lss_cfg.yaml'))
         weights = self.get_parameter('weights').get_parameter_value().string_value
@@ -74,7 +74,7 @@ class TerrainEncoder(Node):
         self.subs = []
         for topic in self.img_topics:
             self._logger.info(f'Subscribing to {topic}')
-            self.subs.append(Subscriber(self, Image, topic))
+            self.subs.append(Subscriber(self, CompressedImage, topic))
         for topic in self.camera_info_topics:
             self._logger.info(f'Subscribing to {topic}')
             self.subs.append(Subscriber(self, CameraInfo, topic))
@@ -98,7 +98,7 @@ class TerrainEncoder(Node):
         n = len(msgs)
         assert n % 2 == 0
         for i in range(n // 2):
-            assert isinstance(msgs[i], Image), 'First %d messages must be Image' % (n // 2)
+            assert isinstance(msgs[i], CompressedImage), 'First %d messages must be Image' % (n // 2)
             assert isinstance(msgs[i + n // 2], CameraInfo), 'Last %d messages must be CameraInfo' % (n // 2)
             assert msgs[i].header.frame_id == msgs[i + n // 2].header.frame_id, \
                 'Image and CameraInfo messages must have the same frame_id'
@@ -203,7 +203,7 @@ class TerrainEncoder(Node):
             assert isinstance(img_msg, Image)
             assert isinstance(info_msg, CameraInfo)
 
-            img = self.cv_bridge.imgmsg_to_cv2(img_msg)
+            img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)
             self._logger.debug('Input image shape: %s' % str(img.shape))
             # BGR to RGB
             img = img[..., ::-1]
@@ -236,14 +236,15 @@ class TerrainEncoder(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    terrain_encoder = TerrainEncoder()
-    terrain_encoder.start()
+    node = TerrainEncoder()
+    node.start()
     try:
-        rclpy.spin(terrain_encoder)
+        rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
-        terrain_encoder.get_logger().info('Keyboard interrupt, shutting down...')
-    terrain_encoder.destroy_node()
-    rclpy.shutdown()
+        node.get_logger().info('Keyboard interrupt, shutting down...')
+    node.destroy_node()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

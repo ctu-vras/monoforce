@@ -1,9 +1,4 @@
-"""
-Copyright (C) 2020 NVIDIA Corporation.  All rights reserved.
-Licensed under the NVIDIA Source Code License. See LICENSE at https://github.com/nv-tlabs/lift-splat-shoot.
-Authors: Jonah Philion and Sanja Fidler
-"""
-
+import os
 import torch
 from torch import nn
 from efficientnet_pytorch import EfficientNet
@@ -289,7 +284,7 @@ class LiftSplatShoot(nn.Module):
         return out
 
     def from_pretrained(self, modelf):
-        if not modelf:
+        if not modelf or not os.path.exists(modelf):
             return self
         print(f'Loading pretrained {self.__class__.__name__} model from', modelf)
         # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
