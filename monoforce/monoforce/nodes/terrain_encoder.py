@@ -61,7 +61,7 @@ class TerrainEncoder(Node):
         assert len(self.img_topics) == len(self.camera_info_topics)
 
         self.cv_bridge = CvBridge()
-        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_buffer = tf2_ros.Buffer(cache_time=rclpy.time.Duration(seconds=10.0))
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.max_msgs_delay = self.get_parameter('max_msgs_delay').get_parameter_value().double_value
@@ -88,7 +88,7 @@ class TerrainEncoder(Node):
         t_msg = msgs[0].header.stamp.sec + msgs[0].header.stamp.nanosec / 1e9
         dt = abs(t_now - t_msg)
         if dt > self.max_age:
-            self._logger.warning('Message is too old. Ignoring.')
+            self._logger.warning(f'Message is too old (time diff: {dt:.3f} s), skipping...')
         else:
             # process the messages
             self.proc(*msgs)
@@ -122,13 +122,14 @@ class TerrainEncoder(Node):
         grid_msg.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(grid_msg)
 
-    def get_transform(self, from_frame, to_frame):
+    def get_transform(self, from_frame, to_frame, time=None):
         """Retrieve a transformation matrix between two frames using TF2."""
-        time = rclpy.time.Time()
+        if time is None:
+            time = self.get_clock().now()
         timeout = rclpy.time.Duration(seconds=1.0)
 
         try:
-            tf = self.tf_buffer.lookup_transform(to_frame, from_frame, time, timeout)
+            tf = self.tf_buffer.lookup_transform(to_frame, from_frame, time=time, timeout=timeout)
         except Exception as ex:
             self._logger.error(f'Could not transform from {from_frame} to {to_frame}: {ex}')
             raise ex
@@ -153,7 +154,9 @@ class TerrainEncoder(Node):
         assert isinstance(msg, CameraInfo)
 
         # get camera extrinsics
-        E = self.get_transform(from_frame=msg.header.frame_id, to_frame=self.robot_frame)
+        E = self.get_transform(from_frame=msg.header.frame_id,
+                               to_frame=self.robot_frame,
+                               time=msg.header.stamp)
         K = np.array(msg.k).reshape((3, 3))
         D = np.array(msg.d)
 
@@ -190,7 +193,9 @@ class TerrainEncoder(Node):
         """
         assert len(img_msgs) == len(info_msgs)
 
-        robot_pose = self.get_transform(from_frame=self.robot_frame, to_frame=self.fixed_frame)
+        robot_pose = self.get_transform(from_frame=self.robot_frame,
+                                        to_frame=self.fixed_frame,
+                                        time=img_msgs[0].header.stamp)
         roll, pitch, yaw = Rotation.from_matrix(robot_pose[:3, :3]).as_euler('xyz')
         R = Rotation.from_euler('xyz', [roll, pitch, 0]).as_matrix()
 
@@ -200,7 +205,7 @@ class TerrainEncoder(Node):
         intriniscs = []
         cams_to_robot = []
         for cam_i, (img_msg, info_msg) in enumerate(zip(img_msgs, info_msgs)):
-            assert isinstance(img_msg, Image)
+            assert isinstance(img_msg, CompressedImage)
             assert isinstance(info_msg, CameraInfo)
 
             img = self.cv_bridge.compressed_imgmsg_to_cv2(img_msg)

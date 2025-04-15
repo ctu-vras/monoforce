@@ -1,9 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import ExecuteProcess
 
-
-BAG_PATH = '/media/ruslan/VRAS-DATA 4TB 2/outdoor_dataset/25-03-19-petrin/marv_2025-03-19-15-35-24_mcap'
 
 def generate_launch_description():
     return LaunchDescription([
@@ -16,14 +13,6 @@ def generate_launch_description():
                 {'img_topics': ['/camera_front/image_color/compressed'],
                  'camera_info_topics': ['/camera_front/camera_info'],
                  'robot_frame': 'base_link',
-                 'fixed_frame': 'odom',
-                 'use_sim_time': True}
-            ]),
-        # node to play bag file
-        ExecuteProcess(
-            cmd=['ros2', 'bag', 'play',
-                 BAG_PATH,
-                 '--clock'],
-            output='screen'
-        )
+                 'fixed_frame': 'odom',}
+            ])
     ])
