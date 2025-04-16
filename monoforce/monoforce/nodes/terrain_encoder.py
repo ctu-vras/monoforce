@@ -70,6 +70,15 @@ class TerrainEncoder(Node):
         # grid map publisher
         self.gridmap_pub = self.create_publisher(GridMap, '/terrain/grid_map', 10)
 
+    def spin(self):
+        try:
+            rclpy.spin(self)
+        except (KeyboardInterrupt, ExternalShutdownException):
+            self.get_logger().info('Keyboard interrupt, shutting down...')
+        self.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
     def start(self):
         self.subs = []
         for topic in self.img_topics:
@@ -245,13 +254,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = TerrainEncoder()
     node.start()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        node.get_logger().info('Keyboard interrupt, shutting down...')
-    node.destroy_node()
-    if rclpy.ok():
-        rclpy.shutdown()
+    node.spin()
 
 
 if __name__ == '__main__':

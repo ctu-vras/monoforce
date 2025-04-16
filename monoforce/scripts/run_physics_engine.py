@@ -22,7 +22,6 @@ import numpy as np
 def motion():
     n_robots = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    compile_opts = {"max-autotune": True, "triton.cudagraphs": True, "coordinate_descent_tuning": True}
 
     # Heightmap setup
     grid_res = 0.1  # 10cm per grid cell
@@ -65,6 +64,7 @@ def motion():
     thetas0 = torch.zeros(n_robots, robot_cfg.num_driving_parts)
     init_state = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=n_robots).to(device)
 
+    # compile_opts = {"max-autotune": True, "triton.cudagraphs": True, "coordinate_descent_tuning": True}
     # torch._dynamo.reset()
     # engine = torch.compile(engine)#, options=compile_opts)
     # _ = engine(init_state, controls[0], world_config)

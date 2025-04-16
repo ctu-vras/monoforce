@@ -106,6 +106,8 @@ Visualization Manager:
           Value: false
         gps_antenna:
           Value: false
+        grid_map_link:
+          Value: true
         imu:
           Value: false
         map:
@@ -214,6 +216,8 @@ Visualization Manager:
                 {}
             front_right_motor:
               {}
+            grid_map_link:
+              {}
             imu:
               {}
             rear_left_flipper:
@@ -298,6 +302,7 @@ Visualization Manager:
         Camera Rear: true
         Camera Right: true
         Grid: true
+        Sampled Paths: true
         TF: true
         Terrain: true
         Value: true
@@ -320,6 +325,7 @@ Visualization Manager:
         Camera Rear: true
         Camera Right: true
         Grid: true
+        Sampled Paths: true
         TF: true
         Terrain: true
         Value: true
@@ -342,6 +348,7 @@ Visualization Manager:
         Camera Left: true
         Camera Rear: true
         Grid: true
+        Sampled Paths: true
         TF: true
         Terrain: true
         Value: true
@@ -364,6 +371,7 @@ Visualization Manager:
         Camera Left: true
         Camera Right: true
         Grid: true
+        Sampled Paths: true
         TF: true
         Terrain: true
         Value: true
@@ -393,6 +401,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /terrain/grid_map
       Use Rainbow: true
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Sampled Paths
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /sampled_paths
       Value: true
   Enabled: true
   Global Options:

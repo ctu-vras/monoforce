@@ -1,14 +1,16 @@
 from __future__ import division, absolute_import, print_function
+import rclpy
 import torch
 import numpy as np
 from scipy.ndimage import rotate
+from scipy.spatial.transform import Rotation
 from cv_bridge import CvBridge
 from monoforce.utils import slots
-from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose, Point, PoseStamped
+from nav_msgs.msg import Path
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from grid_map_msgs.msg import GridMap
-from sensor_msgs.msg import PointCloud2, CompressedImage, Image
-from numpy.lib.recfunctions import unstructured_to_structured
+from sensor_msgs.msg import CompressedImage, Image
 from visualization_msgs.msg import Marker
 
 
@@ -25,7 +27,7 @@ def numpy_to_gridmap_layer(data):
     data_array.layout.dim[1].label = 'row_index'
     data_array.layout.dim[1].size = data.shape[1]
     data_array.layout.dim[1].stride = data.shape[1]
-    data_array.data = np.rot90(data, k=2).flatten().tolist()
+    data_array.data = rotate(data, 180).flatten().tolist()
 
     return data_array
 
@@ -65,17 +67,6 @@ def height_map_to_gridmap_msg(height, grid_res,
     return map
 
 
-def to_cloud_msg(cloud, stamp=None, frame_id=None, fields=None):
-    assert isinstance(cloud, np.ndarray)
-    assert cloud.shape[1] >= 3
-    if fields is None:
-        fields = ['x', 'y', 'z']
-    # https://answers.ros.org/question/197309/rviz-does-not-display-pointcloud2-if-encoding-not-float32/
-    cloud = np.asarray(cloud, dtype=np.float32)
-    cloud_struct = unstructured_to_structured(cloud, names=fields)
-    return msgify(PointCloud2, cloud_struct, stamp=stamp, frame_id=frame_id)
-
-
 def poses_to_marker(poses, color=None):
     assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
     assert poses.ndim == 3 or poses.ndim == 2
@@ -90,23 +81,23 @@ def poses_to_marker(poses, color=None):
     marker.scale.x = 0.1
     if color is not None:
         assert len(color) == 3
-        marker.color.r = color[0]
-        marker.color.g = color[1]
-        marker.color.b = color[2]
+        marker.color.r = float(color[0])
+        marker.color.g = float(color[1])
+        marker.color.b = float(color[2])
     marker.color.a = 1.0
     for t in range(poses.shape[0]):
         p = poses[t]
         if p.shape == (4, 4):
-            marker.points.append(msgify(Pose, p).position)
+            pose_msg = Pose()
+            pose_msg.position.x = float(p[0, 3])
+            pose_msg.position.y = float(p[1, 3])
+            pose_msg.position.z = float(p[2, 3])
+            marker.points.append(pose_msg.position)
         elif p.shape == (7,):
             pose = Pose()
-            pose.position.x = p[0]
-            pose.position.y = p[1]
-            pose.position.z = p[2]
-            # pose.orientation.x = p[3]
-            # pose.orientation.y = p[4]
-            # pose.orientation.z = p[5]
-            # pose.orientation.w = p[6]
+            pose.position.x = float(p[0])
+            pose.position.y = float(p[1])
+            pose.position.z = float(p[2])
             marker.points.append(pose.position)
     return marker
 
@@ -154,7 +145,62 @@ def gridmap_msg_to_numpy(grid_map_msg, layer_name='elevation'):
     grid_map = np.roll(grid_map, shift=-outer_start_index, axis=1)
     grid_map = np.roll(grid_map, shift=-inner_start_index, axis=0)
 
-    grid_map = grid_map.T
     grid_map = rotate(grid_map, 180)
 
     return grid_map
+
+
+def pose_to_matrix(pose: Pose) -> np.ndarray:
+    # Extract translation
+    t = np.array([pose.position.x, pose.position.y, pose.position.z])
+
+    # Extract rotation as quaternion and convert to rotation matrix
+    q = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
+    rot = Rotation.from_quat(q).as_matrix()  # 3x3 rotation matrix
+
+    # Construct homogeneous 4x4 transformation matrix
+    T = np.eye(4)
+    T[:3, :3] = rot
+    T[:3, 3] = t
+    return T
+
+
+def poses_to_path(poses, stamp=None, frame_id=None):
+    assert isinstance(poses, np.ndarray) or isinstance(poses, torch.Tensor)
+    assert poses.ndim == 3 or poses.ndim == 2
+    n_poses = poses.shape[0]
+    if poses.ndim == 3:
+        assert poses.shape == (n_poses, 4, 4)
+    elif poses.ndim == 2:
+        assert poses.shape == (n_poses, 7)
+    if stamp is None:
+        stamp = rclpy.time.Time()
+    if frame_id is None:
+        frame_id = 'base_link'
+    path = Path()
+    path.header.stamp = stamp
+    path.header.frame_id = frame_id
+    for i in range(poses.shape[0]):
+        pose = PoseStamped()
+        pose.header.stamp = stamp
+        pose.header.frame_id = frame_id
+        if poses.ndim == 3:
+            tr = pose[i, :3, 3]
+            q = Rotation.from_matrix(pose[i, :3, :3]).as_quat()
+            pose.pose.position.x = tr[0]
+            pose.pose.position.y = tr[1]
+            pose.pose.position.z = tr[2]
+            pose.pose.orientation.x = q[0]
+            pose.pose.orientation.y = q[1]
+            pose.pose.orientation.z = q[2]
+            pose.pose.orientation.w = q[3]
+        elif poses.ndim == 2:
+            pose.pose.position.x = poses[i, 0]
+            pose.pose.position.y = poses[i, 1]
+            pose.pose.position.z = poses[i, 2]
+            pose.pose.orientation.x = poses[i, 3]
+            pose.pose.orientation.y = poses[i, 4]
+            pose.pose.orientation.z = poses[i, 5]
+            pose.pose.orientation.w = poses[i, 6]
+        path.poses.append(pose)
+    return path

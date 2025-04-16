@@ -18,7 +18,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='ruslan',
+    maintainer='Ruslan Agishev',
     maintainer_email='agishrus@fel.cvut.cz',
     description='Gazebo simulation for MonoForce model deployment experiments',
     license='BSD-3-Clause',

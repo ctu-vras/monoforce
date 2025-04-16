@@ -14,16 +14,19 @@ setup(
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config', 'rviz'), glob('config/rviz/*')),
+        (os.path.join('share', package_name, 'config', 'robots'), glob('config/robots/*')),
+        (os.path.join('share', package_name, 'config', 'meshes'), glob('config/meshes/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='ruslan',
+    maintainer='Ruslan Agishev',
     maintainer_email='agishrus@fel.cvut.cz',
     description='MonoForce: Learnable Image-conditioned Physics Engine',
     license='BSD-3-Clause',
     entry_points={
         'console_scripts': [
             'terrain_encoder = monoforce.nodes.terrain_encoder:main',
+            'physics_engine = monoforce.nodes.physics_engine:main',
         ],
     },
 )
