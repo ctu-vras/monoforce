@@ -143,7 +143,7 @@ class TerrainEncoder(Node):
             tf = self.tf_buffer.lookup_transform(to_frame, from_frame,
                                                  time=rclpy.time.Time(), timeout=timeout)
             self._logger.warning(
-                f"Could not find transform from {from_frame} to {to_frame} at time {time}, using latest available: {tf}"
+                f"Could not find transform from {from_frame} to {to_frame} at time {time}, using latest available transform: {ex}"
             )
         # Convert TF2 transform message to a 4x4 transformation matrix
         translation = [tf.transform.translation.x, tf.transform.translation.y, tf.transform.translation.z]

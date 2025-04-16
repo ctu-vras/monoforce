@@ -9,6 +9,7 @@ from scipy.spatial.transform import Rotation
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
 from monoforce.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
+from monoforce.models.physics_engine.utils.torch_utils import set_device
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.ros import poses_to_marker, gridmap_msg_to_numpy, pose_to_matrix
 from monoforce.transformations import pose_to_xyz_q
@@ -20,7 +21,6 @@ from rclpy.impl.logging_severity import LoggingSeverity
 
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
-from nav_msgs.msg import Path
 from grid_map_msgs.msg import GridMap
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
@@ -40,7 +40,7 @@ class DiffPhysEngineNode(Node):
         self.declare_parameter('gridmap_layer', 'elevation')
         self.declare_parameter('max_age', 0.5)
 
-        self.device = self.get_parameter('device').value
+        self.device = set_device(self.get_parameter('device').value)
         self._logger.set_level(LoggingSeverity.DEBUG)
 
         self.robot_config = RobotModelConfig()
@@ -63,7 +63,6 @@ class DiffPhysEngineNode(Node):
         self.gridmap_frame = None
         self.robot_frame = self.get_parameter('robot_frame').value
         self.n_sim_steps = int(self.get_parameter('traj_sim_time').value / self.physics_config.dt)
-        self.num_robots = self.physics_config.num_robots
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -73,13 +72,12 @@ class DiffPhysEngineNode(Node):
         self.pose_step = int(0.5 / self.physics_config.dt)  # publish poses with 0.5 [sec] step
 
         self.sampled_paths_pub = self.create_publisher(MarkerArray, '/sampled_paths', 1)
-        self.lc_path_pub = self.create_publisher(Path, '/lower_cost_path', 1)
         self.path_costs_pub = self.create_publisher(Float32MultiArray, '/path_costs', 1)
         self.tf_broadcaster = TransformBroadcaster(self)
 
         self.controls = self.init_controls()
         self.phys_engine = DPhysicsEngine(config=self.physics_config, robot_model=self.robot_config, device=self.device)
-        # self.compile_pysics_engine()
+        self.compile_pysics_engine()
 
         # grid map subscriber to publish grid map tf
         gridmap_topic = self.get_parameter('gridmap_topic').value
@@ -97,11 +95,11 @@ class DiffPhysEngineNode(Node):
             rclpy.shutdown()
 
     def compile_pysics_engine(self):
-        compile_opts = {"max-autotune": True, "triton.cudagraphs": True, "coordinate_descent_tuning": True}
-        torch._dynamo.reset()
-        self.phys_engine = torch.compile(self.phys_engine, options=compile_opts)
-        init_state = PhysicsState.dummy(self.robot_config)
-        _ = self.phys_engine(init_state, self.controls[0], self.world_config)
+        # compile_opts = {"max-autotune": True, "triton.cudagraphs": True, "coordinate_descent_tuning": True}
+        # self.phys_engine = torch.compile(self.phys_engine, options=compile_opts)
+        # init_state = PhysicsState.dummy(batch_size=self.physics_config.num_robots, robot_model=self.robot_config)
+        # _ = self.phys_engine(init_state, self.controls[0], self.world_config)
+        self.phys_engine = torch.compile(self.phys_engine)
     
     def gridmap_tf_callback(self, gridmap_msg):
         # publish grid map pose tf frame: create tf message from grid map pose
@@ -116,9 +114,9 @@ class DiffPhysEngineNode(Node):
         self.tf_broadcaster.sendTransform(grid_map_tf)
 
     def init_controls(self):
-        speed = 1. * torch.ones(self.num_robots, device=self.device)  # m/s forward
+        speed = 1. * torch.ones(self.physics_config.num_robots, device=self.device)  # m/s forward
         speed[::2] = -speed[::2]
-        omega = torch.linspace(-1., 1., self.num_robots).to(self.device)  # rad/s yaw
+        omega = torch.linspace(-1., 1., self.physics_config.num_robots).to(self.device)  # rad/s yaw
         flipper_vs = self.robot_config.vw_to_vels(speed, omega)
         flipper_ws = torch.zeros_like(flipper_vs)
         controls = torch.cat((flipper_vs, flipper_ws), dim=-1).to(self.device).repeat(self.n_sim_steps, 1, 1).permute(1, 0, 2)
@@ -136,7 +134,7 @@ class DiffPhysEngineNode(Node):
             tf = self.tf_buffer.lookup_transform(to_frame, from_frame,
                                                  time=rclpy.time.Time(), timeout=timeout)
             self._logger.warning(
-                f"Could not find transform from {from_frame} to {to_frame} at time {time}, using latest available: {tf}"
+                f"Could not find transform from {from_frame} to {to_frame} at time {time}, using latest available transform: {ex}"
             )
         # Convert TF2 transform message to a 4x4 transformation matrix
         translation = [tf.transform.translation.x, tf.transform.translation.y, tf.transform.translation.z]
@@ -208,8 +206,8 @@ class DiffPhysEngineNode(Node):
         self._logger.debug('Grid map preprocessing took %.3f [sec]' % (t1 - t0))
 
         # predict path
-        grid_maps = np.repeat(grid_map[None], self.num_robots, axis=0)
-        xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None], self.num_robots, axis=0)
+        grid_maps = np.repeat(grid_map[None], self.physics_config.num_robots, axis=0)
+        xyz_qs_init = np.repeat(robot_xyz_q_wrt_gridmap[None], self.physics_config.num_robots, axis=0)
         t2 = time()
         xyz_qs, path_costs = self.predict_paths(grid_maps, xyz_qs_init)
         t3 = time()
@@ -233,18 +231,18 @@ class DiffPhysEngineNode(Node):
 
     @torch.inference_mode()
     def predict_paths(self, grid_maps, xyz_qs_init):
-        assert len(grid_maps) == len(xyz_qs_init) == self.num_robots
+        assert len(grid_maps) == len(xyz_qs_init) == self.physics_config.num_robots
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
-        assert grid_maps.shape[0] == self.num_robots
-        assert self.controls.shape == (self.num_robots, self.n_sim_steps, 8), \
-            f'controls shape: {self.controls.shape} != {(self.num_robots, self.n_sim_steps, 8)}'
+        assert grid_maps.shape[0] == self.physics_config.num_robots
+        assert self.controls.shape == (self.physics_config.num_robots, self.n_sim_steps, 8), \
+            f'controls shape: {self.controls.shape} != {(self.physics_config.num_robots, self.n_sim_steps, 8)}'
 
         # initial state
         x0 = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)
         xd0 = torch.zeros_like(x0)
         q0 = torch.as_tensor(xyz_qs_init[:, 3:7], dtype=torch.float32, device=self.device)
         omega0 = torch.zeros_like(x0)
-        thetas0 = torch.zeros(self.num_robots, self.robot_config.num_driving_parts).to(self.device)
+        thetas0 = torch.zeros(self.physics_config.num_robots, self.robot_config.num_driving_parts).to(self.device)
         state0 = PhysicsState(x0, xd0, q0, omega0, thetas0)
 
         # simulate trajectories
@@ -264,16 +262,16 @@ class DiffPhysEngineNode(Node):
         xyz = states.x.permute(1, 0, 2)  # (num_robots, n_sim_steps, 3)
         q = states.q.permute(1, 0, 2)  # (num_robots, n_sim_steps, 4)
         xyz_q = torch.cat((xyz, q), dim=-1)
-        assert xyz_q.shape == (self.num_robots, self.n_sim_steps, 7)
+        assert xyz_q.shape == (self.physics_config.num_robots, self.n_sim_steps, 7)
 
         # compute path costs
         F_springs, F_frictions = auxs.F_spring, auxs.F_friction
         n_robot_points = self.robot_config.num_driving_parts * self.robot_config.points_per_driving_part + self.robot_config.points_per_body
-        assert F_springs.shape == (self.n_sim_steps, self.num_robots, n_robot_points, 3)
-        assert F_frictions.shape == (self.n_sim_steps, self.num_robots, n_robot_points, 3)
+        assert F_springs.shape == (self.n_sim_steps, self.physics_config.num_robots, n_robot_points, 3)
+        assert F_frictions.shape == (self.n_sim_steps, self.physics_config.num_robots, n_robot_points, 3)
         path_costs = F_springs.norm(dim=-1).mean(dim=-1).std(dim=0)
-        assert xyz_q.shape == (self.num_robots, self.n_sim_steps, 7), f'xyz_q shape: {xyz_q.shape}'
-        assert path_costs.shape == (self.num_robots,)
+        assert xyz_q.shape == (self.physics_config.num_robots, self.n_sim_steps, 7), f'xyz_q shape: {xyz_q.shape}'
+        assert path_costs.shape == (self.physics_config.num_robots,)
 
         return xyz_q, path_costs
 
