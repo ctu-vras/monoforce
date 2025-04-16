@@ -13,6 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         (os.path.join('share', package_name), ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'config', 'rviz'), glob('config/rviz/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -23,8 +24,6 @@ setup(
     entry_points={
         'console_scripts': [
             'terrain_encoder = monoforce.nodes.terrain_encoder:main',
-            'camera_publisher = monoforce.nodes.camera_publisher:main',
-            'terrain_encoder_launch = monoforce.launch.terrain_encoder_launch:generate_launch_description',
         ],
     },
 )

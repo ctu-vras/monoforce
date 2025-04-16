@@ -19,7 +19,7 @@ from rclpy.impl.logging_severity import LoggingSeverity
 from rclpy.node import Node
 
 from cv_bridge import CvBridge
-from sensor_msgs.msg import CompressedImage, CameraInfo, Image
+from sensor_msgs.msg import CompressedImage, CameraInfo
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from grid_map_msgs.msg import GridMap
 from monoforce.ros import height_map_to_gridmap_msg
@@ -125,15 +125,17 @@ class TerrainEncoder(Node):
     def get_transform(self, from_frame, to_frame, time=None):
         """Retrieve a transformation matrix between two frames using TF2."""
         if time is None:
-            time = self.get_clock().now()
+            time = rclpy.time.Time()
         timeout = rclpy.time.Duration(seconds=1.0)
-
         try:
-            tf = self.tf_buffer.lookup_transform(to_frame, from_frame, time=time, timeout=timeout)
+            tf = self.tf_buffer.lookup_transform(to_frame, from_frame,
+                                                 time=time, timeout=timeout)
         except Exception as ex:
-            self._logger.error(f'Could not transform from {from_frame} to {to_frame}: {ex}')
-            raise ex
-
+            tf = self.tf_buffer.lookup_transform(to_frame, from_frame,
+                                                 time=rclpy.time.Time(), timeout=timeout)
+            self._logger.warning(
+                f"Could not find transform from {from_frame} to {to_frame} at time {time}, using latest available: {tf}"
+            )
         # Convert TF2 transform message to a 4x4 transformation matrix
         translation = [tf.transform.translation.x, tf.transform.translation.y, tf.transform.translation.z]
         qaut = [tf.transform.rotation.x, tf.transform.rotation.y, tf.transform.rotation.z, tf.transform.rotation.w]
@@ -176,7 +178,7 @@ class TerrainEncoder(Node):
                                                    crop=crop,
                                                    flip=False,
                                                    rotate=0)
-        # normalize image (substraction of mean and division by std)
+        # normalize image (subtraction of mean and division by std)
         img = normalize_img(img)
 
         # for convenience, make augmentation matrices 3x3

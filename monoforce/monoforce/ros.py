@@ -4,12 +4,10 @@ import numpy as np
 from scipy.ndimage import rotate
 from cv_bridge import CvBridge
 from monoforce.utils import slots
-from nav_msgs.msg import Path
-from geometry_msgs.msg import Pose, Point, PoseArray
+from geometry_msgs.msg import Pose, Point
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from grid_map_msgs.msg import GridMap
 from sensor_msgs.msg import PointCloud2, CompressedImage, Image
-# from ros_numpy import msgify, numpify
 from numpy.lib.recfunctions import unstructured_to_structured
 from visualization_msgs.msg import Marker
 
@@ -27,7 +25,7 @@ def numpy_to_gridmap_layer(data):
     data_array.layout.dim[1].label = 'row_index'
     data_array.layout.dim[1].size = data.shape[1]
     data_array.layout.dim[1].stride = data.shape[1]
-    data_array.data = data.flatten().tolist()
+    data_array.data = np.rot90(data, k=2).flatten().tolist()
 
     return data_array
 
