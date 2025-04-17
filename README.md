@@ -138,3 +138,14 @@ Consider citing the papers if you find the work relevant to your research:
     url={https://openreview.net/forum?id=XuVysF8Aon}
 }
 ```
+
+```bibtex
+@article{agishev2025monoforce,
+  title={MonoForce: Learnable Image-conditioned Physics Engine},
+  author={Agishev, Ruslan and Zimmermann, Karel},
+  journal={arXiv preprint arXiv:2502.10156},
+  year={2025},
+  primaryClass={cs.RO},
+  url={https://arxiv.org/abs/2502.10156},
+}
+```
