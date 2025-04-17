@@ -1,10 +1,18 @@
 # Installation
 
-Install Python dependencies:
+If you would like to use the package without ROS, please install its Python dependencies:
 ```commandline
-pip install -r ../requirements.txt
-pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
+cd /path/to/monoforce
+pip install -r monoforce/config/singularity/requirements.txt
 ```
+
+## Model Weights
+
+The pretrained weights for the terrain encoder are available at:
+[https://github.com/ctu-vras/monoforce/releases/download/v0.2.0/weights.zip](https://github.com/ctu-vras/monoforce/releases/download/v0.2.0/weights.zip).
+
+Once downloaded, please, unzip the weights to the
+`/path/to/monoforce/monoforce/config/weights/` folder.
 
 ## ROS2 Integration
 
@@ -18,11 +26,3 @@ cd ~/traversability_ws/
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install --packages-select monoforce
 ```
-
-## Model Weights
-
-The pretrained weights for the terrain encoder are available at:
-[https://github.com/ctu-vras/monoforce/releases/download/v0.2.0/weights.zip](https://github.com/ctu-vras/monoforce/releases/download/v0.2.0/weights.zip).
-
-Once downloaded, please, unzip the weights to the
-`monoforce/config/weights/` folder.
