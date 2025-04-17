@@ -12,6 +12,7 @@ import rclpy.time
 from monoforce.utils import read_yaml
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import sample_augmentation, img_transform, normalize_img
+from monoforce.models.physics_engine.utils.torch_utils import set_device
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -22,7 +23,7 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, CameraInfo
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from grid_map_msgs.msg import GridMap
-from monoforce.ros import height_map_to_gridmap_msg
+from monoforce.ros import terrain_to_gridmap_msg
 import tf2_ros
 
 
@@ -33,15 +34,16 @@ class TerrainEncoder(Node):
 
     def __init__(self):
         super().__init__('terrain_encoder')
+        self.declare_parameter('device', 'cuda' if torch.cuda.is_available() else 'cpu')
         self.declare_parameter('weights', os.path.join(monoforce_path, 'config/weights/lss/val.pth'))
         self.declare_parameter('robot_frame', 'base_link')
         self.declare_parameter('fixed_frame', 'odom')
-        self.declare_parameter('img_topics', ['/camera/image_raw'])
-        self.declare_parameter('camera_info_topics', ['/camera/camera_info'])
+        self.declare_parameter('img_topics', ['/camera_front/image_color/compressed'])
+        self.declare_parameter('camera_info_topics', ['/camera_front/image_color/camera_info'])
         self.declare_parameter('max_msgs_delay', 0.1)
         self.declare_parameter('max_age', 0.2)
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = set_device(self.get_parameter('device').value)
         self._logger.set_level(LoggingSeverity.DEBUG)
 
         self.lss_cfg = read_yaml(os.path.join(monoforce_path, 'config/lss_cfg.yaml'))
@@ -49,9 +51,9 @@ class TerrainEncoder(Node):
         self._logger.info(f'Loading LSS model from {weights}')
         if not os.path.exists(weights):
             self._logger.error(f'Model weights file {weights} does not exist. Using random weights.')
-        self.model = LiftSplatShoot(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf']).from_pretrained(weights)
-        self.model.to(self.device)
-        self.model.eval()
+        self.terrain_encoder = LiftSplatShoot(self.lss_cfg['grid_conf'], self.lss_cfg['data_aug_conf']).from_pretrained(weights)
+        self.terrain_encoder.to(self.device)
+        self.terrain_encoder.eval()
 
         self.robot_frame = self.get_parameter('robot_frame').get_parameter_value().string_value
         self.fixed_frame = self.get_parameter('fixed_frame').get_parameter_value().string_value
@@ -118,15 +120,15 @@ class TerrainEncoder(Node):
         inputs = [i.to(self.device) for i in inputs]
 
         # model inference
-        out = self.model(*inputs)
+        out = self.terrain_encoder(*inputs)
         height_terrain, friction = out['terrain'], out['friction']
         self._logger.info('Predicted height map shape: %s' % str(height_terrain.shape))
 
-        # publish height map as grid map
+        # publish terrain as grid map
         stamp = msgs[0].header.stamp
         height = height_terrain.squeeze().cpu().numpy()
-        grid_msg = height_map_to_gridmap_msg(height, grid_res=self.lss_cfg['grid_conf']['xbound'][2],
-                                             xyz=np.array([0., 0., 0.]), q=np.array([0., 0., 0., 1.]))
+        grid_msg = terrain_to_gridmap_msg(layers=[height], layer_names=['elevation'],
+                                          grid_res=self.lss_cfg['grid_conf']['xbound'][2])
         grid_msg.header.stamp = stamp
         grid_msg.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(grid_msg)

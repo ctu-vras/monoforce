@@ -98,7 +98,7 @@ class DiffPhysEngineNode(Node):
         # compile_opts = {"max-autotune": True, "triton.cudagraphs": True, "coordinate_descent_tuning": True}
         # self.phys_engine = torch.compile(self.phys_engine, options=compile_opts)
         # init_state = PhysicsState.dummy(batch_size=self.physics_config.num_robots, robot_model=self.robot_config)
-        # _ = self.phys_engine(init_state, self.controls[0], self.world_config)
+        # _ = self.phys_engine(init_state, self.controls[:, 0], self.world_config)
         self.phys_engine = torch.compile(self.phys_engine)
     
     def gridmap_tf_callback(self, gridmap_msg):
@@ -229,13 +229,15 @@ class DiffPhysEngineNode(Node):
                                          frame=self.robot_frame, pose_step=self.pose_step)
             self._logger.debug('Paths publishing took %.3f [sec]' % (time() - t4))
 
-    @torch.inference_mode()
-    def predict_paths(self, grid_maps, xyz_qs_init):
-        assert len(grid_maps) == len(xyz_qs_init) == self.physics_config.num_robots
+    def predict_paths(self, grid_maps, xyz_qs_init=None):
+        N, T = self.physics_config.num_robots, self.n_sim_steps
+        if xyz_qs_init is None:
+            xyz_qs_init = torch.zeros(N, 7, device=self.device)
+            xyz_qs_init[:, 3] = 1.0  # set initial quaternion to identity, x, y, z, qw, qx, qy, qz
+        assert len(grid_maps) == len(xyz_qs_init) == N
         grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
-        assert grid_maps.shape[0] == self.physics_config.num_robots
-        assert self.controls.shape == (self.physics_config.num_robots, self.n_sim_steps, 8), \
-            f'controls shape: {self.controls.shape} != {(self.physics_config.num_robots, self.n_sim_steps, 8)}'
+        assert grid_maps.shape[0] == N
+        assert self.controls.shape == (N, T, 8), f'controls shape: {self.controls.shape} != {(N, T, 8)}'
 
         # initial state
         x0 = torch.as_tensor(xyz_qs_init[:, :3], dtype=torch.float32, device=self.device)
@@ -256,24 +258,20 @@ class DiffPhysEngineNode(Node):
             states.append(state)
             auxs.append(aux)
         states = vectorize_states(states)
-        auxs = vectorize_states(auxs)
 
         # path poses from states
         xyz = states.x.permute(1, 0, 2)  # (num_robots, n_sim_steps, 3)
         q = states.q.permute(1, 0, 2)  # (num_robots, n_sim_steps, 4)
-        xyz_q = torch.cat((xyz, q), dim=-1)
-        assert xyz_q.shape == (self.physics_config.num_robots, self.n_sim_steps, 7)
+        xyzq = torch.cat((xyz, q), dim=-1)
+        assert xyzq.shape == (N, T, 7), f'xyzq shape: {xyzq.shape}'
 
         # compute path costs
-        F_springs, F_frictions = auxs.F_spring, auxs.F_friction
-        n_robot_points = self.robot_config.num_driving_parts * self.robot_config.points_per_driving_part + self.robot_config.points_per_body
-        assert F_springs.shape == (self.n_sim_steps, self.physics_config.num_robots, n_robot_points, 3)
-        assert F_frictions.shape == (self.n_sim_steps, self.physics_config.num_robots, n_robot_points, 3)
-        path_costs = F_springs.norm(dim=-1).mean(dim=-1).std(dim=0)
-        assert xyz_q.shape == (self.physics_config.num_robots, self.n_sim_steps, 7), f'xyz_q shape: {xyz_q.shape}'
-        assert path_costs.shape == (self.physics_config.num_robots,)
+        omegas = states.omega.permute(1, 0, 2)  # (num_robots, n_sim_steps, 3)
+        assert omegas.shape == (N, T, 3), f'omegas shape: {omegas.shape}'
+        path_costs = omegas.norm(dim=-1).mean(dim=-1)
+        assert path_costs.shape == (N,)
 
-        return xyz_q, path_costs
+        return xyzq, path_costs
 
 
 def main(args=None):

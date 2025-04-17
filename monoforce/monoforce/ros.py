@@ -14,10 +14,8 @@ from sensor_msgs.msg import CompressedImage, Image
 from visualization_msgs.msg import Marker
 
 
-def numpy_to_gridmap_layer(data):
-    assert isinstance(data, np.ndarray)
+def numpy_to_gridmap_layer(data: np.ndarray):
     assert data.ndim == 2
-
     data_array = Float32MultiArray()
     data_array.layout.dim.append(MultiArrayDimension())
     data_array.layout.dim.append(MultiArrayDimension())
@@ -28,41 +26,32 @@ def numpy_to_gridmap_layer(data):
     data_array.layout.dim[1].size = data.shape[1]
     data_array.layout.dim[1].stride = data.shape[1]
     data_array.data = rotate(data, 180).flatten().tolist()
-
     return data_array
 
-def height_map_to_gridmap_msg(height, grid_res,
-                              xyz=np.array([0, 0, 0]), q=np.array([0., 0., 0., 1.]),
-                              height_layer_name='elevation',
-                              mask=None, mask_layer_name='mask'):
-    assert isinstance(height, np.ndarray)
-    assert height.ndim == 2
-    if mask is not None:
-        assert isinstance(mask, np.ndarray)
-        assert mask.ndim == 2
-        assert mask.shape == height.shape
-
+def terrain_to_gridmap_msg(layers: list[np.ndarray], layer_names: list[str],
+                           grid_res: float,
+                           xyz=None, q=None):
+    if q is None:
+        q = [0., 0., 0., 1.]
+    if xyz is None:
+        xyz = [0., 0., 0.]
     map = GridMap()
-    H, W = height.shape
+    for layer, layer_name in zip(layers, layer_names):
+        assert layer.ndim == 2
+        map.layers.append(layer_name)
+        map.data.append(numpy_to_gridmap_layer(layer))
+
+    H, W = layers[0].shape
     map.info.resolution = grid_res
     map.info.length_x = W * grid_res
     map.info.length_y = H * grid_res
-    map.info.pose.position.x = xyz[0]
-    map.info.pose.position.y = xyz[1]
-    map.info.pose.position.z = xyz[2]
-    map.info.pose.orientation.x = q[0]
-    map.info.pose.orientation.y = q[1]
-    map.info.pose.orientation.z = q[2]
-    map.info.pose.orientation.w = q[3]
-
-    map.layers.append(height_layer_name)
-    height_array = numpy_to_gridmap_layer(height)
-    map.data.append(height_array)
-
-    if mask is not None:
-        map.layers.append(mask_layer_name)
-        mask_array = numpy_to_gridmap_layer(mask)
-        map.data.append(mask_array)
+    map.info.pose.position.x = float(xyz[0])
+    map.info.pose.position.y = float(xyz[1])
+    map.info.pose.position.z = float(xyz[2])
+    map.info.pose.orientation.x = float(q[0])
+    map.info.pose.orientation.y = float(q[1])
+    map.info.pose.orientation.z = float(q[2])
+    map.info.pose.orientation.w = float(q[3])
 
     return map
 
@@ -78,7 +67,7 @@ def poses_to_marker(poses, color=None):
     marker.type = Marker.LINE_STRIP
     marker.action = Marker.ADD
     marker.pose.orientation.w = 1.0
-    marker.scale.x = 0.1
+    marker.scale.x = 0.03
     if color is not None:
         assert len(color) == 3
         marker.color.r = float(color[0])

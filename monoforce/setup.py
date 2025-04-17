@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'terrain_encoder = monoforce.nodes.terrain_encoder:main',
             'physics_engine = monoforce.nodes.physics_engine:main',
+            'monoforce_node = monoforce.nodes.monoforce_node:main',
         ],
     },
 )

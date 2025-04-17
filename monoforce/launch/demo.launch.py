@@ -31,8 +31,8 @@ def generate_launch_description():
             actions=[
                 Node(
                     package='monoforce',
-                    executable='terrain_encoder',
-                    name='terrain_encoder_node',
+                    executable='monoforce_node',
+                    name='monoforce_node',
                     output='screen',
                     parameters=[
                         {
@@ -50,21 +50,6 @@ def generate_launch_description():
                         }
                     ]
                 ),
-                Node(
-                    package='monoforce',
-                    executable='physics_engine',
-                    name='physics_engine_node',
-                    output='screen',
-                    parameters=[
-                        {
-                            'gridmap_topic': '/terrain/grid_map',
-                            'gridmap_layer': 'elevation',
-                            'robot_frame': 'base_link',
-                            'max_age': 1.0,
-                            'use_sim_time': True
-                        }
-                    ]
-                )
             ]
         ),
 
