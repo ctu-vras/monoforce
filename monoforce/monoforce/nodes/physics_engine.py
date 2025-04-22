@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
 from monoforce.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
-from monoforce.models.physics_engine.utils.torch_utils import set_device
+from monoforce.utils import set_device
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.ros import poses_to_marker, gridmap_msg_to_numpy, pose_to_matrix
 from monoforce.transformations import pose_to_xyz_q

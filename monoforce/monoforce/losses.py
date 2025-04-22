@@ -5,7 +5,7 @@ __all__ = [
     'rotation_difference',
     'translation_difference',
     'total_variation',
-    'hm_loss',
+    'terrain_loss',
     'slerp',
     'physics_loss'
 ]
@@ -74,26 +74,26 @@ def total_variation(heightmap):
     return tv
 
 
-def hm_loss(height_pred, height_gt, weights=None, h_max=None):
-    assert height_pred.shape == height_gt.shape, 'Height prediction and ground truth must have the same shape'
+def terrain_loss(layer_pred, layer_gt, weights=None, value_max=None):
+    assert layer_pred.shape == layer_gt.shape, 'Prediction and ground truth must have the same shape'
     if weights is None:
-        weights = torch.ones_like(height_gt)
-    assert weights.shape == height_gt.shape, 'Weights and height ground truth must have the same shape'
+        weights = torch.ones_like(layer_gt)
+    assert weights.shape == layer_gt.shape, 'Weights and layer must have the same shape'
 
-    if h_max is not None:
-        # limit heightmap values to the physical limits: [-h_max, h_max]
-        limit_fn = lambda x: h_max * torch.tanh(x)
-        height_pred = limit_fn(height_pred)
+    if value_max is not None:
+        # limit layer values to the physical limits, for example for elevation: [-h_max, h_max]
+        limit_fn = lambda x: value_max * torch.tanh(x)
+        layer_pred = limit_fn(layer_pred)
 
     # remove nan values if any
-    mask_valid = ~(torch.isnan(height_pred) | torch.isnan(height_gt))
-    height_gt = height_gt[mask_valid]
-    height_pred = height_pred[mask_valid]
+    mask_valid = ~(torch.isnan(layer_pred) | torch.isnan(layer_gt))
+    layer_gt = layer_gt[mask_valid]
+    layer_pred = layer_pred[mask_valid]
     weights = weights[mask_valid]
 
     # compute weighted loss
-    pred = height_pred * weights
-    gt = height_gt * weights
+    pred = layer_pred * weights
+    gt = layer_gt * weights
     loss = ((pred - gt) ** 2).mean()
 
     return loss

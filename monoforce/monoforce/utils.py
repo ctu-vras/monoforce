@@ -21,7 +21,8 @@ __all__ = [
     'color',
     'load_calib',
     'compile_data',
-    'explore_data'
+    'explore_data',
+    'set_device'
 ]
 
 def slots(msg):
@@ -364,3 +365,16 @@ def append_to_csv(path, text, create_dirs=True):
 
 class PathLockException(Exception):
     pass
+
+
+def set_device(device: str) -> torch.device:
+    """
+    Set the device for the torch module
+    """
+    if "cuda" in device and torch.cuda.is_available():
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
+        return torch.device("cuda")
+    elif device == "mps" and torch.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")

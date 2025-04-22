@@ -79,9 +79,9 @@ class Evaluator:
         return terrain
 
     def get_physics_engine(self):
-        enine = DPhysicsEngine(self.physics_config, self.robot_model, self.device)
-        enine.to(self.device)
-        return enine
+        engine = DPhysicsEngine(self.physics_config, self.robot_model, self.device)
+        # engine = torch.compile(engine)
+        return engine
 
     def predict_states(self, terrain, batch):
         (imgs, rots, trans, intrins, post_rots, post_trans,
@@ -158,8 +158,8 @@ class Evaluator:
             terrain['friction']
 
             # terrain and geom heightmap losses
-            loss_geom = hm_loss(height_pred=H_g_pred[:, 0], height_gt=hm_geom[:, 0], weights=hm_geom[:, 1])
-            loss_terrain = hm_loss(height_pred=H_t_pred[:, 0], height_gt=hm_terrain[:, 0], weights=hm_terrain[:, 1])
+            loss_geom = terrain_loss(layer_pred=H_g_pred[:, 0], layer_gt=hm_geom[:, 0], weights=hm_geom[:, 1])
+            loss_terrain = terrain_loss(layer_pred=H_t_pred[:, 0], layer_gt=hm_terrain[:, 0], weights=hm_terrain[:, 1])
 
             # trajectory prediction loss: xyz and rotation
             states_pred = self.predict_states(terrain, batch)

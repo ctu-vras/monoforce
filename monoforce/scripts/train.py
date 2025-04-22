@@ -16,7 +16,7 @@ from eval import Evaluator
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
 from monoforce.utils import str2bool, compile_data
-from monoforce.losses import hm_loss, physics_loss
+from monoforce.losses import terrain_loss, physics_loss
 
 
 def arg_parser():
@@ -95,13 +95,13 @@ class Trainer(Evaluator):
 
         # geometry loss: difference between predicted and ground truth height maps
         if self.geom_weight > 0:
-            loss_geom = hm_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
+            loss_geom = terrain_loss(terrain['geom'], hm_geom[:, 0:1], hm_geom[:, 1:2])
         else:
             loss_geom = torch.tensor(0.0, device=self.device)
 
         # rigid / terrain height map loss
         if self.terrain_weight > 0:
-            loss_terrain = hm_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
+            loss_terrain = terrain_loss(terrain['terrain'], hm_terrain[:, 0:1], hm_terrain[:, 1:2])
         else:
             loss_terrain = torch.tensor(0.0, device=self.device)
 

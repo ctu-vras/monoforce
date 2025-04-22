@@ -13,6 +13,7 @@ from monoforce.models.physics_engine.utils.geometry import euler_to_quaternion
 from monoforce.models.physics_engine.engine.engine_state import vectorize_iter_of_states as vectorize_states
 from monoforce.models.physics_engine.vis.animator import animate_trajectory
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
+from monoforce.utils import set_device
 from collections import deque
 import pyvista as pv
 import numpy as np
@@ -21,7 +22,7 @@ import numpy as np
 
 def motion():
     n_robots = 32
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = set_device('cuda')
 
     # Heightmap setup
     grid_res = 0.1  # 10cm per grid cell
@@ -106,7 +107,7 @@ def motion_rough():
     from monoforce.datasets.rough import ROUGH, rough_seq_paths
     from monoforce.utils import explore_data
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = set_device('cuda')
 
     seq = rough_seq_paths[0]
     ds = ROUGH(seq)
