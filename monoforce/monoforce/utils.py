@@ -121,7 +121,7 @@ def load_calib(calib_path):
     return calib
 
 
-def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None,lss_cfg=None):
+def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None, lss_cfg=None):
     from torch.utils.data import ConcatDataset, Subset
     from monoforce.datasets import ROUGH, rough_seq_paths
     """
@@ -136,6 +136,9 @@ def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None,lss_cf
 
     :return: train_ds, val_ds
     """
+    np.random.seed(42)
+    torch.manual_seed(42)
+
     train_datasets = []
     val_datasets = []
     print('Data paths:', rough_seq_paths)
@@ -192,10 +195,16 @@ def explore_data(ds, sample_range='random', save=False):
 
     lss_cfg = ds.lss_cfg
     d_max = lss_cfg['grid_conf']['xbound'][1]
+    grid_res = lss_cfg['grid_conf']['xbound'][2]
     model = LiftSplatShoot(lss_cfg['grid_conf'], lss_cfg['data_aug_conf'], outC=1)
 
     H, W = ds.lss_cfg['data_aug_conf']['H'], ds.lss_cfg['data_aug_conf']['W']
     cams = ds.camera_names
+
+    DIM = int(2 * d_max / grid_res)
+    xint = torch.linspace(-d_max, d_max, DIM)
+    yint = torch.linspace(-d_max, d_max, DIM)
+    x_grid, y_grid = torch.meshgrid(xint, yint, indexing="xy")
 
     if sample_range == 'random':
         sample_range = [np.random.choice(range(len(ds)))]
@@ -208,9 +217,11 @@ def explore_data(ds, sample_range='random', save=False):
     for sample_i in tqdm(sample_range):
         imgs, rots, trans, intrins, post_rots, post_trans = ds.get_images_data(sample_i)
         height_geom = ds.get_geom_height_map(sample_i)[0]
-        height_terrain = ds.get_terrain_height_map(sample_i)[0]
-        pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
-        traj_poses = ds.get_traj(sample_i)['poses']
+        terrain = ds.get_terrain_height_map(sample_i)
+        height_terrain, mask_terrain = terrain[0], terrain[1].bool()
+        # pts = torch.as_tensor(position(ds.get_cloud(sample_i))).T
+        pts = torch.stack([x_grid, y_grid, height_terrain])[:, mask_terrain]
+        traj_poses = torch.as_tensor(ds.get_traj(sample_i)['poses'])
         control_ts, controls = ds.get_controls(sample_i)
 
         frustum_pts = model.get_geometry(rots[None], trans[None], intrins[None], post_rots[None], post_trans[None]).squeeze(0)
@@ -218,20 +229,26 @@ def explore_data(ds, sample_range='random', save=False):
         grid_res = lss_cfg['grid_conf']['xbound'][2]
         xy_grid = (xyz[:, :2] + d_max) / grid_res
 
-        fig, axes = plt.subplots(2, 4, figsize=(20, 8))
+        fig, axes = plt.subplots(3, 4, figsize=(16, 8))
+        plt.tight_layout()
 
         final_ax = axes[-1, -1]
         for imgi, img in enumerate(imgs):
             ax = axes[0, imgi]
+            showimg = denormalize_img(img)
+            ax.imshow(showimg)
 
             cam_pts = ego_to_cam(pts, rots[imgi], trans[imgi], intrins[imgi])
             mask = get_only_in_img_mask(cam_pts, H, W)
             plot_pts = post_rots[imgi].matmul(cam_pts) + post_trans[imgi].unsqueeze(1)
-            showimg = denormalize_img(img)
-
-            ax.imshow(showimg)
             ax.scatter(plot_pts[0, mask], plot_pts[1, mask], c=pts[2, mask],
-                        s=1, alpha=0.4, cmap='jet', vmin=-1., vmax=1.)
+                       s=3, alpha=0.5, cmap='jet', vmin=-1., vmax=1.)
+
+            traj_cam_pts = ego_to_cam(xyz.T, rots[imgi], trans[imgi], intrins[imgi])
+            mask = get_only_in_img_mask(traj_cam_pts, H, W)
+            traj_plot_pts = post_rots[imgi].matmul(traj_cam_pts) + post_trans[imgi].unsqueeze(1)
+            ax.plot(traj_plot_pts[0, mask], traj_plot_pts[1, mask], 'k', linewidth=4)
+
             ax.axis('off')
             # camera name as text on image
             ax.text(0.5, 0.9, cams[imgi].replace('_', ' '),
@@ -241,6 +258,11 @@ def explore_data(ds, sample_range='random', save=False):
             final_ax.scatter(frustum_pts[imgi, :, :, :, 0].view(-1), frustum_pts[imgi, :, :, :, 1].view(-1),
                              label=cams[imgi].replace('_', ' '), s=0.2, alpha=0.5)
 
+            # plot segmentations
+            seg_vis = ds.get_seg_vis(sample_i, camera=cams[imgi])
+            axes[1, imgi].imshow(seg_vis)
+            axes[1, imgi].axis('off')
+
         final_ax.legend(loc='upper right')
         final_ax.set_aspect('equal')
         final_ax.set_title('Frustum points')
@@ -248,29 +270,29 @@ def explore_data(ds, sample_range='random', save=False):
         final_ax.set_ylim((-d_max, d_max))
 
         # plot geom heightmap
-        axes[1, 0].imshow(height_geom.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-        axes[1, 0].set_title('Geom HM')
-        axes[1, 0].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
-        axes[1, 0].set_xlabel('X [m]')
-        axes[1, 0].set_ylabel('Y [m]')
-        axes[1, 0].legend()
+        axes[2, 0].imshow(height_geom, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        axes[2, 0].set_title('Geom HM')
+        axes[2, 0].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
+        axes[2, 0].set_xlabel('X [m]')
+        axes[2, 0].set_ylabel('Y [m]')
+        axes[2, 0].legend()
 
         # plot terrain heightmap
-        axes[1, 1].imshow(height_terrain.T, origin='lower', cmap='jet', vmin=-1., vmax=1.)
-        axes[1, 1].set_title('Terrain HM')
-        axes[1, 1].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
-        axes[1, 1].set_xlabel('X [m]')
-        axes[1, 1].set_ylabel('Y [m]')
-        axes[1, 1].legend()
+        axes[2, 1].imshow(height_terrain, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+        axes[2, 1].set_title('Terrain HM')
+        axes[2, 1].plot(xy_grid[:, 0], xy_grid[:, 1], 'k', label='Robot poses')
+        axes[2, 1].set_xlabel('X [m]')
+        axes[2, 1].set_ylabel('Y [m]')
+        axes[2, 1].legend()
 
         # plot control inputs
-        axes[1, 2].plot(control_ts, controls[:, 0], label='v(t)')
-        axes[1, 2].plot(control_ts, controls[:, 1], label='w(t)')
-        axes[1, 2].set_title('Control inputs')
-        axes[1, 2].legend()
-        axes[1, 2].set_xlabel('Time [s]')
-        axes[1, 2].set_ylabel('Control inputs')
-        axes[1, 2].grid()
+        axes[2, 2].plot(control_ts, controls[:, 0], label='v(t)')
+        axes[2, 2].plot(control_ts, controls[:, 1], label='w(t)')
+        axes[2, 2].set_title('Control inputs')
+        axes[2, 2].legend()
+        axes[2, 2].set_xlabel('Time [s]')
+        axes[2, 2].set_ylabel('Control inputs')
+        axes[2, 2].grid()
 
         if save:
             save_dir = os.path.join(ds.path, 'visuals')
