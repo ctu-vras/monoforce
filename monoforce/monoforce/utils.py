@@ -121,7 +121,7 @@ def load_calib(calib_path):
     return calib
 
 
-def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None, dphys_cfg=None, lss_cfg=None):
+def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None,lss_cfg=None):
     from torch.utils.data import ConcatDataset, Subset
     from monoforce.datasets import ROUGH, rough_seq_paths
     """
@@ -143,8 +143,8 @@ def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None, dphys
         Data = ROUGH
     for path in rough_seq_paths:
         assert os.path.exists(path)
-        train_ds = Data(path, is_train=True, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
-        val_ds = Data(path, is_train=False, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg)
+        train_ds = Data(path, is_train=True, lss_cfg=lss_cfg)
+        val_ds = Data(path, is_train=False, lss_cfg=lss_cfg)
         if vis:
             explore_data(train_ds)
             vis = False  # visualize only the first dataset sample
@@ -170,8 +170,8 @@ def compile_data(val_fraction=0.1, small_data=False, vis=False, Data=None, dphys
     val_ds = ConcatDataset(val_datasets)
 
     if small_data:
-        train_datasets = [Data(path, is_train=True, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg) for path in rough_seq_paths]
-        val_datasets = [Data(path, is_train=False, dphys_cfg=dphys_cfg, lss_cfg=lss_cfg) for path in rough_seq_paths]
+        train_datasets = [Data(path, is_train=True, lss_cfg=lss_cfg) for path in rough_seq_paths]
+        val_datasets = [Data(path, is_train=False, lss_cfg=lss_cfg) for path in rough_seq_paths]
         print('Debug mode: using small datasets')
         # concatenate datasets
         train_ds = ConcatDataset(train_datasets)

@@ -7,16 +7,13 @@ from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset
 from ..models.terrain_encoder.utils import img_transform, normalize_img, resize_img
 from ..models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, sample_augmentation
-from ..models.traj_predictor.dphys_config import DPhysConfig
 from ..transformations import transform_cloud, position
-from ..cloudproc import estimate_heightmap, hm_to_cloud
+from ..cloudproc import estimate_heightmap
 from ..utils import position, read_yaml
-from ..cloudproc import filter_grid
-from ..utils import normalize, load_calib
+from ..utils import load_calib
 from .wildscenes import METAINFO as WILDSCENES_METAINFO
+from ..configs.robot_config import RobotModelConfig
 from PIL import Image
-from tqdm import tqdm
-import open3d as o3d
 
 
 __all__ = [
@@ -29,7 +26,6 @@ monoforce_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '
 data_dir = os.path.realpath(os.path.join(monoforce_dir, 'data'))
 
 rough_seq_paths = [
-        # MARV robot
         os.path.join(data_dir, 'ROUGH/24-08-14-monoforce-long_drive'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-46-51'),
         os.path.join(data_dir, 'ROUGH/marv_2024-09-26-13-54-43'),
@@ -38,19 +34,11 @@ rough_seq_paths = [
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-35-05'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-52-07'),
         os.path.join(data_dir, 'ROUGH/marv_2024-10-31-15-56-33'),
-
-        # TRADR robot
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-02-31'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-10-17-12-12'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-54-18'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-13-58-46'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-03-57'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-09-26-14-14-42'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-40-41'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-48-31'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-15-58-52'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-08-30'),
-        os.path.join(data_dir, 'ROUGH/ugv_2024-10-05-16-24-48'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-14-47-44'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-22-35'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-24-35'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-35-24'),
+        os.path.join(data_dir, 'ROUGH/marv_2025-03-19-15-36-49'),
 ]
 
 
@@ -61,34 +49,30 @@ class ROUGH(Dataset):
 
     def __init__(self, path,
                  lss_cfg=None,
-                 dphys_cfg=None,
                  is_train=False):
         super(Dataset, self).__init__()
         self.path = path
         self.name = os.path.basename(os.path.normpath(path))
         self.cloud_path = os.path.join(path, 'clouds')
-        self.traj_path = os.path.join(path, 'trajectories')
         self.poses_path = os.path.join(path, 'poses', 'lidar_poses.csv')
         self.calib_path = os.path.join(path, 'calibration')
-        self.controls_path = os.path.join(path, 'controls', 'cmd_vel.csv')
-        self.dphys_cfg = dphys_cfg if dphys_cfg is not None else DPhysConfig()
-        self.calib = load_calib(calib_path=self.calib_path)
-        self.ids = self.get_ids()
-        self.poses_ts, self.poses = self.get_poses(return_stamps=True)
-        self.camera_names = self.get_camera_names()
-
+        self.trajs_path = os.path.join(path, 'trajectories')
         self.is_train = is_train
-
         if lss_cfg is None:
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
         self.grid_res = lss_cfg['grid_conf']['xbound'][2]
+        self.robot_cfg = RobotModelConfig(kind='marv')
+
+        self.calib = load_calib(calib_path=self.calib_path)
+        self.ids = self.get_ids()
+        self.poses_ts, self.poses = self.get_all_poses(return_stamps=True)
+        self.camera_names = self.get_camera_names()
 
     def __getitem__(self, i):
         if isinstance(i, (int, np.int64)):
             sample = self.get_sample(i)
             return sample
-
         ds = copy.deepcopy(self)
         if isinstance(i, (list, tuple, np.ndarray)):
             ds.ids = [self.ids[k] for k in i]
@@ -105,7 +89,8 @@ class ROUGH(Dataset):
         return len(self.ids)
 
     def get_ids(self):
-        ids = [f[:-4] for f in os.listdir(self.cloud_path)]
+        # ids = [f[:-4] for f in os.listdir(self.cloud_path)]
+        ids = [f[15:-4] for f in os.listdir(self.trajs_path) if f.startswith('traj_base_link_')]
         ids = sorted(ids)
         return ids
 
@@ -115,11 +100,12 @@ class ROUGH(Dataset):
         T[:3, :4] = pose.reshape((3, 4))
         return T
 
-    def get_poses(self, return_stamps=False):
+    def get_all_poses(self, return_stamps=False):
         if not os.path.exists(self.poses_path):
             print(f'Poses file {self.poses_path} does not exist')
-            return None
+            return None, None if return_stamps else None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
+        assert len(data) > 0, f'No poses found in {self.poses_path}'
         stamps, Ts = data[:, 0], data[:, 1:13]
         lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
@@ -133,8 +119,7 @@ class ROUGH(Dataset):
 
     def ind_to_stamp(self, i):
         ind = self.ids[i]
-        sec, nsec = ind.split('_')
-        stamp = float(sec) + float(nsec) / 1e9
+        stamp = float(ind.replace('_', '.'))
         return stamp
 
     def get_pose(self, i):
@@ -151,70 +136,38 @@ class ROUGH(Dataset):
         pose_gravity_aligned[:3, :3] = R
         return pose_gravity_aligned
 
-    def get_controls(self, i):
-        if not os.path.exists(self.controls_path):
-            print(f'Controls file {self.controls_path} does not exist')
-            return None, None
+    def get_controls(self, i, T_horizon=5.0):
+        controls_path = os.path.join(self.path, 'controls', f'flipper_vs_ws_{self.ids[i]}.csv')
+        data = np.loadtxt(controls_path, delimiter=',', skiprows=1)
+        stamps, controls = data[:, 0], data[:, 1:]
 
-        data = np.loadtxt(self.controls_path, delimiter=',', skiprows=1)
-        all_control_stamps, all_controls = data[:, 0], data[:, 1:]
-        time_left = self.ind_to_stamp(i)
-        # start time from 0
-        time_left -= all_control_stamps[0]
-        all_control_stamps -= all_control_stamps[0]
-        T_horizon, dt = self.dphys_cfg.traj_sim_time, self.dphys_cfg.dt
-        time_right = time_left + T_horizon
+        # limit stamps and controls to the horizon
+        stamps = stamps - stamps[0]
+        stamps = stamps[stamps <= T_horizon]
+        controls = controls[:len(stamps)]
 
-        # check if the trajectory is out of the control time stamps
-        if time_left > all_control_stamps[-1] or time_right < all_control_stamps[0]:
-            # print(f'Trajectory is out of the recorded control time stamps. Using zero controls.')
-            control_stamps_horizon = torch.arange(0.0, T_horizon, dt, dtype=torch.float32)
-            controls = torch.zeros((len(control_stamps_horizon), all_controls.shape[1]), dtype=torch.float32)
-            return control_stamps_horizon, controls
-
-        # find the closest index to the left and right in all times
-        il = np.argmin(np.abs(np.asarray(all_control_stamps) - time_left))
-        ir = np.argmin(np.abs(np.asarray(all_control_stamps) - time_right))
-        ir = min(max(il + 1, ir), len(all_control_stamps))
-        control_stamps = np.asarray(all_control_stamps[il:ir])
-        control_stamps = control_stamps - control_stamps[0]
-        controls = all_controls[il:ir]
-
-        control_stamps_horizon = np.arange(0.0, T_horizon, dt)
-        controls_horizon = np.zeros((len(control_stamps_horizon), controls.shape[1]))
-        # interpolate controls to the trajectory time stamps
-        for j in range(controls.shape[1]):
-            controls_horizon[:, j] = np.interp(control_stamps_horizon, control_stamps, controls[:, j], left=0.0, right=0.0)
-
-        assert len(control_stamps_horizon) == len(controls_horizon), f'Velocity and time stamps have different lengths'
-        assert len(control_stamps_horizon) == int(T_horizon / dt), f'Velocity and time stamps have different lengths'
-        control_stamps_horizon = torch.as_tensor(control_stamps_horizon, dtype=torch.float32)
-        controls_horizon = torch.as_tensor(controls_horizon, dtype=torch.float32)
-
-        return control_stamps_horizon, controls_horizon
+        stamps = torch.as_tensor(stamps, dtype=torch.float32)
+        controls = torch.as_tensor(controls, dtype=torch.float32)
+        return stamps, controls
 
     @staticmethod
     def get_camera_names():
         # cams_yaml = os.listdir(os.path.join(self.path, 'calibration/cameras'))
-        # cams = sorted([cam.replace('.yaml', '') for cam in cams_yaml])
+        # cams = [cam.replace('.yaml', '') for cam in cams_yaml]
         cams = ['camera_left', 'camera_front', 'camera_right', 'camera_rear']
         return cams
 
-    def get_traj(self, i, T_horizon=None):
-        # n_frames equals to the number of future poses (trajectory length)
-        if T_horizon is None:
-            T_horizon = self.dphys_cfg.traj_sim_time
-        dt = 0.1  # lidar frequency is 10 Hz
+    def get_traj(self, i, T_horizon=5.0):
+        # poses
+        poses_path = os.path.join(self.path, 'trajectories', 'traj_base_link_%s.csv' % self.ids[i])
+        data = np.loadtxt(poses_path, delimiter=',', skiprows=1)
+        stamps, Ts = data[:, 0], data[:, 1:]
+        poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
 
-        # get trajectory as sequence of `n_frames` future poses
-        all_poses = copy.copy(self.poses)
-        all_ts = copy.copy(self.poses_ts)
-        time_left = self.ind_to_stamp(i)
-        il = np.argmin(np.abs(self.poses_ts - time_left))
-        ir = np.argmin(np.abs(all_ts - (self.poses_ts[il] + T_horizon)))
-        ir = min(max(ir, il+1), len(all_ts))
-        poses = all_poses[il:ir]
-        stamps = np.asarray(all_ts[il:ir])
+        # flipper angles
+        theta_path = os.path.join(self.path, 'trajectories', 'traj_flipper_angles_%s.csv' % self.ids[i])
+        data = np.loadtxt(theta_path, delimiter=',', skiprows=1)
+        thetas = np.asarray(data[:, 1:], dtype=np.float32)
 
         # transform poses to the same coordinate frame as the height map
         poses = np.linalg.inv(poses[0]) @ poses
@@ -223,19 +176,9 @@ class ROUGH(Dataset):
         # limit stamps and poses to the horizon
         stamps = stamps[stamps <= T_horizon]
         poses = poses[:len(stamps)]
-
-        # make sure the trajectory has the fixed length
-        n_frames = int(np.ceil(T_horizon / dt))
-        if len(poses) < n_frames:
-            # repeat the last pose to fill the trajectory
-            poses = np.concatenate([poses, np.tile(poses[-1:], (n_frames - len(poses), 1, 1))], axis=0)
-            stamps = np.concatenate([stamps, stamps[-1] + np.arange(1, n_frames - len(stamps) + 1) * dt], axis=0)
-            assert len(poses) == n_frames, f'Poses and stamps have different lengths {len(poses)} != {n_frames}'
-        # truncate the trajectory
-        poses = poses[:n_frames]
-        stamps = stamps[:n_frames]
+        thetas = thetas[:len(stamps)]
         assert len(poses) == len(stamps), f'Poses and time stamps have different lengths'
-        assert len(poses) == n_frames
+        assert len(thetas) == len(stamps), f'Flipper angles and time stamps have different lengths'
 
         # gravity-aligned poses
         pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
@@ -243,9 +186,8 @@ class ROUGH(Dataset):
         poses = pose_grav_aligned @ poses
 
         traj = {
-            'stamps': stamps, 'poses': poses,
+            'stamps': stamps, 'poses': poses, 'flipper_angles': thetas,
         }
-
         return traj
 
     def get_states_traj(self, i):
@@ -253,6 +195,7 @@ class ROUGH(Dataset):
         # estimating velocities and angular velocities from the trajectory positions for now
         traj = self.get_traj(i)
         poses = traj['poses']
+        thetas = traj['flipper_angles']
         tstamps = traj['stamps']
 
         # count time from 0
@@ -260,24 +203,26 @@ class ROUGH(Dataset):
 
         xs = np.asarray(poses[:, :3, 3])
         Rs = np.asarray(poses[:, :3, :3])
+        qs = Rotation.from_matrix(Rs).as_quat(scalar_first=True)  # important to have [w, x, y, z] order
 
         n_states = len(xs)
         ts = np.asarray(tstamps)
 
         dps = np.diff(xs, axis=0)
         dt = np.asarray(np.diff(ts), dtype=np.float32).reshape([-1, 1])
-        theta = np.arctan2(dps[:, 1], dps[:, 0]).reshape([-1, 1])
-        theta = np.concatenate([theta[:1], theta], axis=0)
+        yaw = np.arctan2(dps[:, 1], dps[:, 0]).reshape([-1, 1])
+        yaw = np.concatenate([yaw[:1], yaw], axis=0)
 
         xds = np.zeros_like(xs)
         xds[:-1] = dps / dt
         omegas = np.zeros_like(xs)
-        omegas[:-1, 2:3] = np.diff(theta, axis=0) / dt  # + torch.diff(angles, dim=0)[:, 2:3] / dt
+        omegas[:-1, 2:3] = np.diff(yaw, axis=0) / dt
 
         states = [xs.reshape([n_states, 3]),
                   xds.reshape([n_states, 3]),
-                  Rs.reshape([n_states, 3, 3]),
-                  omegas.reshape([n_states, 3])]
+                  qs.reshape([n_states, 4]),
+                  omegas.reshape([n_states, 3]),
+                  thetas.reshape([n_states, 4])]
 
         # to torch tensors
         ts = torch.as_tensor(ts, dtype=torch.float32)
@@ -321,16 +266,17 @@ class ROUGH(Dataset):
             lidar_hm = np.load(file_path)
         else:
             points = torch.as_tensor(position(self.get_cloud(i)))
-            lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+            lidar_hm = estimate_heightmap(points,
+                                          d_max=6.4,
                                           grid_res=self.grid_res,
-                                          h_max=self.dphys_cfg.h_max,
-                                          r_min=self.dphys_cfg.r_min)
+                                          h_max=1.0,
+                                          r_min=0.6)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, lidar_hm.cpu().numpy())
         heightmap = torch.as_tensor(lidar_hm)
         return heightmap
 
-    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0), T_horizon=None):
+    def get_footprint_traj_points(self, i, robot_size=(0.7, 1.0), T_horizon=5.0):
         # robot footprint points grid
         width, length = robot_size
         x = np.arange(-length / 2, length / 2, self.grid_res)
@@ -353,52 +299,6 @@ class ROUGH(Dataset):
             trajectory_points.append(footprint)
         trajectory_points = np.concatenate(trajectory_points, axis=0)
         return trajectory_points
-
-    def get_global_cloud(self, vis=False, cached=True, save=False, step=1):
-        path = os.path.join(self.path, 'map', 'map.pcd')
-        if cached and os.path.exists(path):
-            # print('Loading global cloud from file...')
-            pcd = o3d.io.read_point_cloud(path)
-            global_cloud = np.asarray(pcd.points, dtype=np.float32)
-        else:
-            # create global cloud
-            global_cloud = None
-            for i in tqdm(range(len(self))[::step]):
-                cloud = self.get_cloud(i)
-                T = self.get_pose(i)
-                cloud = transform_cloud(cloud, T)
-                points = position(cloud)
-                points = filter_grid(points, self.grid_res, keep='first', log=False)
-                if i == 0:
-                    global_cloud = points
-                else:
-                    global_cloud = np.vstack((global_cloud, points))
-            # save global cloud to file
-            if save:
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(global_cloud)
-                o3d.io.write_point_cloud(path, pcd)
-
-        if vis:
-            # remove nans
-            global_cloud_vis = global_cloud[~np.isnan(global_cloud).any(axis=1)]
-            # remove height outliers
-            heights = global_cloud_vis[:, 2]
-            h_min = np.quantile(heights, 0.001)
-            h_max = np.quantile(heights, 0.999)
-            global_cloud_vis = global_cloud_vis[(global_cloud_vis[:, 2] > h_min) & (global_cloud_vis[:, 2] < h_max)]
-
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(global_cloud_vis)
-
-            poses = self.get_poses()
-            pcd_poses = o3d.geometry.PointCloud()
-            pcd_poses.points = o3d.utility.Vector3dVector(poses[:, :3, 3])
-            pcd_poses.paint_uniform_color([0.8, 0.1, 0.1])
-
-            # o3d.visualization.draw_geometries([pcd_poses])
-            o3d.visualization.draw_geometries([pcd, pcd_poses])
-        return global_cloud
 
     def get_raw_image(self, i, camera=None):
         if camera is None:
@@ -523,7 +423,16 @@ class ROUGH(Dataset):
         seg = transform(seg)
         return seg
 
-    def get_semantic_cloud(self, i, classes=None, vis=False):
+    def get_seg_vis(self, i, camera=None):
+        if camera is None:
+            camera = self.camera_names[0]
+        id = self.ids[i]
+        seg_path = os.path.join(self.path, 'images/wildscenes_seg/vis/', '%s_%s.png' % (id, camera))
+        assert os.path.exists(seg_path), f'Image path {seg_path} does not exist'
+        seg = Image.open(seg_path)
+        return seg
+
+    def get_semantic_cloud(self, i, classes=None):
         mi = WILDSCENES_METAINFO
         if classes is None:
             classes = mi['classes']
@@ -572,32 +481,7 @@ class ROUGH(Dataset):
         pose_grav_aligned = self.get_initial_pose_on_heightmap(i)
         points = transform_cloud(points, pose_grav_aligned)
 
-        if vis:
-            colors = normalize(colors)
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(points)
-            pcd.colors = o3d.utility.Vector3dVector(colors)
-            o3d.visualization.draw_geometries([pcd])
-
         return points, colors
-
-    def global_hm_cloud(self, vis=False):
-        # create global heightmap cloud
-        global_hm_cloud = []
-        for i in tqdm(range(len(self))):
-            hm = self.get_geom_height_map(i)
-            pose = self.get_pose(i)
-            hm_cloud = hm_to_cloud(hm[0], self.dphys_cfg, mask=hm[1])
-            hm_cloud = transform_cloud(hm_cloud.cpu().numpy(), pose)
-            global_hm_cloud.append(hm_cloud)
-        global_hm_cloud = np.concatenate(global_hm_cloud, axis=0)
-
-        if vis:
-            # plot global cloud with open3d
-            hm_pcd = o3d.geometry.PointCloud()
-            hm_pcd.points = o3d.utility.Vector3dVector(global_hm_cloud)
-            o3d.visualization.draw_geometries([hm_pcd])
-        return global_hm_cloud
 
     def get_terrain_height_map(self, i, cached=True, dir_name=None):
         """
@@ -618,12 +502,13 @@ class ROUGH(Dataset):
             traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
             soft_classes = self.lss_cfg['soft_classes']
             rigid_classes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
+            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes)
             points = np.concatenate((seg_points, traj_points), axis=0)
             points = torch.as_tensor(points, dtype=torch.float32)
-            hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+            hm_rigid = estimate_heightmap(points,
+                                          d_max=6.4,
                                           grid_res=self.grid_res,
-                                          h_max=self.dphys_cfg.h_max)
+                                          h_max=1.0)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             np.save(file_path, hm_rigid.cpu().numpy())
         heightmap = torch.as_tensor(hm_rigid)
@@ -633,12 +518,25 @@ class ROUGH(Dataset):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_images_data(i)
         control_ts, controls = self.get_controls(i)
         traj_ts, states = self.get_states_traj(i)
-        Xs, Xds, Rs, Omegas = states
+        xs, xds, qs, omegas, thetas = states
         hm_geom = self.get_geom_height_map(i)
         hm_terrain = self.get_terrain_height_map(i)
-        pose0 = torch.as_tensor(self.get_initial_pose_on_heightmap(i), dtype=torch.float32)
         return (imgs, rots, trans, intrins, post_rots, post_trans,
                 hm_geom, hm_terrain,
                 control_ts, controls,
-                pose0,
-                traj_ts, Xs, Xds, Rs, Omegas)
+                traj_ts, xs, xds, qs, omegas, thetas)
+
+
+if __name__ == "__main__":
+    from monoforce.utils import explore_data
+    from tqdm import tqdm
+
+    for seq in rough_seq_paths:
+        ds = ROUGH(seq)
+        sample_i = np.random.randint(0, len(ds))
+        sample = ds[sample_i]
+        explore_data(ds, sample_range=[sample_i])
+        break
+        for sample in tqdm(ds, total=len(ds)):
+            for s in sample:
+                print(s.shape)
