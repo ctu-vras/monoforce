@@ -18,7 +18,11 @@ from monoforce.models.physics_engine.utils.environment import make_x_y_grids
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import ego_to_cam, get_only_in_img_mask, denormalize_img
 from monoforce.utils import read_yaml, write_to_csv, append_to_csv, compile_data, str2bool
-from monoforce.losses import physics_loss, hm_loss
+from monoforce.losses import trajectory_loss, terrain_loss
+
+
+np.random.seed(0)
+torch.manual_seed(0)
 
 
 def arg_parser():
@@ -36,8 +40,7 @@ class Evaluator:
                  batch_size: int = 1,
                  pretrained_terrain_encoder_path=None,
                  grid_res: float = 0.1,
-                 max_coord: float = 6.4,
-                 terrain_simplification_scale: int = 1):
+                 max_coord: float = 6.4):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.batch_size = batch_size
 
@@ -59,12 +62,7 @@ class Evaluator:
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
         self.terrain_encoder = self.get_terrain_encoder(pretrained_terrain_encoder_path)
 
-        # # terrain simplification for faster physics execution
-        # self.done_xy_grid_simplification = False  # simplification done only once for x and y grid
         self.grid_res = grid_res
-        # self.terrain_simplification_scale = terrain_simplification_scale
-        # self.terrain_preproc = torch.nn.AvgPool2d(kernel_size=terrain_simplification_scale,
-        #                                           stride=terrain_simplification_scale)
 
     def get_terrain_encoder(self, path):
         terrain_encoder = LiftSplatShoot(self.lss_config['grid_conf'],
@@ -99,13 +97,6 @@ class Evaluator:
         thetas0 = thetas[:, 0].contiguous()
         state0 = PhysicsState(x0, xd0, q0, omega0, thetas0, batch_size=x0.shape[0])
 
-        # if not self.done_xy_grid_simplification:
-        #     # terrain simplification for faster physics execution
-        #     self.world_config.x_grid = self.terrain_preproc(self.world_config.x_grid)
-        #     self.world_config.y_grid = self.terrain_preproc(self.world_config.y_grid)
-        #     self.world_config.grid_res = self.terrain_simplification_scale * self.grid_res
-        #     self.done_xy_grid_simplification = True
-        # self.world_config.z_grid = self.terrain_preproc(height.squeeze(1))
         self.world_config.z_grid = height.squeeze(1)
         states_pred = deque(maxlen=n_iters)
         state = state0
@@ -150,7 +141,6 @@ class Evaluator:
              hm_geom, hm_terrain,
              control_ts, controls,
              traj_ts, xs, xds, qs, omegas, thetas) = batch
-            states_gt = [xs, xds, qs, omegas, thetas]
 
             # terrain prediction
             terrain = self.predict_terrain(batch)
@@ -163,9 +153,9 @@ class Evaluator:
 
             # trajectory prediction loss: xyz and rotation
             states_pred = self.predict_states(terrain, batch)
-            loss_xyz = physics_loss(states_pred=[states_pred.x.permute(1, 0, 2)], states_gt=states_gt,
-                                    pred_ts=control_ts, gt_ts=traj_ts,
-                                    gamma=1.0)
+            loss_xyz = trajectory_loss(x_pred=states_pred.x.permute(1, 0, 2), x_gt=xs,
+                                       pred_ts=control_ts, gt_ts=traj_ts,
+                                       gamma=1.0)
 
             # write losses to csv
             append_to_csv(f'{self.output_folder}/losses.csv',
@@ -252,8 +242,8 @@ class Evaluator:
             axes[2, 1].grid()
             axes[2, 1].set_xlabel('Time [s]')
             axes[2, 1].set_ylabel('Angle [rad]')
-            axes[2, 1].set_ylim(-np.pi / 2., np.pi / 2.)
-            # axes[2, 1].legend()
+            # axes[2, 1].set_ylim(-np.pi / 2., np.pi / 2.)
+            axes[2, 1].legend()
 
             # plot trajectories: XY
             axes[2, 2].plot(states_pred.x[:, 0, 0].cpu(), states_pred.x[:, 0, 1].cpu(), 'r', label='Pred Traj')

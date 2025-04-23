@@ -16,7 +16,7 @@ from eval import Evaluator
 from monoforce.models.terrain_encoder.utils import denormalize_img, ego_to_cam, get_only_in_img_mask
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
 from monoforce.utils import str2bool, compile_data
-from monoforce.losses import terrain_loss, physics_loss
+from monoforce.losses import terrain_loss, trajectory_loss
 
 
 def arg_parser():
@@ -46,11 +46,9 @@ class Trainer(Evaluator):
                  terrain_weight: float = 1.0,
                  phys_weight: float = 1.0,
                  debug: bool = False,
-                 vis: bool = False,
-                 terrain_simplification_scale=4):
+                 vis: bool = False):
         super(Trainer, self).__init__(batch_size=batch_size,
-                                      pretrained_terrain_encoder_path=pretrained_terrain_encoder_path,
-                                      terrain_simplification_scale=terrain_simplification_scale)
+                                      pretrained_terrain_encoder_path=pretrained_terrain_encoder_path)
         self.n_epochs = n_epochs
         self.min_val_loss = np.inf
         self.min_train_loss = np.inf
@@ -108,11 +106,10 @@ class Trainer(Evaluator):
         # physics loss: difference between predicted and ground truth states
         if self.phys_weight > 0:
             # predict trajectory
-            states_gt = [xs, xds, qs, omegas, thetas]
             states_pred = self.predict_states(terrain, batch)
             # compute physics loss
-            loss_phys = physics_loss(states_pred=[states_pred.x.permute(1, 0, 2)], states_gt=states_gt,
-                                     pred_ts=control_ts, gt_ts=traj_ts)
+            loss_phys = trajectory_loss(x_pred=states_pred.x.permute(1, 0, 2), x_gt=xs,
+                                        pred_ts=control_ts, gt_ts=traj_ts)
         else:
             loss_phys = torch.tensor(0.0, device=self.device)
 

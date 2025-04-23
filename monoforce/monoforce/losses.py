@@ -7,7 +7,7 @@ __all__ = [
     'total_variation',
     'terrain_loss',
     'slerp',
-    'physics_loss'
+    'trajectory_loss'
 ]
 
 
@@ -99,29 +99,25 @@ def terrain_loss(layer_pred, layer_gt, weights=None, value_max=None):
     return loss
 
 
-def physics_loss(states_pred, states_gt, pred_ts, gt_ts, gamma=0.9):
+def trajectory_loss(x_pred, x_gt, pred_ts, gt_ts, gamma=0.9):
     """
-    Compute the physics loss between predicted and ground truth states.
-    :param states_pred: predicted states [N x T1 x 3]
-    :param states_gt: ground truth states [N x T2 x 3]
+    Compute the trajectory loss between predicted and ground truth states.
+    :param x_pred: predicted states N x T1 x 3
+    :param x_gt: ground truth states N x T2 x 3
     :param pred_ts: predicted timestamps N x T1
     :param gt_ts: ground truth timestamps N x T2
     :param gamma: time weight discount factor, w = 1 / (1 + gamma * t).
     """
-    # unpack states
-    X = states_gt[0]
-    X_pred = states_pred[0]
-
-    # find the closest timesteps in the trajectory to the ground truth timesteps
+    # find the closest time steps in the trajectory to the ground truth timestamps
     ts_ids = torch.argmin(torch.abs(pred_ts.unsqueeze(1) - gt_ts.unsqueeze(2)), dim=2)
 
-    # get the predicted states at the closest timesteps to the ground truth timesteps
-    X_pred_gt_ts = X_pred[torch.arange(X.shape[0]).unsqueeze(1), ts_ids]
+    # get the predicted states at the closest timestamps to the ground truth timestamps
+    x_pred_gt_ts = x_pred[torch.arange(x_gt.shape[0]).unsqueeze(1), ts_ids]
 
-    # compute time weights: farthest timesteps have the least weight, w = 1 / (1 + t)
+    # compute time weights: farthest timestamps have the least weight, w = 1 / (1 + t)
     time_weights = 1. / (1. + gamma * gt_ts.unsqueeze(2))
-    pred = X_pred_gt_ts * time_weights
-    gt = X * time_weights
+    pred = x_pred_gt_ts * time_weights
+    gt = x_gt * time_weights
 
     # trajectory position (xyz) MSE loss
     loss = ((pred - gt) ** 2).mean()
