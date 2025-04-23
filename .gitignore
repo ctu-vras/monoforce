@@ -165,3 +165,4 @@ gen*/
 *.pth
 *.bak
 .robot_cache/
+*.sif

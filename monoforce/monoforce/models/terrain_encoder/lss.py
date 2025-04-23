@@ -129,6 +129,14 @@ class BevEncode(nn.Module):
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
             nn.ReLU()
         )
+        self.up_logvar = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+            nn.Conv2d(128, outC, kernel_size=1, padding=0),
+            nn.Softplus()
+        )  # log variance, log(σ²)
 
     def backbone(self, x):
         x = self.conv1(x)
@@ -149,11 +157,13 @@ class BevEncode(nn.Module):
         x_diff = self.up_diff(x)
         x_friction = self.up_friction(x)
         x_terrain = x_geom - x_diff
+        x_logvar = self.up_logvar(x)
         out = {
             'geom': x_geom,
             'terrain': x_terrain,
             'diff': x_diff,
-            'friction': x_friction
+            'friction': x_friction,
+            'logvar': x_logvar
         }
         return out
 

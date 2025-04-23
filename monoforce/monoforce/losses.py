@@ -6,6 +6,7 @@ __all__ = [
     'translation_difference',
     'total_variation',
     'terrain_loss',
+    'terrain_heteroscedastic_loss',
     'slerp',
     'trajectory_loss'
 ]
@@ -65,11 +66,11 @@ def rotation_difference(R1, R2, reduction='mean'):
         return theta
 
 
-def total_variation(heightmap):
-    h, w = heightmap.shape[-2:]
+def total_variation(layer):
+    h, w = layer.shape[-2:]
     # Compute the total variation of a heightmap
-    tv = torch.sum(torch.abs(heightmap[..., :, :-1] - heightmap[..., :, 1:])) + \
-         torch.sum(torch.abs(heightmap[..., :-1, :] - heightmap[..., 1:, :]))
+    tv = torch.sum(torch.abs(layer[..., :, :-1] - layer[..., :, 1:])) + \
+         torch.sum(torch.abs(layer[..., :-1, :] - layer[..., 1:, :]))
     tv = tv / (h * w)
     return tv
 
@@ -97,6 +98,36 @@ def terrain_loss(layer_pred, layer_gt, weights=None, value_max=None):
     loss = ((pred - gt) ** 2).mean()
 
     return loss
+
+
+def terrain_heteroscedastic_loss(mu, logvar, y, weights=None):
+    """
+    mu: predicted layer (mean)
+    logvar: predicted log variance per cell (log σ²)
+    y: ground truth layer
+    weights: optional weighting for each cell
+
+    loss = 0.5 * exp(-logvar) * ((y - mu) ** 2) + 0.5 * logvar
+    """
+    assert mu.shape == y.shape == logvar.shape, \
+        'Prediction, log variance, and ground truth must have the same shape'
+
+    if weights is None:
+        weights = torch.ones_like(y)
+
+    # remove NaNs
+    mask_valid = ~(torch.isnan(mu) | torch.isnan(y) | torch.isnan(logvar))
+    y = y[mask_valid]
+    mu = mu[mask_valid]
+    logvar = logvar[mask_valid]
+    w = weights[mask_valid]
+
+    # heteroscedastic Gaussian NLL loss
+    loss = 0.5 * torch.exp(-logvar) * ((y - mu) ** 2) + 0.5 * logvar
+    weighted_loss = (loss * w).mean()
+
+    return weighted_loss
+
 
 
 def trajectory_loss(x_pred, x_gt, pred_ts, gt_ts, gamma=0.9):
