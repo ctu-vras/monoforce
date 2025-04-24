@@ -12,7 +12,7 @@ import rclpy.time
 from monoforce.utils import read_yaml
 from monoforce.models.terrain_encoder.lss import LiftSplatShoot
 from monoforce.models.terrain_encoder.utils import sample_augmentation, img_transform, normalize_img
-from monoforce.models.physics_engine.utils.torch_utils import set_device
+from monoforce.utils import set_device
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -120,14 +120,12 @@ class TerrainEncoder(Node):
         inputs = [i.to(self.device) for i in inputs]
 
         # model inference
-        out = self.terrain_encoder(*inputs)
-        height_terrain, friction = out['terrain'], out['friction']
-        self._logger.info('Predicted height map shape: %s' % str(height_terrain.shape))
+        terrain = self.terrain_encoder(*inputs)
+        self._logger.info('Predicted height map shape: %s' % str(terrain['terrain'].shape))
 
-        # publish terrain as grid map
+        # publish terrain as a grid map
         stamp = msgs[0].header.stamp
-        height = height_terrain.squeeze().cpu().numpy()
-        grid_msg = terrain_to_gridmap_msg(layers=[height], layer_names=['elevation'],
+        grid_msg = terrain_to_gridmap_msg(layers=[terrain['terrain'].squeeze().cpu().numpy()], layer_names=['terrain'],
                                           grid_res=self.lss_cfg['grid_conf']['xbound'][2])
         grid_msg.header.stamp = stamp
         grid_msg.header.frame_id = self.robot_frame

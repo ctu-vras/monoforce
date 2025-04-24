@@ -106,8 +106,6 @@ Visualization Manager:
           Value: false
         gps_antenna:
           Value: false
-        grid_map_link:
-          Value: true
         imu:
           Value: false
         map:
@@ -215,8 +213,6 @@ Visualization Manager:
               front_right_flipper_end_point_inflated:
                 {}
             front_right_motor:
-              {}
-            grid_map_link:
               {}
             imu:
               {}
@@ -377,13 +373,13 @@ Visualization Manager:
         Value: true
       Zoom Factor: 1
     - Alpha: 0.6000000238418579
-      Autocompute Intensity Bounds: false
+      Autocompute Intensity Bounds: true
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
-      Color Layer: elevation
+      Color Layer: terrain
       Color Transformer: GridMapLayer
       Enabled: true
-      Height Layer: elevation
+      Height Layer: terrain
       Height Transformer: GridMapLayer
       History Length: 1
       Invert Rainbow: false
@@ -406,7 +402,7 @@ Visualization Manager:
       Enabled: true
       Name: Sampled Paths
       Namespaces:
-        {}
+        paths: true
       Topic:
         Depth: 5
         Durability Policy: Volatile

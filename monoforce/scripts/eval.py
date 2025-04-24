@@ -144,12 +144,10 @@ class Evaluator:
 
             # terrain prediction
             terrain = self.predict_terrain(batch)
-            H_t_pred, H_g_pred, H_diff_pred, Friction_pred = terrain['terrain'], terrain['geom'], terrain['diff'], \
-            terrain['friction']
 
             # terrain and geom heightmap losses
-            loss_geom = terrain_loss(layer_pred=H_g_pred[:, 0], layer_gt=hm_geom[:, 0], weights=hm_geom[:, 1])
-            loss_terrain = terrain_loss(layer_pred=H_t_pred[:, 0], layer_gt=hm_terrain[:, 0], weights=hm_terrain[:, 1])
+            loss_geom = terrain_loss(layer_pred=terrain['geom'][:, 0], layer_gt=hm_geom[:, 0], weights=hm_geom[:, 1])
+            loss_terrain = terrain_loss(layer_pred=terrain['terrain'][:, 0], layer_gt=hm_terrain[:, 0], weights=hm_terrain[:, 1])
 
             # trajectory prediction loss: xyz and rotation
             states_pred = self.predict_states(terrain, batch)
@@ -161,13 +159,8 @@ class Evaluator:
             append_to_csv(f'{self.output_folder}/losses.csv',
                           f'{i:04d}, {loss_geom.item()},{loss_terrain.item()},{loss_xyz.item()}\n')
 
-            # visualizations
-            H_g_pred = H_g_pred[0, 0].cpu()
-            H_diff_pred = H_diff_pred[0, 0].cpu()
-            H_t_pred = H_t_pred[0, 0].cpu()
-            Friction_pred = Friction_pred[0, 0].cpu()
             # get height map points
-            hm_points = torch.stack([x_grid, y_grid, H_t_pred], dim=-1)
+            hm_points = torch.stack([x_grid, y_grid, terrain['terrain'][0].squeeze().cpu()], dim=-1)
             hm_points = hm_points.view(-1, 3).T
 
             batch = [t.to('cpu') for t in batch]
@@ -191,7 +184,6 @@ class Evaluator:
 
                 ax.imshow(showimg)
                 ax.scatter(plot_pts[0, mask], plot_pts[1, mask],
-                           # c=Friction_pred.view(-1)[terrain_mask][mask],
                            c=hm_points[2, mask],
                            s=2, alpha=0.8, cmap='jet', vmin=-1, vmax=1.)
                 ax.axis('off')
@@ -202,22 +194,22 @@ class Evaluator:
 
             # plot geom heightmap
             axes[1, 0].set_title('Geom Height')
-            axes[1, 0].imshow(H_g_pred, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            axes[1, 0].imshow(terrain['geom'][0].squeeze().cpu(), origin='lower', cmap='jet', vmin=-1., vmax=1.)
             axes[1, 0].axis('off')
 
             # plot height diff heightmap
             axes[1, 1].set_title('Height Difference')
-            axes[1, 1].imshow(H_diff_pred, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            axes[1, 1].imshow(terrain['diff'][0].squeeze().cpu(), origin='lower', cmap='jet', vmin=-1., vmax=1.)
             axes[1, 1].axis('off')
 
             # plot terrain heightmap
             axes[1, 2].set_title('Terrain Height')
-            axes[1, 2].imshow(H_t_pred, origin='lower', cmap='jet', vmin=-1., vmax=1.)
+            axes[1, 2].imshow(terrain['terrain'][0].squeeze().cpu(), origin='lower', cmap='jet', vmin=-1., vmax=1.)
             axes[1, 2].axis('off')
 
             # plot friction map
-            axes[1, 3].set_title('Friction')
-            axes[1, 3].imshow(Friction_pred, origin='lower', cmap='jet', vmin=0., vmax=1.)
+            axes[1, 3].set_title('Uncertainty (log(σ²))')
+            axes[1, 3].imshow(terrain['logvar'][0].squeeze().cpu(), origin='lower', cmap='jet', vmin=0., vmax=0.1)
             axes[1, 3].axis('off')
 
             # plot control inputs

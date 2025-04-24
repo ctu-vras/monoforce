@@ -37,7 +37,7 @@ class DiffPhysEngineNode(Node):
         self.declare_parameter('max_coord', 6.4)
         self.declare_parameter('robot_frame', 'base_link')
         self.declare_parameter('gridmap_topic', '/terrain/grid_map')
-        self.declare_parameter('gridmap_layer', 'elevation')
+        self.declare_parameter('gridmap_layer', 'terrain')
         self.declare_parameter('max_age', 0.5)
 
         self.device = set_device(self.get_parameter('device').value)

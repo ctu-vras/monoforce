@@ -12,7 +12,7 @@ def generate_launch_description():
             parameters=[
                 {
                     'gridmap_topic': '/terrain/grid_map',
-                    'gridmap_layer': 'elevation',
+                    'gridmap_layer': 'terrain',
                     'robot_frame': 'base_link',
                 }
             ]

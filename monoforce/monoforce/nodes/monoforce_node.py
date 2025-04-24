@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
-import os
 import torch
 import numpy as np
-from scipy.spatial.transform import Rotation
 from collections import deque
 from time import time
 
@@ -12,14 +10,10 @@ from rclpy.impl.logging_severity import LoggingSeverity
 
 from sensor_msgs.msg import CameraInfo, CompressedImage
 from visualization_msgs.msg import MarkerArray
-from nav_msgs.msg import Path
 from std_msgs.msg import Float32MultiArray
-
 import tf2_ros
-from geometry_msgs.msg import TransformStamped
-from grid_map_msgs.msg import GridMap
 
-from monoforce.ros import terrain_to_gridmap_msg, poses_to_path, poses_to_marker
+from monoforce.ros import terrain_to_gridmap_msg, poses_to_marker
 from monoforce.models.physics_engine.engine.engine import DPhysicsEngine, PhysicsState
 from monoforce.configs import WorldConfig, RobotModelConfig, PhysicsEngineConfig
 from monoforce.models.physics_engine.utils.environment import make_x_y_grids
@@ -95,9 +89,7 @@ class MonoForce(TerrainEncoder):
         if xyz_qs_init is None:
             xyz_qs_init = torch.zeros(N, 7, device=self.device)
             xyz_qs_init[:, 3] = 1.0  # set initial quaternion to identity, x, y, z, qw, qx, qy, qz
-        assert len(grid_maps) == len(xyz_qs_init) == N
-        grid_maps = torch.as_tensor(grid_maps, dtype=torch.float32, device=self.device)
-        assert grid_maps.shape[0] == N
+        assert len(grid_maps) == len(xyz_qs_init) == N, f'grid_maps: {len(grid_maps)}, xyz_qs_init: {len(xyz_qs_init)} != N: {N}'
         assert self.controls.shape == (N, T, 8), f'controls shape: {self.controls.shape} != {(N, T, 8)}'
 
         # initial state
@@ -181,23 +173,20 @@ class MonoForce(TerrainEncoder):
 
         # model inference
         terrain = self.terrain_encoder(*inputs)
-        elevation, friction = terrain['terrain'], terrain['friction']
-        self._logger.info('Predicted height map shape: %s' % str(elevation.shape))
+        self._logger.info('Predicted height map shape: %s' % str(terrain['terrain'].shape))
 
-        # publish terrain as grid map
+        # publish terrain as a grid map
         stamp = msgs[0].header.stamp
-        elevation = elevation.squeeze().cpu().numpy()
-        friction = friction.squeeze().cpu().numpy()
-        gridmap_msg = terrain_to_gridmap_msg(layers=[elevation, friction], layer_names=['elevation', 'friction'],
+        gridmap_msg = terrain_to_gridmap_msg(layers=[layer.squeeze().cpu().numpy() for layer in terrain.values()],
+                                             layer_names=list(terrain.keys()),
                                           grid_res=self.world_config.grid_res)
         gridmap_msg.header.stamp = stamp
         gridmap_msg.header.frame_id = self.robot_frame
         self.gridmap_pub.publish(gridmap_msg)
 
         # predict path
-        elevations = np.repeat(elevation[None], self.physics_config.num_robots, axis=0)
         t0 = time()
-        xyz_qs, path_costs = self.predict_paths(elevations)
+        xyz_qs, path_costs = self.predict_paths(terrain['terrain'].squeeze(1).repeat(self.physics_config.num_robots, 1, 1))
         self._logger.info('Predicted paths time: %.3f sec' % (time() - t0))
         self._logger.debug('Predicted paths shape: %s' % str(xyz_qs.shape))
         self._logger.debug('Predicted path costs shape: %s' % str(path_costs.shape))
