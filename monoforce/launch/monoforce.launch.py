@@ -21,7 +21,6 @@ def generate_launch_description():
                                            '/camera_rear/image_color/camera_info'],
                     'robot_frame': 'base_link',
                     'fixed_frame': 'odom',
-                    'use_sim_time': True
                 }
             ])
     ])

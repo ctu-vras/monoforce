@@ -27,7 +27,7 @@ def generate_launch_description():
 
         # Delay terrain_encoder_node to ensure TF is being published
         TimerAction(
-            period=10.0,  # seconds delay: for bag file to start
+            period=10.0,  # seconds delay: for a bag file to start
             actions=[
                 Node(
                     package='monoforce',
