@@ -1,0 +1,9 @@
+<launch>
+  <arg name="world" default="terrain"/>
+  <arg name="world_sdf" default="$(find-pkg-share monoforce_gazebo)/worlds/$(var world).sdf"/>
+  <arg name="gz_gui" default="true" />
+
+  <gz_server world_sdf_file="$(var world_sdf)" container_name="gazebo" create_own_container="True" use_composition="True"/>
+
+  <executable cmd="gz sim -g -v4" name="gazebo_gui" output="screen" if="$(var gz_gui)"/>
+</launch>
