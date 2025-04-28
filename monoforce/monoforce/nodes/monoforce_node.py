@@ -6,8 +6,6 @@ from collections import deque
 from time import time
 
 import rclpy
-from rclpy.impl.logging_severity import LoggingSeverity
-
 from sensor_msgs.msg import CameraInfo, CompressedImage
 from visualization_msgs.msg import MarkerArray
 from std_msgs.msg import Float32MultiArray
@@ -32,7 +30,6 @@ class MonoForce(TerrainEncoder):
         self.declare_parameter('traj_sim_time', 5.0)
         self.declare_parameter('grid_res', 0.1)
         self.declare_parameter('max_coord', 6.4)
-        self._logger.set_level(LoggingSeverity.DEBUG)
 
         self.robot_config = RobotModelConfig()
         max_coord = self.get_parameter('max_coord').value
@@ -166,14 +163,19 @@ class MonoForce(TerrainEncoder):
             assert msgs[i].header.frame_id == msgs[i + n // 2].header.frame_id, \
                 'Image and CameraInfo messages must have the same frame_id'
         # preprocessing
+        t0 = time()
         img_msgs = msgs[:n // 2]
         info_msgs = msgs[n // 2:]
         inputs = self.get_lss_inputs(img_msgs, info_msgs)
         inputs = [i.to(self.device) for i in inputs]
+        self._logger.debug(f'Preprocessing took {time() - t0:.3f} sec')
+        self._logger.debug(f'Preprocessed image shape {inputs[0].shape}')
 
         # model inference
+        t1 = time()
         terrain = self.terrain_encoder(*inputs)
-        self._logger.info('Predicted height map shape: %s' % str(terrain['terrain'].shape))
+        self._logger.info(f'Terrain prediction took {time() - t1:.3f} sec')
+        self._logger.info(f'Predicted height map shape: {terrain['terrain'].shape}')
 
         # publish terrain as a grid map
         stamp = msgs[0].header.stamp

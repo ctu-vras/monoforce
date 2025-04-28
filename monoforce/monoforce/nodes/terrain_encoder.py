@@ -2,7 +2,7 @@
 
 import os
 from copy import copy
-
+from time import time
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
@@ -114,13 +114,18 @@ class TerrainEncoder(Node):
             assert msgs[i].header.frame_id == msgs[i + n // 2].header.frame_id, \
                 'Image and CameraInfo messages must have the same frame_id'
         # preprocessing
+        t0 = time()
         img_msgs = msgs[:n // 2]
         info_msgs = msgs[n // 2:]
         inputs = self.get_lss_inputs(img_msgs, info_msgs)
         inputs = [i.to(self.device) for i in inputs]
+        self._logger.debug(f'Preprocessing took {time() - t0:.3f} sec')
+        self._logger.debug(f'Preprocessed image shape {inputs[0].shape}')
 
         # model inference
+        t1 = time()
         terrain = self.terrain_encoder(*inputs)
+        self._logger.info(f'Terrain prediction took {time() - t1:.3f} sec')
         self._logger.info('Predicted height map shape: %s' % str(terrain['terrain'].shape))
 
         # publish terrain as a grid map
