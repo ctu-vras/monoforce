@@ -30,7 +30,7 @@
   <depend>grid_map_rviz_plugin</depend>
   <depend>grid_map_filters</depend>
   <depend>visualization_msgs</depend>
-  <depend>jsk_rviz_plugin</depend>
+  <depend>jsk_rviz_plugins</depend>
   <depend>rviz_plugin_tutorials</depend>
 
 </package>
