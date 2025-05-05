@@ -3,7 +3,7 @@
 <launch>
   <arg name="rviz" default="true" doc="Launch RViz for data visualization or not"/>
   <arg name="gui" default="false" doc="Launch Gazebo GUI or not"/>
-  <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain_vegetation.world"/>
+  <arg name="world" default="$(find monoforce_gazebo)/worlds/terrain.world"/>
   <arg name="device" default="cuda" doc="Device to run the differentiable physics"/>
   <arg name="robot" default="marv" doc="Robot name"/>
 
@@ -14,30 +14,35 @@
   </include>
 
   <!-- Elevation Mapping -->
-  <include file="$(find monoforce_navigation)/launch/elevation_mapping.launch">
-    <arg name="input" value="points"/>
-    <arg name="output" value="grid_map/terrain"/>
-    <arg name="fixed_frame" value="odom"/>
-  </include>
+<!--   <include file="$(find monoforce_navigation)/launch/elevation_mapping.launch"> -->
+<!--     <arg name="input" value="points"/> -->
+<!--     <arg name="output" value="grid_map/terrain"/> -->
+<!--     <arg name="fixed_frame" value="odom"/> -->
+<!--   </include> -->
+
+  <!-- Elevation Mapping Cupy -->
+  <node pkg="elevation_mapping_cupy" type="elevation_mapping_node" name="elevation_mapping" output="screen">
+    <rosparam command="load" file="$(find monoforce_navigation)/config/elevation_mapping_cupy/core/core_param.yaml"/>
+    <rosparam command="load" file="$(find monoforce_navigation)/config/elevation_mapping_cupy/setups/husky/simple.yaml"/>
+    <remap from="/elevation_mapping/elevation_map_filter" to="/grid_map/terrain"/>
+  </node>
 
   <!-- SLAM -->
-  <include if="0" file="$(find monoforce_navigation)/launch/slam.launch">
-    <arg name="cloud" value="points"/>
-  </include>
-
-  <!-- GT odom from Gazebo -->
-  <node if="0" pkg="monoforce_gazebo" type="robot_gt_pose_to_tf" name="robot_gt_pose_to_tf"/>
+<!--   <include file="$(find monoforce_navigation)/launch/slam.launch"> -->
+<!--     <arg name="cloud" value="points"/> -->
+<!--   </include> -->
 
   <!-- Differentiable Physics -->
-  <include if="1" file="$(find monoforce)/launch/dphysics.launch">
+  <include file="$(find monoforce)/launch/dphysics.launch">
     <arg name="robot" value="$(arg robot)"/>
     <arg name="gridmap_topic" value="grid_map/terrain"/>
-    <arg name="gridmap_layer" value="elevation_inpainted"/>
+<!--     <arg name="gridmap_layer" value="elevation_inpainted"/> -->
+    <arg name="gridmap_layer" value="inpaint"/>
     <arg name="device" value="$(arg device)"/>
   </include>
 
   <!-- Path selector -->
-  <include if="1" file="$(find monoforce_navigation)/launch/path_selector.launch">
+  <include file="$(find monoforce_navigation)/launch/path_selector.launch">
     <arg name="input_paths" value="sampled_paths"/>
     <arg name="input_path_costs" value="path_costs"/>
     <arg name="output_path" value="selected_path"/>
@@ -55,7 +60,7 @@
   </include>
 
   <!-- Path follower -->
-  <include if="1" file="$(find monoforce_navigation)/launch/path_follower.launch">
+  <include file="$(find monoforce_navigation)/launch/path_follower.launch">
     <arg name="path_to_follow" value="selected_path"/>
     <arg name="max_age" value="10.0"/>
 <!--     <arg name="map_frame" value="map"/> -->
