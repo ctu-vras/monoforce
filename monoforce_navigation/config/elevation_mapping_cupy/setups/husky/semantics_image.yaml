@@ -1,5 +1,5 @@
 #### Plugins ########
-plugin_config_file: '$(rospack find elevation_mapping_cupy)/config/setups/turtle_bot/plugin_config.yaml'
+plugin_config_file: '$(rospack find monoforce_navigation)/config/elevation_mapping_cupy/setups/turtle_bot/plugin_config.yaml'
 
 pointcloud_channel_fusions:
   none: 'none'
@@ -35,10 +35,10 @@ subscribers:
 #### Publishers ########
 publishers:
   elevation_map_raw:
-    layers: ['elevation', 'traversability', 'variance','rgb','max_categories', 'pca']
+    layers: ['elevation', 'traversability', 'variance', 'rgb', 'max_categories', 'pca']
     basic_layers: ['elevation']
     fps: 5.0
   elevation_map_filter:
-    layers: ['min_filter', 'smooth', 'inpaint', 'elevation','rgb','max_categories']
+    layers: ['min_filter', 'smooth', 'inpaint', 'elevation', 'rgb', 'max_categories']
     basic_layers: ['min_filter']
     fps: 3.0

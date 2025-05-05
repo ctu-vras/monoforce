@@ -53,7 +53,7 @@ semantic_traversability:
   is_height_layer: False
   layer_name: "semantic_traversability"
   extra_params:
-    layers: ['traversability','robot_centric_elevation']
+    layers: ['traversability', 'robot_centric_elevation']
     thresholds: [0.3,0.5]
     type: ['traversability', 'elevation']
 

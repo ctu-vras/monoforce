@@ -55,7 +55,7 @@ enable_normal_color: false                      # If true, the map contains 'col
 
 #### Traversability filter ########
 use_chainer: false                              # Use chainer as a backend of traversability filter or pytorch. If false, it uses pytorch. pytorch requires ~2GB more GPU memory compared to chainer but runs faster.
-weight_file: '$(rospack find elevation_mapping_cupy)/config/core/weights.dat'               # Weight file for traversability filter
+weight_file: '$(rospack find monoforce_navigation)/config/elevation_mapping_cupy/core/weights.dat'               # Weight file for traversability filter
 
 #### Upper bound ########
 use_only_above_for_upper_bound: false
@@ -69,4 +69,4 @@ initialize_tf_grid_size: 0.5                                        # This is no
 use_initializer_at_start: true                                      # Use initializer when the node starts.
 
 #### Default Plugins ########
-plugin_config_file: '$(rospack find elevation_mapping_cupy)/config/core/plugin_config.yaml'
+plugin_config_file: '$(rospack find monoforce_navigation)/config/elevation_mapping_cupy/core/plugin_config.yaml'

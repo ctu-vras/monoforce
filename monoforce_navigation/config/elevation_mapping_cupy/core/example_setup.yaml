@@ -1,5 +1,5 @@
 #### Plugins ########
-plugin_config_file: '$(rospack find elevation_mapping_cupy)/config/core/plugin_config.yaml'
+plugin_config_file: '$(rospack find monoforce_navigation)/config/elevation_mapping_cupy/core/plugin_config.yaml'
 
 #### Channel Fusions ########
 pointcloud_channel_fusions:
