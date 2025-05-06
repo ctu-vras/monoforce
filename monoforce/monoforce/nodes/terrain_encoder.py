@@ -205,7 +205,7 @@ class TerrainEncoder(Node):
 
     def get_lss_inputs(self, img_msgs, info_msgs):
         """
-        Get inputs for LSS model from image and camera info messages.
+        Get inputs for the LSS model from image and camera info messages.
         """
         assert len(img_msgs) == len(info_msgs)
 
