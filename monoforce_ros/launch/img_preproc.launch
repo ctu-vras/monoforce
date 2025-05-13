@@ -1,0 +1,48 @@
+<launch>
+    <!-- Start the nodelet manager -->
+    <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" />
+
+    <!-- Left camera resizing -->
+    <node pkg="nodelet" type="nodelet" name="img_preproc_left" args="load image_proc/resize nodelet_manager" output="screen">
+        <param name="interpolation" value="nearest"/>
+        <param name="width" value="480"/>
+        <param name="height" value="300"/>
+        <param name="use_scale" value="false"/>
+        <!-- Remap topics -->
+        <remap from="image" to="/camera_left/image_color"/>
+        <remap from="camera_info" to="/camera_left/camera_info"/>
+    </node>
+
+    <!-- Front camera resizing -->
+    <node pkg="nodelet" type="nodelet" name="img_preproc_front" args="load image_proc/resize nodelet_manager" output="screen">
+        <param name="interpolation" value="nearest"/>
+        <param name="width" value="480"/>
+        <param name="height" value="300"/>
+        <param name="use_scale" value="false"/>
+        <!-- Remap topics -->
+        <remap from="image" to="/camera_front/image_color"/>
+        <remap from="camera_info" to="/camera_front/camera_info"/>
+    </node>
+
+    <!-- Right camera resizing -->
+    <node pkg="nodelet" type="nodelet" name="img_preproc_right" args="load image_proc/resize nodelet_manager" output="screen">
+        <param name="interpolation" value="nearest"/>
+        <param name="width" value="480"/>
+        <param name="height" value="300"/>
+        <param name="use_scale" value="false"/>
+        <!-- Remap topics -->
+        <remap from="image" to="/camera_right/image_color"/>
+        <remap from="camera_info" to="/camera_right/camera_info"/>
+    </node>
+
+    <!-- Rear camera resizing -->
+    <node pkg="nodelet" type="nodelet" name="img_preproc_rear" args="load image_proc/resize nodelet_manager" output="screen">
+        <param name="interpolation" value="nearest"/>
+        <param name="width" value="480"/>
+        <param name="height" value="300"/>
+        <param name="use_scale" value="false"/>
+        <!-- Remap topics -->
+        <remap from="image" to="/camera_rear/image_color"/>
+        <remap from="camera_info" to="/camera_rear/camera_info"/>
+    </node>
+</launch>

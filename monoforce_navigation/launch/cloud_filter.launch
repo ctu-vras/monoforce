@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="nodelet_manager" default=""/>
+    <arg name="nodelet_action" default="$(eval 'load' if nodelet_manager.strip() else 'standalone')"/>
+    <arg name="input" default="cloud"/>
+    <arg name="output" default="filtered_cloud"/>
+    <arg name="min_depth" default="0.0"/>
+    <arg name="max_depth" default="25.0"/>
+    <arg name="grid_res" default="0.1"/>
+
+    <node name="cloud_range_filter_max" pkg="nodelet" type="nodelet"
+          args="$(arg nodelet_action) cloud_proc/range_filter $(arg nodelet_manager)"
+          respawn="true" respawn_delay="1.0" output="log">
+        <rosparam subst_value="true">
+            field: x
+            min: $(arg min_depth)
+            max: $(arg max_depth)
+        </rosparam>
+        <remap from="input" to="$(arg input)"/>
+        <remap from="output" to="$(arg input)_in_range"/>
+    </node>
+
+    <node name="cloud_voxel_filter_max" pkg="nodelet" type="nodelet"
+          args="$(arg nodelet_action) cloud_proc/voxel_filter $(arg nodelet_manager)"
+          respawn="true" respawn_delay="1.0" output="log">
+        <rosparam subst_value="true">
+            field: x
+            grid: $(arg grid_res)
+            zero_valid: false
+        </rosparam>
+        <remap from="input" to="$(arg input)_in_range"/>
+        <remap from="output" to="$(arg output)"/>
+    </node>
+
+</launch>

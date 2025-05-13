@@ -1,0 +1,16 @@
+material RepeatedGrass/Diffuse
+{
+  receive_shadows off
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        // Relative to the location of the material script
+        texture Grass.png
+        // Repeat the texture over the surface (4 per face)
+      }
+    }
+  }
+}

@@ -20,10 +20,6 @@ import matplotlib.pyplot as plt
 import argparse
 
 
-np.random.seed(42)
-torch.manual_seed(42)
-
-
 def arg_parser():
     parser = argparse.ArgumentParser(description='Train MonoForce model')
     parser.add_argument('--model', type=str, default='lss', help='Model to train: lss')

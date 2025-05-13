@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="cmd_vel" default="cmd_vel"
+         doc="Topic to which to publish velocity commands."/>
+    <arg name="path_to_follow" default="path"
+         doc="Path topic to follow."/>
+    <arg name="points" default="points_slow_filtered"/>
+    <arg name="keep_path" default="2."/>
+    <arg name="map_frame" default="map"/>
+    <arg name="odom_frame" default="odom"/>
+    <arg name="robot_frame" default="base_link"/>
+    <arg name="max_age" default="1.0"/>
+    <arg name="obstacle_avoidance" default="false"/>
+    <arg name="local_goal_dims" default="'xy'"/>
+    <arg name="goal_reached_dist" default="0.3"/>
+    <arg name="look_ahead" default="0.8"/>
+
+    <node name="path_follower" pkg="monoforce_navigation" type="path_follower"
+          respawn="true" respawn_delay="1.0" output="screen">
+
+        <rosparam subst_value="true">
+            map_frame: $(arg map_frame)
+            odom_frame: $(arg odom_frame)
+            robot_frame: $(arg robot_frame)
+            control_freq: 10.0
+            goal_reached_dist: $(arg goal_reached_dist)
+            goal_reached_angle: Inf
+            use_path_theta: none
+            max_age: $(arg max_age)
+            obstacle_avoidance: $(arg obstacle_avoidance)
+            <!--
+            Max. path distances, tail is consumed first by reached goals.
+            A higher value is used in the beginning to traverse across
+            unobserved area around robot.
+            -->
+            max_path_dist: [2.0, 2.5, 2.5, 2.5]
+            look_ahead: $(arg look_ahead)
+            max_speed: 0.5
+            allow_backward: true
+            max_force_through_speed: 0.2
+            max_angular_rate: 0.3
+            keep_path: $(arg keep_path)
+            keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
+            show_clearance_pos: [-2, 2]
+            min_points_obstacle: 3
+            local_goal_dims: $(arg local_goal_dims)
+            force_through_after: 10.
+        </rosparam>
+
+        <!-- Inputs -->
+        <remap from="path" to="$(arg path_to_follow)"/>
+        <remap from="cloud" to="$(arg points)"/>
+
+        <!-- Outputs -->
+        <remap from="clearance" to="clearance"/>
+        <remap from="cmd_vel" to="$(arg cmd_vel)"/>
+    </node>
+</launch>

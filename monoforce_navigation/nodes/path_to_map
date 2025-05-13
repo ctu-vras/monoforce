@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+
+import rospy
+from nav_msgs.msg import Path
+from geometry_msgs.msg import PoseStamped
+import tf2_ros
+from tf.transformations import quaternion_from_matrix
+from ros_numpy import msgify, numpify
+
+
+def to_pose_stamped(pose, frame_id=None, stamp=None):
+    """
+    Convert a pose to a PoseStamped message
+    :param pose: 3D pose as a 4x4 matrix
+    :param frame_id: frame id of the pose
+    :param stamp: time stamp of the pose
+    :return: geometry_msgs/PoseStamped message
+    """
+    pose_stamped = PoseStamped()
+    if frame_id is not None:
+        pose_stamped.header.frame_id = frame_id
+    if stamp is not None:
+        pose_stamped.header.stamp = stamp
+    pose_stamped.pose.position.x = pose[0, 3]
+    pose_stamped.pose.position.y = pose[1, 3]
+    pose_stamped.pose.position.z = pose[2, 3]
+    q = quaternion_from_matrix(pose)
+    pose_stamped.pose.orientation.x = q[0]
+    pose_stamped.pose.orientation.y = q[1]
+    pose_stamped.pose.orientation.z = q[2]
+    pose_stamped.pose.orientation.w = q[3]
+    return pose_stamped
+
+def transform_path(path, transform):
+    """
+    Transform a path using a TransformStamped message
+    :param path: nav_msgs/Path message
+    :param transform: geometry_msgs/TransformStamped message
+    """
+    pose_tf = numpify(transform.transform)
+    for i in range(len(path.poses)):
+        pose0 = numpify(path.poses[i].pose).copy()
+        pose = pose_tf @ pose0
+        path.poses[i] = to_pose_stamped(pose)
+    return path
+
+class Path2Map(object):
+    def __init__(self):
+        self.input = rospy.get_param('~input', 'path')
+        self.output = rospy.get_param('~output', 'path_map')
+        self.map_frame = rospy.get_param('~map_frame', 'map')
+        self.robot_frame = rospy.get_param('~robot_frame', 'base_link')
+        self.path_pub = rospy.Publisher(name=self.output, data_class=Path, queue_size=1)
+        self.tf = tf2_ros.Buffer()
+        self.tf_sub = tf2_ros.TransformListener(self.tf)
+        self.path_sub = rospy.Subscriber(self.input, Path, self.plan)
+
+    def get_robot_pose(self, target_frame):
+        tf = self.tf.lookup_transform(target_frame, self.robot_frame, rospy.Time.now(), timeout=rospy.Duration(0.5))
+        return tf
+
+    def plan(self, path_input):
+        rospy.loginfo('Received path')
+        # transform path to map frame
+        try:
+            transform = self.get_robot_pose(self.map_frame)
+        except tf2_ros.LookupException as ex:
+            rospy.logwarn(f'No transform from {self.robot_frame} to {self.map_frame} due to {ex}')
+            return
+        rospy.loginfo('Publishing path')
+        path_output = transform_path(path_input, transform)
+        path_output.header.stamp = path_input.header.stamp
+        path_output.header.frame_id = self.map_frame
+        self.path_pub.publish(path_output)
+
+
+def main():
+    rospy.init_node('path_to_map', anonymous=True)
+    node = Path2Map()
+    rospy.spin()
+
+
+if __name__ == "__main__":
+    main()
