@@ -155,10 +155,8 @@ class BevEncode(nn.Module):
         x_geom = self.up_geom(x)
         x_diff = self.up_diff(x)
         x_friction = self.up_friction(x)
-        x_terrain = x_geom - x_diff
         out = {
             'geom': x_geom,
-            'terrain': x_terrain,
             'diff': x_diff,
             'friction': x_friction
         }
