@@ -25,7 +25,6 @@ def arg_parser():
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
     parser.add_argument('--terrain_encoder', type=str, default='lss', help='Terrain encoder model')
     parser.add_argument('--terrain_encoder_path', type=str, default=None, help='Path to the LSS model')
-    parser.add_argument('--traj_predictor', type=str, default='dphysics', help='Trajectory predictor model')
     parser.add_argument('--vis', type=str2bool, default=False, help='Visualize the results')
     return parser.parse_args()
 
@@ -35,8 +34,7 @@ class Eval:
                  seq='val',
                  batch_size=1,
                  terrain_encoder='lss',
-                 terrain_encoder_path=None,
-                 traj_predictor='dphysics'):
+                 terrain_encoder_path=None):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # load DPhys config
@@ -47,7 +45,7 @@ class Eval:
             robot = 'marv'
         print(f'Robot: {robot}')
         self.dphys_cfg = DPhysConfig(robot=robot)
-        self.traj_predictor = self.get_traj_pred(model=traj_predictor)
+        self.physics_engine = self.get_physics_engine()
 
         # load LSS config
         self.lss_config = read_yaml(os.path.join('..', 'config/lss_cfg.yaml'))
@@ -59,7 +57,7 @@ class Eval:
         # output folder to write evaluation results
         self.output_folder = (f'./gen/eval_{os.path.basename(seq)}/'
                               f'{robot}_{self.terrain_encoder.__class__.__name__}_'
-                              f'{self.traj_predictor.__class__.__name__}')
+                              f'{self.physics_engine.__class__.__name__}')
 
     def get_terrain_encoder(self, path, model='lss'):
         if model == 'lss':
@@ -81,23 +79,29 @@ class Eval:
             raise ValueError(f'Invalid terrain encoder model: {model}. Supported: LiftSplatShoot')
         return terrain
 
-    def get_traj_pred(self, model='dphysics'):
-        if model == 'dphysics':
-            traj_predictor = DPhysics(self.dphys_cfg, device=self.device)
-        else:
-            raise ValueError(f'Invalid trajectory predictor model: {model}. Supported: dphysics')
+    def get_physics_engine(self):
+        traj_predictor = DPhysics(self.dphys_cfg, device=self.device)
         traj_predictor.to(self.device)
         traj_predictor.eval()
         return traj_predictor
 
     def predict_states(self, terrain, batch):
-        model = self.traj_predictor.__class__.__name__
+        model = self.physics_engine.__class__.__name__
         if model == 'DPhysics':
-            Xs, Xds, Rs, Omegas = batch[12:16]
-            controls = batch[9]
+            (imgs, rots, trans, intrins, post_rots, post_trans,
+             hm_geom, hm_terrain,
+             control_ts, controls,
+             pose0,
+             traj_ts, Xs, Xds, Rs, Omegas) = batch
             state0 = tuple([s[:, 0] for s in [Xs, Xds, Rs, Omegas]])
+
+            # construct terrain heightmap: terrain = geom[lidar] - diff
+            lidar_mask = hm_geom[:, 1:2].bool()
+            terrain['geom'][lidar_mask] = hm_geom[:, 0:1][lidar_mask]
+            terrain['terrain'] = terrain['geom'] - terrain['diff']
+
             height, friction = terrain['terrain'], terrain['friction']
-            states_pred, _ = self.traj_predictor(z_grid=height.squeeze(1), state=state0,
+            states_pred, _ = self.physics_engine(z_grid=height.squeeze(1), state=state0,
                                                  controls=controls, friction=friction.squeeze(1))
         else:
             raise ValueError(f'Invalid model: {model}. Supported: DPhysics')
@@ -139,11 +143,18 @@ class Eval:
 
             # terrain prediction
             terrain = self.predict_terrain(batch)
-            H_t_pred, H_g_pred, H_diff_pred, Friction_pred = terrain['terrain'], terrain['geom'], terrain['diff'], \
-            terrain['friction']
+            H_g_pred, H_diff_pred, Friction_pred = terrain['geom'], terrain['diff'], terrain['friction']
 
-            # terrain and geom heightmap losses
+            # geom heightmap loss
             loss_geom = hm_loss(height_pred=H_g_pred[:, 0], height_gt=hm_geom[:, 0], weights=hm_geom[:, 1])
+
+            # construct terrain heightmap: terrain = geom[lidar] - diff
+            lidar_mask = hm_geom[:, 1:2].bool()
+            terrain['geom'][lidar_mask] = hm_geom[:, 0:1][lidar_mask]
+            terrain['terrain'] = terrain['geom'] - terrain['diff']
+            H_t_pred = terrain['terrain']
+
+            # terrain heightmap loss
             loss_terrain = hm_loss(height_pred=H_t_pred[:, 0], height_gt=hm_terrain[:, 0], weights=hm_terrain[:, 1])
 
             # trajectory prediction loss: xyz and rotation
@@ -272,8 +283,7 @@ def main():
     monoforce = Eval(seq=args.seq,
                      batch_size=args.batch_size,
                      terrain_encoder=args.terrain_encoder,
-                     terrain_encoder_path=args.terrain_encoder_path,
-                     traj_predictor=args.traj_predictor)
+                     terrain_encoder_path=args.terrain_encoder_path)
     monoforce.run(vis=args.vis)
 
 

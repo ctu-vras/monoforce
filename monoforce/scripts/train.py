@@ -89,7 +89,7 @@ class Trainer:
         self.phys_weight = phys_weight
 
         # models and optimizer
-        self.dphysics = DPhysics(dphys_cfg, device=self.device)
+        self.physics_engine = DPhysics(dphys_cfg, device=self.device)
 
         # coarser grid resolution for dphysics: average pooling of terrain encoder grid
         self.dphys_grid_res = self.dphys_cfg.grid_res
@@ -273,9 +273,9 @@ class Trainer:
         omega0 = torch.zeros_like(xd0)
         state0 = (x0, xd0, R0, omega0)
         # predict states
-        states_pred, _ = self.dphysics(z_grid=terrain_['terrain'].squeeze(1), state=state0,
-                                       controls=controls.to(self.device),
-                                       friction=terrain_['friction'].squeeze(1))
+        states_pred, _ = self.physics_engine(z_grid=terrain_['terrain'].squeeze(1), state=state0,
+                                             controls=controls.to(self.device),
+                                             friction=terrain_['friction'].squeeze(1))
         return states_pred
 
     @torch.no_grad()
