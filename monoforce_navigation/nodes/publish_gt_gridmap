@@ -1,0 +1,260 @@
+#!/usr/bin/env python
+
+import os
+import open3d as o3d
+from numpy.lib.recfunctions import unstructured_to_structured
+import rospy
+from geometry_msgs.msg import Point, Quaternion
+from grid_map_msgs.msg import GridMap
+from sensor_msgs.msg import PointCloud2
+import numpy as np
+from ros_numpy import msgify, numpify
+import tf2_ros
+from timeit import default_timer as timer
+from std_msgs.msg import Float32MultiArray, MultiArrayDimension
+from visualization_msgs.msg import Marker
+from scipy.interpolate import griddata
+from scipy.ndimage import rotate
+
+
+def position(cloud):
+    assert cloud.dtype.names is not None
+    return np.stack([cloud['x'], cloud['y'], cloud['z']], axis=1)
+
+def transform_cloud(cloud, Tr):
+    assert isinstance(cloud, np.ndarray)
+    assert isinstance(Tr, np.ndarray)
+    if isinstance(cloud, np.ndarray) and cloud.dtype.names is not None:
+        points = position(cloud)
+        points = transform_cloud(points, Tr)
+        cloud = cloud.copy()
+        cloud['x'] = points[:, 0]
+        cloud['y'] = points[:, 1]
+        cloud['z'] = points[:, 2]
+        return cloud
+    assert cloud.ndim == 2
+    assert cloud.shape[1] == 3  # (N, 3)
+    cloud_tr = Tr[:3, :3] @ cloud.T + Tr[:3, 3:]
+    return cloud_tr.T
+
+
+def dae_mesh_to_marker(dae_path, xyz=None, q=None, scale=None, rgba=None):
+    if rgba is None:
+        rgba = [1., 1., 1., 1.]
+    if scale is None:
+        scale = [1., 1., 1.]
+    if q is None:
+        q = [0., 0., 0., 1.]
+    if xyz is None:
+        xyz = [0., 0., 0.]
+    mesh_msg = Marker()
+    mesh_msg.ns = "world_ns"
+    mesh_msg.id = 0
+    mesh_msg.action = Marker.ADD
+    mesh_msg.pose.position.x = xyz[0]
+    mesh_msg.pose.position.y = xyz[1]
+    mesh_msg.pose.position.z = xyz[2]
+    mesh_msg.pose.orientation.x = q[0]
+    mesh_msg.pose.orientation.y = q[1]
+    mesh_msg.pose.orientation.z = q[2]
+    mesh_msg.pose.orientation.w = q[3]
+    mesh_msg.scale.x = scale[0]
+    mesh_msg.scale.y = scale[1]
+    mesh_msg.scale.z = scale[2]
+    mesh_msg.color.a = rgba[3]
+    mesh_msg.color.r = rgba[0]
+    mesh_msg.color.g = rgba[1]
+    mesh_msg.color.b = rgba[2]
+    mesh_msg.type = Marker.MESH_RESOURCE
+    mesh_msg.mesh_resource = dae_path
+    return mesh_msg
+
+
+def height_map_to_gridmap_msg(height, grid_res,
+                              xyz=np.array([0, 0, 0]), q=np.array([0., 0., 0., 1.])):
+    assert isinstance(height, np.ndarray)
+    assert height.ndim == 2
+
+    H, W = height.shape
+    # rotate height map
+    height = rotate(height, 180)
+
+    map = GridMap()
+    map.info.resolution = grid_res
+    map.info.length_x = W * grid_res
+    map.info.length_y = H * grid_res
+    map.info.pose.position = msgify(Point, xyz)
+    map.info.pose.orientation = msgify(Quaternion, q)
+
+    map.layers.append('elevation')
+
+    height_array = Float32MultiArray()
+    height_array.layout.dim.append(MultiArrayDimension())
+    height_array.layout.dim.append(MultiArrayDimension())
+    height_array.layout.dim[0].label = 'column_index'
+    height_array.layout.dim[0].size = H
+    height_array.layout.dim[0].stride = H * W
+    height_array.layout.dim[1].label = 'row_index'
+    height_array.layout.dim[1].size = W
+    height_array.layout.dim[1].stride = W
+    height_array.data = height.ravel().tolist()
+    map.data.append(height_array)
+
+    return map
+
+class GTMapPub:
+    """
+    This ROS node publishes ground truth world (mesh and point clouds).
+
+    :param mesh_file: str, path to the mesh file
+    :param world_frame: str, name of the map frame
+    :param robot_frame: str, name of the robot frame
+    :param rate: float, rate of publishing
+    """
+
+    def __init__(self, mesh_file, world_frame='map', robot_frame='base_link', rate=1.0, dist_max=10.0, grid_res=0.1):
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tl = tf2_ros.TransformListener(self.tf_buffer)
+        self.world_mesh_pub = rospy.Publisher('/world_mesh', Marker, queue_size=1)
+        self.world_cloud_pub = rospy.Publisher('/world_cloud', PointCloud2, queue_size=1)
+        self.local_cloud_pub = rospy.Publisher('/local_cloud', PointCloud2, queue_size=1)
+        self.gridmap_pub = rospy.Publisher('/grid_map/terrain', GridMap, queue_size=1)
+        self.world_frame = world_frame
+        self.robot_frame = robot_frame
+        self.dist_max = dist_max
+        self.grid_res = grid_res
+        self.rate = rate
+
+        # currently supported ground truth meshes of worlds
+        mesh, mesh_cloud, mesh_msg = self.load_world_mesh(mesh_file)
+        self.mesh = mesh
+        self.mesh_cloud = mesh_cloud
+        self.mesh_msg = mesh_msg
+
+        self.world_timer = rospy.Timer(rospy.Duration(1.0), self.publish_world_map)
+        self.local_map_timer = rospy.Timer(rospy.Duration(1.0 / self.rate), self.publish_local_map)
+
+    def load_world_mesh(self, path_to_mesh_file):
+        assert os.path.exists(path_to_mesh_file), f'File {path_to_mesh_file} does not exist'
+        t0 = timer()
+        rospy.loginfo('Loading ground truth mesh ...')
+        mesh = o3d.io.read_triangle_mesh(path_to_mesh_file)
+
+        mesh_verts = np.asarray(mesh.vertices, dtype='float32')
+        assert mesh_verts.shape[1] == 3
+        rospy.loginfo(f'Loaded mesh with verts shape: {mesh_verts.shape} in {(timer() - t0):.3f} [sec]')
+        mesh_cloud = unstructured_to_structured(mesh_verts, names=['x', 'y', 'z'])
+
+        # visualization Marker of gt mesh
+        mesh_msg = dae_mesh_to_marker("package://husky_nav/worlds/meshes/terrain.dae",
+                                      rgba=[0.4, 0.5, 0.6, 0.8])
+        mesh_msg.header.frame_id = self.world_frame
+
+        return mesh, mesh_cloud, mesh_msg
+
+    def get_pose(self, frame, target_frame=None, stamp=None):
+        if target_frame is None:
+            target_frame = self.world_frame
+        if stamp is None:
+            stamp = rospy.Time(0)
+        try:
+            tf = self.tf_buffer.lookup_transform(target_frame, frame, stamp, rospy.Duration(1.0))
+        except Exception as ex:
+            rospy.logerr('Could not transform from %s to %s: %s.', frame, self.world_frame, ex)
+            return None
+        pose = np.array(numpify(tf.transform), dtype=np.float32).reshape((4, 4))
+        rospy.logdebug(f'Got pose of {frame} in {self.world_frame} of shape {pose.shape}')
+        return pose
+
+    def interpolate_cloud(self, cloud):
+        """
+        Interpolates the cloud to a grid with resolution self.grid_res.
+        Size if the grid is 2*self.dist_max x 2*self.dist_max.
+        """
+        points = position(cloud)
+        N = int(self.dist_max / self.grid_res * 2)
+        xi, yi = np.linspace(-self.dist_max, self.dist_max, N), np.linspace(-self.dist_max, self.dist_max, N)
+        xi, yi = np.meshgrid(xi, yi)
+        zi = griddata((points[:, 0], points[:, 1]), points[:, 2], (xi, yi),
+                      method='linear', fill_value=0.0)
+        points_interp = np.stack([xi, yi, zi], axis=-1)
+        points_interp = np.asarray(points_interp, dtype='float32')
+        cloud = unstructured_to_structured(points_interp, names=['x', 'y', 'z'])
+
+        return cloud
+
+    def get_local_cloud(self, robot_pose):
+        assert isinstance(robot_pose, np.ndarray)
+        assert robot_pose.shape == (4, 4)
+        # get local cloud
+        mesh_cloud_robot = transform_cloud(self.mesh_cloud, np.linalg.inv(robot_pose))
+        verts_robot = position(mesh_cloud_robot)
+
+        # filter points in a square
+        verts_mask = np.logical_and(np.abs(verts_robot[:, 0]) <= self.dist_max,
+                                    np.abs(verts_robot[:, 1]) <= self.dist_max)
+
+        cloud = mesh_cloud_robot[verts_mask]
+
+        # interpolate cloud
+        cloud = self.interpolate_cloud(cloud)
+
+        return cloud
+
+    def publish_world_map(self, event):
+        # publish ground truth mesh
+        stamp = rospy.Time.now()
+        self.mesh_msg.header.stamp = stamp
+        self.world_mesh_pub.publish(self.mesh_msg)
+
+        # publish ground truth cloud
+        map_cloud_msg = msgify(PointCloud2, self.mesh_cloud, frame_id=self.world_frame)
+        map_cloud_msg.header.stamp = stamp
+        self.world_cloud_pub.publish(map_cloud_msg)
+
+        rospy.logdebug('Publishing world ground truth mesh and cloud')
+
+    def publish_local_map(self, event):
+        # get robot pose
+        stamp = rospy.Time.now()
+        robot_pose = self.get_pose(self.robot_frame, target_frame=self.world_frame, stamp=stamp)
+        if robot_pose is None:
+            rospy.logwarn('Could not get robot pose, skipping local map publishing')
+            return
+
+        # get local cloud
+        local_cloud = self.get_local_cloud(robot_pose)
+        local_cloud_msg = msgify(PointCloud2, local_cloud, frame_id=self.robot_frame)
+        local_cloud_msg.header.stamp = stamp
+        self.local_cloud_pub.publish(local_cloud_msg)
+
+        height = local_cloud['z']
+        rospy.logdebug(f'Heightmap shape: {height.shape}')
+        grid_map_msg = height_map_to_gridmap_msg(height, self.grid_res)
+        grid_map_msg.info.header.stamp = stamp
+        grid_map_msg.info.header.frame_id = self.robot_frame
+        self.gridmap_pub.publish(grid_map_msg)
+
+        rospy.logdebug('Publishing local cloud sampled from ground truth map')
+
+    def spin(self):
+        try:
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
+
+
+if __name__ == '__main__':
+    rospy.init_node('ground_truth_world_publisher', log_level=rospy.INFO)
+
+    path_to_mesh_file = rospy.get_param('~world_mesh')
+    rospy.loginfo(f'Path to mesh file: {path_to_mesh_file}')
+    assert os.path.exists(path_to_mesh_file), f'File {path_to_mesh_file} does not exist'
+    world_frame = rospy.get_param('~world_frame', 'map')
+    robot_frame = rospy.get_param('~robot_frame', 'base_link')
+    rate = rospy.get_param('~rate', 1.0)
+    dist_max = rospy.get_param('~dist_max', 10.0)
+
+    proc = GTMapPub(path_to_mesh_file, world_frame, robot_frame, rate, dist_max)
+    rospy.loginfo('Ground truth publisher node is initialized.')
+    proc.spin()

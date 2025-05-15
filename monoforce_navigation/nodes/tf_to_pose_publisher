@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+import rospy
+from geometry_msgs.msg import PoseWithCovarianceStamped
+import tf2_ros
+
+
+class TFToPosePublisher:
+    def __init__(self):
+        self.from_frame = rospy.get_param("~from_frame")
+        self.to_frame = rospy.get_param("~to_frame")
+        self.pose_name = str(self.to_frame) + "_pose"
+        self.publisher = rospy.Publisher(self.pose_name, PoseWithCovarianceStamped, queue_size=10)
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        rospy.Timer(rospy.Duration(0.05), self.callback)
+
+    def callback(self, event):
+        """Listens to a transform between from_frame and to_frame and publishes it
+           as a pose with a zero covariance."""
+
+        # Listen to transform and throw exception if the transform is not available.
+        stamp = rospy.Time(0)
+        try:
+            tf = self.tf_buffer.lookup_transform(target_frame=self.to_frame, source_frame=self.from_frame,
+                                                 time=stamp, timeout=rospy.Duration(1.0))
+        except Exception as ex:
+            rospy.logerr('Could not transform from %s to %s: %s.', self.from_frame, self.to_frame, ex)
+            return None
+
+        # Create and fill pose message for publishing
+        pose = PoseWithCovarianceStamped()
+        pose.header.stamp = rospy.Time(0)
+        pose.header.frame_id = self.from_frame
+        pose.pose.pose.position.x = tf.transform.translation.x
+        pose.pose.pose.position.y = tf.transform.translation.y
+        pose.pose.pose.position.z = tf.transform.translation.z
+        pose.pose.pose.orientation.x = tf.transform.rotation.x
+        pose.pose.pose.orientation.y = tf.transform.rotation.y
+        pose.pose.pose.orientation.z = tf.transform.rotation.z
+        pose.pose.pose.orientation.w = tf.transform.rotation.w
+
+        # Since tf transforms do not have a covariance, pose is filled with
+        # a zero covariance.
+        pose.pose.covariance = [0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0]
+        # Publish the pose
+        self.publisher.publish(pose)
+
+
+if __name__ == '__main__':
+    try:
+        rospy.init_node('tf_to_pose_publisher')
+        tf_to_pose_publisher = TFToPosePublisher()
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass

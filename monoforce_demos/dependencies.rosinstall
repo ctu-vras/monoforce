@@ -1,0 +1,12 @@
+- git:
+    local-name: elevation_mapping
+    uri: https://github.com/ANYbotics/elevation_mapping.git
+    version: master
+- git:
+    local-name: cloud_proc
+    uri: https://github.com/ctu-vras/cloud_proc.git
+    version: master
+- git:
+    local-name: elevation_mapping_cupy
+    uri: https://github.com/leggedrobotics/elevation_mapping_cupy.git
+    version: main

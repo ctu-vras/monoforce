@@ -1,0 +1,632 @@
+#!/usr/bin/env python
+"""
+Simple path follower.
+
+Always acts on the last received plan.
+An empty plan means no action (stopping the robot).
+"""
+from __future__ import absolute_import, division, print_function
+from geometry_msgs.msg import (
+    Point,
+    Pose,
+    PoseStamped,
+    Transform,
+    TransformStamped,
+    Twist,
+    Vector3
+)
+from nav_msgs.msg import Path
+import numpy as np
+import rospy
+from ros_numpy import msgify, numpify
+from scipy.spatial import cKDTree
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import ColorRGBA
+import tf2_ros
+from threading import RLock
+from timeit import default_timer as timer
+from visualization_msgs.msg import Marker, MarkerArray
+from tf.transformations import euler_from_matrix
+
+np.set_printoptions(precision=2)
+
+
+def slots(msg):
+    """Return message attributes (slots) as list."""
+    return [getattr(msg, var) for var in msg.__slots__]
+
+
+def tf_to_pose(tf):
+    # tf = Transform()
+    pose = Pose()
+    pose.position.x = tf.translation.x
+    pose.position.y = tf.translation.y
+    pose.position.z = tf.translation.z
+    pose.orientation = tf.rotation
+    return pose
+
+
+def tf_to_pose_stamped(tf):
+    tf = TransformStamped()
+    pose = PoseStamped()
+    pose.header = tf.header
+    pose.pose = tf_to_pose(tf.transform)
+    return pose
+
+
+def p2e(xh):
+    x = xh[:-1, :]
+    return x
+
+
+def e2p(x):
+    xh = np.concatenate((x, np.ones((1, x.shape[1]))))
+    return xh
+
+
+class PathFollower(object):
+    def __init__(self):
+        self.obstacle_avoidance = rospy.get_param('~obstacle_avoidance', True)
+        self.map_frame = rospy.get_param('~map_frame', 'map')
+        self.odom_frame = rospy.get_param('~odom_frame', 'odom')            # No-wait frame
+        self.robot_frame = rospy.get_param('~robot_frame', 'base_footprint')
+        self.control_freq = rospy.get_param('~control_freq', 10.0)
+        assert 1.0 < self.control_freq < 25.0
+        self.local_goal_dims = rospy.get_param('~local_goal_dims', 'xy')
+        assert self.local_goal_dims in ('xy', 'xyz')
+        self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)
+        self.goal_reached_angle = float(rospy.get_param('~goal_reached_angle', 0.2))
+        self.use_path_theta = rospy.get_param('~use_path_theta', 'last')
+        assert self.use_path_theta in ('none', 'last', 'all')
+        self.max_age = rospy.get_param('~max_age', 1.0)
+        self.max_path_dist = rospy.get_param('~max_path_dist', 0.5)
+        if isinstance(self.max_path_dist, list):
+            assert len(self.max_path_dist) > 0
+            self.max_path_dists = self.max_path_dist
+            self.max_path_dist = self.max_path_dists.pop()
+        else:
+            self.max_path_dists = []
+        self.look_ahead = rospy.get_param('~look_ahead', 1.)
+        self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
+        self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
+        self.turn_on_spot_angle = rospy.get_param('~turn_on_spot_angle', np.pi / 6)
+        self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
+        self.max_roll = rospy.get_param('~max_roll', 0.7)  # rad
+        self.max_pitch = rospy.get_param('~max_pitch', 0.7)  # rad
+        self.keep_path = rospy.get_param('~keep_path', 30.0)
+        self.increasing_waypoint_index = rospy.get_param('~increasing_waypoint_index', True)
+        # Keep only points inside a box for clearance check.
+        keep_cloud_box = rospy.get_param('~keep_cloud_box', [[-4.0, 4.0],
+                                                             [-4.0, 4.0],
+                                                             [-4.0, 4.0]])
+        self.keep_cloud_box = np.array(keep_cloud_box)
+        clearance_box = rospy.get_param('~clearance_box', [[-0.6, 0.6],
+                                                           [-0.5, 0.5],
+                                                           [ 0.0, 0.8]])
+        self.clearance_box = np.array(clearance_box)
+        self.show_clearance = rospy.get_param('~show_clearance_pos', [-10, 10])
+        self.min_points_obstacle = rospy.get_param('~min_points_obstacle', 1)
+        self.force_through_after = rospy.get_param('~force_through_after', 15.)
+        self.allow_backward = rospy.get_param('~allow_backward', True)
+        self.backtrack_after = rospy.get_param('~backtrack_after', np.inf)
+
+        self.path_lock = RLock()
+        self.path_msg = None  # Path message
+        self.path_received_time = None
+        self.path_costs = None
+        self.next_path_msg = None  # Subsequent path to be used after reaching goal.
+        self.path = None  # n-by-3 path position array
+        self.path_x_index = None  # Index of above
+        # Waypoint index (into the path)
+        self.waypoint_index = None
+        self.path_traversed = []
+        self.stuck_since = None
+        self.idle_since = None
+
+        self.cloud_lock = RLock()
+        self.cloud_msg = None
+        self.cloud = None  # n-by-3 cloud position array
+        self.cloud_x_index = None  # Index of above
+
+        self.cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=2)
+
+        self.tf = tf2_ros.Buffer()
+        self.tf_sub = tf2_ros.TransformListener(self.tf)
+
+        self.path_pub = rospy.Publisher('control_path', Path, queue_size=2)
+        self.markers_pub = rospy.Publisher('~markers', MarkerArray, queue_size=2)
+        self.path_sub = rospy.Subscriber('path', Path, self.path_received, queue_size=2)
+        self.cloud_sub = rospy.Subscriber('cloud', PointCloud2, self.cloud_received, queue_size=2)
+        self.timer = rospy.Timer(rospy.Duration(1. / self.control_freq), self.control)
+
+    def lookup_transform(self, target_frame, source_frame, time,
+                         no_wait_frame=None, timeout=0.0):
+
+        timeout = rospy.Duration.from_sec(timeout)
+        if no_wait_frame is None or no_wait_frame == target_frame:
+            tf_s2t = self.tf.lookup_transform(target_frame, source_frame, time, timeout=timeout)
+            return tf_s2t
+
+        # Try to get exact transform from no-wait frame to target if available.
+        # If not, use most recent transform.
+        dont_wait = rospy.Duration.from_sec(0.0)
+        try:
+            tf_n2t = self.tf.lookup_transform(target_frame, self.odom_frame, time, timeout=dont_wait)
+        except tf2_ros.TransformException as ex:
+            tf_n2t = self.tf.lookup_transform(target_frame, self.odom_frame, rospy.Time(0))
+
+        # Get the exact transform from source to no-wait frame.
+        tf_s2n = self.tf.lookup_transform(self.odom_frame, source_frame, time, timeout=timeout)
+
+        tf_s2t = TransformStamped()
+        tf_s2t.header.frame_id = target_frame
+        tf_s2t.header.stamp = time
+        tf_s2t.child_frame_id = source_frame
+        tf_s2t.transform = msgify(Transform,
+                                  np.matmul(numpify(tf_n2t.transform),
+                                            numpify(tf_s2n.transform)))
+        return tf_s2t
+
+    def get_robot_pose(self, target_frame):
+        tf = self.lookup_transform(target_frame, self.robot_frame, rospy.Time.now(),
+                                   timeout=0.5, no_wait_frame=self.odom_frame)
+        pose = tf_to_pose(tf.transform)
+        return pose
+
+    def clear_path(self):
+        with self.path_lock:
+            self.path_msg = None
+            self.path_received_time = None
+            self.path_costs = None
+            self.path = None
+            self.path_x_index = None
+            self.waypoint_index = None
+
+    def path_received(self, msg):
+        assert isinstance(msg, Path)
+
+        if not msg.header.frame_id:
+            rospy.logwarn_once('Map frame %s will be used instead of empty path frame.',
+                               self.map_frame)
+            msg.header.frame_id = self.map_frame
+        # elif not self.map_frame:
+        #     self.map_frame = msg.header.frame_id
+        elif self.map_frame and msg.header.frame_id != self.map_frame:
+            rospy.logwarn_once('Map frame %s will be used instead of path frame %s.',
+                               self.map_frame, msg.header.frame_id)
+
+        # Discard old messages.
+        age = (rospy.Time.now() - msg.header.stamp).to_sec()
+        if age > self.max_age:
+            rospy.logwarn('Discarding path %.1f s > %.1f s old.', age, self.max_age)
+            return
+
+        # Allow to stop the controller with an empty path.
+        if not msg.poses:
+            self.clear_path()
+            rospy.loginfo('Path cleared.')
+            return
+
+        # Keep a recent path if keep_path is positive.
+        with self.path_lock:
+            if self.path_msg and self.keep_path > 0.:
+                age = (rospy.Time.now() - self.path_msg.header.stamp).to_sec()
+                if age <= self.keep_path and self.stuck_since is None:
+                    rospy.loginfo('Keeping previous path (%.1f s <= %.1f s).', age, self.keep_path)
+                    # Store as a subsequent path for later use.
+                    goal = numpify(self.path_msg.poses[-1].pose.position)
+                    start = numpify(msg.poses[0].pose.position)
+                    if np.linalg.norm(goal - start) < 0.1:
+                        rospy.loginfo('Subsequent path stored for later use.')
+                        self.next_path_msg = msg
+                    return
+
+        # Update path and index.
+        path = np.array([slots(p.pose.position) for p in msg.poses])
+        path_x_index = cKDTree(path)
+        with self.path_lock:
+            self.clear_path()
+            self.path_msg = msg
+            self.path_received_time = rospy.Time.now()
+            self.path_costs = self.compute_path_costs(self.path_msg.poses)
+            self.next_path_msg = None
+            self.path = path
+            self.path_x_index = path_x_index
+            self.path_pub.publish(msg)
+            rospy.loginfo('Path received (%i poses).', len(msg.poses))
+
+    def cloud_received(self, msg):
+        assert isinstance(msg, PointCloud2)
+
+        age = (rospy.Time.now() - msg.header.stamp).to_sec()
+        if age > self.max_age:
+            rospy.logwarn('Discarding cloud %.1f s > %.1f s old.', age, self.max_age)
+            return
+
+        path_frame = self.map_frame
+        # with self.path_lock:
+        #     if self.path_msg:
+        #         path_frame = self.path_msg.header.frame_id
+        # if not path_frame:
+        #     path_frame = self.map_frame
+        # if not path_frame:
+        #     rospy.loginfo('Could not obtain path frame, discarding cloud.')
+        #     return
+
+        t = timer()
+        cloud = numpify(msg).ravel()
+        cloud = np.stack(cloud[f] for f in ('x', 'y', 'z'))
+        keep = (self.keep_cloud_box[:, :1] <= cloud).all(axis=0) & (cloud <= self.keep_cloud_box[:, 1:]).all(axis=0)
+        cloud = cloud[:, keep]
+        if cloud.size == 0:
+            rospy.loginfo('No points left.')
+            return
+
+        try:
+            tf = self.lookup_transform(path_frame, msg.header.frame_id, msg.header.stamp,
+                                       no_wait_frame=self.odom_frame, timeout=0.5)
+        except tf2_ros.TransformException as ex:
+            rospy.logerr('Could not transform cloud from %s to path frame %s at %.1f s.',
+                         msg.header.frame_id, path_frame, msg.header.stamp.to_sec())
+            return
+        tf = numpify(tf.transform)
+        cloud = np.matmul(tf, e2p(cloud))
+        t = timer() - t
+
+        with self.cloud_lock:
+            self.cloud_msg = msg
+            self.cloud = cloud
+            rospy.logdebug('Cloud with %i points received, %i points kept (%.3f s).',
+                           msg.height * msg.width, cloud.shape[1], t)
+
+    def check_pose_clearance(self, pose):
+        if self.min_points_obstacle < 1:
+            return True, None
+        # Convert cloud into given pose with odom/no-wait as fixed frame.
+        # Check robot extents.
+        with self.cloud_lock:
+            cloud = self.cloud
+        if cloud is None:
+            rospy.logdebug('No cloud to check for obstacles.')
+            return True, None
+        tf = numpify(pose)
+        # tf = np.linalg.inv(tf)
+        tf[:3, :3] = tf[:3, :3].T
+        tf[:3, 3:] = -np.matmul(tf[:3, :3], tf[:3, 3:])
+        local_cloud = np.matmul(tf, self.cloud)
+        obstacles = ((local_cloud[:3, :] >= self.clearance_box[:, :1]).all(axis=0)
+                     & (local_cloud[:3, :] <= self.clearance_box[:, 1:]).all(axis=0))
+        n_obstacles = obstacles.sum()
+        free = n_obstacles < self.min_points_obstacle
+        pts = local_cloud[:3, obstacles] if n_obstacles else None
+        return free, pts
+
+    def path_markers(self, stamp, path_msg):
+
+        marker = Marker()
+        marker.header.frame_id = path_msg.header.frame_id
+        marker.header.stamp = stamp
+        marker.ns = '%s/path' % self.robot_frame
+        marker.id = 0
+        marker.action = Marker.MODIFY
+        marker.type = Marker.LINE_STRIP
+        marker.scale = Vector3(.1, .1, .1)
+        marker.color = ColorRGBA(0., 1., 0., .5)
+        marker.pose.orientation.w = 1.0
+
+        for i, pose in enumerate(path_msg.poses):
+            marker.points.append(pose.pose.position)
+            marker.colors.append(marker.color)
+
+        return [marker]
+
+    def clearance_markers(self, stamp, path_msg, indices):
+        markers = []
+
+        # Clean up previous clearance.
+        delete_all = Marker()
+        delete_all.ns = '%s/clearance' % self.robot_frame
+        delete_all.action = Marker.DELETEALL
+        markers.append(delete_all)
+
+        # Marker with obstacle points.
+        pts_marker = Marker()
+        pts_marker.header.frame_id = path_msg.header.frame_id
+        pts_marker.header.stamp = stamp
+        pts_marker.ns = '%s/obstacles' % self.robot_frame
+        pts_marker.id = 0
+        pts_marker.action = Marker.MODIFY
+        # pts_marker.type = Marker.POINTS
+        pts_marker.type = Marker.SPHERE_LIST
+        pts_marker.scale = Vector3(.05, .05, .05)
+        pts_marker.color = ColorRGBA(1., 0., 0., .5)
+        pts_marker.pose.orientation.w = 1.0
+
+        for i in indices:
+            pose = path_msg.poses[i]
+            # Pose clearance marker.
+            marker = Marker()
+            marker.header.frame_id = path_msg.header.frame_id
+            marker.header.stamp = stamp
+            marker.ns = '%s/clearance' % self.robot_frame
+            marker.id = i
+            marker.action = Marker.MODIFY
+            marker.type = Marker.CUBE
+            # marker.pose = pose
+            pose_arr = numpify(pose.pose)
+            center = self.clearance_box.mean(axis=1, keepdims=True)
+            pose_arr[:3, 3:] += np.dot(pose_arr[:3, :3], center)
+            marker.pose = msgify(Pose, pose_arr)
+            marker.scale.x, marker.scale.y, marker.scale.z \
+                = self.clearance_box[:, 1] - self.clearance_box[:, 0]
+            free, pts = self.check_pose_clearance(pose.pose)
+            marker.color = ColorRGBA(0., 1., 0., 0.25) if free else ColorRGBA(1., 0., 0., 0.25)
+            markers.append(marker)
+
+            if pts is not None:
+                for p in pts.T:
+                    pts_marker.points.append(Point(*p))
+                    pts_marker.colors.append(ColorRGBA(1., 0., 0., .5))
+
+        if pts_marker.points:
+            markers.append(pts_marker)
+
+        return markers
+
+    def waypoint_markers(self, stamp, path_msg, indices, color=ColorRGBA(0., 1., 0., .5)):
+
+        marker = Marker()
+        marker.header.frame_id = path_msg.header.frame_id
+        marker.header.stamp = stamp
+        marker.ns = '%s/waypoints' % self.robot_frame
+        marker.id = 0
+        marker.action = Marker.MODIFY
+        # marker.type = Marker.POINTS
+        marker.type = Marker.SPHERE_LIST
+        marker.scale = Vector3(.25, .25, .25)
+        marker.color = color
+        marker.pose.orientation.w = 1.0
+
+        for i in indices:
+            pose = path_msg.poses[i]
+            marker.points.append(pose.pose.position)
+            marker.colors.append(marker.color)
+
+        return [marker]
+
+    def publish_markers(self, path_msg=None, clearance_indices=(), waypoint_indices=()):
+        if not path_msg:
+            with self.path_lock:
+                path_msg = self.path_msg
+
+        t = timer()
+        now = rospy.Time.now()
+        msg = MarkerArray()
+        msg.markers.extend(self.path_markers(now, path_msg))
+        msg.markers.extend(self.clearance_markers(now, path_msg, clearance_indices))
+        msg.markers.extend(self.waypoint_markers(now, path_msg, waypoint_indices))
+
+        # Send all markers.
+        self.markers_pub.publish(msg)
+
+        rospy.logdebug('Publish clearance: %.3f s', timer() - t)
+
+    def compute_path_costs(self, poses):
+        """Calculate cumulative path cost for all waypoints.
+        This include distance, traversability, and turning cost.
+        """
+        t = timer()
+        costs = [0.]
+
+        for i in range(1, len(poses)):
+            p0, p1 = poses[i - 1:i + 1]
+            assert isinstance(p0, PoseStamped)
+            assert isinstance(p1, PoseStamped)
+            pose_0 = numpify(p0.pose)
+            pose_1 = numpify(p1.pose)
+
+            dist = np.linalg.norm(pose_0[:3, 3] - pose_1[:3, 3])
+            c01 = 0.
+            c01 += 1.06 * self.distance_cost(dist)
+            c01 += 1.08 * self.distance_cost(dist) * self.pose_cost(pose_1)[0]
+            _, _, yaw_0 = euler_from_matrix(pose_0)
+            _, _, yaw_1 = euler_from_matrix(pose_1)
+            yaw_diff = abs(yaw_1 - yaw_0)
+            yaw_diff += min(yaw_diff, 2. * np.pi - yaw_diff)
+            c01 += 0.24 * self.turning_cost(yaw_diff)
+            costs.append(costs[-1] + c01)
+
+        rospy.loginfo('Path time cost: %.1f s (%.2f s).', costs[-1], timer() - t)
+        return costs
+
+
+    def maybe_invoke_backtracking(self):
+        if self.idle_since is None:
+            self.idle_since = rospy.Time.now()
+            return False
+        else:
+            idle_duration = (rospy.Time.now() - self.idle_since).to_sec()
+            if idle_duration >= self.backtrack_after:
+                path = Path()
+                path.header.frame_id = self.map_frame
+                path.header.stamp = rospy.Time.now()
+                path.poses = [PoseStamped(path.header, pose) for pose in reversed(self.path_traversed)]
+                rospy.logwarn('Backtracking due to long inactivity.')
+                self.path_received(path)
+                return True
+            else:
+                return False
+
+    def turning_cost(self, angle):
+        return angle / self.max_angular_rate
+
+    def distance_cost(self, dist):
+        return dist / self.max_speed
+
+    def pose_cost(self, pose):
+        assert isinstance(pose, np.ndarray)
+        assert pose.shape == (4, 4)
+
+        roll, pitch, yaw = euler_from_matrix(pose)
+        cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
+
+        return cost, roll, pitch
+
+    def control(self, event):
+        try:
+            t = timer()
+            with self.path_lock:
+                pose_msg = self.get_robot_pose(self.map_frame)
+                cur_pos = numpify(pose_msg.position)
+                prev_pos = numpify(self.path_traversed[0].position) if len(self.path_traversed) > 0 else None
+                if prev_pos is None or np.linalg.norm(cur_pos - prev_pos) > 0.1:
+                    self.path_traversed.append(pose_msg)
+                if len(self.path_traversed) > 3000:
+                    self.path_traversed = self.path_traversed[-3000:]
+
+                if self.path_msg is None:
+                    self.maybe_invoke_backtracking()
+                    self.cmd_pub.publish(Twist())
+                    return
+
+                pose = numpify(pose_msg)
+                rospy.logdebug('Control from robot position: [%.2f, %.2f, %.2f]',
+                               pose[0, 3], pose[1, 3], pose[2, 3])
+
+                # Get the last position on the path within look-ahead radius,
+                # else extend the radius to max. path distance.
+                ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.look_ahead)[0]
+                if not ind:
+                    rospy.logwarn('Distance to path higher than look ahead %.1f m.', self.look_ahead)
+                    ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.max_path_dist)[0]
+                if not ind:
+                    rospy.logwarn('Distance to path higher than maximum %.1f m. Stopping.', self.max_path_dist)
+                    self.clear_path()
+                    self.maybe_invoke_backtracking()
+                    self.cmd_pub.publish(Twist())
+                    return
+
+                self.idle_since = None
+
+                # Ensure minimum look-ahead still applies for long distances
+                # between poses, e.g. starting position far from the next one.
+                # look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
+                # look_ahead, i = look_ahead.item(), i.item()
+                last = len(self.path_msg.poses) - 1
+                i = max(ind)
+                assert self.path.shape[1] == 3
+                goal = self.path[i, :].reshape([3, 1])
+                look_ahead = np.linalg.norm(pose[:3, 3:] - goal)
+                while i < last and look_ahead < self.look_ahead:
+                    i += 1
+                    new_goal = self.path[i, :].reshape([3, 1])
+                    look_ahead += np.linalg.norm(new_goal - goal)
+                    goal = new_goal
+
+                if self.increasing_waypoint_index and self.waypoint_index:
+                    i = max(i, self.waypoint_index)
+                self.waypoint_index = i
+
+                clearance_indices = range(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
+                self.publish_markers(self.path_msg, clearance_indices=clearance_indices, waypoint_indices=[i])
+                if self.obstacle_avoidance:
+                    if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
+                        if self.stuck_since is None:
+                            self.stuck_since = rospy.Time.now()
+                        stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
+                        if stuck_duration < self.force_through_after:
+                            rospy.logwarn('Path to goal obstructed (for %.1f s), waiting...', stuck_duration)
+                            self.cmd_pub.publish(Twist())
+                            return
+                        else:
+                            rospy.logwarn('Path to goal obstructed for %.1f s >= %.1f s, forcing through...',
+                                          stuck_duration, self.force_through_after)
+                    else:
+                        if self.stuck_since:
+                            rospy.logwarn('Path free again.')
+                        self.stuck_since = None
+
+                # Convert the goal into robot frame.
+                local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
+                if self.local_goal_dims == 'xy':
+                    local_goal[2, 0] = 0.
+                dist = np.linalg.norm(local_goal)
+                rospy.logdebug('Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
+                               *(local_goal.ravel().tolist() + [dist]))
+                rospy.loginfo_throttle(1.0, 'Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
+                                       *(local_goal.ravel().tolist() + [dist]))
+
+                # TODO: Use goal theta.
+                # Angular displacement from [-pi, pi)
+                if (True or self.use_path_theta == 'none'
+                        or (self.use_path_theta == 'last' and i < last)
+                        or np.isnan(goal[2])):
+                    angle = np.arctan2(local_goal[1, 0], local_goal[0, 0])
+                else:
+                    goal_theta = goal[2]
+                    rospy.loginfo('Using path theta: %.1f.', goal_theta)
+
+                # Clear path and stop if the goal has been reached.
+                if (i == last
+                        and dist <= self.goal_reached_dist
+                        and abs(angle) <= self.goal_reached_angle):
+                    est_time = self.path_costs[-1]
+                    act_time = (rospy.Time.now() - self.path_received_time).to_sec()
+                    rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m). Est. time %.1f s, actual %.1f s.',
+                                  dist, self.goal_reached_dist, est_time, act_time)
+                    self.clear_path()
+                    if self.next_path_msg:
+                        rospy.loginfo("Using stored subsequent path (%i poses).",
+                                      len(self.next_path_msg.poses))
+                        self.path_received(self.next_path_msg)
+                    else:
+                        self.cmd_pub.publish(Twist())
+                    if self.max_path_dists:
+                        self.max_path_dist = self.max_path_dists.pop()
+                    return
+            
+            if self.allow_backward and np.abs(angle) > np.pi / 2.:
+                angle = np.mod(angle + np.pi / 2., np.pi) - np.pi / 2.
+                vel_sign = -1.
+            else:
+                vel_sign = 1.
+
+            # Angular rate
+            p_angle = 1.5
+            angular_rate = np.clip(p_angle * angle, -self.max_angular_rate, self.max_angular_rate)
+
+            # Linear velocity
+            # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
+            p_dist = 1.5 * max(0., 1. - (abs(angle) / self.turn_on_spot_angle)**2)
+            # p_dist = 1.5 * max(np.cos(3. * angle), 0.)
+            # p_dist = 1.5 * np.exp(-(angle/0.25)**2)
+            speed = p_dist * dist
+            # add angular (similar to traversability) cost
+            # roll, pitch, yaw = euler_from_matrix(pose)
+            pose_cost, roll, pitch = self.pose_cost(pose)
+            rospy.logdebug('Roll: %.3f, max roll: %.3f', roll, self.max_roll)
+            rospy.logdebug('Pitch: %.3f, max pitch: %.3f', pitch, self.max_pitch)
+            # trav_cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
+            speed /= (1. + pose_cost)
+            max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
+            speed = vel_sign * np.clip(speed, 0., max_speed)
+
+            msg = Twist()
+            msg.angular.z = angular_rate
+            msg.linear.x = speed
+            self.cmd_pub.publish(msg)
+            rospy.loginfo('Local goal: %s, linear: %.2f m/s, angular: %.1f rad/s (%.3f s).',
+                          local_goal.ravel(), speed, angular_rate, timer() - t)
+
+        except tf2_ros.TransformException as ex:
+            rospy.logerr('Robot pose lookup failed: %s.', ex)
+        except rospy.ROSTimeMovedBackwardsException as ex:
+            rospy.logerr('Time moved backward: %s.', ex)
+        except Exception as ex:
+            rospy.logerr('Unknown exception during contol: %s.', ex)
+
+
+if __name__ == '__main__':
+    rospy.init_node('path_follower', log_level=rospy.INFO)
+    node = PathFollower()
+    rospy.spin()
