@@ -112,7 +112,7 @@ def read_pcd_header(pcd: bytes) -> PCDHeader:
     return header
 
 
-def pcd_header_to_numpy_dtype(header: PCDHeader) -> Tuple[Tuple[str, np.dtype]]:
+def pcd_header_to_numpy_dtype(header: PCDHeader) -> Sequence[Tuple[str, np.dtype]]:
     """Convert a PCD header to a numpy record datatype."""
 
     offset = 0
@@ -130,7 +130,7 @@ def pcd_header_to_numpy_dtype(header: PCDHeader) -> Tuple[Tuple[str, np.dtype]]:
         np_dtype_list.append((field_name, dtype))
         offset += field_size * field_count
 
-    return tuple(np_dtype_list)
+    return np_dtype_list
 
 
 def pcd_to_numpy(pcd: bytes, squeeze=True, dummy_field_prefix=DUMMY_FIELD_PREFIX):
