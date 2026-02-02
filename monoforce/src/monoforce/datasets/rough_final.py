@@ -587,18 +587,28 @@ class ROUGHFinal(Dataset):
         :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'geom')
-        file_path: str = os.path.join(dir_name, f'{self.ids[i]}.npy')
-        if cached and os.path.exists(file_path):
-            lidar_hm = np.load(file_path)
-        else:
-            points = torch.as_tensor(position(self.get_cloud(i)))
-            lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
-                                          grid_res=self.grid_res,
-                                          h_max=self.dphys_cfg.h_max,
-                                          r_min=self.dphys_cfg.r_min)
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, lidar_hm.cpu().numpy())
+            dir_name = os.path.join(self.dir, self.name)
+        
+        zip_path: str = os.path.join(dir_name, 'terrain_geom.zip')
+        file_path: str = f'{self.ids[i]}.npy'
+
+        if cached and os.path.exists(zip_path):
+            with zipfile.ZipFile(zip_path, 'r') as zip_f:
+                if file_path in zip_f.namelist():
+                    lidar_hm = np.load(io.BytesIO(zip_f.read(file_path)))
+                    return torch.as_tensor(lidar_hm)
+
+        points = torch.as_tensor(position(self.get_cloud(i)))
+        lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+                                      grid_res=self.grid_res,
+                                      h_max=self.dphys_cfg.h_max,
+                                      r_min=self.dphys_cfg.r_min)
+        
+        with zipfile.ZipFile(zip_path, 'a') as zip_f:
+            if file_path not in zip_f.namelist():
+                with zip_f.open(file_path, 'w') as hm_f:
+                    np.save(hm_f, lidar_hm.cpu().numpy())
+
         heightmap = torch.as_tensor(lidar_hm)
         return heightmap
 
@@ -914,23 +924,31 @@ class ROUGHFinal(Dataset):
         :return: heightmap (2 x H x W), where 2 is the number of channels (z and mask)
         """
         if dir_name is None:
-            dir_name = os.path.join(self.path, 'terrain', 'rigid')
+            dir_name = os.path.join(self.dir, self.name)
+        zip_path: str = os.path.join(dir_name, 'terrain_rigid.zip')
+        file_path: str = f'terrain_rigid.{self.ids[i]}.npy'
 
-        file_path: str = os.path.join(dir_name, f'{self.ids[i]}.npy')
-        if cached and os.path.exists(file_path):
-            hm_rigid = np.load(file_path)
-        else:
-            traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
-            soft_classes = self.lss_cfg['soft_classes']
-            rigid_classes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes]
-            seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
-            points = np.concatenate((seg_points, traj_points), axis=0)
-            points = torch.as_tensor(points, dtype=torch.float32)
-            hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
-                                          grid_res=self.grid_res,
-                                          h_max=self.dphys_cfg.h_max)
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            np.save(file_path, hm_rigid.cpu().numpy())
+        if cached and os.path.exists(zip_path):
+            with zipfile.ZipFile(zip_path, 'r') as zip_f:
+                if file_path in zip_f.namelist():
+                    hm_rigid = np.load(io.BytesIO(zip_f.read(file_path)))
+                    return torch.as_tensor(hm_rigid)
+
+        traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
+        soft_classes = self.lss_cfg['soft_classes']
+        rigid_classes = [c for c in WILDSCENES_METAINFO['classes'] if c not in soft_classes]
+        seg_points, _ = self.get_semantic_cloud(i, classes=rigid_classes, vis=False)
+        points = np.concatenate((seg_points, traj_points), axis=0)
+        points = torch.as_tensor(points, dtype=torch.float32)
+        hm_rigid = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
+                                      grid_res=self.grid_res,
+                                      h_max=self.dphys_cfg.h_max)
+
+        with zipfile.ZipFile(zip_path, 'a') as zip_f:
+            if file_path not in zip_f.namelist():
+                with zip_f.open(file_path, 'w') as hm_f:
+                    np.save(hm_f, hm_rigid.cpu().numpy())
+
         heightmap = torch.as_tensor(hm_rigid)
         return heightmap
 
