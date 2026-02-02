@@ -289,8 +289,8 @@ class ROUGHFinal(Dataset):
         self.calib = self.load_calib(calib_path_prefix=self.calib_path_prefix)
 
         poses_ts, poses = self.get_all_poses(return_stamps=True)
-        assert poses_ts
-        assert poses
+        assert poses_ts is not None
+        assert poses is not None
         self.poses_ts: np.ndarray = poses_ts
         self.poses: np.ndarray = poses
 
@@ -346,7 +346,13 @@ class ROUGHFinal(Dataset):
     @staticmethod
     def pose2mat(pose: np.ndarray) -> np.ndarray:
         T = np.eye(4)
-        T[:3, :4] = pose.reshape((3, 4))
+        if pose.shape[0] == 7:
+            T[:3, 3] = pose[:3]
+            r = Rotation.from_quat(pose[3:])
+            r = Rotation_as_matrix(r)
+            T[:3, :3] = r
+        else:
+            T[:3, :4] = pose.reshape((3, 4))
         return T
 
     def load_calib(self, calib_path_prefix: str) -> Dict[str, Any]:
@@ -374,7 +380,7 @@ class ROUGHFinal(Dataset):
             return None, None if return_stamps else None
         data = np.loadtxt(self.poses_path, delimiter=',', skiprows=1)
         assert len(data) > 0, f'No poses found in {self.poses_path}'
-        stamps, Ts = data[:, 0], data[:, 1:13]
+        stamps, Ts = data[:, 0], data[:, 1:]
         lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
         Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
