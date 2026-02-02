@@ -306,7 +306,7 @@ class ROUGHFinal(Dataset):
             strip = len(prefix) + 1
             self.camera_stamps[camera_name] = dict()
             for img_path in cam.namelist():
-                img_ts = float(os.path.splitext(prefix)[0][strip:])
+                img_ts = float(os.path.splitext(img_path)[0][strip:])
                 self.camera_stamps[camera_name][img_ts] = img_path
 
         self.ids = self.get_ids()
@@ -714,7 +714,7 @@ class ROUGHFinal(Dataset):
             with zipfile.ZipFile(cache_zip_path, 'r') as cache_zip:
                 if cached_img_name in cache_zip.namelist():
                     try:
-                        img = Image.open(io.BytesIO(cache_zip.open(cached_img_name)))
+                        img = Image.open(io.BytesIO(cache_zip.read(cached_img_name)))
                         K = self.calib[camera]['camera_matrix']['data']
                         K = np.asarray(K, dtype=np.float32).reshape((3, 3))
                         return img, K
@@ -806,7 +806,7 @@ class ROUGHFinal(Dataset):
         seg_dir = os.path.join(self.dir, self.name, 'wildscenes_seg')
         seg_zip_path = os.path.join(seg_dir, CAMERA_FILE_NAMES[camera] + '.zip')
         with zipfile.ZipFile(seg_zip_path, 'r') as seg_zip:
-            seg = Image.open(io.BytesIO(seg_zip.open(seg_img_name)))
+            seg = Image.open(io.BytesIO(seg_zip.read(seg_img_name)))
             size = self.get_raw_img_size(i, camera)
             transform = torchvision.transforms.Resize(size)
             seg = transform(seg)
@@ -822,7 +822,7 @@ class ROUGHFinal(Dataset):
         seg_dir = os.path.join(self.dir, self.name, 'wildscenes_vis')
         seg_zip_path = os.path.join(seg_dir, CAMERA_FILE_NAMES[camera] + '.zip')
         with zipfile.ZipFile(seg_zip_path, 'r') as seg_zip:
-            seg = Image.open(io.BytesIO(seg_zip.open(seg_img_name)))
+            seg = Image.open(io.BytesIO(seg_zip.read(seg_img_name)))
             size = self.get_raw_img_size(i, camera)
             transform = torchvision.transforms.Resize(size)
             seg = transform(seg)
@@ -949,7 +949,7 @@ class ROUGHFinal(Dataset):
                 traj_ts, Xs, Xds, Rs, Omegas)
 
     def get_camera_stamp(self, camera: str, stamp: float) -> Tuple[float, str]:
-        ts = np.array(self.camera_stamps[camera].keys())
+        ts = np.array(list(self.camera_stamps[camera].keys()))
         neareast_idx = np.abs(ts - stamp).argmin()
         nearest_ts = ts[neareast_idx]
         return nearest_ts, self.camera_stamps[camera][nearest_ts]
