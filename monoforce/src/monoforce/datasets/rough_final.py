@@ -299,10 +299,10 @@ class ROUGHFinal(Dataset):
         self.cameras: Dict[str, zipfile.ZipFile] = dict()
         self.camera_stamps: Dict[str, Dict[float, str]] = dict()
         for camera_name in self.camera_names:
-            camera_path = os.path.join(self.dir, self.name, camera_name + '_image_color_compressed.zip')
+            prefix = CAMERA_FILE_NAMES[camera_name]
+            camera_path = os.path.join(self.dir, self.name, prefix + '.zip')
             self.camera_paths[camera_name] = camera_path
             self.cameras[camera_name] = cam = zipfile.ZipFile(camera_path, 'r')
-            prefix = CAMERA_FILE_NAMES[camera_name]
             strip = len(prefix) + 1
             self.camera_stamps[camera_name] = dict()
             for img_path in cam.namelist():
@@ -317,6 +317,19 @@ class ROUGHFinal(Dataset):
             lss_cfg = read_yaml(os.path.join(monoforce_dir, 'config', 'lss_cfg.yaml'))
         self.lss_cfg = lss_cfg
         self.grid_res = lss_cfg['grid_conf']['xbound'][2]
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['clouds']
+        del state['cameras']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.clouds = zipfile.ZipFile(self.cloud_path, 'r')
+        self.cameras = dict()
+        for camera_name, camera_path in self.camera_paths.items():
+            self.cameras[camera_name] = zipfile.ZipFile(camera_path, 'r')
 
     def __getitem__(self, i):
         if isinstance(i, (int, np.int64)):
