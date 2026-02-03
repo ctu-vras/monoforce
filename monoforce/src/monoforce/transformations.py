@@ -4,6 +4,20 @@ import torch
 from numpy.lib.recfunctions import structured_to_unstructured
 from scipy.spatial.transform import Rotation
 
+# OpenBLAS with Numpy 1.17.4 on arm64 causes incorrect results of transform_cloud(); switch to ATLAS BLAS library.
+import platform
+if platform.machine() == 'aarch64':
+    np_version = tuple(map(int, np.version.short_version.split('.')))
+    if np_version < (1, 21, 1):
+        import os
+        import sys
+        blas_lib = os.path.realpath('/etc/alternatives/libblas.so.3-aarch64-linux-gnu')
+        if 'openblas' in blas_lib and np.version.version:
+            print('After installing ATLAS, call this command and select it:', file=sys.stderr)
+            print('sudo update-alternatives --config libblas.so.3-aarch64-linux-gnu', file=sys.stderr)
+            assert False, ('OpenBLAS is buggy on this OS and Numpy. '
+                           'Install and use libatlas-base-dev or upgrade numpy to > 1.21.0.')
+
 
 __all__ = [
     'transform_cloud',
