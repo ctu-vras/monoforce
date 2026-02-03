@@ -68,12 +68,13 @@ def transform_cloud(cloud, Tr):
         cloud[nans] = 123456.789
 
     cloud_tr = Tr[:3, :3] @ cloud.T + Tr[:3, 3:]
+    cloud_tr = cloud_tr.T
 
     if isinstance(cloud, np.ndarray):
         cloud[nans] = np.nan
         cloud_tr[nans] = np.nan
 
-    return cloud_tr.T
+    return cloud_tr
 
 def xyz_rpy_to_matrix(xyz_rpy):
     t = xyz_rpy[:3]
