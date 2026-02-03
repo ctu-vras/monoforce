@@ -4,6 +4,17 @@ import torch
 from numpy.lib.recfunctions import structured_to_unstructured
 from scipy.spatial.transform import Rotation
 
+try:
+    Rotation_from_matrix = Rotation.from_matrix
+
+    def Rotation_as_matrix(rot, *args, **kwargs):
+        return rot.as_matrix(*args, **kwargs)
+except:
+    Rotation_from_matrix = Rotation.from_dcm
+
+    def Rotation_as_matrix(rot, *args, **kwargs):
+        return rot.as_dcm(*args, **kwargs)
+
 # OpenBLAS with Numpy 1.17.4 on arm64 causes incorrect results of transform_cloud(); switch to ATLAS BLAS library.
 import platform
 if platform.machine() == 'aarch64':
@@ -50,7 +61,18 @@ def transform_cloud(cloud, Tr):
         return cloud
     assert cloud.ndim == 2
     assert cloud.shape[1] == 3  # (N, 3)
+
+    # This is workaround for buggy older OpenBLAS on arm64
+    if isinstance(cloud, np.ndarray):
+        nans = np.where(np.isnan(cloud))
+        cloud[nans] = 123456.789
+
     cloud_tr = Tr[:3, :3] @ cloud.T + Tr[:3, 3:]
+
+    if isinstance(cloud, np.ndarray):
+        cloud[nans] = np.nan
+        cloud_tr[nans] = np.nan
+
     return cloud_tr.T
 
 def xyz_rpy_to_matrix(xyz_rpy):
@@ -95,7 +117,7 @@ def pose_to_xyz_q(pose):
     if isinstance(pose, np.ndarray):
         pose = torch.as_tensor(pose)
     xyz = pose[:3, 3]
-    quat = Rotation.from_matrix(pose[:3, :3]).as_quat()
+    quat = Rotation_from_matrix(pose[:3, :3]).as_quat()
     quat = torch.as_tensor(quat)
     xyz_q = torch.cat([xyz, quat])
     return xyz_q
