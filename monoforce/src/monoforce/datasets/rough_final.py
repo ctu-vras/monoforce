@@ -396,7 +396,7 @@ class ROUGHFinal(Dataset):
         stamps, Ts = data[:, 0], data[:, 1:]
         lidar_poses = np.asarray([self.pose2mat(pose) for pose in Ts], dtype=np.float32)
         # poses of the robot in the map frame
-        Tr_robot_lidar = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr_robot_lidar = self.calib['transformations']['T_base_link__os_lidar']['data']
         Tr_robot_lidar = np.asarray(Tr_robot_lidar, dtype=np.float32).reshape((4, 4))
         Tr_lidar_robot = np.linalg.inv(Tr_robot_lidar)
         poses = lidar_poses @ Tr_lidar_robot
@@ -569,7 +569,7 @@ class ROUGHFinal(Dataset):
     def get_cloud(self, i: int, gravity_aligned=True) -> np.ndarray:
         cloud = self.get_raw_cloud(i)
         # move points to robot frame
-        # Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        # /points are in os_sensor frame, but /points_filtered in os_lidar 
         Tr = self.calib['transformations']['T_base_link__os_lidar']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
