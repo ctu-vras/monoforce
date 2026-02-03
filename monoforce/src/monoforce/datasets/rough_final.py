@@ -569,7 +569,8 @@ class ROUGHFinal(Dataset):
     def get_cloud(self, i: int, gravity_aligned=True) -> np.ndarray:
         cloud = self.get_raw_cloud(i)
         # move points to robot frame
-        Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        # Tr = self.calib['transformations']['T_base_link__os_sensor']['data']
+        Tr = self.calib['transformations']['T_base_link__os_lidar']['data']
         Tr = np.asarray(Tr, dtype=float).reshape((4, 4))
         cloud = transform_cloud(cloud, Tr)
         if gravity_aligned:
