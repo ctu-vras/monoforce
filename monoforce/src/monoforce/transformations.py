@@ -16,12 +16,14 @@ except:
         return rot.as_dcm(*args, **kwargs)
 
 # OpenBLAS with Numpy 1.17.4 on arm64 causes incorrect results of transform_cloud(); switch to ATLAS BLAS library.
+has_blas_problems = False
 import platform
 if platform.machine() == 'aarch64':
     np_version = tuple(map(int, np.version.short_version.split('.')))
     if np_version < (1, 21, 1):
         import os
         import sys
+        has_blas_problems = True
         blas_lib = os.path.realpath('/etc/alternatives/libblas.so.3-aarch64-linux-gnu')
         if 'openblas' in blas_lib and np.version.version:
             print('After installing ATLAS, call this command and select it:', file=sys.stderr)
@@ -63,14 +65,15 @@ def transform_cloud(cloud, Tr):
     assert cloud.shape[1] == 3  # (N, 3)
 
     # This is workaround for buggy older OpenBLAS on arm64
-    if isinstance(cloud, np.ndarray):
+    if has_blas_problems and isinstance(cloud, np.ndarray):
         nans = np.where(np.isnan(cloud))
+        cloud = np.array(cloud)
         cloud[nans] = 123456.789
 
     cloud_tr = Tr[:3, :3] @ cloud.T + Tr[:3, 3:]
     cloud_tr = cloud_tr.T
 
-    if isinstance(cloud, np.ndarray):
+    if has_blas_problems and isinstance(cloud, np.ndarray):
         cloud[nans] = np.nan
         cloud_tr[nans] = np.nan
 
