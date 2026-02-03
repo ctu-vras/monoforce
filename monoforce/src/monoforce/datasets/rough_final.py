@@ -1,3 +1,5 @@
+import sys
+
 import copy
 import io
 import os
@@ -594,10 +596,16 @@ class ROUGHFinal(Dataset):
         file_path: str = f'{self.ids[i]}.npy'
 
         if cached and os.path.exists(zip_path):
-            with zipfile.ZipFile(zip_path, 'r') as zip_f:
-                if file_path in zip_f.namelist():
-                    lidar_hm = np.load(io.BytesIO(zip_f.read(file_path)))
-                    return torch.as_tensor(lidar_hm)
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zip_f:
+                    if file_path in zip_f.namelist():
+                        lidar_hm = np.load(io.BytesIO(zip_f.read(file_path)))
+                        return torch.as_tensor(lidar_hm)
+            except zipfile.BadZipfile as e:
+                print(f'Zip file {zip_path} is damaged, removing: {e}', file=sys.stderr)
+                os.remove(zip_path)
+            except Exception as e:
+                print(e)
 
         points = torch.as_tensor(position(self.get_cloud(i)))
         lidar_hm = estimate_heightmap(points, d_max=self.dphys_cfg.d_max,
@@ -722,15 +730,22 @@ class ROUGHFinal(Dataset):
         cache_dir = os.path.join(self.dir, self.name, 'resized')
         cache_zip_path = os.path.join(cache_dir, CAMERA_FILE_NAMES[camera] + '.zip')
         if os.path.exists(cache_zip_path):
-            with zipfile.ZipFile(cache_zip_path, 'r') as cache_zip:
-                if cached_img_name in cache_zip.namelist():
-                    try:
-                        img = Image.open(io.BytesIO(cache_zip.read(cached_img_name)))
-                        K = self.calib[camera]['camera_matrix']['data']
-                        K = np.asarray(K, dtype=np.float32).reshape((3, 3))
-                        return img, K
-                    except:
-                        pass
+            try:
+                with zipfile.ZipFile(cache_zip_path, 'r') as cache_zip:
+                    if cached_img_name in cache_zip.namelist():
+                        try:
+                            img = Image.open(io.BytesIO(cache_zip.read(cached_img_name)))
+                            K = self.calib[camera]['camera_matrix']['data']
+                            K = np.asarray(K, dtype=np.float32).reshape((3, 3))
+                            return img, K
+                        except:
+                            pass
+            except zipfile.BadZipfile as e:
+                print(f'Zip file {cache_zip_path} is damaged, removing: {e}', file=sys.stderr)
+                os.remove(cache_zip_path)
+            except Exception as e:
+                print(e)
+
         os.makedirs(cache_dir, exist_ok=True)
         img, K = self.get_image(i, camera)
         img = resize_img(img)
@@ -930,10 +945,16 @@ class ROUGHFinal(Dataset):
         file_path: str = f'terrain_rigid.{self.ids[i]}.npy'
 
         if cached and os.path.exists(zip_path):
-            with zipfile.ZipFile(zip_path, 'r') as zip_f:
-                if file_path in zip_f.namelist():
-                    hm_rigid = np.load(io.BytesIO(zip_f.read(file_path)))
-                    return torch.as_tensor(hm_rigid)
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zip_f:
+                    if file_path in zip_f.namelist():
+                        hm_rigid = np.load(io.BytesIO(zip_f.read(file_path)))
+                        return torch.as_tensor(hm_rigid)
+            except zipfile.BadZipfile as e:
+                print(f'Zip file {zip_path} is damaged, removing it: {e}')
+                os.remove(zip_path)
+            except Exception as e:
+                print(e, file=sys.stderr)
 
         traj_points = self.get_footprint_traj_points(i, T_horizon=10.0)
         soft_classes = self.lss_cfg['soft_classes']
