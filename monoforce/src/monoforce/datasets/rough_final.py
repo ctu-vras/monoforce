@@ -281,9 +281,9 @@ class ROUGHFinal(Dataset):
         self.dir: str = os.path.dirname(path)
         self.name: str = os.path.basename(os.path.normpath(path)).replace('.postproc.bag', '')
         self.cloud_path: str = os.path.join(self.dir, self.name, 'points_filtered.zip')
-        self.poses_path: str = os.path.join(self.dir, self.name + '.poses.icp-lidar.csv')
+        self.poses_path: str = os.path.join(self.dir, self.name + '/poses.icp-lidar.csv')
         self.calib_path_prefix: str = os.path.join(self.dir, self.name)
-        self.controls_path:str = os.path.join(self.dir, self.name + '.cmd_vel.csv')
+        self.controls_path:str = os.path.join(self.dir, self.name + '/cmd_vel.csv')
 
         assert all([cam in CAMERA_OPTICAL_FRAME_NAMES for cam in cameras])
         self.camera_names = cameras
@@ -373,13 +373,13 @@ class ROUGHFinal(Dataset):
     def load_calib(self, calib_path_prefix: str) -> Dict[str, Any]:
         calib = {}
         for camera_name in self.camera_names:
-            calib_file = "%s.caminfo.%s.yaml" % (calib_path_prefix, camera_name)
+            calib_file = "%s/caminfo.%s.yaml" % (calib_path_prefix, camera_name)
             with open(calib_file, 'r') as f:
                 cam_info = yaml.load(f, Loader=yaml.SafeLoader)
                 calib[camera_name] = cam_info
 
         # read cameras-lidar transformations
-        trans_path = calib_path_prefix + '.transformations.yaml'
+        trans_path = calib_path_prefix + '/transformations.yaml'
         with open(trans_path, 'r') as f:
             transforms = yaml.load(f, Loader=yaml.SafeLoader)
         calib['transformations'] = transforms
@@ -652,7 +652,7 @@ class ROUGHFinal(Dataset):
         return trajectory_points
 
     def get_global_cloud(self, vis=False, cached=True, save=False, step=1):
-        map_path = os.path.join(self.dir, self.name + '.map.pcd')
+        map_path = os.path.join(self.dir, self.name + '/map.pcd')
         if cached and os.path.exists(map_path):
             # print('Loading global cloud from file...')
             pcd = o3d.io.read_point_cloud(map_path)
