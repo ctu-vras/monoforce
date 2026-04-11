@@ -285,6 +285,8 @@ class ROUGHFinal(Dataset):
         self.calib_path_prefix: str = os.path.join(self.dir, self.name)
         self.controls_path:str = os.path.join(self.dir, self.name + '/cmd_vel.csv')
 
+        if self.robot == 'tatra':
+            cameras = tuple(c for c in cameras if c != 'camera_rear')
         assert all([cam in CAMERA_OPTICAL_FRAME_NAMES for cam in cameras])
         self.camera_names = cameras
         self.dphys_cfg = dphys_cfg if dphys_cfg is not None else DPhysConfig()
