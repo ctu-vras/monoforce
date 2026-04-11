@@ -49,7 +49,7 @@ def robot_geometry(robot):
         mask_r = (x_points[..., 1] < (cog[1] - s_y / 4.)) & (x_points[..., 2] < cog[2])
         # driving parts: left and right tracks
         driving_parts = [mask_l, mask_r]
-    elif robot in ['marv', 'husky', 'husky_oru']:
+    elif robot in ['marv', 'husky', 'husky_oru', 'tatra']:
         # divide the point cloud into front left, front right, rear left, rear right flippers / wheels
         mask_fl = (x_points[..., 0] > (cog[0] + s_x / 8.)) & \
                   (x_points[..., 1] > (cog[1] + s_y / 3.))
@@ -62,7 +62,7 @@ def robot_geometry(robot):
         # driving parts: front left, front right, rear left, rear right flippers / wheels
         driving_parts = [mask_fl, mask_fr, mask_rl, mask_rr]
     else:
-        raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
+        raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky, tatra')
 
     # robot size
     robot_size = (s_x, s_y)
@@ -122,8 +122,18 @@ class DPhysConfig:
                 'rl': 0.0,
                 'rr': 0.0
             }
+        elif 'tatra' in robot:
+            self.robot_mass = 10280.
+            self.joint_positions = {
+                'fl': [4.319, 1.015, 0.0],
+                'fr': [4.319, -1.015, 0.0],
+            }
+            self.joint_angles = {
+                'fl': 0.0,
+                'fr': 0.0,
+            }
         else:
-            raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky')
+            raise ValueError(f'Robot {robot} not supported. Available robots: tradr, marv, husky, tatra')
         self.robot_points, self.driving_parts, self.robot_size = robot_geometry(robot=robot)
 
         self.gravity = 9.81  # acceleration due to gravity, m/s^2
